@@ -115,8 +115,12 @@ export function ClipEditor({
   const words = clip.words;
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-[1400px] flex-col gap-5 px-6 py-6">
-      <Glass shape="capsule" className="sticky top-4 z-20 flex flex-wrap items-center gap-3 px-4 py-2.5">
+    // Editor shell: the viewport is the frame. Each region scrolls on its own
+    // rather than the page growing, so the preview never leaves the screen.
+    <div className="flex h-screen flex-col overflow-hidden">
+      {/* Navigation layer. In flow, not floating over the preview — glass must not
+          intersect content in a steady state. */}
+      <Glass shape="capsule" className="mx-4 mt-4 flex shrink-0 flex-wrap items-center gap-3 px-4 py-2.5">
         <Button variant="ghost" size="icon" render={<Link href={`/p/${projectId}`} />}>
           <ArrowLeft className="size-4" />
         </Button>
@@ -136,31 +140,35 @@ export function ClipEditor({
         </Button>
       </Glass>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="flex flex-col gap-4">
-          <div className="mx-auto w-full max-w-[420px]">
-            <Player
-              ref={player}
-              component={ClipComposition}
-              inputProps={{
-                clip,
-                sourceUrl: sourceUrl(projectId),
-                sourceWidth: edl.source.width,
-                sourceHeight: edl.source.height,
-                assetBase: `/api/projects/${projectId}/asset/`,
-              }}
-              durationInFrames={Math.max(1, Math.round(map.duration * fps))}
-              fps={fps}
-              compositionWidth={edl.output.width}
-              compositionHeight={edl.output.height}
-              controls
-              acknowledgeRemotionLicense
-              className="aspect-[9/16] w-full overflow-hidden rounded-2xl border border-border bg-black"
-              style={{ width: "100%" }}
-            />
+      <div className="flex min-h-0 flex-1 gap-4 p-4">
+        <section className="flex min-h-0 flex-1 flex-col gap-3">
+          {/* The preview takes the height it can and derives its width from it,
+              so a 9:16 clip never pushes the timeline off screen. */}
+          <div className="flex min-h-0 flex-1 items-center justify-center">
+            <div className="h-full max-h-full" style={{ aspectRatio: "9 / 16" }}>
+              <Player
+                ref={player}
+                component={ClipComposition}
+                inputProps={{
+                  clip,
+                  sourceUrl: sourceUrl(projectId),
+                  sourceWidth: edl.source.width,
+                  sourceHeight: edl.source.height,
+                  assetBase: `/api/projects/${projectId}/asset/`,
+                }}
+                durationInFrames={Math.max(1, Math.round(map.duration * fps))}
+                fps={fps}
+                compositionWidth={edl.output.width}
+                compositionHeight={edl.output.height}
+                controls
+                acknowledgeRemotionLicense
+                className="overflow-hidden rounded-2xl border border-border bg-black"
+                style={{ width: "100%", height: "100%" }}
+              />
+            </div>
           </div>
 
-          <Card>
+          <Card className="shrink-0">
             <CardContent className="flex flex-col gap-3 px-4">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="mr-auto text-xs text-muted-foreground">Add at playhead</span>
@@ -180,42 +188,18 @@ export function ClipEditor({
               />
             </CardContent>
           </Card>
+        </section>
 
-          <Card className="gap-0 py-0">
-            <div className="px-4 py-2.5 text-xs font-medium text-muted-foreground">
-              Transcript — click a word to seek, or set it as the clip&apos;s start or end
-            </div>
-            <Separator />
-            <ScrollArea className="h-56">
-              <div className="flex flex-wrap gap-x-1 gap-y-1.5 p-4 text-sm leading-relaxed">
-                {words.map((w, i) => {
-                  const out = srcToOut(map, w.t);
-                  const active = currentSec >= out && currentSec < out + w.d;
-                  return (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => seek(out)}
-                      onDoubleClick={() => update({ ...clip, start: clip.start + w.t })}
-                      title={`${fmt(out)} — double-click to trim the start here`}
-                      className={`rounded-md px-1 outline-none transition-colors hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-ring ${
-                        active ? "bg-primary/25 text-primary" : ""
-                      }`}
-                    >
-                      {w.w}
-                    </button>
-                  );
-                })}
-              </div>
-            </ScrollArea>
-          </Card>
-        </div>
-
-        <aside className="flex flex-col gap-4 lg:sticky lg:top-24 lg:self-start">
-          <Glass shape="panel" thickness="thick" className="p-4">
-            <Tabs defaultValue={selected !== null ? "edit" : "captions"} value={selected !== null ? "edit" : undefined}>
+        <aside className="flex w-[360px] min-h-0 shrink-0 flex-col gap-4 overflow-y-auto pr-1">
+          <Glass shape="panel" thickness="thick" className="shrink-0 p-4">
+            <Tabs
+              value={selected !== null ? "edit" : "captions"}
+              onValueChange={(v) => {
+                if (v === "captions") setSelected(null);
+              }}
+            >
               <TabsList className="w-full">
-                <TabsTrigger value="captions" className="flex-1" onClick={() => setSelected(null)}>
+                <TabsTrigger value="captions" className="flex-1">
                   Captions
                 </TabsTrigger>
                 <TabsTrigger value="edit" className="flex-1" disabled={selected === null}>
@@ -253,17 +237,48 @@ export function ClipEditor({
             </Tabs>
           </Glass>
 
-          <Card>
-            <CardContent className="flex flex-col gap-2 px-4 text-xs text-muted-foreground">
+          <Card className="flex min-h-0 shrink-0 flex-col gap-0 py-0">
+            <div className="px-4 py-2.5 text-xs text-muted-foreground">
+              Transcript — click to seek, double-click to trim the start
+            </div>
+            <Separator />
+            <ScrollArea className="h-64">
+              <div className="flex flex-wrap gap-x-1 gap-y-1.5 p-4 text-sm leading-relaxed">
+                {words.map((w, i) => {
+                  const out = srcToOut(map, w.t);
+                  const active = currentSec >= out && currentSec < out + w.d;
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => seek(out)}
+                      onDoubleClick={() => update({ ...clip, start: clip.start + w.t })}
+                      title={`${fmt(out)} — double-click to trim the start here`}
+                      className={`rounded-md px-1 outline-none transition-colors hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-ring ${
+                        active ? "bg-primary/25 text-primary" : ""
+                      }`}
+                    >
+                      {w.w}
+                    </button>
+                  );
+                })}
+              </div>
+            </ScrollArea>
+          </Card>
+
+          <Card className="shrink-0">
+            <CardContent className="flex flex-col gap-1.5 px-4 text-xs text-muted-foreground">
               <span className="flex items-center gap-2 text-foreground">
                 <Scissors className="size-3.5" />
                 {(clip.end - clip.start).toFixed(1)}s source · {map.duration.toFixed(1)}s after cuts
               </span>
-              <span>{clip.edits.length} edits · {clip.words.length} words</span>
+              <span>
+                {clip.edits.length} edits · {clip.words.length} words
+              </span>
             </CardContent>
           </Card>
         </aside>
       </div>
-    </main>
+    </div>
   );
 }
