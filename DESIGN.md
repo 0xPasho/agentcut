@@ -8,6 +8,22 @@ using `<Glass>`, `<Button>`, `<Card>`.
 block and the `@custom-variant` declarations in `src/app/globals.css` — shadcn's and
 Tailwind's own configuration mechanisms.
 
+## Palette and type
+
+Tokens are taken from the reference build we're matching: `#101010` ground,
+`#171717` surfaces, `#1f1f1f` popovers, `#262626` raised fills, `#333` hairlines,
+`#ffda2a` accent with `#ffff5e` at the top of the button gradient, `#ed8445` as the
+secondary hue. Card radius is 24px; everything interactive is a pill.
+
+Two deliberate departures: their muted grey is `#666`, which fails contrast for body
+text, so ours is lighter; and their borders are solid grey hairlines rather than white
+at low alpha, which is what gives surfaces their edge on a near-black ground.
+
+**Type.** The reference uses `artlistSans` and `publicoBanner` (Publico, Commercial
+Type) — both licensed, neither shippable. **Figtree** stands in: the same geometric
+grotesque construction with open apertures, and it holds up at UI sizes. Don't swap it
+for a system stack; the geometry is most of the character.
+
 ## The material
 
 Liquid Glass is layered: a tint that still lets content through, a lensed edge that bends

@@ -10,10 +10,10 @@ const buttonVariants = cva(
         // Tinted glass, not a solid fill: a solid fill is opaque and breaks the
         // character of the material. Reserved for the one primary action per view.
         default:
-          "border-primary/40 bg-primary/85 text-primary-foreground backdrop-blur-xl backdrop-saturate-150 shadow-[inset_0_1px_0_0_oklch(1_0_0_/_45%),0_0_28px_-6px_oklch(0.872_0.168_96_/_60%)] hover:bg-primary/95 reduce-transparency:bg-primary reduce-transparency:backdrop-blur-none",
+          "border-transparent bg-[linear-gradient(180deg,#ffff5e_0%,#ffda2a_55%,#f0c60f_100%)] text-primary-foreground font-semibold shadow-[inset_0_1px_0_0_rgb(255_255_255/0.6),0_0_28px_-6px_rgb(255_218_42/0.55)] hover:brightness-[1.06]",
         // Fills and vibrancy rather than more glass: these sit inside glass containers.
-        outline: "border-white/12 bg-white/8 hover:bg-white/14 aria-expanded:bg-white/14",
-        secondary: "bg-white/10 text-secondary-foreground hover:bg-white/16",
+        outline: "border-border bg-white/[0.04] hover:bg-white/[0.09] aria-expanded:bg-white/[0.09]",
+        secondary: "bg-secondary text-secondary-foreground hover:bg-white/[0.16]",
         ghost: "hover:bg-white/10 hover:text-foreground aria-expanded:bg-white/10",
         destructive: "bg-destructive/15 text-destructive hover:bg-destructive/25 focus-visible:ring-destructive/30",
         link: "text-primary underline-offset-4 hover:underline",

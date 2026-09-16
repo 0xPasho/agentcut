@@ -10,12 +10,12 @@ export function Ambient() {
   return (
     <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
       <div className="absolute inset-0 bg-background" />
-      <div className="absolute -top-[20%] -left-[10%] size-[55vw] rounded-full bg-primary/12 blur-[120px]" />
-      <div className="absolute top-[30%] -right-[15%] size-[50vw] rounded-full bg-[oklch(0.6_0.18_265)]/12 blur-[130px]" />
-      <div className="absolute -bottom-[25%] left-[20%] size-[45vw] rounded-full bg-[oklch(0.65_0.16_25)]/10 blur-[140px]" />
+      <div className="absolute -top-[20%] -left-[10%] size-[55vw] rounded-full bg-primary/[0.05] blur-[140px]" />
+      <div className="absolute top-[30%] -right-[15%] size-[50vw] rounded-full bg-[oklch(0.6_0.18_265)]/[0.05] blur-[150px]" />
+      <div className="absolute -bottom-[25%] left-[20%] size-[45vw] rounded-full bg-[oklch(0.7_0.16_48)]/[0.04] blur-[160px]" />
       {/* A faint grid gives the lensing something with structure to distort. */}
       <div
-        className="absolute inset-0 opacity-[0.22]"
+        className="absolute inset-0 opacity-[0.10]"
         style={{
           backgroundImage:
             "linear-gradient(to right, oklch(1 0 0 / 4%) 1px, transparent 1px), linear-gradient(to bottom, oklch(1 0 0 / 4%) 1px, transparent 1px)",

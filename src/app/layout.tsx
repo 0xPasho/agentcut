@@ -1,15 +1,24 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Figtree, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Ambient } from "@/components/ambient";
 
-// shadcn's theme reads --font-sans / --font-mono; the variable names must match.
-const sans = Geist({ variable: "--font-sans", subsets: ["latin"] });
-const mono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+/**
+ * The reference uses a proprietary grotesque (artlistSans) that can't be shipped.
+ * Figtree is the closest free match: same geometric build, open apertures, and
+ * it holds up at UI sizes.
+ */
+const sans = Figtree({
+  variable: "--font-sans",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+});
+
+const mono = JetBrains_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "agentcut",
-  description: "Agent-edited short clips from long video, on your own machine.",
+  description: "Short clips, cut by your coding agent. Local-first, no API keys.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
