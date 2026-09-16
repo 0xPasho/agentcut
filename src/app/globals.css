@@ -5,6 +5,11 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Apple ships these as automatic modifiers on the material. On the web they are
+   media queries, so they need variants before any component can honour them. */
+@custom-variant reduce-transparency (@media (prefers-reduced-transparency: reduce));
+@custom-variant more-contrast (@media (prefers-contrast: more));
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -77,6 +82,14 @@
   --chart-4: oklch(0.7 0.15 155);
   --chart-5: oklch(0.65 0.18 265);
   --radius: 0.875rem;
+
+  /* Liquid Glass, dark expression. The material is layered: a tint that lets
+     content through, a lensed edge, and a specular highlight along the top. */
+  --glass-tint: oklch(1 0 0 / 7%);
+  --glass-tint-strong: oklch(1 0 0 / 11%);
+  --glass-edge: oklch(1 0 0 / 14%);
+  --glass-specular: oklch(1 0 0 / 30%);
+  --glass-blur: 28px;
   --sidebar: oklch(0.175 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.872 0.168 96);

@@ -13,6 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { AgentLog } from "@/components/agent-log";
+import { Glass, ScrollEdge } from "@/components/ui/glass";
 import { CaptionControls } from "@/components/caption-controls";
 import { ClipPreview } from "@/components/clip-preview";
 import { api, clipUrl, sourceUrl, type LogEvent, type ProjectDetail } from "@/lib/client";
@@ -97,7 +98,8 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-6 py-8">
-      <header className="flex flex-wrap items-center gap-3">
+      {/* Navigation layer. Controls inside it use fills, never more glass. */}
+      <Glass shape="capsule" className="sticky top-4 z-20 flex flex-wrap items-center gap-3 px-4 py-2.5">
         <Button variant="ghost" size="icon" render={<Link href="/" />}>
           <ArrowLeft className="size-4" />
         </Button>
@@ -113,7 +115,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
           {busy && <Loader2 className="mr-1 size-3 animate-spin" />}
           {project.job?.stage ?? project.status}
         </Badge>
-      </header>
+      </Glass>
 
       {busy && project.job ? <Progress value={project.job.progress * 100} className="h-1.5" /> : null}
       {error || project.error ? (
@@ -218,14 +220,18 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
               <CardTitle className="text-xs font-medium text-muted-foreground">Agent</CardTitle>
             </CardHeader>
             <Separator />
-            <AgentLog events={events} />
+            <div className="relative">
+              <ScrollEdge edge="top" className="h-8" />
+              <AgentLog events={events} />
+            </div>
           </Card>
         </div>
 
-        <aside className="flex flex-col gap-4 lg:sticky lg:top-8 lg:self-start">
+        <aside className="flex flex-col gap-4 lg:sticky lg:top-24 lg:self-start">
           {selected && edl ? (
             <>
               <ClipPreview clip={selected} edl={edl} sourceUrl={sourceUrl(initial.id)} />
+              <Glass shape="panel" thickness="thick" className="p-4">
               <Tabs defaultValue="captions">
                 <TabsList className="w-full">
                   <TabsTrigger value="captions" className="flex-1">
@@ -260,6 +266,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                   )}
                 </TabsContent>
               </Tabs>
+              </Glass>
 
               <Button
                 disabled={busy}

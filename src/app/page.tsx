@@ -4,6 +4,7 @@ import { q } from "@/lib/db";
 import { NewProject } from "@/components/new-project";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { Glass } from "@/components/ui/glass";
 
 export const dynamic = "force-dynamic";
 
@@ -18,13 +19,14 @@ export default function Home() {
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-8 px-6 py-12">
-      <header className="flex items-center gap-3">
+      {/* Navigation layer: glass floats above the content. */}
+      <Glass shape="capsule" className="sticky top-4 z-20 flex items-center gap-3 px-5 py-3">
         <Clapperboard className="size-6 shrink-0 text-primary" />
         <h1 className="text-xl font-semibold tracking-tight">agentcut</h1>
         <Badge variant="secondary" className="font-mono text-xs">
           local
         </Badge>
-      </header>
+      </Glass>
 
       <NewProject />
 

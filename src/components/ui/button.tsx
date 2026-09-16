@@ -7,12 +7,14 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
+        // Tinted glass, not a solid fill: a solid fill is opaque and breaks the
+        // character of the material. Reserved for the one primary action per view.
         default:
-          "bg-gradient-to-b from-[oklch(0.93_0.16_98)] to-[oklch(0.83_0.17_92)] text-primary-foreground shadow-[0_0_24px_-6px_oklch(0.872_0.168_96_/_55%)] hover:brightness-110",
-        outline: "border-border bg-secondary/60 hover:bg-secondary aria-expanded:bg-secondary",
-        secondary: "bg-secondary text-secondary-foreground hover:bg-accent",
-        ghost:
-          "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
+          "border-primary/40 bg-primary/85 text-primary-foreground backdrop-blur-xl backdrop-saturate-150 shadow-[inset_0_1px_0_0_oklch(1_0_0_/_45%),0_0_28px_-6px_oklch(0.872_0.168_96_/_60%)] hover:bg-primary/95 reduce-transparency:bg-primary reduce-transparency:backdrop-blur-none",
+        // Fills and vibrancy rather than more glass: these sit inside glass containers.
+        outline: "border-white/12 bg-white/8 hover:bg-white/14 aria-expanded:bg-white/14",
+        secondary: "bg-white/10 text-secondary-foreground hover:bg-white/16",
+        ghost: "hover:bg-white/10 hover:text-foreground aria-expanded:bg-white/10",
         destructive: "bg-destructive/15 text-destructive hover:bg-destructive/25 focus-visible:ring-destructive/30",
         link: "text-primary underline-offset-4 hover:underline",
       },

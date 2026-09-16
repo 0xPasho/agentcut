@@ -62,7 +62,7 @@ export function NewProject() {
       }`}
     >
       <CardContent className="flex flex-col items-center gap-6 py-12">
-        <div className="flex size-14 items-center justify-center rounded-2xl border border-border bg-secondary/60">
+        <div className="flex size-14 items-center justify-center rounded-2xl border border-white/10 bg-white/5">
           {pending ? (
             <Loader2 className="size-6 animate-spin text-muted-foreground" />
           ) : (
