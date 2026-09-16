@@ -32,7 +32,7 @@ export function ClipPreview({ clip, edl, sourceUrl }: { clip: Clip; edl: Edl; so
       compositionHeight={edl.output.height}
       controls
       doubleClickToFullscreen
-      className="aspect-[9/16] w-full overflow-hidden border-2 border-foreground bg-black shadow-[6px_6px_0_0_var(--foreground)]"
+      className="aspect-[9/16] w-full overflow-hidden rounded-2xl border border-border bg-black"
       style={{ width: "100%" }}
     />
   );

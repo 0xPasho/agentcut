@@ -102,7 +102,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
           <ArrowLeft className="size-4" />
         </Button>
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-2xl font-black uppercase tracking-tight">{project.name}</h1>
+          <h1 className="truncate text-lg font-semibold tracking-tight">{project.name}</h1>
           <p className="truncate font-mono text-xs text-muted-foreground">
             {project.probe
               ? `${project.probe.width}×${project.probe.height} · ${Math.round(project.probe.durationSec)}s`
@@ -115,7 +115,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
         </Badge>
       </header>
 
-      {busy && project.job ? <Progress value={project.job.progress * 100} className="h-3" /> : null}
+      {busy && project.job ? <Progress value={project.job.progress * 100} className="h-1.5" /> : null}
       {error || project.error ? (
         <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error ?? project.error}
@@ -127,7 +127,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
           {!edl ? (
             <Card>
               <CardHeader>
-                <CardTitle className="text-xl font-black uppercase tracking-tight">Find the clips</CardTitle>
+                <CardTitle className="text-base font-semibold">Find the clips</CardTitle>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
                 <div className="flex items-end gap-3">
@@ -164,7 +164,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
           ) : (
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
-                <h2 className="text-sm font-black uppercase tracking-widest">{edl.clips.length} clips</h2>
+                <h2 className="text-sm font-medium text-muted-foreground">{edl.clips.length} clips</h2>
                 <Button size="sm" variant="outline" disabled={busy} onClick={() => run(() => api.render(initial.id))}>
                   <Wand2 className="size-3.5" />
                   Render all
@@ -178,16 +178,16 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                   <Card
                     key={clip.id}
                     onClick={() => setSelectedId(clip.id)}
-                    className={`cursor-pointer gap-0 py-3 transition-colors hover:bg-accent ${
-                      active ? "border-primary bg-accent" : ""
+                    className={`cursor-pointer gap-0 py-3 transition-colors hover:bg-accent/60 ${
+                      active ? "border-primary/40 bg-accent/60" : ""
                     }`}
                   >
                     <CardContent className="flex items-start gap-3 px-4">
-                      <div className="flex size-10 shrink-0 items-center justify-center border-2 border-foreground bg-primary text-sm font-black tabular-nums">
+                      <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-sm font-semibold tabular-nums text-primary">
                         {clip.score}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-base font-bold">{clip.title}</p>
+                        <p className="truncate text-sm font-medium">{clip.title}</p>
                         <p className="font-mono text-xs text-muted-foreground">
                           {fmt(clip.start)} – {fmt(clip.end)} · {Math.round(clip.end - clip.start)}s
                           {clip.edits.length ? ` · ${clip.edits.length} edits` : ""}
@@ -215,7 +215,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
 
           <Card className="gap-0 py-0">
             <CardHeader className="px-4 py-3">
-              <CardTitle className="text-xs font-black uppercase tracking-widest">Agent</CardTitle>
+              <CardTitle className="text-xs font-medium text-muted-foreground">Agent</CardTitle>
             </CardHeader>
             <Separator />
             <AgentLog events={events} />

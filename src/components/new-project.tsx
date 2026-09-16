@@ -57,12 +57,12 @@ export function NewProject() {
         const file = e.dataTransfer.files?.[0];
         if (file) upload(file);
       }}
-      className={`border-4 border-dashed shadow-none transition-colors ${
-        dragging ? "bg-primary" : "bg-card"
+      className={`border border-dashed transition-colors ${
+        dragging ? "border-primary bg-primary/5" : "border-border bg-card"
       }`}
     >
       <CardContent className="flex flex-col items-center gap-6 py-12">
-        <div className="flex size-16 items-center justify-center border-2 border-foreground bg-primary shadow-[4px_4px_0_0_var(--foreground)]">
+        <div className="flex size-14 items-center justify-center rounded-2xl border border-border bg-secondary/60">
           {pending ? (
             <Loader2 className="size-6 animate-spin text-muted-foreground" />
           ) : (
@@ -71,7 +71,7 @@ export function NewProject() {
         </div>
 
         <div className="text-center">
-          <p className="text-2xl font-black uppercase tracking-tight">Drop a video to clip it</p>
+          <p className="text-xl font-semibold tracking-tight">Drop a video to clip it</p>
           <p className="text-sm text-muted-foreground">
             or paste a YouTube URL or a path on this machine
           </p>

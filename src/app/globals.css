@@ -50,74 +50,45 @@
 }
 
 :root {
-  /* Neo-brutalism: cream ground, near-black ink, one loud yellow. See DESIGN.md. */
-  --background: oklch(0.973 0.015 91);
-  --foreground: oklch(0.16 0.01 60);
-  --card: oklch(0.995 0.004 91);
-  --card-foreground: oklch(0.16 0.01 60);
-  --popover: oklch(0.995 0.004 91);
-  --popover-foreground: oklch(0.16 0.01 60);
-  --primary: oklch(0.86 0.18 92);
-  --primary-foreground: oklch(0.16 0.01 60);
-  --secondary: oklch(0.16 0.01 60);
-  --secondary-foreground: oklch(0.98 0.01 91);
-  --muted: oklch(0.93 0.012 91);
-  --muted-foreground: oklch(0.44 0.02 60);
-  --accent: oklch(0.7 0.19 42);
-  --accent-foreground: oklch(0.99 0.005 91);
-  --destructive: oklch(0.58 0.24 27);
-  /* Borders are the structure here, so they match the ink exactly. */
-  --border: oklch(0.16 0.01 60);
-  --input: oklch(0.16 0.01 60);
-  --ring: oklch(0.16 0.01 60);
-  --chart-1: oklch(0.86 0.18 92);
-  --chart-2: oklch(0.7 0.19 42);
-  --chart-3: oklch(0.16 0.01 60);
-  --chart-4: oklch(0.62 0.16 150);
-  --chart-5: oklch(0.55 0.2 275);
-  --radius: 0rem;
-  --sidebar: oklch(0.995 0.004 91);
-  --sidebar-foreground: oklch(0.16 0.01 60);
-  --sidebar-primary: oklch(0.86 0.18 92);
-  --sidebar-primary-foreground: oklch(0.16 0.01 60);
-  --sidebar-accent: oklch(0.93 0.012 91);
-  --sidebar-accent-foreground: oklch(0.16 0.01 60);
-  --sidebar-border: oklch(0.16 0.01 60);
-  --sidebar-ring: oklch(0.16 0.01 60);
+  /* Artlist style: near-black ground, surfaces one step lighter, one yellow accent.
+     Dark only — there is no light mode. See DESIGN.md. */
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.192 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.872 0.168 96);
+  --primary-foreground: oklch(0.16 0 0);
+  --secondary: oklch(0.235 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.225 0 0);
+  --muted-foreground: oklch(0.715 0 0);
+  --accent: oklch(0.27 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.65 0.22 25);
+  /* Hairlines: a seam between surfaces, never an outline around them. */
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(0.872 0.168 96 / 55%);
+  --chart-1: oklch(0.872 0.168 96);
+  --chart-2: oklch(0.72 0.14 55);
+  --chart-3: oklch(0.985 0 0);
+  --chart-4: oklch(0.7 0.15 155);
+  --chart-5: oklch(0.65 0.18 265);
+  --radius: 0.875rem;
+  --sidebar: oklch(0.175 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.872 0.168 96);
+  --sidebar-primary-foreground: oklch(0.16 0 0);
+  --sidebar-accent: oklch(0.27 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 9%);
+  --sidebar-ring: oklch(0.872 0.168 96 / 55%);
 }
 
 .dark {
-  --background: oklch(0.17 0.01 60);
-  --foreground: oklch(0.97 0.012 91);
-  --card: oklch(0.23 0.012 60);
-  --card-foreground: oklch(0.97 0.012 91);
-  --popover: oklch(0.23 0.012 60);
-  --popover-foreground: oklch(0.97 0.012 91);
-  --primary: oklch(0.86 0.18 92);
-  --primary-foreground: oklch(0.16 0.01 60);
-  --secondary: oklch(0.97 0.012 91);
-  --secondary-foreground: oklch(0.16 0.01 60);
-  --muted: oklch(0.28 0.012 60);
-  --muted-foreground: oklch(0.72 0.02 91);
-  --accent: oklch(0.7 0.19 42);
-  --accent-foreground: oklch(0.99 0.005 91);
-  --destructive: oklch(0.65 0.24 27);
-  --border: oklch(0.97 0.012 91);
-  --input: oklch(0.97 0.012 91);
-  --ring: oklch(0.97 0.012 91);
-  --chart-1: oklch(0.86 0.18 92);
-  --chart-2: oklch(0.7 0.19 42);
-  --chart-3: oklch(0.97 0.012 91);
-  --chart-4: oklch(0.7 0.16 150);
-  --chart-5: oklch(0.65 0.2 275);
-  --sidebar: oklch(0.23 0.012 60);
-  --sidebar-foreground: oklch(0.97 0.012 91);
-  --sidebar-primary: oklch(0.86 0.18 92);
-  --sidebar-primary-foreground: oklch(0.16 0.01 60);
-  --sidebar-accent: oklch(0.28 0.012 60);
-  --sidebar-accent-foreground: oklch(0.97 0.012 91);
-  --sidebar-border: oklch(0.97 0.012 91);
-  --sidebar-ring: oklch(0.97 0.012 91);
+  /* Same palette: the app is dark-only, so the class is a no-op. */
 }
 
 @layer base {
