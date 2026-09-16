@@ -93,6 +93,7 @@ export async function selectClips(o: SelectOptions): Promise<Edl> {
         start,
         end,
         crop: p.crop.length ? p.crop : [fallbackCrop],
+        layout: p.layout ?? { type: "crop" as const },
         captions: CaptionStyle.parse(p.captions ?? {}),
         words: wordsBetween(transcript, start, end).map((w) => ({ ...w, t: w.t - start })),
         edits: p.edits ?? [],

@@ -34,7 +34,7 @@ export const Captions: React.FC<Props> = ({ words, style, emphasis }) => {
 
   return (
     <div
-      className="absolute inset-x-0 flex -translate-y-1/2 flex-wrap items-center justify-center gap-x-[0.28em] gap-y-[0.1em] px-[8%] text-center"
+      className="absolute inset-x-0 flex flex-wrap items-start justify-center gap-x-[0.28em] gap-y-[0.05em] px-[7%] text-center"
       style={{ top: `${style.positionY * 100}%`, fontSize }}
     >
       {line.words.map((w, i) => {

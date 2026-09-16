@@ -42,8 +42,36 @@ A good clip:
 Use the tools. Cross-reference \`peaks\` against the transcript to find reactions the text alone does not show.${i.hasFrames ? " Read frames around your candidates to confirm the speaker is actually on screen and to place the crop." : ""} You may run \`ffprobe\` and \`ffmpeg\` to inspect the source further.
 
 ${i.userBrief ? `## Additional direction from the user\n${i.userBrief}\n` : ""}
-## Crop
-Output is vertical 9:16. For each clip give \`crop\` keyframes in **source pixel coordinates** — \`{t, x, y, w, h}\`, where \`t\` is seconds from the start of that clip. Keep \`w/h\` at 9:16 (${(9 / 16).toFixed(4)}). Add a new keyframe only when the framing should actually move (a new speaker, a new shot); one keyframe at \`t: 0\` is fine for a static shot. Leave \`crop\` as \`[]\` to accept a centered crop.
+## Layout — look at the frames before you decide this
+Output is vertical 9:16 (${i.probe.width}x${i.probe.height} source).
+
+If the frames show **a screen share with a small webcam somewhere in the corner** — a coding stream, a demo, a presentation — a single crop is the wrong answer. The middle of the frame is usually wallpaper or empty editor, and the person ends up sliced off at an edge. Use a split instead:
+
+\`\`\`json
+"layout": {
+  "type": "split",
+  "top":    { "x": 0, "y": 0, "w": 0, "h": 0 },
+  "bottom": { "x": 0, "y": 0, "w": 0, "h": 0 },
+  "topPct": 40
+}
+\`\`\`
+
+- \`top\` is the webcam rectangle — read its real position off the frames, do not guess a corner.
+- \`bottom\` is the part of the screen that the clip is actually about: the terminal, the editor pane, the diff, the browser window. Not the whole desktop.
+- \`topPct\` is how much output height the webcam gets. 35-45 usually reads well.
+- Both rectangles are in **source pixels** and each gets cropped to fill its half, so their aspect ratios do not need to match.
+
+If instead the frames are **a person filling the frame** — a talking head, a podcast — skip \`layout\` and give \`crop\` keyframes as below.
+
+## Captions and the face
+\`captions.positionY\` is the **top edge** of the caption block, which grows downward from there.
+
+- Split layout: put it a little below the seam — \`topPct/100 + 0.03\` — so the text sits on the screen-share half and never crosses the boundary.
+- Talking head: 0.70-0.76.
+
+Two rows is the most that reads well. Spanish and other long-word languages need \`maxWordsPerLine\` of 2-3, not 4.
+
+## Crop (talking-head layouts only) For each clip give \`crop\` keyframes in **source pixel coordinates** — \`{t, x, y, w, h}\`, where \`t\` is seconds from the start of that clip. Keep \`w/h\` at 9:16 (${(9 / 16).toFixed(4)}). Add a new keyframe only when the framing should actually move (a new speaker, a new shot); one keyframe at \`t: 0\` is fine for a static shot. Leave \`crop\` as \`[]\` to accept a centered crop.
 
 ## Editing
 Each clip also carries an \`edits\` array — clip-relative seconds, not source seconds. Vocabulary:
@@ -69,6 +97,8 @@ Write **\`clips.json\`** in your working directory. Nothing else. Exactly this s
       "start": 0.0,
       "end": 0.0,
       "crop": [{ "t": 0, "x": 0, "y": 0, "w": 0, "h": 0 }],
+      "layout": { "type": "crop" },
+      "captions": { "positionY": 0.78 },
       "edits": [{ "type": "silence", "t": 0, "d": 0.5 }]
     }
   ]

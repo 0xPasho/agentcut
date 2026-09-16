@@ -11,17 +11,48 @@ export const CropKeyframe = z.object({
 });
 export type CropKeyframe = z.infer<typeof CropKeyframe>;
 
+/** A rectangle in SOURCE pixel space. */
+export const Region = z.object({
+  x: z.number(),
+  y: z.number(),
+  w: z.number(),
+  h: z.number(),
+});
+export type Region = z.infer<typeof Region>;
+
+/**
+ * Screen-share streams break a single crop: the centre of the frame is usually
+ * wallpaper, and the speaker sits in a small corner. Split stacks the two regions
+ * that actually matter — face on top, the content being shown underneath.
+ */
+export const SplitLayout = z.object({
+  type: z.literal("split"),
+  top: Region,
+  bottom: Region,
+  /** Share of output height given to the top region. */
+  topPct: z.number().min(15).max(85).default(40),
+});
+
+export const CropLayout = z.object({ type: z.literal("crop") });
+
+export const Layout = z.discriminatedUnion("type", [CropLayout, SplitLayout]);
+export type Layout = z.infer<typeof Layout>;
+
 export const CaptionStyle = z.object({
   preset: z.enum(["karaoke", "popline", "boxed", "none"]).default("karaoke"),
   fontFamily: z.string().default("Inter"),
   fontWeight: z.number().default(800),
-  fontSizePct: z.number().min(1).max(30).default(7), // % of output height
+  fontSizePct: z.number().min(1).max(30).default(5.5), // % of output height
   color: z.string().default("#ffffff"),
   highlight: z.string().default("#ffe600"),
   strokeWidth: z.number().default(8),
-  // 0 = top, 1 = bottom of frame
-  positionY: z.number().min(0).max(1).default(0.78),
-  maxWordsPerLine: z.number().min(1).max(12).default(4),
+  /**
+   * Top edge of the caption block, 0 = top of frame. Anchored at the top rather
+   * than the centre so a block that wraps to two or three rows grows downward
+   * instead of straddling a split-layout seam.
+   */
+  positionY: z.number().min(0).max(1).default(0.72),
+  maxWordsPerLine: z.number().min(1).max(12).default(3),
   uppercase: z.boolean().default(false),
 });
 export type CaptionStyle = z.infer<typeof CaptionStyle>;
@@ -74,6 +105,7 @@ export const Clip = z.object({
   start: z.number(),
   end: z.number(),
   crop: z.array(CropKeyframe).default([]),
+  layout: Layout.default({ type: "crop" }),
   captions: CaptionStyle.prefault({}),
   words: z.array(Word).default([]),
   edits: z.array(Edit).default([]),
@@ -108,6 +140,7 @@ export const AgentClipProposal = z.object({
   start: z.number(),
   end: z.number(),
   crop: z.array(CropKeyframe).default([]),
+  layout: Layout.optional(),
   captions: CaptionStyle.partial().optional(),
   edits: z.array(Edit).default([]),
 });
