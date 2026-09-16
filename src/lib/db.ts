@@ -3,7 +3,7 @@ import { DB_PATH, ensureWorkspace } from "./config";
 
 declare global {
   // Next.js dev reloads modules; keep one connection across reloads.
-  var __clipsmithDb: DatabaseSync | undefined;
+  var __agentcutDb: DatabaseSync | undefined;
 }
 
 function open(): DatabaseSync {
@@ -46,7 +46,7 @@ function open(): DatabaseSync {
   return db;
 }
 
-export const db: DatabaseSync = globalThis.__clipsmithDb ?? (globalThis.__clipsmithDb = open());
+export const db: DatabaseSync = globalThis.__agentcutDb ?? (globalThis.__agentcutDb = open());
 
 export type ProjectRow = {
   id: string;

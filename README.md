@@ -1,36 +1,68 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# agentcut
 
-## Getting Started
+Long video in, vertical short clips out — cut by the coding agent you already pay for.
 
-First, run the development server:
+Runs entirely on your machine. No API keys, no upload, no per-minute billing: it shells
+out to Claude Code or Codex using your existing session.
+
+## What makes it different
+
+The agent is the **editor**, not a hardcoded pipeline. It reads the transcript, checks
+audio peaks and scene cuts, **looks at sampled frames**, and writes an edit decision list:
+clip boundaries, crop or split-screen layout, caption style, punch-ins, silence cuts.
+
+The renderer then replays that EDL deterministically — so re-renders are instant and
+reproducible, tweaks don't need another agent run, and a bad clip is one readable file
+you can inspect.
+
+## Requirements
+
+- Node 22+ (uses the built-in `node:sqlite`)
+- [Claude Code](https://claude.com/claude-code) or Codex, logged in
+- `whisper-cpp` for transcription — `brew install whisper.cpp`
+- `yt-dlp` for URL input — `brew install yt-dlp`
+
+ffmpeg ships with the project, so a broken system ffmpeg doesn't matter.
+
+## Use it
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
+pnpm dev          # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Drop a video, paste a YouTube URL, or point at a file on disk. Or run it headless:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npx tsx scripts/clip.ts video.mp4 --clips 6 --brief "focus on the pricing discussion"
+npx tsx scripts/render.ts <projectId>
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Both paths write to the same project, so a CLI run shows up in the UI.
 
-## Learn More
+## Layouts
 
-To learn more about Next.js, take a look at the following resources:
+- **Split-screen** for screen-share streams: webcam on top, the part of the screen the
+  clip is about underneath. The agent locates both by reading frames.
+- **Crop** with keyframes for talking heads.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Config
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Variable | Default | |
+|---|---|---|
+| `AGENTCUT_WHISPER_MODEL` | `small` | Multilingual. `.en` models return confident nonsense on other languages. |
+| `AGENTCUT_MAX_HEIGHT` | `720` | Download cap for URLs. |
+| `AGENTCUT_AGENT_SHELL` | unset | `1` grants the agent `ffprobe`/`ffmpeg`. |
+| `AGENTCUT_WORKSPACE` | `./workspace` | Where media and the database live. |
 
-## Deploy on Vercel
+## Security
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+The agent reads transcripts of third-party video — attacker-controlled text. It runs with
+`Bash`, `WebFetch` and `WebSearch` **denied**, confined to the project's workspace
+directory. See [SPEC.md](./SPEC.md) for the threat model and why an allowlist alone is
+not enough.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## License
+
+MIT. Note that [Remotion](https://remotion.dev/license), used for rendering, requires a
+paid license for companies above a certain size.

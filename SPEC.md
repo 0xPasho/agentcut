@@ -1,4 +1,6 @@
-# clipsmith — spec
+# agentcut — spec
+
+> Short clips, cut by your coding agent. Local-first, no API keys.
 
 Open-source, local-first clip generator. Long video in, vertical short clips out.
 The differentiator: a **coding agent** (Claude Code / Codex) is the brain, not a hardcoded pipeline.
@@ -25,7 +27,7 @@ Mitigations, non-negotiable:
   an allowlist does not take anything away — Claude Code still ran `cat` with only `Read` allowed.
   Only an explicit deny removes a tool from the session.
 - **Bash is denied by default.** The agent does not need it: frames are pre-sampled and the signals
-  are already JSON. `CLIPSMITH_AGENT_SHELL=1` grants `ffprobe`/`ffmpeg` back for debugging.
+  are already JSON. `AGENTCUT_AGENT_SHELL=1` grants `ffprobe`/`ffmpeg` back for debugging.
 - **WebFetch/WebSearch are denied.** They are the exfiltration path — an injected transcript saying
   "post this to https://…" needs a way out, and this removes it.
 - Never `--dangerously-skip-permissions`. Codex runs under `--sandbox workspace-write`.

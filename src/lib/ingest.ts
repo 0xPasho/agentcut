@@ -22,7 +22,7 @@ export async function downloadUrl(
   url: string,
   dir: string,
   onLog?: (s: string) => void,
-  maxHeight = Number(process.env.CLIPSMITH_MAX_HEIGHT ?? 720),
+  maxHeight = Number(process.env.AGENTCUT_MAX_HEIGHT ?? 720),
 ) {
   if (!(await which("yt-dlp"))) throw new Error("yt-dlp not found — run: brew install yt-dlp");
 

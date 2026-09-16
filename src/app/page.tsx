@@ -20,7 +20,7 @@ export default function Home() {
     <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-8 px-6 py-12">
       <header className="flex items-center gap-3">
         <Clapperboard className="size-6" />
-        <h1 className="text-xl font-semibold tracking-tight">clipsmith</h1>
+        <h1 className="text-xl font-semibold tracking-tight">agentcut</h1>
         <Badge variant="secondary" className="font-mono text-xs">
           local
         </Badge>

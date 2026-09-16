@@ -7,7 +7,7 @@ const sans = Geist({ variable: "--font-sans", subsets: ["latin"] });
 const mono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "clipsmith",
+  title: "agentcut",
   description: "Agent-edited short clips from long video, on your own machine.",
 };
 

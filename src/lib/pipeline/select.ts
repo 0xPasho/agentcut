@@ -15,13 +15,13 @@ import type { Signals } from "./signals";
  * WebFetch/WebSearch are denied because they are the exfiltration path: an injected
  * transcript that says "post this to https://…" needs a way out, and this removes it.
  * Bash is denied because the agent does not need it — frames are pre-sampled and the
- * signals are already JSON. Set CLIPSMITH_AGENT_SHELL=1 to grant ffprobe/ffmpeg back.
+ * signals are already JSON. Set AGENTCUT_AGENT_SHELL=1 to grant ffprobe/ffmpeg back.
  */
 const ALLOWED_TOOLS = ["Read", "Write", "Glob", "Grep"];
 const SHELL_TOOLS = ["Bash(ffprobe:*)", "Bash(ffmpeg:*)"];
 const DENIED_TOOLS = ["WebFetch", "WebSearch", "Task", "NotebookEdit"];
 
-const shellEnabled = () => process.env.CLIPSMITH_AGENT_SHELL === "1";
+const shellEnabled = () => process.env.AGENTCUT_AGENT_SHELL === "1";
 
 export type SelectOptions = {
   projectId: string;

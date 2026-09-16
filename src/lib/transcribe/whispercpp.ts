@@ -3,11 +3,15 @@ import path from "node:path";
 import os from "node:os";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { createWriteStream } from "node:fs";
+import { createWriteStream, existsSync } from "node:fs";
 import { run, which } from "../bin";
 import { Transcript, type Segment, type Word } from "../transcript";
 
-export const MODEL_DIR = path.join(os.homedir(), ".cache", "clipsmith", "models");
+const LEGACY_MODEL_DIR = path.join(os.homedir(), ".cache", "clipsmith", "models");
+/** Models are hundreds of megabytes; reuse an existing cache instead of re-downloading after the rename. */
+export const MODEL_DIR = existsSync(LEGACY_MODEL_DIR)
+  ? LEGACY_MODEL_DIR
+  : path.join(os.homedir(), ".cache", "agentcut", "models");
 const MODEL_BASE_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
 
 export type WhisperModel =
@@ -23,9 +27,9 @@ export type WhisperModel =
  * `small` rather than a large model: verified working with whisper.cpp 1.9.4, and
  * fast enough for multi-hour sources. `large-v3-turbo` from the ggerganov HF repo
  * fails to load on 1.9.4 with "unknown tensor" despite a byte-exact download.
- * Override with CLIPSMITH_WHISPER_MODEL.
+ * Override with AGENTCUT_WHISPER_MODEL.
  */
-export const DEFAULT_MODEL = (process.env.CLIPSMITH_WHISPER_MODEL as WhisperModel) ?? "small";
+export const DEFAULT_MODEL = (process.env.AGENTCUT_WHISPER_MODEL as WhisperModel) ?? "small";
 
 export async function available() {
   return (await which("whisper-cli")) !== null;
@@ -98,7 +102,7 @@ export async function transcribe(
     .catch(() => {
       throw new Error(
         `whisper produced no output for model "${model}". If the log says "unknown tensor", ` +
-          `that model file is incompatible with your whisper.cpp build — try CLIPSMITH_WHISPER_MODEL=small.`,
+          `that model file is incompatible with your whisper.cpp build — try AGENTCUT_WHISPER_MODEL=small.`,
       );
     });
   const segments: Segment[] = [];

@@ -12,9 +12,9 @@ import { Edl } from "./edl";
 import { downloadUrl, isUrl } from "./ingest";
 
 declare global {
-  var __clipsmithRunning: Set<string> | undefined;
+  var __agentcutRunning: Set<string> | undefined;
 }
-const running = (globalThis.__clipsmithRunning ??= new Set<string>());
+const running = (globalThis.__agentcutRunning ??= new Set<string>());
 
 export type JobKind = "analyze" | "render";
 
