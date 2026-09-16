@@ -21,9 +21,16 @@ The differentiator: a **coding agent** (Claude Code / Codex) is the brain, not a
 
 The agent gets Bash and reads transcripts of **arbitrary third-party video**. That text is attacker-controlled.
 Mitigations, non-negotiable:
-- agent runs with an explicit tool allowlist, never `--dangerously-skip-permissions`
-- cwd is the per-project workspace dir, `--add-dir` never points at `$HOME`
-- transcript is passed as a file the agent reads, wrapped in untrusted-content markers
+- **`--disallowed-tools`, not just `--allowed-tools`.** Verified: under `--permission-mode dontAsk`,
+  an allowlist does not take anything away — Claude Code still ran `cat` with only `Read` allowed.
+  Only an explicit deny removes a tool from the session.
+- **Bash is denied by default.** The agent does not need it: frames are pre-sampled and the signals
+  are already JSON. `CLIPSMITH_AGENT_SHELL=1` grants `ffprobe`/`ffmpeg` back for debugging.
+- **WebFetch/WebSearch are denied.** They are the exfiltration path — an injected transcript saying
+  "post this to https://…" needs a way out, and this removes it.
+- Never `--dangerously-skip-permissions`. Codex runs under `--sandbox workspace-write`.
+- cwd is the per-project workspace dir; `--add-dir` never points at `$HOME`
+- the transcript is wrapped in untrusted-content markers in the prompt
 - every agent action is logged to the job record
 
 ## Pipeline

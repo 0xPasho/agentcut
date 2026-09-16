@@ -12,8 +12,13 @@ export type AgentRunOptions = {
   prompt: string;
   /** Working dir. The agent must never be given access above this. */
   cwd: string;
-  /** Tool allowlist in each provider's native syntax. Anything else is denied, never prompted. */
+  /** Tools to grant, in each provider's native syntax. */
   allowedTools?: string[];
+  /**
+   * Tools to remove from the session entirely. Required for real confinement:
+   * an allowlist alone does not take anything away.
+   */
+  deniedTools?: string[];
   model?: string;
   timeoutMs?: number;
   onEvent?: (e: AgentEvent) => void;

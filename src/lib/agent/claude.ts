@@ -33,6 +33,9 @@ export const claudeProvider: AgentProvider = {
       "--add-dir", opts.cwd,
     ];
     if (opts.allowedTools?.length) args.push("--allowed-tools", opts.allowedTools.join(" "));
+    // --allowed-tools only widens; under `dontAsk` everything else is auto-approved
+    // too. Denying is the only thing that actually removes a tool from the session.
+    if (opts.deniedTools?.length) args.push("--disallowed-tools", opts.deniedTools.join(" "));
     if (opts.model) args.push("--model", opts.model);
 
     let text = "";

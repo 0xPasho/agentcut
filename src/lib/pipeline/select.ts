@@ -8,16 +8,20 @@ import { resolveProvider, type AgentEvent } from "../agent";
 import { buildSelectPrompt } from "./prompt";
 import type { Signals } from "./signals";
 
-/** The agent may read and write inside its own workspace, and probe the media. Nothing else. */
-const ALLOWED_TOOLS = [
-  "Read",
-  "Write",
-  "Glob",
-  "Grep",
-  "Bash(ffprobe:*)",
-  "Bash(ffmpeg:*)",
-  "Bash(jq:*)",
-];
+/**
+ * The agent reads a transcript of third-party video — attacker-controlled text.
+ * It gets file access inside its own workspace and nothing else.
+ *
+ * WebFetch/WebSearch are denied because they are the exfiltration path: an injected
+ * transcript that says "post this to https://…" needs a way out, and this removes it.
+ * Bash is denied because the agent does not need it — frames are pre-sampled and the
+ * signals are already JSON. Set CLIPSMITH_AGENT_SHELL=1 to grant ffprobe/ffmpeg back.
+ */
+const ALLOWED_TOOLS = ["Read", "Write", "Glob", "Grep"];
+const SHELL_TOOLS = ["Bash(ffprobe:*)", "Bash(ffmpeg:*)"];
+const DENIED_TOOLS = ["WebFetch", "WebSearch", "Task", "NotebookEdit"];
+
+const shellEnabled = () => process.env.CLIPSMITH_AGENT_SHELL === "1";
 
 export type SelectOptions = {
   projectId: string;
@@ -63,7 +67,8 @@ export async function selectClips(o: SelectOptions): Promise<Edl> {
   const result = await provider.run({
     cwd: dir,
     prompt: buildSelectPrompt({ probe, targetClipCount, minSec, maxSec, userBrief, hasFrames }),
-    allowedTools: ALLOWED_TOOLS,
+    allowedTools: shellEnabled() ? [...ALLOWED_TOOLS, ...SHELL_TOOLS] : ALLOWED_TOOLS,
+    deniedTools: shellEnabled() ? DENIED_TOOLS : [...DENIED_TOOLS, "Bash"],
     model: o.model,
     onEvent: o.onEvent,
   });
