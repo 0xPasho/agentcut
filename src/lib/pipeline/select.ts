@@ -74,10 +74,29 @@ export async function selectClips(o: SelectOptions): Promise<Edl> {
     onEvent: o.onEvent,
   });
 
-  const raw = await fs.readFile(clipsPath, "utf8").catch(() => {
+  await fs.readFile(clipsPath, "utf8").catch(() => {
     throw new Error(`agent did not write clips.json. Last message: ${result.text.slice(0, 500)}`);
   });
 
+  return buildEdl({ projectId: o.projectId, videoPath, dir, probe, transcript, minSec });
+}
+
+/**
+ * Turn the agent's clips.json into a validated EDL.
+ *
+ * Split out from selectClips so a run can be recovered: the agent writes clips.json
+ * to disk, so its work survives even if the process awaiting it dies.
+ */
+export async function buildEdl(o: {
+  projectId: string;
+  videoPath: string;
+  dir: string;
+  probe: Probe;
+  transcript: Transcript;
+  minSec?: number;
+}): Promise<Edl> {
+  const { dir, probe, transcript, videoPath, minSec = 20 } = o;
+  const raw = await fs.readFile(path.join(dir, "clips.json"), "utf8");
   const proposals = AgentClipProposals.parse(JSON.parse(raw));
   const fallbackCrop = centerCrop(probe.width, probe.height, 1080, 1920);
 

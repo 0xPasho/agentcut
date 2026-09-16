@@ -19,8 +19,8 @@ export default function Home() {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-8 px-6 py-12">
       <header className="flex items-center gap-3">
-        <Clapperboard className="size-6" />
-        <h1 className="text-xl font-semibold tracking-tight">agentcut</h1>
+        <Clapperboard className="size-7 shrink-0" strokeWidth={2.5} />
+        <h1 className="text-3xl font-black tracking-tighter uppercase">agentcut</h1>
         <Badge variant="secondary" className="font-mono text-xs">
           local
         </Badge>
@@ -30,12 +30,12 @@ export default function Home() {
 
       {projects.length > 0 ? (
         <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-medium text-muted-foreground">Projects</h2>
+          <h2 className="text-sm font-black uppercase tracking-widest">Projects</h2>
           {projects.map((p) => (
             <Link key={p.id} href={`/p/${p.id}`}>
-              <Card className="flex flex-row items-center justify-between gap-4 px-4 py-3 transition-colors hover:bg-accent">
+              <Card className="flex flex-row items-center justify-between gap-4 px-4 py-3 transition-transform hover:-translate-x-[2px] hover:-translate-y-[2px] hover:shadow-[6px_6px_0_0_var(--foreground)]">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{p.name}</p>
+                  <p className="truncate text-base font-bold">{p.name}</p>
                   <p className="font-mono text-xs text-muted-foreground">{p.id}</p>
                 </div>
                 {p.edl ? (
