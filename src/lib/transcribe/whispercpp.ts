@@ -19,8 +19,13 @@ export type WhisperModel =
  * Multilingual by default. The `.en` models silently produce garbage on non-English
  * audio rather than failing, which is the worst possible failure mode here — the
  * agent then picks clips from a nonsense transcript.
+ *
+ * `small` rather than a large model: verified working with whisper.cpp 1.9.4, and
+ * fast enough for multi-hour sources. `large-v3-turbo` from the ggerganov HF repo
+ * fails to load on 1.9.4 with "unknown tensor" despite a byte-exact download.
+ * Override with CLIPSMITH_WHISPER_MODEL.
  */
-export const DEFAULT_MODEL = (process.env.CLIPSMITH_WHISPER_MODEL as WhisperModel) ?? "large-v3-turbo";
+export const DEFAULT_MODEL = (process.env.CLIPSMITH_WHISPER_MODEL as WhisperModel) ?? "small";
 
 export async function available() {
   return (await which("whisper-cli")) !== null;
@@ -73,7 +78,15 @@ export async function transcribe(
     "-t", String(opts.threads ?? Math.max(2, os.cpus().length - 2)),
   ], { timeoutMs: 0 });
 
-  const raw = JSON.parse(await fs.readFile(`${outBase}.json`, "utf8")) as WhisperJson;
+  const raw = await fs
+    .readFile(`${outBase}.json`, "utf8")
+    .then((t) => JSON.parse(t) as WhisperJson)
+    .catch(() => {
+      throw new Error(
+        `whisper produced no output for model "${model}". If the log says "unknown tensor", ` +
+          `that model file is incompatible with your whisper.cpp build — try CLIPSMITH_WHISPER_MODEL=small.`,
+      );
+    });
   const segments: Segment[] = [];
   const words: Word[] = [];
 

@@ -81,6 +81,19 @@ export type EventRow = {
   at: number;
 };
 
+/**
+ * node:sqlite returns rows with a null prototype. React refuses to serialize those
+ * across the Server/Client Component boundary ("Classes or null prototypes are not
+ * supported"), so every row leaves this module as a plain object.
+ */
+function plain<T>(row: unknown): T | undefined {
+  return row ? ({ ...(row as object) } as T) : undefined;
+}
+
+function plainAll<T>(rows: unknown[]): T[] {
+  return rows.map((r) => ({ ...(r as object) }) as T);
+}
+
 export const q = {
   insertProject: (p: Omit<ProjectRow, "probe" | "edl" | "error" | "status">) =>
     db
@@ -88,10 +101,10 @@ export const q = {
       .run(p.id, p.name, p.source_path, p.created_at),
 
   listProjects: () =>
-    db.prepare("SELECT * FROM projects ORDER BY created_at DESC").all() as unknown as ProjectRow[],
+    plainAll<ProjectRow>(db.prepare("SELECT * FROM projects ORDER BY created_at DESC").all()),
 
   getProject: (id: string) =>
-    db.prepare("SELECT * FROM projects WHERE id = ?").get(id) as unknown as ProjectRow | undefined,
+    plain<ProjectRow>(db.prepare("SELECT * FROM projects WHERE id = ?").get(id)),
 
   setProject: (id: string, patch: Partial<Pick<ProjectRow, "status" | "probe" | "edl" | "error">>) => {
     const keys = Object.keys(patch);
@@ -121,13 +134,18 @@ export const q = {
   },
 
   activeJob: (projectId: string) =>
-    db
-      .prepare("SELECT * FROM jobs WHERE project_id = ? AND status IN ('queued','running') ORDER BY created_at DESC LIMIT 1")
-      .get(projectId) as unknown as JobRow | undefined,
+    plain<JobRow>(
+      db
+        .prepare(
+          "SELECT * FROM jobs WHERE project_id = ? AND status IN ('queued','running') ORDER BY created_at DESC LIMIT 1",
+        )
+        .get(projectId),
+    ),
 
   latestJob: (projectId: string) =>
-    db.prepare("SELECT * FROM jobs WHERE project_id = ? ORDER BY created_at DESC LIMIT 1")
-      .get(projectId) as unknown as JobRow | undefined,
+    plain<JobRow>(
+      db.prepare("SELECT * FROM jobs WHERE project_id = ? ORDER BY created_at DESC LIMIT 1").get(projectId),
+    ),
 
   insertEvent: (e: Omit<EventRow, "id">) =>
     db
@@ -135,6 +153,7 @@ export const q = {
       .run(e.project_id, e.job_id, e.kind, e.name, e.text, e.at),
 
   eventsSince: (projectId: string, sinceId: number) =>
-    db.prepare("SELECT * FROM events WHERE project_id = ? AND id > ? ORDER BY id")
-      .all(projectId, sinceId) as unknown as EventRow[],
+    plainAll<EventRow>(
+      db.prepare("SELECT * FROM events WHERE project_id = ? AND id > ? ORDER BY id").all(projectId, sinceId),
+    ),
 };
