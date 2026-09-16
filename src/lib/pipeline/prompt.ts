@@ -7,6 +7,8 @@ export type SelectPromptInput = {
   maxSec: number;
   userBrief: string;
   hasFrames: boolean;
+  /** Non-empty when the transcript was split because the video is long. */
+  chunks: string[];
 };
 
 /**
@@ -24,6 +26,7 @@ export function buildSelectPrompt(i: SelectPromptInput): string {
 - \`signals.json\` — \`scenes\` (scene-cut timestamps, seconds) and \`peaks\` (loudness spikes: laughter, applause, raised voice)
 - \`source.json\` — video metadata
 ${i.hasFrames ? "- `frames/` — sampled JPEG frames named `frame-<seconds>.jpg`. Read them to see framing, who is on screen, and where faces sit.\n" : ""}
+${i.chunks.length ? `\n**This video is ${Math.round(probe.durationSec / 60)} minutes long, so \`transcript.txt\` is too big to read in one go.** Read it through \`transcript/\` instead — one file per 20 minutes. Work through every part before choosing; do not pick all your clips from the opening:\n\n${i.chunks.map((c) => `- \`${c}\``).join("\n")}\n` : ""}
 ## Source
 ${probe.width}x${probe.height}, ${probe.fps.toFixed(2)}fps, ${Math.round(probe.durationSec)}s total.
 

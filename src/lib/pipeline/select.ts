@@ -48,6 +48,7 @@ export async function selectClips(o: SelectOptions): Promise<Edl> {
   } = o;
 
   await fs.mkdir(dir, { recursive: true });
+  const chunks = await writeTranscriptChunks(dir, transcript, probe.durationSec);
   await Promise.all([
     fs.writeFile(path.join(dir, "transcript.txt"), toAgentText(transcript)),
     fs.writeFile(path.join(dir, "transcript.json"), JSON.stringify(transcript)),
@@ -66,7 +67,7 @@ export async function selectClips(o: SelectOptions): Promise<Edl> {
   const provider = await resolveProvider(o.provider);
   const result = await provider.run({
     cwd: dir,
-    prompt: buildSelectPrompt({ probe, targetClipCount, minSec, maxSec, userBrief, hasFrames }),
+    prompt: buildSelectPrompt({ probe, targetClipCount, minSec, maxSec, userBrief, hasFrames, chunks }),
     allowedTools: shellEnabled() ? [...ALLOWED_TOOLS, ...SHELL_TOOLS] : ALLOWED_TOOLS,
     deniedTools: shellEnabled() ? DENIED_TOOLS : [...DENIED_TOOLS, "Bash"],
     model: o.model,
@@ -119,6 +120,47 @@ export async function selectClips(o: SelectOptions): Promise<Edl> {
   return edl;
 }
 
+const CHUNK_MINUTES = 20;
+
+/**
+ * A five-hour transcript is far past what one Read returns. Split it into
+ * timed chunks with an index so the agent can work through all of it instead of
+ * silently seeing only the beginning.
+ */
+async function writeTranscriptChunks(dir: string, transcript: Transcript, duration: number) {
+  if (duration < CHUNK_MINUTES * 60 * 1.5) return [] as string[];
+
+  const chunkDir = path.join(dir, "transcript");
+  await fs.rm(chunkDir, { recursive: true, force: true });
+  await fs.mkdir(chunkDir, { recursive: true });
+
+  const span = CHUNK_MINUTES * 60;
+  const count = Math.ceil(duration / span);
+  const names: string[] = [];
+
+  for (let i = 0; i < count; i++) {
+    const from = i * span;
+    const to = Math.min(duration, from + span);
+    const segments = transcript.segments.filter((sg) => sg.end > from && sg.start < to);
+    if (!segments.length) continue;
+    const name = `part-${String(i).padStart(2, "0")}.txt`;
+    await fs.writeFile(
+      path.join(chunkDir, name),
+      toAgentText({ ...transcript, segments }),
+    );
+    names.push(`transcript/${name}  ${fmtClock(from)}–${fmtClock(to)}  (${segments.length} segments)`);
+  }
+
+  await fs.writeFile(path.join(chunkDir, "index.txt"), names.join("\n"));
+  return names;
+}
+
+function fmtClock(sec: number) {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  return `${h}:${String(m).padStart(2, "0")}`;
+}
+
 /**
  * Agents routinely land a boundary a few hundred ms inside a word. Snapping is
  * deterministic and fixes it without another round trip.
@@ -136,15 +178,22 @@ function snapToWords(t: Transcript, start: number, end: number, duration: number
   return [Number(s.toFixed(3)), Number(e.toFixed(3))];
 }
 
+const MAX_FRAMES = 60;
+
+/**
+ * Spread the samples over the WHOLE video. A fixed interval with a hard cap
+ * silently limited coverage to the first 30 minutes, so the agent judged framing
+ * for a five-hour stream from its opening half hour.
+ */
 async function sampleFrames(video: string, dir: string, duration: number, every: number) {
   if (!duration || duration < 1) return 0;
   const framesDir = path.join(dir, "frames");
   await fs.mkdir(framesDir, { recursive: true });
+  const interval = Math.max(every, duration / MAX_FRAMES);
   const times: number[] = [];
-  for (let t = 1; t < duration; t += every) times.push(Math.round(t));
-  const capped = times.slice(0, 60);
+  for (let t = 1; t < duration; t += interval) times.push(Math.round(t));
   let n = 0;
-  for (const t of capped) {
+  for (const t of times) {
     try {
       await grabFrame(video, t, path.join(framesDir, `frame-${t}.jpg`));
       n++;

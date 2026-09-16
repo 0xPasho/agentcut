@@ -1,19 +1,32 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { createWriteStream } from "node:fs";
 import { run, which } from "../bin";
 import { Transcript, type Segment, type Word } from "../transcript";
 
 export const MODEL_DIR = path.join(os.homedir(), ".cache", "clipsmith", "models");
 const MODEL_BASE_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
 
-export type WhisperModel = "tiny.en" | "base.en" | "small.en" | "medium.en" | "large-v3-turbo";
+export type WhisperModel =
+  | "tiny.en" | "base.en" | "small.en" | "medium.en"
+  | "tiny" | "base" | "small" | "medium"
+  | "large-v3" | "large-v3-turbo";
+
+/**
+ * Multilingual by default. The `.en` models silently produce garbage on non-English
+ * audio rather than failing, which is the worst possible failure mode here — the
+ * agent then picks clips from a nonsense transcript.
+ */
+export const DEFAULT_MODEL = (process.env.CLIPSMITH_WHISPER_MODEL as WhisperModel) ?? "large-v3-turbo";
 
 export async function available() {
   return (await which("whisper-cli")) !== null;
 }
 
-export async function ensureModel(model: WhisperModel = "small.en"): Promise<string> {
+export async function ensureModel(model: WhisperModel = DEFAULT_MODEL): Promise<string> {
   await fs.mkdir(MODEL_DIR, { recursive: true });
   const file = path.join(MODEL_DIR, `ggml-${model}.bin`);
   try {
@@ -24,8 +37,11 @@ export async function ensureModel(model: WhisperModel = "small.en"): Promise<str
   }
   const url = `${MODEL_BASE_URL}/ggml-${model}.bin`;
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`model download failed: ${res.status} ${url}`);
-  await fs.writeFile(file, Buffer.from(await res.arrayBuffer()));
+  if (!res.ok || !res.body) throw new Error(`model download failed: ${res.status} ${url}`);
+  // large-v3-turbo is ~1.6GB — stream it rather than buffering the whole thing.
+  const tmp = `${file}.part`;
+  await pipeline(Readable.fromWeb(res.body as never), createWriteStream(tmp));
+  await fs.rename(tmp, file);
   return file;
 }
 
@@ -41,9 +57,9 @@ type WhisperJson = {
 /** `wavPath` must be 16kHz mono — see media.extractAudio. */
 export async function transcribe(
   wavPath: string,
-  opts: { model?: WhisperModel; outDir?: string; threads?: number } = {},
+  opts: { model?: WhisperModel; outDir?: string; threads?: number; language?: string } = {},
 ): Promise<Transcript> {
-  const model = await ensureModel(opts.model ?? "small.en");
+  const model = await ensureModel(opts.model ?? DEFAULT_MODEL);
   const outBase = path.join(opts.outDir || path.dirname(wavPath), "whisper");
 
   await run("whisper-cli", [
@@ -52,6 +68,8 @@ export async function transcribe(
     "--output-json-full",
     "--output-file", outBase,
     "--max-len", "0",
+    // "auto" makes whisper detect the language instead of assuming English.
+    "-l", opts.language ?? "auto",
     "-t", String(opts.threads ?? Math.max(2, os.cpus().length - 2)),
   ], { timeoutMs: 0 });
 

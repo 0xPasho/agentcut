@@ -1,31 +1,65 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { run, which } from "./bin";
+import { ffmpegBinDir } from "./ffmpegDir";
 
 export function isUrl(s: string) {
   return /^https?:\/\//i.test(s);
 }
 
+const CONTAINERS = /^source\.(mp4|mkv|webm|mov)$/i;
+/** Per-stream downloads yt-dlp leaves behind when a merge fails, e.g. source.f399.mp4 */
+const FRAGMENT = /^source\.f\d+\./i;
+
 /**
  * Download with yt-dlp. Whether the user has the right to download a given video
  * is their call — this is a local tool operating on their behalf.
+ *
+ * 720p by default: clips are rendered at 1080x1920 from a centre-ish crop, so a
+ * 1080p source costs several gigabytes of download for detail the crop discards.
  */
-export async function downloadUrl(url: string, dir: string, onLog?: (s: string) => void) {
+export async function downloadUrl(
+  url: string,
+  dir: string,
+  onLog?: (s: string) => void,
+  maxHeight = Number(process.env.CLIPSMITH_MAX_HEIGHT ?? 720),
+) {
   if (!(await which("yt-dlp"))) throw new Error("yt-dlp not found — run: brew install yt-dlp");
-  const out = path.join(dir, "source.%(ext)s");
-  onLog?.(`downloading ${url}`);
-  await run("yt-dlp", [
-    "-f", "bv*[height<=1080]+ba/b[height<=1080]/b",
+
+  // A previous failed attempt leaves unmerged streams that would confuse detection.
+  for (const f of await fs.readdir(dir).catch(() => [])) {
+    if (FRAGMENT.test(f)) await fs.rm(path.join(dir, f), { force: true });
+  }
+
+  onLog?.(`downloading ${url} (up to ${maxHeight}p)`);
+  const { stderr } = await run("yt-dlp", [
+    // Prefer H.264 + m4a: the merge is a plain remux, and every later step
+    // (frame sampling, Remotion render) decodes it far faster than AV1.
+    "-f",
+    `bv*[vcodec^=avc1][height<=${maxHeight}]+ba[ext=m4a]/bv*[height<=${maxHeight}]+ba/b[height<=${maxHeight}]/b`,
     "--merge-output-format", "mp4",
+    "--ffmpeg-location", await ffmpegBinDir(),
     "--no-playlist",
-    "-o", out,
+    "--no-progress",
+    "--newline",
+    "-o", path.join(dir, "source.%(ext)s"),
     url,
-  ], { timeoutMs: 30 * 60_000 });
+  ], { timeoutMs: 60 * 60_000 });
 
   const files = await fs.readdir(dir);
-  const found = files.find((f) => /^source\.(mp4|mkv|webm|mov)$/i.test(f));
-  if (!found) throw new Error("yt-dlp finished but no source file was produced");
-  return path.join(dir, found);
+  const found = files.find((f) => CONTAINERS.test(f));
+  if (found) return path.join(dir, found);
+
+  const fragments = files.filter((f) => FRAGMENT.test(f));
+  if (fragments.length) {
+    throw new Error(
+      `yt-dlp downloaded the streams but could not merge them (${fragments.join(", ")}). ` +
+        `This is an ffmpeg failure: ${stderr.trim().split("\n").slice(-2).join(" ") || "no details"}`,
+    );
+  }
+  throw new Error(
+    `yt-dlp produced no video. Last output: ${stderr.trim().split("\n").slice(-3).join(" ") || "none"}`,
+  );
 }
 
 export async function titleFor(url: string): Promise<string> {
