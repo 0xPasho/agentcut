@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Download, Loader2, Play, Sparkles, Wand2 } from "lucide-react";
+import { ArrowLeft, Download, Loader2, Play, Sparkles, Trash2, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,6 +30,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
   const [clipCount, setClipCount] = useState(6);
   const [brief, setBrief] = useState("");
   const [saving, setSaving] = useState(false);
+  const [reanalyzing, setReanalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const edl = project.edl;
@@ -127,7 +128,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
 
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
         <div className="flex flex-col gap-4">
-          {!edl ? (
+          {!edl || reanalyzing ? (
             <Card>
               <CardHeader>
                 <CardTitle className="text-base font-semibold">Find the clips</CardTitle>
@@ -147,7 +148,10 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                   <Button
                     className="flex-1"
                     disabled={busy}
-                    onClick={() => run(() => api.analyze(initial.id, { targetClipCount: clipCount, userBrief: brief }))}
+                    onClick={() => {
+                      setReanalyzing(false);
+                      void run(() => api.analyze(initial.id, { targetClipCount: clipCount, userBrief: brief }));
+                    }}
                   >
                     {busy ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
                     Analyze with agent
@@ -168,10 +172,16 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-medium text-muted-foreground">{edl.clips.length} clips</h2>
-                <Button size="sm" variant="outline" disabled={busy} onClick={() => run(() => api.render(initial.id))}>
-                  <Wand2 className="size-3.5" />
-                  Render all
-                </Button>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="ghost" disabled={busy} onClick={() => setReanalyzing(true)}>
+                    <Sparkles className="size-3.5" />
+                    Find again
+                  </Button>
+                  <Button size="sm" variant="outline" disabled={busy} onClick={() => run(() => api.render(initial.id))}>
+                    <Wand2 className="size-3.5" />
+                    Render all
+                  </Button>
+                </div>
               </div>
 
               {edl.clips.map((clip) => {
@@ -180,8 +190,18 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                 return (
                   <Card
                     key={clip.id}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={active}
                     onClick={() => setSelectedId(clip.id)}
-                    className={`cursor-pointer gap-0 py-3 transition-colors hover:bg-white/[0.07] ${
+                    onKeyDown={(e) => {
+                      if (e.target !== e.currentTarget) return;
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setSelectedId(clip.id);
+                      }
+                    }}
+                    className={`cursor-pointer gap-0 py-3 outline-none transition-colors hover:bg-white/[0.07] focus-visible:ring-2 focus-visible:ring-ring ${
                       active ? "border-primary/40 bg-white/[0.07]" : ""
                     }`}
                   >
@@ -276,7 +296,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                   {selected.edits.length ? (
                     <ul className="flex flex-col gap-1.5 font-mono text-xs">
                       {selected.edits.map((e, i) => (
-                        <li key={i} className="flex items-center gap-2 rounded-md bg-muted px-2 py-1.5">
+                        <li key={i} className="flex items-center gap-2 rounded-xl bg-white/6 px-2 py-1.5">
                           <Badge variant="outline" className="shrink-0 text-[10px]">
                             {e.type}
                           </Badge>
@@ -290,6 +310,16 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                                   ? e.words.join(" ")
                                   : `${e.d}s`}
                           </span>
+                          <Button
+                            size="icon-xs"
+                            variant="ghost"
+                            aria-label="Remove edit"
+                            onClick={() =>
+                              patchClip({ edits: selected.edits.filter((_, n) => n !== i) })
+                            }
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
                         </li>
                       ))}
                     </ul>

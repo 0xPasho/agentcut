@@ -46,6 +46,21 @@ export function NewProject() {
 
   return (
     <Card
+      role="button"
+      tabIndex={0}
+      aria-label="Choose a video to clip"
+      onClick={(e) => {
+        // No secuestrar los clics del campo de texto ni de los botones.
+        if ((e.target as HTMLElement).closest("input,button,a")) return;
+        fileInput.current?.click();
+      }}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          fileInput.current?.click();
+        }
+      }}
       onDragOver={(e) => {
         e.preventDefault();
         setDragging(true);
@@ -57,8 +72,8 @@ export function NewProject() {
         const file = e.dataTransfer.files?.[0];
         if (file) upload(file);
       }}
-      className={`border border-dashed transition-colors ${
-        dragging ? "border-primary bg-primary/5" : "border-border bg-card"
+      className={`cursor-pointer border border-dashed transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+        dragging ? "border-primary bg-primary/5" : "border-border bg-card hover:border-white/25"
       }`}
     >
       <CardContent className="flex flex-col items-center gap-6 py-12">

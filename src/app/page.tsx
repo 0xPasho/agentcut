@@ -1,18 +1,11 @@
-import Link from "next/link";
 import { Clapperboard, Trash2 } from "lucide-react";
 import { q } from "@/lib/db";
 import { NewProject } from "@/components/new-project";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
+import { ProjectRow } from "@/components/project-row";
 import { Glass } from "@/components/ui/glass";
 
 export const dynamic = "force-dynamic";
-
-const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  ready: "default",
-  error: "destructive",
-  new: "outline",
-};
 
 export default function Home() {
   const projects = q.listProjects();
@@ -34,20 +27,16 @@ export default function Home() {
         <section className="flex flex-col gap-2">
           <h2 className="text-sm font-medium text-muted-foreground">Projects</h2>
           {projects.map((p) => (
-            <Link key={p.id} href={`/p/${p.id}`}>
-              <Card className="flex flex-row items-center justify-between gap-4 px-4 py-3 transition-colors hover:bg-accent/60">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{p.name}</p>
-                  <p className="font-mono text-xs text-muted-foreground">{p.id}</p>
-                </div>
-                {p.edl ? (
-                  <span className="text-xs text-muted-foreground">
-                    {JSON.parse(p.edl).clips?.length ?? 0} clips
-                  </span>
-                ) : null}
-                <Badge variant={STATUS_VARIANT[p.status] ?? "secondary"}>{p.status}</Badge>
-              </Card>
-            </Link>
+            <ProjectRow
+              key={p.id}
+              project={{
+                id: p.id,
+                name: p.name,
+                status: p.status,
+                createdAt: p.created_at,
+                clipCount: p.edl ? (JSON.parse(p.edl).clips?.length ?? 0) : 0,
+              }}
+            />
           ))}
         </section>
       ) : null}
