@@ -3,6 +3,8 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 
+const CHUNK = 4 * 1024 * 1024;
+
 const TYPES: Record<string, string> = {
   ".mp4": "video/mp4",
   ".mov": "video/quicktime",
@@ -22,7 +24,11 @@ export async function fileResponse(filePath: string, rangeHeader: string | null)
 
   if (m) {
     const start = m[1] ? Number(m[1]) : 0;
-    const end = m[2] ? Number(m[2]) : stat.size - 1;
+    // An open-ended range ("bytes=0-") is what <video> sends first. Answering it
+    // with the whole file means a 1.3GB response before playback can start, which
+    // is what made seeking in the editor take tens of seconds. Cap the chunk and
+    // let the browser ask for more.
+    const end = m[2] ? Number(m[2]) : Math.min(stat.size - 1, start + CHUNK - 1);
     const stream = fs.createReadStream(filePath, { start, end });
     return new Response(Readable.toWeb(stream) as ReadableStream, {
       status: 206,

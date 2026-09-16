@@ -41,7 +41,9 @@ export async function serveDir(dir: string): Promise<FileServer> {
       if (range) {
         const m = /bytes=(\d*)-(\d*)/.exec(range);
         const start = m?.[1] ? Number(m[1]) : 0;
-        const end = m?.[2] ? Number(m[2]) : stat.size - 1;
+        // Same cap as the Next route: never answer an open-ended range with a
+        // multi-gigabyte body.
+        const end = m?.[2] ? Number(m[2]) : Math.min(stat.size - 1, start + 4 * 1024 * 1024 - 1);
         res.writeHead(206, {
           "Content-Range": `bytes ${start}-${end}/${stat.size}`,
           "Accept-Ranges": "bytes",
