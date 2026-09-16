@@ -8,6 +8,8 @@ const TYPES: Record<string, string> = {
   ".mov": "video/quicktime",
   ".webm": "video/webm",
   ".mkv": "video/x-matroska",
+  ".jpg": "image/jpeg",
+  ".png": "image/png",
 };
 
 /** Range-aware file response — <video> and Remotion's Player both need it to seek. */

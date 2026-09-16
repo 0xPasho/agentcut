@@ -79,4 +79,6 @@ export const api = {
 };
 
 export const sourceUrl = (id: string) => `/api/projects/${id}/source`;
+export const thumbUrl = (id: string, clipId: string) =>
+  `/api/projects/${id}/clips/${clipId}/thumb`;
 export const clipUrl = (id: string, clipId: string) => `/api/projects/${id}/clips/${clipId}/file`;

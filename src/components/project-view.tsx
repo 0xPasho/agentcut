@@ -16,7 +16,7 @@ import { AgentLog } from "@/components/agent-log";
 import { Glass, ScrollEdge } from "@/components/ui/glass";
 import { CaptionControls } from "@/components/caption-controls";
 import { ClipPreview } from "@/components/clip-preview";
-import { api, clipUrl, sourceUrl, type LogEvent, type ProjectDetail } from "@/lib/client";
+import { api, clipUrl, sourceUrl, thumbUrl, type LogEvent, type ProjectDetail } from "@/lib/client";
 import { fmt } from "@/lib/transcript";
 import type { CaptionStyle, Edl } from "@/lib/edl";
 
@@ -180,13 +180,22 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                   <Card
                     key={clip.id}
                     onClick={() => setSelectedId(clip.id)}
-                    className={`cursor-pointer gap-0 py-3 transition-colors hover:bg-accent/60 ${
-                      active ? "border-primary/40 bg-accent/60" : ""
+                    className={`cursor-pointer gap-0 py-3 transition-colors hover:bg-white/[0.07] ${
+                      active ? "border-primary/40 bg-white/[0.07]" : ""
                     }`}
                   >
                     <CardContent className="flex items-start gap-3 px-4">
-                      <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-sm font-semibold tabular-nums text-primary">
-                        {clip.score}
+                      <div className="relative w-14 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-black">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={thumbUrl(initial.id, clip.id)}
+                          alt=""
+                          loading="lazy"
+                          className="aspect-[9/16] w-full object-cover"
+                        />
+                        <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-1 pt-3 pb-1 text-center text-[10px] font-semibold tabular-nums text-primary">
+                          {clip.score}
+                        </span>
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">{clip.title}</p>

@@ -46,6 +46,11 @@ const glassVariants = cva(
         panel: "rounded-3xl",
         card: "rounded-2xl",
       },
+      /** The material illuminates from within on interaction. */
+      interactive: {
+        true: "transition-[background-color,box-shadow] duration-300 hover:bg-[var(--glass-tint-strong)] hover:shadow-[inset_0_1px_0_0_var(--glass-specular),0_12px_40px_-8px_rgb(0_0_0/0.6),0_0_0_1px_var(--glass-edge)] motion-reduce:transition-none",
+        false: "",
+      },
       /** Larger glass simulates a thicker material: deeper shadow, more lensing. */
       thickness: {
         thin: "",
@@ -53,7 +58,7 @@ const glassVariants = cva(
           "backdrop-blur-[calc(var(--glass-blur)*1.5)] shadow-[inset_0_1px_0_0_var(--glass-specular),0_20px_60px_-12px_rgb(0_0_0/0.7)]",
       },
     },
-    defaultVariants: { variant: "regular", shape: "panel", thickness: "thin" },
+    defaultVariants: { variant: "regular", shape: "panel", thickness: "thin", interactive: false },
   },
 );
 
@@ -62,12 +67,13 @@ function Glass({
   variant,
   shape,
   thickness,
+  interactive,
   ...props
 }: React.ComponentProps<"div"> & VariantProps<typeof glassVariants>) {
   return (
     <div
       data-slot="glass"
-      className={cn(glassVariants({ variant, shape, thickness }), className)}
+      className={cn(glassVariants({ variant, shape, thickness, interactive }), className)}
       {...props}
     />
   );
