@@ -15,10 +15,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { AgentLog } from "@/components/agent-log";
 import { Glass, ScrollEdge } from "@/components/ui/glass";
 import { CaptionControls } from "@/components/caption-controls";
+import { OverlayEditor } from "@/components/overlay-editor";
 import { ClipPreview } from "@/components/clip-preview";
 import { api, clipUrl, sourceUrl, thumbUrl, type LogEvent, type ProjectDetail } from "@/lib/client";
 import { fmt } from "@/lib/transcript";
-import type { CaptionStyle, Edl } from "@/lib/edl";
+import type { CaptionStyle, Edit, Edl } from "@/lib/edl";
 
 const BUSY = new Set(["download", "probe", "transcribe", "signals", "agent", "rendering", "bundling"]);
 
@@ -81,11 +82,11 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
     }
   };
 
-  const patchClip = async (captions: CaptionStyle) => {
+  const patchClip = async (patch: { captions?: CaptionStyle; edits?: Edit[] }) => {
     if (!edl || !selected) return;
     const next: Edl = {
       ...edl,
-      clips: edl.clips.map((c) => (c.id === selected.id ? { ...c, captions } : c)),
+      clips: edl.clips.map((c) => (c.id === selected.id ? { ...c, ...patch } : c)),
     };
     setProject((p) => ({ ...p, edl: next }));
     setSaving(true);
@@ -239,12 +240,20 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
         <aside className="flex flex-col gap-4 lg:sticky lg:top-24 lg:self-start">
           {selected && edl ? (
             <>
-              <ClipPreview clip={selected} edl={edl} sourceUrl={sourceUrl(initial.id)} />
+              <ClipPreview
+                clip={selected}
+                edl={edl}
+                sourceUrl={sourceUrl(initial.id)}
+                assetBase={`/api/projects/${initial.id}/asset/`}
+              />
               <Glass shape="panel" thickness="thick" className="p-4">
               <Tabs defaultValue="captions">
                 <TabsList className="w-full">
                   <TabsTrigger value="captions" className="flex-1">
                     Captions
+                  </TabsTrigger>
+                  <TabsTrigger value="overlays" className="flex-1">
+                    Overlays
                   </TabsTrigger>
                   <TabsTrigger value="edits" className="flex-1">
                     Edits
@@ -252,7 +261,15 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                 </TabsList>
 
                 <TabsContent value="captions" className="pt-4">
-                  <CaptionControls value={selected.captions} onChange={patchClip} />
+                  <CaptionControls value={selected.captions} onChange={(captions) => patchClip({ captions })} />
+                </TabsContent>
+
+                <TabsContent value="overlays" className="pt-4">
+                  <OverlayEditor
+                    projectId={initial.id}
+                    clip={selected}
+                    onChange={(edits) => patchClip({ edits })}
+                  />
                 </TabsContent>
 
                 <TabsContent value="edits" className="pt-4">
@@ -265,7 +282,13 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                           </Badge>
                           <span className="text-muted-foreground">{fmt(e.t)}</span>
                           <span className="truncate">
-                            {e.type === "text" ? e.text : e.type === "emphasis" ? e.words.join(" ") : `${e.d}s`}
+                            {e.type === "text"
+                              ? e.text
+                              : e.type === "image"
+                                ? e.src
+                                : e.type === "emphasis"
+                                  ? e.words.join(" ")
+                                  : `${e.d}s`}
                           </span>
                         </li>
                       ))}

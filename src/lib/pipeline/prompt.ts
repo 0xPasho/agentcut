@@ -79,7 +79,8 @@ Each clip also carries an \`edits\` array — clip-relative seconds, not source 
 - \`{"type":"silence","t":0,"d":0.6}\` — cut dead air. This is the single biggest quality win: scan the word timestamps for gaps over ~0.45s between words and cut most of them, leaving ~0.12s so it does not sound clipped. Do not cut a pause that is doing rhetorical work before a punchline.
 - \`{"type":"punch","t":0,"d":1.2,"scale":1.12}\` — zoom in on an emphasis beat. Use 2-4 per clip, on the line that lands. \`scale\` 1.08-1.2.
 - \`{"type":"emphasis","t":0,"d":1,"words":["ninety","two","percent"],"color":"#ffe600"}\` — colour specific words in the captions. Numbers, names, the claim.
-- \`{"type":"text","t":0,"d":2.5,"text":"Why you quit","position":"top"}\` — an overlay title. At most one per clip, in the first 3 seconds, and only when it adds something the captions do not.
+- \`{"type":"text","t":0,"d":3,"text":"Why you quit","position":"top","style":"card"}\` — the hook title. At most one per clip, in the first 3 seconds, and only when it adds something the captions do not. \`card\` is a white rounded card that reads on any footage; \`plain\` is bare text.
+- \`{"type":"image","t":0,"d":3,"src":"frames/frame-120.jpg","y":0.3,"widthPct":78,"caption":""}\` — show a still while something is being described. **Only use a frame you have actually read from \`frames/\`**, and only when the speaker refers to something visual that a viewer cannot see from the current framing — a site, a tool, a screen, a result. If the thing being discussed is already on screen in this clip, do not add one.
 
 Silence cuts shift the timeline; the renderer handles that. Keep writing every timestamp in clip-relative source seconds.
 

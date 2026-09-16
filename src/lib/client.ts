@@ -70,6 +70,13 @@ export const api = {
       body: JSON.stringify(options),
     }).then(json<{ job: JobState }>),
 
+  captureFrame: (id: string, atSec: number) =>
+    fetch(`/api/projects/${id}/asset`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ atSec }),
+    }).then(json<{ name: string }>),
+
   render: (id: string, only?: string[]) =>
     fetch(`/api/projects/${id}/render`, {
       method: "POST",
@@ -77,6 +84,9 @@ export const api = {
       body: JSON.stringify({ only }),
     }).then(json<{ job: JobState }>),
 };
+
+export const assetUrl = (id: string, name: string) =>
+  `/api/projects/${id}/asset/${encodeURIComponent(name)}`;
 
 export const sourceUrl = (id: string) => `/api/projects/${id}/source`;
 export const thumbUrl = (id: string, clipId: string) =>

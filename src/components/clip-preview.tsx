@@ -6,7 +6,17 @@ import { ClipComposition } from "@/../remotion/ClipComposition";
 import { buildTimeMap } from "@/lib/timeline";
 import type { Clip, Edl } from "@/lib/edl";
 
-export function ClipPreview({ clip, edl, sourceUrl }: { clip: Clip; edl: Edl; sourceUrl: string }) {
+export function ClipPreview({
+  clip,
+  edl,
+  sourceUrl,
+  assetBase,
+}: {
+  clip: Clip;
+  edl: Edl;
+  sourceUrl: string;
+  assetBase: string;
+}) {
   const durationInFrames = useMemo(
     () => Math.max(1, Math.round(buildTimeMap(clip).duration * edl.output.fps)),
     [clip, edl.output.fps],
@@ -18,8 +28,9 @@ export function ClipPreview({ clip, edl, sourceUrl }: { clip: Clip; edl: Edl; so
       sourceUrl,
       sourceWidth: edl.source.width,
       sourceHeight: edl.source.height,
+      assetBase,
     }),
-    [clip, sourceUrl, edl.source.width, edl.source.height],
+    [clip, sourceUrl, assetBase, edl.source.width, edl.source.height],
   );
 
   return (

@@ -11,6 +11,8 @@ export type ClipProps = {
   sourceUrl: string;
   sourceWidth: number;
   sourceHeight: number;
+  /** Base URL for image edits; `src` values resolve against it. */
+  assetBase?: string;
 };
 
 /** Linear interpolation between crop keyframes, in source pixel space. */
@@ -37,6 +39,7 @@ export const ClipComposition: React.FC<ClipProps> = ({
   sourceUrl,
   sourceWidth,
   sourceHeight,
+  assetBase = "",
 }) => {
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
@@ -50,6 +53,7 @@ export const ClipComposition: React.FC<ClipProps> = ({
     (e): e is Extract<Edit, { type: "emphasis" }> => e.type === "emphasis",
   );
   const texts = clip.edits.filter((e): e is Extract<Edit, { type: "text" }> => e.type === "text");
+  const images = clip.edits.filter((e): e is Extract<Edit, { type: "image" }> => e.type === "image");
 
   // Punch-in: ease up over 200ms, hold, ease back down.
   const zoom = punches.reduce((acc, p) => {
@@ -94,15 +98,53 @@ export const ClipComposition: React.FC<ClipProps> = ({
     <AbsoluteFill className="overflow-hidden bg-black">
       {video}
 
+      {images.map((im, i) => {
+        const start = srcToOut(map, im.t);
+        const end = srcToOut(map, im.t + im.d);
+        if (t < start || t > end) return null;
+        // Ease in and out so it lands rather than blinks.
+        const appear = interpolate(
+          t,
+          [start, start + 0.25, Math.max(start + 0.3, end - 0.25), end],
+          [0, 1, 1, 0],
+          { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+        );
+        return (
+          <div
+            key={`img-${i}`}
+            className="absolute inset-x-0 flex -translate-y-1/2 flex-col items-center gap-3"
+            style={{ top: `${im.y * 100}%`, opacity: appear, transform: `translateY(-50%) scale(${0.96 + appear * 0.04})` }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`${assetBase}${im.src}`}
+              alt=""
+              className="rounded-[28px] border-[6px] border-white object-contain shadow-[0_24px_60px_-12px_rgba(0,0,0,0.75)]"
+              style={{ width: `${im.widthPct}%` }}
+            />
+            {im.caption ? (
+              <span className="rounded-full bg-white px-6 py-2 text-3xl font-black text-black">
+                {im.caption}
+              </span>
+            ) : null}
+          </div>
+        );
+      })}
+
       {texts.map((tx, i) => {
         const start = srcToOut(map, tx.t);
         const end = srcToOut(map, tx.t + tx.d);
         if (t < start || t > end) return null;
         const place =
-          tx.position === "top" ? "top-[8%]" : tx.position === "center" ? "top-1/2" : "bottom-[16%]";
+          tx.position === "top" ? "top-[9%]" : tx.position === "center" ? "top-[45%]" : "bottom-[18%]";
+        // The white card reads on any footage; plain text needs the stroke to survive.
+        const card =
+          tx.style === "card"
+            ? "rounded-[40px] bg-white px-10 py-6 text-black shadow-[0_20px_50px_-12px_rgba(0,0,0,0.6)]"
+            : "text-white [text-shadow:0_4px_18px_rgba(0,0,0,0.75)]";
         return (
-          <div key={i} className={`absolute inset-x-0 ${place} flex justify-center px-[8%]`}>
-            <span className="rounded-2xl bg-black/70 px-8 py-4 text-center text-6xl font-black leading-tight text-white">
+          <div key={`tx-${i}`} className={`absolute inset-x-0 ${place} flex justify-center px-[7%]`}>
+            <span className={`text-center text-[64px] font-black leading-[1.12] tracking-tight ${card}`}>
               {tx.text}
             </span>
           </div>

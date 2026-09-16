@@ -4,6 +4,7 @@ import { bundle } from "@remotion/bundler";
 import { renderMedia, selectComposition } from "@remotion/renderer";
 import { enableTailwind } from "@remotion/tailwind-v4";
 import { serveDir } from "./fileServer";
+import { WORKSPACE } from "./config";
 import type { Edl, Clip } from "./edl";
 import { buildTimeMap } from "./timeline";
 
@@ -40,11 +41,17 @@ export async function renderClips(
   await fs.mkdir(outDir, { recursive: true });
 
   opts.onProgress?.({ clipId: "", title: "", index: 0, total: 0, progress: 0, stage: "bundling" });
-  const [serveUrl, files] = await Promise.all([
-    getBundle(),
-    serveDir(path.dirname(path.resolve(edl.source.file))),
-  ]);
-  const sourceUrl = `${files.url}/${encodeURIComponent(path.basename(edl.source.file))}`;
+  // Serve the whole workspace: the source and the project's assets/ directory are
+  // both under it, and a source picked from elsewhere in the workspace still resolves.
+  const [serveUrl, files] = await Promise.all([getBundle(), serveDir(WORKSPACE)]);
+  const rel = (p: string) =>
+    path
+      .relative(WORKSPACE, path.resolve(p))
+      .split(path.sep)
+      .map(encodeURIComponent)
+      .join("/");
+  const sourceUrl = `${files.url}/${rel(edl.source.file)}`;
+  const assetBase = `${files.url}/${rel(path.join(dir, "assets"))}/`;
 
   try {
   const clips = opts.only?.length ? edl.clips.filter((c) => opts.only!.includes(c.id)) : edl.clips;
@@ -54,6 +61,7 @@ export async function renderClips(
     const inputProps = {
       clip,
       sourceUrl,
+      assetBase,
       sourceWidth: edl.source.width,
       sourceHeight: edl.source.height,
     };

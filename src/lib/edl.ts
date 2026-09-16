@@ -90,9 +90,27 @@ export const TextEdit = z.object({
   d: z.number().default(2.5),
   text: z.string(),
   position: z.enum(["top", "center", "bottom"]).default("top"),
+  /** "card" is the white rounded hook that reads on any footage; "plain" is bare text. */
+  style: z.enum(["card", "plain"]).default("card"),
 });
 
-export const Edit = z.discriminatedUnion("type", [SilenceEdit, PunchEdit, EmphasisEdit, TextEdit]);
+/**
+ * An image alongside the captions. `src` names a file in the project's `assets/`
+ * directory, so the renderer and the browser Player can both resolve it.
+ */
+export const ImageEdit = z.object({
+  type: z.literal("image"),
+  t: z.number(),
+  d: z.number().default(3),
+  src: z.string(),
+  /** Where it sits in the frame, 0..1 of height. */
+  y: z.number().min(0).max(1).default(0.3),
+  /** Share of frame width. */
+  widthPct: z.number().min(20).max(100).default(78),
+  caption: z.string().default(""),
+});
+
+export const Edit = z.discriminatedUnion("type", [SilenceEdit, PunchEdit, EmphasisEdit, TextEdit, ImageEdit]);
 export type Edit = z.infer<typeof Edit>;
 
 export const Clip = z.object({
