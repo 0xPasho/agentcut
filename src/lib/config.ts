@@ -7,14 +7,12 @@ export const WORKSPACE = process.env.AGENTCUT_WORKSPACE
   : path.join(ROOT, "workspace");
 
 /**
- * Prefer the new filename, but keep reading an existing clipsmith.db rather than
- * silently starting an empty database on top of a rename.
+ * A pre-rename database wins if it is present. Checking "does the new file exist"
+ * is not enough: any process that starts before the old one is migrated creates an
+ * empty agentcut.db, and every later process then prefers that empty file.
  */
-export const DB_PATH = fs.existsSync(path.join(WORKSPACE, "agentcut.db"))
-  ? path.join(WORKSPACE, "agentcut.db")
-  : fs.existsSync(path.join(WORKSPACE, "clipsmith.db"))
-    ? path.join(WORKSPACE, "clipsmith.db")
-    : path.join(WORKSPACE, "agentcut.db");
+const LEGACY_DB = path.join(WORKSPACE, "clipsmith.db");
+export const DB_PATH = fs.existsSync(LEGACY_DB) ? LEGACY_DB : path.join(WORKSPACE, "agentcut.db");
 
 /** Per-project scratch dir. All agent filesystem access is confined here. */
 export function projectDir(id: string) {

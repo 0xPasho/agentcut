@@ -1,5 +1,5 @@
 allowBuilds:
-  esbuild: set this to true or false
+  esbuild: true
   ffmpeg-static: true
   sharp: false
   unrs-resolver: false
