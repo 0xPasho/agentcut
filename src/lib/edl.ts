@@ -26,6 +26,44 @@ export const CaptionStyle = z.object({
 });
 export type CaptionStyle = z.infer<typeof CaptionStyle>;
 
+/**
+ * Edits are expressed in CLIP-RELATIVE SOURCE seconds. Silence cuts shift the
+ * output timeline, so the renderer builds a source->output time map once and
+ * maps everything through it. The agent never has to think about that.
+ */
+export const SilenceEdit = z.object({
+  type: z.literal("silence"),
+  t: z.number(),
+  d: z.number(),
+});
+
+export const PunchEdit = z.object({
+  type: z.literal("punch"),
+  t: z.number(),
+  d: z.number().default(1.2),
+  scale: z.number().min(1).max(2).default(1.12),
+});
+
+export const EmphasisEdit = z.object({
+  type: z.literal("emphasis"),
+  t: z.number(),
+  d: z.number().default(1),
+  /** Words to highlight, matched case-insensitively within the span. */
+  words: z.array(z.string()).default([]),
+  color: z.string().default("#ffe600"),
+});
+
+export const TextEdit = z.object({
+  type: z.literal("text"),
+  t: z.number(),
+  d: z.number().default(2.5),
+  text: z.string(),
+  position: z.enum(["top", "center", "bottom"]).default("top"),
+});
+
+export const Edit = z.discriminatedUnion("type", [SilenceEdit, PunchEdit, EmphasisEdit, TextEdit]);
+export type Edit = z.infer<typeof Edit>;
+
 export const Clip = z.object({
   id: z.string(),
   title: z.string(),
@@ -38,6 +76,7 @@ export const Clip = z.object({
   crop: z.array(CropKeyframe).default([]),
   captions: CaptionStyle.prefault({}),
   words: z.array(Word).default([]),
+  edits: z.array(Edit).default([]),
 });
 export type Clip = z.infer<typeof Clip>;
 
@@ -70,6 +109,7 @@ export const AgentClipProposal = z.object({
   end: z.number(),
   crop: z.array(CropKeyframe).default([]),
   captions: CaptionStyle.partial().optional(),
+  edits: z.array(Edit).default([]),
 });
 export const AgentClipProposals = z.object({ clips: z.array(AgentClipProposal) });
 export type AgentClipProposal = z.infer<typeof AgentClipProposal>;

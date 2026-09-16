@@ -42,6 +42,16 @@ ${i.userBrief ? `## Additional direction from the user\n${i.userBrief}\n` : ""}
 ## Crop
 Output is vertical 9:16. For each clip give \`crop\` keyframes in **source pixel coordinates** — \`{t, x, y, w, h}\`, where \`t\` is seconds from the start of that clip. Keep \`w/h\` at 9:16 (${(9 / 16).toFixed(4)}). Add a new keyframe only when the framing should actually move (a new speaker, a new shot); one keyframe at \`t: 0\` is fine for a static shot. Leave \`crop\` as \`[]\` to accept a centered crop.
 
+## Editing
+Each clip also carries an \`edits\` array — clip-relative seconds, not source seconds. Vocabulary:
+
+- \`{"type":"silence","t":0,"d":0.6}\` — cut dead air. This is the single biggest quality win: scan the word timestamps for gaps over ~0.45s between words and cut most of them, leaving ~0.12s so it does not sound clipped. Do not cut a pause that is doing rhetorical work before a punchline.
+- \`{"type":"punch","t":0,"d":1.2,"scale":1.12}\` — zoom in on an emphasis beat. Use 2-4 per clip, on the line that lands. \`scale\` 1.08-1.2.
+- \`{"type":"emphasis","t":0,"d":1,"words":["ninety","two","percent"],"color":"#ffe600"}\` — colour specific words in the captions. Numbers, names, the claim.
+- \`{"type":"text","t":0,"d":2.5,"text":"Why you quit","position":"top"}\` — an overlay title. At most one per clip, in the first 3 seconds, and only when it adds something the captions do not.
+
+Silence cuts shift the timeline; the renderer handles that. Keep writing every timestamp in clip-relative source seconds.
+
 ## Output
 Write **\`clips.json\`** in your working directory. Nothing else. Exactly this shape:
 
@@ -55,7 +65,8 @@ Write **\`clips.json\`** in your working directory. Nothing else. Exactly this s
       "score": 0,
       "start": 0.0,
       "end": 0.0,
-      "crop": [{ "t": 0, "x": 0, "y": 0, "w": 0, "h": 0 }]
+      "crop": [{ "t": 0, "x": 0, "y": 0, "w": 0, "h": 0 }],
+      "edits": [{ "type": "silence", "t": 0, "d": 0.5 }]
     }
   ]
 }

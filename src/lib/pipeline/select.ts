@@ -89,6 +89,7 @@ export async function selectClips(o: SelectOptions): Promise<Edl> {
         crop: p.crop.length ? p.crop : [fallbackCrop],
         captions: CaptionStyle.parse(p.captions ?? {}),
         words: wordsBetween(transcript, start, end).map((w) => ({ ...w, t: w.t - start })),
+        edits: p.edits ?? [],
       };
     })
     .filter((c) => c.end - c.start >= Math.min(5, minSec))
