@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Download, Loader2, Play, Sparkles, Trash2, Wand2 } from "lucide-react";
+import { ArrowLeft, Download, Loader2, Play, SlidersHorizontal, Sparkles, Trash2, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -228,6 +228,15 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                           <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{clip.reason}</p>
                         ) : null}
                       </div>
+                      <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        aria-label={`Open ${clip.title} in the editor`}
+                        onClick={(e) => e.stopPropagation()}
+                        render={<Link href={`/p/${initial.id}/c/${clip.id}`} />}
+                      >
+                        <SlidersHorizontal className="size-4" />
+                      </Button>
                       {isRendered ? (
                         <Button
                           size="icon"
