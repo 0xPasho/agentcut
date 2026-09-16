@@ -6,6 +6,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { ensureWorkspace, projectDir } from "../src/lib/config";
+import { q } from "../src/lib/db";
 import { probe, extractAudio } from "../src/lib/media";
 import { transcribe, available as whisperAvailable, DEFAULT_MODEL } from "../src/lib/transcribe/whispercpp";
 import { computeSignals } from "../src/lib/pipeline/signals";
@@ -77,7 +78,18 @@ async function main() {
     console.log(`  \x1b[1m${String(c.score).padStart(3)}\x1b[0m  ${fmt(c.start)}–${fmt(c.end)}  ${c.title}`);
     if (c.reason) console.log(`       \x1b[90m${c.reason}\x1b[0m`);
   }
+  // Register it so the run shows up in the web UI, not just on disk.
+  q.upsertProject({
+    id: projectId,
+    name: path.basename(videoPath),
+    source_path: videoPath,
+    status: "ready",
+    probe: JSON.stringify(meta),
+    edl: JSON.stringify(edl),
+  });
+
   console.log(`\nEDL → ${path.join(dir, "edl.json")}`);
+  console.log(`UI  → http://localhost:3000/p/${projectId}`);
 }
 
 main().catch((e) => {

@@ -113,6 +113,32 @@ export const q = {
       .run(...keys.map((k) => (patch as Record<string, string | null>)[k]), id);
   },
 
+  /**
+   * Register or refresh a project from outside the web app. The CLI wrote its EDL
+   * to disk but never to SQLite, so CLI runs were invisible in the UI.
+   */
+  upsertProject: (p: {
+    id: string;
+    name: string;
+    source_path: string;
+    status: string;
+    probe?: string | null;
+    edl?: string | null;
+  }) =>
+    db
+      .prepare(
+        `INSERT INTO projects (id, name, source_path, status, probe, edl, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           name = excluded.name,
+           source_path = excluded.source_path,
+           status = excluded.status,
+           probe = COALESCE(excluded.probe, projects.probe),
+           edl = COALESCE(excluded.edl, projects.edl),
+           error = NULL`,
+      )
+      .run(p.id, p.name, p.source_path, p.status, p.probe ?? null, p.edl ?? null, Date.now()),
+
   deleteProject: (id: string) => {
     db.prepare("DELETE FROM events WHERE project_id = ?").run(id);
     db.prepare("DELETE FROM jobs WHERE project_id = ?").run(id);
