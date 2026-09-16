@@ -43,6 +43,19 @@ export const VideoRegion: React.FC<Props> = ({
   const tx = boxWidth / 2 - (region.x + w / 2) * scale;
   const ty = boxHeight / 2 - (region.y + h / 2) * scale;
 
+  // Remotion Studio opens a composition with its defaultProps, where there is no
+  // source yet. Render an empty box instead of letting OffthreadVideo throw.
+  if (!sourceUrl) {
+    return (
+      <div
+        className="flex items-center justify-center bg-neutral-900 text-xs text-neutral-500"
+        style={{ width: boxWidth, height: boxHeight }}
+      >
+        no source
+      </div>
+    );
+  }
+
   return (
     <div className="relative overflow-hidden bg-black" style={{ width: boxWidth, height: boxHeight }}>
       <div
