@@ -7,7 +7,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { ensureWorkspace, projectDir } from "../src/lib/config";
 import { probe, extractAudio } from "../src/lib/media";
-import { transcribe, available as whisperAvailable } from "../src/lib/transcribe/whispercpp";
+import { transcribe, available as whisperAvailable, DEFAULT_MODEL } from "../src/lib/transcribe/whispercpp";
 import { computeSignals } from "../src/lib/pipeline/signals";
 import { selectClips } from "../src/lib/pipeline/select";
 import { Transcript } from "../src/lib/transcript";
@@ -45,7 +45,7 @@ async function main() {
   } else {
     if (!(await whisperAvailable())) throw new Error("whisper-cli not found — brew install whisper-cpp");
     const wav = await extractAudio(videoPath, path.join(dir, "audio.wav"));
-    transcript = await transcribe(wav, { outDir: dir, model: (arg("model", "small.en") as never) });
+    transcript = await transcribe(wav, { outDir: dir, model: arg("model", DEFAULT_MODEL) as never });
     console.log(`  ${transcript.segments.length} segments, ${transcript.words.length} words`);
   }
 

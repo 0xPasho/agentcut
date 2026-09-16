@@ -43,10 +43,24 @@ export async function ensureModel(model: WhisperModel = DEFAULT_MODEL): Promise<
   const url = `${MODEL_BASE_URL}/ggml-${model}.bin`;
   const res = await fetch(url);
   if (!res.ok || !res.body) throw new Error(`model download failed: ${res.status} ${url}`);
-  // large-v3-turbo is ~1.6GB — stream it rather than buffering the whole thing.
-  const tmp = `${file}.part`;
-  await pipeline(Readable.fromWeb(res.body as never), createWriteStream(tmp));
-  await fs.rename(tmp, file);
+
+  // Unique temp name per download: a shared `.part` means two concurrent fetches
+  // race, the first rename wins and the second fails with ENOENT.
+  const tmp = `${file}.${process.pid}.${Date.now()}.part`;
+  try {
+    // Models run to gigabytes — stream rather than buffering the whole body.
+    await pipeline(Readable.fromWeb(res.body as never), createWriteStream(tmp));
+    // Another process may have finished the same download while this one ran.
+    const done = await fs.stat(file).catch(() => null);
+    if (done && done.size > 1_000_000) {
+      await fs.rm(tmp, { force: true });
+      return file;
+    }
+    await fs.rename(tmp, file);
+  } catch (err) {
+    await fs.rm(tmp, { force: true });
+    throw err;
+  }
   return file;
 }
 
