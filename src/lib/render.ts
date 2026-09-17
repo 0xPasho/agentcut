@@ -7,6 +7,7 @@ import { serveDir } from "./fileServer";
 import { WORKSPACE } from "./config";
 import type { Edl, Clip } from "./edl";
 import { creditsFor } from "./assets";
+import { serverAssetUrls } from "./assetUrls";
 import { buildTimeMap } from "./timeline";
 
 const ENTRY = path.join(process.cwd(), "remotion", "index.ts");
@@ -53,6 +54,7 @@ export async function renderClips(
       .join("/");
   const sourceUrl = `${files.url}/${rel(edl.source.file)}`;
   const assetBase = `${files.url}/${rel(path.join(dir, "assets"))}/`;
+  const assetUrls = serverAssetUrls(edl, edl.projectId, files.url);
 
   try {
   const clips = opts.only?.length ? edl.clips.filter((c) => opts.only!.includes(c.id)) : edl.clips;
@@ -63,6 +65,7 @@ export async function renderClips(
       clip,
       sourceUrl,
       assetBase,
+      assetUrls,
       sourceWidth: edl.source.width,
       sourceHeight: edl.source.height,
     };

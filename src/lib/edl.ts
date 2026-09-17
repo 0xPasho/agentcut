@@ -115,7 +115,39 @@ export const ImageEdit = z.object({
   caption: z.string().default(""),
 });
 
-export const Edit = z.discriminatedUnion("type", [SilenceEdit, PunchEdit, EmphasisEdit, TextEdit, ImageEdit]);
+/** A one-shot sound tied to a beat — a whoosh on a punch-in, a ding on a number. */
+export const SfxEdit = z.object({
+  type: z.literal("sfx"),
+  t: z.number(),
+  d: z.number().default(2),
+  src: z.string(),
+  gain: z.number().min(0).max(2).default(0.8),
+});
+
+/**
+ * A music bed. `duck` lowers it while words are sounding — computed from the
+ * word timestamps we already have, so no audio analysis is involved. Music
+ * without ducking is the single clearest tell of an amateur edit.
+ */
+export const MusicEdit = z.object({
+  type: z.literal("music"),
+  t: z.number().default(0),
+  d: z.number().default(60),
+  src: z.string(),
+  gain: z.number().min(0).max(2).default(0.28),
+  duck: z.boolean().default(true),
+  loop: z.boolean().default(true),
+});
+
+export const Edit = z.discriminatedUnion("type", [
+  SilenceEdit,
+  PunchEdit,
+  EmphasisEdit,
+  TextEdit,
+  ImageEdit,
+  SfxEdit,
+  MusicEdit,
+]);
 export type Edit = z.infer<typeof Edit>;
 
 export const Clip = z.object({

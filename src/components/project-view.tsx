@@ -17,7 +17,7 @@ import { Glass, ScrollEdge } from "@/components/ui/glass";
 import { CaptionControls } from "@/components/caption-controls";
 import { OverlayEditor } from "@/components/overlay-editor";
 import { ClipPreview } from "@/components/clip-preview";
-import { api, clipUrl, sourceUrl, thumbUrl, type LogEvent, type ProjectDetail } from "@/lib/client";
+import { api, assetUrl, clipUrl, sourceUrl, thumbUrl, type LogEvent, type ProjectDetail } from "@/lib/client";
 import { fmt } from "@/lib/transcript";
 import type { CaptionStyle, Edit, Edl } from "@/lib/edl";
 
@@ -39,6 +39,18 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
     () => edl?.clips.find((c) => c.id === selectedId) ?? edl?.clips[0] ?? null,
     [edl, selectedId],
   );
+
+  const assetUrls = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const c of edl?.clips ?? []) {
+      for (const e of c.edits) {
+        if ((e.type === "image" || e.type === "sfx" || e.type === "music") && e.src) {
+          out[e.src] = assetUrl(initial.id, e.src);
+        }
+      }
+    }
+    return out;
+  }, [edl, initial.id]);
 
   const refresh = useCallback(async () => {
     try {
@@ -278,6 +290,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                 edl={edl}
                 sourceUrl={sourceUrl(initial.id)}
                 assetBase={`/api/projects/${initial.id}/asset/`}
+                assetUrls={assetUrls}
               />
               <Glass shape="panel" thickness="thick" className="p-4">
               <Tabs defaultValue="captions">

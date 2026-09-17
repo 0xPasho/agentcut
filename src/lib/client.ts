@@ -80,6 +80,15 @@ export const api = {
       body: JSON.stringify({ hit, projectId }),
     }).then(json<{ asset: AssetSummary }>),
 
+  uploadAsset: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return fetch("/api/assets", { method: "POST", body: form }).then(json<{ asset: AssetSummary }>);
+  },
+
+  deleteAsset: (id: string) =>
+    fetch(`/api/assets?id=${encodeURIComponent(id)}`, { method: "DELETE" }).then(json<{ ok: true }>),
+
   listAssets: (kind: string, projectId: string) =>
     fetch(`/api/assets?kind=${kind}&projectId=${projectId}`).then(json<{ assets: AssetSummary[] }>),
 
@@ -97,6 +106,8 @@ export const api = {
       body: JSON.stringify({ only }),
     }).then(json<{ job: JobState }>),
 };
+
+export const assetFileUrl = (id: string) => `/api/assets/${id}/file`;
 
 export const assetUrl = (projectId: string, ref: string) =>
   // An asset id resolves through the library route; a bare filename is an older

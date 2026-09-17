@@ -1,4 +1,6 @@
-import { Clapperboard, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { Clapperboard, Library, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { q } from "@/lib/db";
 import { NewProject } from "@/components/new-project";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +25,10 @@ export default function Home() {
         <Badge variant="secondary" className="font-mono text-xs">
           local
         </Badge>
+        <Button variant="ghost" size="sm" className="ml-auto" render={<Link href="/library" />}>
+          <Library className="size-4" />
+          Library
+        </Button>
       </Glass>
 
       <NewProject />

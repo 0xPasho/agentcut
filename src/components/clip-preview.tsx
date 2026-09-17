@@ -11,11 +11,13 @@ export function ClipPreview({
   edl,
   sourceUrl,
   assetBase,
+  assetUrls,
 }: {
   clip: Clip;
   edl: Edl;
   sourceUrl: string;
   assetBase: string;
+  assetUrls: Record<string, string>;
 }) {
   const durationInFrames = useMemo(
     () => Math.max(1, Math.round(buildTimeMap(clip).duration * edl.output.fps)),
@@ -29,8 +31,9 @@ export function ClipPreview({
       sourceWidth: edl.source.width,
       sourceHeight: edl.source.height,
       assetBase,
+      assetUrls,
     }),
-    [clip, sourceUrl, assetBase, edl.source.width, edl.source.height],
+    [clip, sourceUrl, assetBase, assetUrls, edl.source.width, edl.source.height],
   );
 
   return (

@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api, assetUrl } from "@/lib/client";
 import { ImageSearch } from "@/components/image-search";
+import { AudioPicker } from "@/components/audio-picker";
 import { fmt } from "@/lib/transcript";
 import type { Clip, Edit } from "@/lib/edl";
 
@@ -134,6 +135,10 @@ export function OverlayEditor({
             <Slider min={1} max={10} step={0.5} value={[hook.d]} onValueChange={(v) => setHook({ d: num(v) })} />
           </div>
         ) : null}
+      </section>
+
+      <section className="flex flex-col gap-3 border-t border-border pt-4">
+        <AudioPicker projectId={projectId} clip={clip} atSec={0} onChange={onChange} />
       </section>
 
       <section className="flex flex-col gap-3 border-t border-border pt-4">

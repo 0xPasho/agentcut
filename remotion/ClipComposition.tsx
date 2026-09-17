@@ -1,7 +1,8 @@
 import React, { useMemo } from "react";
-import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, Audio, Sequence, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 import type { Clip, CropKeyframe, Edit, Region } from "../src/lib/edl";
 import { buildTimeMap, mapWords, srcToOut } from "../src/lib/timeline";
+import { duckedVolume, speechSpans } from "../src/lib/ducking";
 import { Captions } from "./Captions";
 import { VideoRegion } from "./VideoRegion";
 
@@ -11,8 +12,14 @@ export type ClipProps = {
   sourceUrl: string;
   sourceWidth: number;
   sourceHeight: number;
-  /** Base URL for image edits; `src` values resolve against it. */
+  /** Base URL for a project-local file name. */
   assetBase?: string;
+  /**
+   * Explicit URL per asset reference. A reference is either a library asset id or
+   * a file in the project's assets/, and the two resolve differently on the
+   * server and in the browser — so whoever mounts the composition resolves them.
+   */
+  assetUrls?: Record<string, string>;
 };
 
 /** Linear interpolation between crop keyframes, in source pixel space. */
@@ -40,6 +47,7 @@ export const ClipComposition: React.FC<ClipProps> = ({
   sourceWidth,
   sourceHeight,
   assetBase = "",
+  assetUrls = {},
 }) => {
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
@@ -54,6 +62,13 @@ export const ClipComposition: React.FC<ClipProps> = ({
   );
   const texts = clip.edits.filter((e): e is Extract<Edit, { type: "text" }> => e.type === "text");
   const images = clip.edits.filter((e): e is Extract<Edit, { type: "image" }> => e.type === "image");
+  const sfx = clip.edits.filter((e): e is Extract<Edit, { type: "sfx" }> => e.type === "sfx");
+  const music = clip.edits.filter((e): e is Extract<Edit, { type: "music" }> => e.type === "music");
+
+  // Words are already mapped to output time, which is the timebase the ducking
+  // envelope is sampled in.
+  const spans = useMemo(() => speechSpans(words), [words]);
+  const urlFor = (ref: string) => assetUrls[ref] ?? `${assetBase}${ref}`;
 
   // Punch-in: ease up over 200ms, hold, ease back down.
   const zoom = punches.reduce((acc, p) => {
@@ -98,6 +113,34 @@ export const ClipComposition: React.FC<ClipProps> = ({
     <AbsoluteFill className="overflow-hidden bg-black">
       {video}
 
+      {music.map((m, i) => {
+        const from = Math.round(srcToOut(map, m.t) * fps);
+        const until = Math.round(srcToOut(map, m.t + m.d) * fps);
+        return (
+          <Sequence key={`music-${i}`} from={from} durationInFrames={Math.max(1, until - from)} layout="none">
+            <Audio
+              src={urlFor(m.src)}
+              loop={m.loop}
+              volume={(f) => (m.duck ? duckedVolume(spans, (from + f) / fps, m.gain) : m.gain)}
+            />
+          </Sequence>
+        );
+      })}
+
+      {sfx.map((s, i) => {
+        const from = Math.round(srcToOut(map, s.t) * fps);
+        return (
+          <Sequence
+            key={`sfx-${i}`}
+            from={from}
+            durationInFrames={Math.max(1, Math.round(s.d * fps))}
+            layout="none"
+          >
+            <Audio src={urlFor(s.src)} volume={s.gain} />
+          </Sequence>
+        );
+      })}
+
       {images.map((im, i) => {
         const start = srcToOut(map, im.t);
         const end = srcToOut(map, im.t + im.d);
@@ -117,7 +160,7 @@ export const ClipComposition: React.FC<ClipProps> = ({
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={`${assetBase}${im.src}`}
+              src={urlFor(im.src)}
               alt=""
               className="rounded-[28px] border-[6px] border-white object-contain shadow-[0_24px_60px_-12px_rgba(0,0,0,0.75)]"
               style={{ width: `${im.widthPct}%` }}

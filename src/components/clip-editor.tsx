@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Timeline } from "@/components/timeline";
 import { ClipInspector } from "@/components/clip-inspector";
 import { CaptionControls } from "@/components/caption-controls";
-import { api, sourceUrl } from "@/lib/client";
+import { api, assetUrl, sourceUrl } from "@/lib/client";
 import { buildTimeMap, srcToOut } from "@/lib/timeline";
 import { fmt } from "@/lib/transcript";
 import type { CaptionStyle, Clip, Edit, Edl } from "@/lib/edl";
@@ -114,6 +114,16 @@ export function ClipEditor({
 
   const words = clip.words;
 
+  const assetUrls = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const e of clip.edits) {
+      if ((e.type === "image" || e.type === "sfx" || e.type === "music") && e.src) {
+        out[e.src] = assetUrl(projectId, e.src);
+      }
+    }
+    return out;
+  }, [clip.edits, projectId]);
+
   return (
     // Editor shell: the viewport is the frame. Each region scrolls on its own
     // rather than the page growing, so the preview never leaves the screen.
@@ -155,6 +165,7 @@ export function ClipEditor({
                   sourceWidth: edl.source.width,
                   sourceHeight: edl.source.height,
                   assetBase: `/api/projects/${projectId}/asset/`,
+                  assetUrls,
                 }}
                 durationInFrames={Math.max(1, Math.round(map.duration * fps))}
                 fps={fps}
