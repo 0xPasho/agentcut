@@ -10,7 +10,7 @@ const buttonVariants = cva(
         // Tinted glass, not a solid fill: a solid fill is opaque and breaks the
         // character of the material. Reserved for the one primary action per view.
         default:
-          "border-transparent bg-[linear-gradient(180deg,#ffff5e_0%,#ffda2a_55%,#f0c60f_100%)] text-primary-foreground font-semibold shadow-[inset_0_1px_0_0_rgb(255_255_255/0.6),0_0_28px_-6px_rgb(255_218_42/0.55)] hover:brightness-[1.06]",
+          "border-transparent bg-[linear-gradient(180deg,#ffff5e_0%,#ffda2a_55%,#f0c60f_100%)] text-primary-foreground font-semibold shadow-[inset_0_1px_0_0_rgb(255_255_255/0.55),0_2px_14px_-4px_rgb(255_218_42/0.45)] hover:brightness-[1.06]",
         // Fills and vibrancy rather than more glass: these sit inside glass containers.
         outline: "border-border bg-white/[0.04] hover:bg-white/[0.09] aria-expanded:bg-white/[0.09]",
         secondary: "bg-secondary text-secondary-foreground hover:bg-white/[0.16]",

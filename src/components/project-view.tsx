@@ -104,7 +104,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
       <Glass
         shape="capsule"
         thickness="thick"
-        className="sticky top-4 z-20 flex flex-wrap items-center gap-3 bg-background/80 px-4 py-2.5"
+        className="sticky top-4 z-20 flex flex-wrap items-center gap-3 px-4 py-2.5"
       >
         <Button variant="ghost" size="icon" render={<Link href="/" />}>
           <ArrowLeft className="size-4" />

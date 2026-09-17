@@ -83,6 +83,14 @@
   --chart-5: oklch(0.65 0.18 265);
   /* 24px is their card radius; pills everywhere else. */
   --radius: 1rem;
+
+  /* Liquid Glass. Layered: a tint that still lets content through, a lensed edge
+     that catches light on top, and a restrained specular. */
+  --glass-tint: oklch(0.205 0 0 / 72%);
+  --glass-tint-strong: oklch(0.24 0 0 / 80%);
+  --glass-edge: oklch(1 0 0 / 22%);
+  --glass-specular: oklch(1 0 0 / 10%);
+  --glass-blur: 28px;
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.97 0 0);
   --sidebar-primary: oklch(0.879 0.168 96);
@@ -107,4 +115,23 @@
   html {
     @apply font-sans;
   }
+}
+/* The glass edge is a gradient painted into the border box while the tint fills
+   the padding box: bright along the top, gone by the bottom. Too many commas and
+   nested functions for an arbitrary class, so it lives here as a utility. */
+@utility glass-surface {
+  background-image:
+    linear-gradient(var(--glass-tint), var(--glass-tint)),
+    linear-gradient(
+      180deg,
+      var(--glass-edge) 0%,
+      color-mix(in oklch, var(--glass-edge), transparent 78%) 40%,
+      transparent 100%
+    );
+  background-origin: padding-box, border-box;
+  background-clip: padding-box, border-box;
+}
+
+@utility glass-flat {
+  background-image: none;
 }

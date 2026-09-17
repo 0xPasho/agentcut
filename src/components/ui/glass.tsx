@@ -18,27 +18,30 @@ import { cn } from "cn";
 const glassVariants = cva(
   [
     "relative isolate",
-    "border border-[var(--glass-edge)]",
-    // Specular highlight along the top edge, plus a soft ambient shadow that
-    // separates the material from whatever is behind it.
-    "shadow-[inset_0_1px_0_0_var(--glass-specular),0_8px_32px_-8px_rgb(0_0_0/0.55)]",
+    // A uniform border reads as a white outline stuck around the element. Real
+    // glass catches light on its top edge and almost none at the bottom, so the
+    // edge is a gradient: painted into the border box while the tint fills the
+    // padding box.
+    "border border-transparent",
+    "glass-surface",
+    // A restrained specular, and a soft ambient shadow for separation.
+    "shadow-[inset_0_1px_0_0_var(--glass-specular),0_10px_36px_-12px_rgb(0_0_0/0.6)]",
     // Reduce Transparency: frostier, obscuring more of the content behind.
-    "reduce-transparency:backdrop-blur-none reduce-transparency:bg-popover",
+    "reduce-transparency:backdrop-blur-none reduce-transparency:glass-flat reduce-transparency:bg-popover",
     // Increase Contrast: predominantly solid, with a contrasting border.
-    "more-contrast:bg-popover more-contrast:border-foreground/60",
+    "more-contrast:glass-flat more-contrast:bg-popover more-contrast:border-foreground/60",
   ],
   {
     variants: {
       variant: {
         /** Legible over anything. The default, and what you want almost always. */
-        regular:
-          "bg-[var(--glass-tint)] backdrop-blur-[var(--glass-blur)] backdrop-saturate-[1.8]",
+        regular: "backdrop-blur-[var(--glass-blur)] backdrop-saturate-[1.6]",
         /**
          * Only over media-rich content, and only with the dimming layer — without
          * it legibility falls apart. Never mixed with regular in the same view.
          */
         clear:
-          "bg-black/25 backdrop-blur-sm backdrop-saturate-[1.6] backdrop-brightness-[0.85]",
+          "glass-flat bg-black/25 backdrop-blur-sm backdrop-saturate-[1.5] backdrop-brightness-[0.85]",
       },
       shape: {
         capsule: "rounded-full",
@@ -48,7 +51,7 @@ const glassVariants = cva(
       },
       /** The material illuminates from within on interaction. */
       interactive: {
-        true: "transition-[background-color,box-shadow] duration-300 hover:bg-[var(--glass-tint-strong)] hover:shadow-[inset_0_1px_0_0_var(--glass-specular),0_12px_40px_-8px_rgb(0_0_0/0.6),0_0_0_1px_var(--glass-edge)] motion-reduce:transition-none",
+        true: "transition-[background-color,box-shadow] duration-300 hover:shadow-[inset_0_1px_0_0_var(--glass-specular),0_14px_44px_-12px_rgb(0_0_0/0.65)] motion-reduce:transition-none",
         false: "",
       },
       /** Larger glass simulates a thicker material: deeper shadow, more lensing. */

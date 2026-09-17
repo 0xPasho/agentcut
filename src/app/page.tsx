@@ -16,7 +16,7 @@ export default function Home() {
       <Glass
         shape="capsule"
         thickness="thick"
-        className="sticky top-4 z-20 flex items-center gap-3 bg-background/80 px-5 py-3"
+        className="sticky top-4 z-20 flex items-center gap-3 px-5 py-3"
       >
         <Clapperboard className="size-6 shrink-0 text-primary" />
         <h1 className="text-xl font-semibold tracking-tight">agentcut</h1>

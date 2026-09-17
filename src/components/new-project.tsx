@@ -73,7 +73,7 @@ export function NewProject() {
         if (file) upload(file);
       }}
       className={`cursor-pointer border border-dashed transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-        dragging ? "border-primary bg-primary/5" : "border-border bg-card hover:border-white/25"
+        dragging ? "border-primary/70 bg-primary/5" : "border-white/10 bg-card hover:border-white/20"
       }`}
     >
       <CardContent className="flex flex-col items-center gap-6 py-12">
