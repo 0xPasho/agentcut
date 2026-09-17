@@ -5,7 +5,10 @@ import type { Word } from "../src/lib/transcript";
 import { toLines } from "../src/lib/timeline";
 import { loadFont } from "@remotion/google-fonts/Inter";
 
-const { fontFamily: inter } = loadFont("normal", { weights: ["400", "700", "800", "900"] });
+const { fontFamily: inter } = loadFont("normal", {
+  weights: ["700", "800"],
+  subsets: ["latin"],
+});
 
 type Props = {
   words: Word[];

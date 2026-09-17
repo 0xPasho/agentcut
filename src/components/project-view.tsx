@@ -99,9 +99,13 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
   };
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-6 py-8">
+    <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-6 pt-4 pb-10">
       {/* Navigation layer. Controls inside it use fills, never more glass. */}
-      <Glass shape="capsule" className="sticky top-4 z-20 flex flex-wrap items-center gap-3 px-4 py-2.5">
+      <Glass
+        shape="capsule"
+        thickness="thick"
+        className="sticky top-4 z-20 flex flex-wrap items-center gap-3 bg-background/80 px-4 py-2.5"
+      >
         <Button variant="ghost" size="icon" render={<Link href="/" />}>
           <ArrowLeft className="size-4" />
         </Button>

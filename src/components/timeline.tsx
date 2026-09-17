@@ -4,12 +4,19 @@ import type { Clip, Edit } from "@/lib/edl";
 import { buildTimeMap, srcToOut, type TimeMap } from "@/lib/timeline";
 import { fmt } from "@/lib/transcript";
 
+/** Ruler ticks read better without centiseconds. */
+const clock = (sec: number) => {
+  const m = Math.floor(sec / 60);
+  const r = Math.round(sec % 60);
+  return `${m}:${String(r).padStart(2, "0")}`;
+};
+
 const LANES: Array<{ type: Edit["type"]; label: string; className: string }> = [
-  { type: "silence", label: "Silence", className: "bg-destructive/70 text-white" },
-  { type: "punch", label: "Punch", className: "bg-primary/80 text-black" },
-  { type: "emphasis", label: "Emphasis", className: "bg-[oklch(0.7_0.19_42)]/85 text-white" },
-  { type: "text", label: "Title", className: "bg-white/90 text-black" },
-  { type: "image", label: "Image", className: "bg-[oklch(0.6_0.18_265)]/85 text-white" },
+  { type: "silence", label: "Silence", className: "bg-destructive/80 text-white" },
+  { type: "punch", label: "Punch", className: "bg-[#ffda2a] text-black" },
+  { type: "emphasis", label: "Emphasis", className: "bg-[#ed8445] text-white" },
+  { type: "text", label: "Title", className: "bg-white text-black" },
+  { type: "image", label: "Image", className: "bg-[#7c6cf5] text-white" },
 ];
 
 /**
@@ -45,9 +52,9 @@ export function Timeline({
   for (let t = 0; t <= total; t += step) ticks.push(t);
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-1.5">
       <div className="flex items-center gap-2">
-        <span className="w-16 shrink-0" />
+        <span className="w-14 shrink-0" />
         <div
           role="slider"
           aria-label="Playhead"
@@ -60,15 +67,15 @@ export function Timeline({
             if (e.key === "ArrowLeft") onSeek(Math.max(0, currentSec - 1));
             if (e.key === "ArrowRight") onSeek(Math.min(total, currentSec + 1));
           }}
-          className="relative h-8 flex-1 cursor-pointer rounded-lg bg-white/[0.04] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="relative h-6 flex-1 cursor-pointer rounded-lg bg-black/40 outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {ticks.map((t) => (
             <span
               key={t}
-              className="absolute top-0 bottom-0 flex flex-col justify-between border-l border-white/10 pl-1 font-mono text-[10px] text-muted-foreground"
+              className="absolute top-0 bottom-0 flex flex-col justify-center border-l border-white/8 pl-1.5 font-mono text-[10px] text-white/35"
               style={{ left: pct(t) }}
             >
-              <span>{fmt(t)}</span>
+              <span>{clock(t)}</span>
             </span>
           ))}
           <div
@@ -88,8 +95,8 @@ export function Timeline({
 
         return (
           <div key={lane.type} className="flex items-center gap-2">
-            <span className="w-16 shrink-0 text-[11px] text-muted-foreground">{lane.label}</span>
-            <div className="relative h-7 flex-1 rounded-lg bg-white/[0.04]">
+            <span className="w-14 shrink-0 text-[11px] text-white/45">{lane.label}</span>
+            <div className="relative h-7 flex-1 rounded-lg bg-black/40">
               {blocks.map(({ e, index }) => {
                 const start = srcToOut(map, e.t);
                 const end = srcToOut(map, e.t + ("d" in e ? e.d : 0.5));
@@ -108,7 +115,7 @@ export function Timeline({
                       onSeek(start);
                     }}
                     style={{ left: pct(start), width: pct(Math.max(0.6, end - start)) }}
-                    className={`absolute inset-y-1 min-w-[10px] overflow-hidden rounded-md px-1.5 text-left text-[10px] font-medium whitespace-nowrap outline-none transition-[filter,box-shadow] hover:brightness-125 focus-visible:ring-2 focus-visible:ring-ring ${lane.className} ${
+                    className={`absolute inset-y-1 min-w-[8px] overflow-hidden rounded-[5px] px-1.5 text-left text-[10px] font-semibold whitespace-nowrap outline-none transition-[filter,box-shadow] hover:brightness-125 focus-visible:ring-2 focus-visible:ring-ring ${lane.className} ${
                       isSelected ? "ring-2 ring-white/90" : ""
                     }`}
                   >

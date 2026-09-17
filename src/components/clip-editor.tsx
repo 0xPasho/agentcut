@@ -120,7 +120,7 @@ export function ClipEditor({
     <div className="flex h-screen flex-col overflow-hidden">
       {/* Navigation layer. In flow, not floating over the preview — glass must not
           intersect content in a steady state. */}
-      <Glass shape="capsule" className="mx-4 mt-4 flex shrink-0 flex-wrap items-center gap-3 px-4 py-2.5">
+      <Glass shape="capsule" className="mx-5 mt-4 flex shrink-0 flex-wrap items-center gap-3 px-4 py-2.5">
         <Button variant="ghost" size="icon" render={<Link href={`/p/${projectId}`} />}>
           <ArrowLeft className="size-4" />
         </Button>
@@ -140,11 +140,11 @@ export function ClipEditor({
         </Button>
       </Glass>
 
-      <div className="flex min-h-0 flex-1 gap-4 p-4">
+      <div className="flex min-h-0 flex-1 gap-5 px-5 pt-4 pb-5">
         <section className="flex min-h-0 flex-1 flex-col gap-3">
           {/* The preview takes the height it can and derives its width from it,
               so a 9:16 clip never pushes the timeline off screen. */}
-          <div className="flex min-h-0 flex-1 items-center justify-center">
+          <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
             <div className="h-full max-h-full" style={{ aspectRatio: "9 / 16" }}>
               <Player
                 ref={player}
@@ -168,8 +168,8 @@ export function ClipEditor({
             </div>
           </div>
 
-          <Card className="shrink-0">
-            <CardContent className="flex flex-col gap-3 px-4">
+          <Card className="shrink-0 py-3">
+            <CardContent className="flex flex-col gap-2.5 px-4">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="mr-auto text-xs text-muted-foreground">Add at playhead</span>
                 {(Object.keys(NEW_EDIT) as Array<keyof typeof NEW_EDIT>).map((kind) => (
@@ -190,8 +190,8 @@ export function ClipEditor({
           </Card>
         </section>
 
-        <aside className="flex w-[360px] min-h-0 shrink-0 flex-col gap-4 overflow-y-auto pr-1">
-          <Glass shape="panel" thickness="thick" className="shrink-0 p-4">
+        <aside className="flex w-[340px] min-h-0 shrink-0 flex-col gap-3 overflow-y-auto pr-1">
+          <Card className="shrink-0 p-4">
             <Tabs
               value={selected !== null ? "edit" : "captions"}
               onValueChange={(v) => {
@@ -235,7 +235,7 @@ export function ClipEditor({
                 )}
               </TabsContent>
             </Tabs>
-          </Glass>
+          </Card>
 
           <Card className="flex min-h-0 shrink-0 flex-col gap-0 py-0">
             <div className="px-4 py-2.5 text-xs text-muted-foreground">

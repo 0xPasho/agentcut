@@ -77,26 +77,37 @@ export function CaptionControls({
         />
       </div>
 
-      <div className="flex items-end gap-3">
-        <div className="flex flex-1 flex-col gap-2">
-          <Label className="text-xs text-muted-foreground">Text</Label>
-          <Input
-            type="color"
-            value={value.color}
-            onChange={(e) => set("color", e.target.value)}
-            className="h-9 w-full cursor-pointer p-1"
-          />
-        </div>
-        <div className="flex flex-1 flex-col gap-2">
-          <Label className="text-xs text-muted-foreground">Highlight</Label>
-          <Input
-            type="color"
-            value={value.highlight}
-            onChange={(e) => set("highlight", e.target.value)}
-            className="h-9 w-full cursor-pointer p-1"
-          />
-        </div>
+      <div className="flex items-center gap-5">
+        <Swatch label="Text" value={value.color} onChange={(v) => set("color", v)} />
+        <Swatch label="Highlight" value={value.highlight} onChange={(v) => set("highlight", v)} />
       </div>
     </div>
+  );
+}
+
+/** A native colour input reads as a raw form control; this is just the swatch. */
+function Swatch({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+      <span
+        className="size-6 rounded-full border border-white/20 shadow-[inset_0_1px_2px_rgba(0,0,0,0.4)]"
+        style={{ backgroundColor: value }}
+      />
+      {label}
+      <input
+        type="color"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="sr-only"
+      />
+    </label>
   );
 }
