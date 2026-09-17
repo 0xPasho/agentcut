@@ -22,10 +22,13 @@ const num = (v: number | readonly number[]) => (Array.isArray(v) ? v[0] : (v as 
 export function OverlayEditor({
   projectId,
   clip,
+  atSec = 0,
   onChange,
 }: {
   projectId: string;
   clip: Clip;
+  /** Where new overlays land, clip-relative. The editor passes its playhead. */
+  atSec?: number;
   onChange: (edits: Edit[]) => void;
 }) {
   const [at, setAt] = useState("");
@@ -138,7 +141,7 @@ export function OverlayEditor({
       </section>
 
       <section className="flex flex-col gap-3 border-t border-border pt-4">
-        <AudioPicker projectId={projectId} clip={clip} atSec={0} onChange={onChange} />
+        <AudioPicker projectId={projectId} clip={clip} atSec={atSec} onChange={onChange} />
       </section>
 
       <section className="flex flex-col gap-3 border-t border-border pt-4">
@@ -165,7 +168,7 @@ export function OverlayEditor({
               ...clip.edits,
               {
                 type: "image",
-                t: 1,
+                t: atSec,
                 d: 3,
                 src: asset.id,
                 query: "",

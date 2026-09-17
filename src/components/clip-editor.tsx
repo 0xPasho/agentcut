@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Timeline } from "@/components/timeline";
 import { ClipInspector } from "@/components/clip-inspector";
 import { CaptionControls } from "@/components/caption-controls";
+import { OverlayEditor } from "@/components/overlay-editor";
 import { api, assetUrl, sourceUrl } from "@/lib/client";
 import { buildTimeMap, srcToOut } from "@/lib/timeline";
 import { fmt } from "@/lib/transcript";
@@ -43,6 +44,7 @@ export function ClipEditor({
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [rendering, setRendering] = useState(false);
+  const [tab, setTab] = useState<"captions" | "overlays" | "edit">("captions");
   const player = useRef<PlayerRef>(null);
 
   const clip = useMemo(
@@ -110,6 +112,13 @@ export function ClipEditor({
     const next = { ...clip, edits: [...clip.edits, NEW_EDIT[kind](playheadInSource)] };
     update(next);
     setSelected(next.edits.length - 1);
+    setTab("edit");
+  };
+
+  /** Selecting a block on the timeline should reveal its inspector. */
+  const select = (index: number | null) => {
+    setSelected(index);
+    setTab(index === null ? "captions" : "edit");
   };
 
   const words = clip.words;
@@ -194,7 +203,7 @@ export function ClipEditor({
                 clip={clip}
                 currentSec={currentSec}
                 selected={selected}
-                onSelect={setSelected}
+                onSelect={select}
                 onSeek={seek}
               />
             </CardContent>
@@ -203,15 +212,13 @@ export function ClipEditor({
 
         <aside className="flex w-[340px] min-h-0 shrink-0 flex-col gap-3 overflow-y-auto pr-1">
           <Card className="shrink-0 p-4">
-            <Tabs
-              value={selected !== null ? "edit" : "captions"}
-              onValueChange={(v) => {
-                if (v === "captions") setSelected(null);
-              }}
-            >
+            <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
               <TabsList className="w-full">
                 <TabsTrigger value="captions" className="flex-1">
                   Captions
+                </TabsTrigger>
+                <TabsTrigger value="overlays" className="flex-1">
+                  Add
                 </TabsTrigger>
                 <TabsTrigger value="edit" className="flex-1" disabled={selected === null}>
                   Selected
@@ -222,6 +229,15 @@ export function ClipEditor({
                 <CaptionControls
                   value={clip.captions}
                   onChange={(captions: CaptionStyle) => update({ ...clip, captions })}
+                />
+              </TabsContent>
+
+              <TabsContent value="overlays" className="pt-4">
+                <OverlayEditor
+                  projectId={projectId}
+                  clip={clip}
+                  atSec={playheadInSource}
+                  onChange={(edits) => update({ ...clip, edits })}
                 />
               </TabsContent>
 
@@ -238,7 +254,7 @@ export function ClipEditor({
                     }
                     onRemove={() => {
                       update({ ...clip, edits: clip.edits.filter((_, i) => i !== selected) });
-                      setSelected(null);
+                      select(null);
                     }}
                   />
                 ) : (
