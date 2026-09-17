@@ -6,6 +6,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { ensureWorkspace, projectDir } from "../src/lib/config";
+import { publishClips } from "../src/lib/editor/store";
 import { q } from "../src/lib/db";
 import { probe, extractAudio } from "../src/lib/media";
 import { transcribe, available as whisperAvailable, DEFAULT_MODEL } from "../src/lib/transcribe/whispercpp";
@@ -85,8 +86,9 @@ async function main() {
     source_path: videoPath,
     status: "ready",
     probe: JSON.stringify(meta),
-    edl: JSON.stringify(edl),
   });
+
+  publishClips(projectId, edl);
 
   console.log(`\nEDL → ${path.join(dir, "edl.json")}`);
   console.log(`UI  → http://localhost:3000/p/${projectId}`);

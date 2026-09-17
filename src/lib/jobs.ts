@@ -8,7 +8,7 @@ import { transcribe, available as whisperAvailable } from "./transcribe/whisperc
 import { Transcript } from "./transcript";
 import { computeSignals } from "./pipeline/signals";
 import { selectClips } from "./pipeline/select";
-import { Edl } from "./edl";
+import { readEditor, publishClips, RevisionConflict } from "./editor/store";
 import { downloadUrl, isUrl } from "./ingest";
 
 declare global {
@@ -16,7 +16,7 @@ declare global {
 }
 const running = (globalThis.__agentcutRunning ??= new Set<string>());
 
-export type JobKind = "analyze" | "render";
+export type JobKind = "analyze" | "render" | "edit";
 
 function log(projectId: string, jobId: string, kind: string, text: string, name?: string) {
   q.insertEvent({ project_id: projectId, job_id: jobId, kind, name: name ?? null, text, at: Date.now() });
@@ -29,11 +29,18 @@ export type AnalyzeOptions = {
   userBrief?: string;
   provider?: string;
   model?: string;
+  instruction?: string;
+  expectedRevision?: number;
 };
 
 export function startJob(projectId: string, kind: JobKind, options: AnalyzeOptions & { only?: string[] } = {}) {
+  if (!q.getProject(projectId)) throw new Error("Project not found");
+  if (options.expectedRevision !== undefined) {
+    const current = readEditor(projectId);
+    if (current.revision !== options.expectedRevision) throw new RevisionConflict(current);
+  }
   const existing = q.activeJob(projectId);
-  if (existing) return existing;
+  if (existing) throw new Error("A job is already running for this project");
   if (running.has(projectId)) throw new Error("a job is already running for this project");
 
   const now = Date.now();
@@ -69,6 +76,16 @@ async function execute(job: JobRow, options: AnalyzeOptions & { only?: string[] 
   if (!project) throw new Error("project not found");
   const dir = projectDir(project.id);
 
+  if (job.kind === "edit") {
+    const { runEditorAgent } = await import("./editor/agent");
+    q.setProject(project.id, { status: "agent", error: null });
+    await runEditorAgent(project.id, options.instruction ?? "", {
+      provider: options.provider, model: options.model,
+      onEvent: e => log(project.id, job.id, e.kind, e.text, e.name),
+    });
+    q.setProject(project.id, { status: "ready", error: null });
+    return;
+  }
   if (job.kind === "analyze") {
     let source = project.source_path;
     if (isUrl(source)) {
@@ -79,7 +96,7 @@ async function execute(job: JobRow, options: AnalyzeOptions & { only?: string[] 
     }
     return analyze(job, source, dir, options);
   }
-  return render(job, dir, options.only);
+  return render(job, dir, options.only, options.expectedRevision);
 }
 
 async function analyze(job: JobRow, sourcePath: string, dir: string, options: AnalyzeOptions) {
@@ -133,20 +150,20 @@ async function analyze(job: JobRow, sourcePath: string, dir: string, options: An
     },
   });
 
-  q.setProject(pid, { edl: JSON.stringify(edl), status: "ready", error: null });
+  publishClips(pid, edl);
+  q.setProject(pid, { status: "ready", error: null });
   log(pid, job.id, "stage", `ready — ${edl.clips.length} clips`);
 }
 
-async function render(job: JobRow, dir: string, only?: string[]) {
+async function render(job: JobRow, dir: string, only?: string[], expectedRevision?: number) {
   const pid = job.project_id;
   const project = q.getProject(pid);
   if (!project?.edl) throw new Error("no EDL yet — run analyze first");
-  const edl = Edl.parse(JSON.parse(project.edl));
 
   q.setProject(pid, { status: "rendering" });
-  const { renderClips } = await import("./render");
-  await renderClips(edl, dir, {
-    only,
+  const { renderProject } = await import("./editor/render");
+  await renderProject(pid, {
+    only, expectedRevision,
     onProgress: (p) => {
       if (p.stage === "bundling") {
         q.setJob(job.id, { stage: "bundling", progress: 0 });

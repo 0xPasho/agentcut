@@ -15,7 +15,8 @@ export async function GET() {
       name: p.name,
       status: p.status,
       createdAt: p.created_at,
-      clipCount: p.edl ? (JSON.parse(p.edl).clips?.length ?? 0) : 0,
+      sequenceCount: p.edl ? (JSON.parse(p.edl).sequences?.length ?? 0) : 0,
+                clipCount: p.edl ? (JSON.parse(p.edl).clips?.length ?? 0) : 0,
     })),
   });
 }

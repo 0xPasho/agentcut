@@ -72,8 +72,8 @@ export function Timeline({
           {ticks.map((t) => (
             <span
               key={t}
-              className="absolute top-0 bottom-0 flex flex-col justify-center border-l border-white/8 pl-1.5 font-mono text-[10px] text-white/35"
-              style={{ left: pct(t) }}
+              className="absolute top-0 bottom-0 flex flex-col justify-center border-l border-white/8 pl-1.5 font-mono text-xs text-muted-foreground"
+              style={{ left: pct(t), transform: t === total ? "translateX(-100%)" : undefined }}
             >
               <span>{clock(t)}</span>
             </span>
@@ -95,7 +95,7 @@ export function Timeline({
 
         return (
           <div key={lane.type} className="flex items-center gap-2">
-            <span className="w-14 shrink-0 text-[11px] text-white/45">{lane.label}</span>
+            <span className="w-14 shrink-0 text-xs text-muted-foreground">{lane.label}</span>
             <div className="relative h-7 flex-1 rounded-lg bg-black/40">
               {blocks.map(({ e, index }) => {
                 const start = srcToOut(map, e.t);

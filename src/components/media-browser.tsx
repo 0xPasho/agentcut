@@ -1,0 +1,103 @@
+"use client";
+import { useEffect, useRef, useState } from "react";
+import { ArrowUp, Film, Folder, ImageIcon, Loader2, Music, Plus, RefreshCw, Upload } from "lucide-react";
+import { api, assetFileUrl, type AssetSummary } from "@/lib/client";
+import type { Edl } from "@/lib/edl";
+import type { FolderListing } from "@/lib/editor/local-assets";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Card } from "./ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { ImageSearch } from "./image-search";
+import { AssetViewer, type ViewerAsset } from "./asset-viewer";
+
+export function MediaBrowser({ projectId, edl, beforeImport, afterImport, onBusy, onPlace, onPreview, onVideo, onVideoLayer, onRemoveVideo, videoAction = "Add to video", canPlace = true, children }: {
+  projectId: string; edl: Edl; beforeImport: () => Promise<boolean>; afterImport: () => Promise<void>;
+  onBusy: (busy: boolean) => void; onPlace: (asset: AssetSummary, mode?: "music" | "sfx") => void;
+  onPreview?: () => void; onVideo: (mediaId: string) => void; onVideoLayer?: (mediaId: string) => void; onRemoveVideo?: (mediaId: string) => void; videoAction?: string; canPlace?: boolean; children?: React.ReactNode;
+}) {
+  const [tab, setTab] = useState("project"), [filter, setFilter] = useState("");
+  const [selectedKey,setSelectedKey]=useState<string|null>(null),[kind,setKind]=useState("all");
+  const [assets, setAssets] = useState<AssetSummary[]>([]);
+  const [folder, setFolder] = useState(""); const [listing, setListing] = useState<FolderListing | null>(null);
+  const [pending, setPending] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
+  const input = useRef<HTMLInputElement>(null);
+  const refresh = async () => {
+    const results = await Promise.all(["image", "audio"].map(kind => api.editorTool<AssetSummary[]>(projectId, { tool: "assets.list", kind })));
+    setAssets(results.flat());
+  };
+  useEffect(() => { void refresh().catch(e => setError(e.message)); }, [projectId, tab]);
+  const run = async (fn: () => Promise<void>) => {
+    if (pending) return;
+    setPending(true); onBusy(true); setError(""); setNotice("");
+    try { await fn(); } catch(e) { setError((e as Error).message); }
+    finally { setPending(false); onBusy(false); }
+  };
+  const browse = (path?: string, offset = 0) => run(async () => {
+    const result = await api.editorTool<FolderListing>(projectId, { tool: "assets.browseLocal", folder: path || undefined, offset });
+    setListing(result); setFolder(result.path);
+  });
+  const importLocal = (file: string, kind: string) => run(async () => {
+    if (!(await beforeImport())) return;
+    if (kind === "video") {
+      const p = await api.getProject(projectId);
+      const imported=await api.editorTool<{edl:Edl}>(projectId, { tool: "media.import", file, expectedRevision: p.revision });
+      setSelectedKey(`video:${imported.edl.media.at(-1)!.id}`);
+      await afterImport();
+    } else {
+      const asset=await api.editorTool<AssetSummary>(projectId, { tool: "assets.importLocal", file });
+      setSelectedKey(`asset:${asset.id}`);
+    }
+    await refresh(); setTab("project"); setKind("all"); setFilter(""); setNotice("Imported. Choose where to use it.");
+  });
+  const upload = (files: File[]) => run(async () => {
+    if (!(await beforeImport())) return;
+    let mediaChanged = false;
+    try {
+      for (const file of files) {
+        if (/\.(mp4|mov|mkv|webm|m4v)$/i.test(file.name)) {
+          const p = await api.getProject(projectId); const form = new FormData(); form.append("file", file); form.append("expectedRevision", String(p.revision));
+          const response = await fetch(`/api/projects/${projectId}/media`, { method: "POST", body: form });
+          if (!response.ok) throw new Error((await response.json()).error);
+          mediaChanged = true;
+        } else await api.uploadAsset(file);
+      }
+      setTab(mediaChanged ? "project" : "library"); setNotice("Imported. Choose where to use it.");
+    } finally { if (mediaChanged) await afterImport(); await refresh(); }
+  });
+  const sources = [...(edl.media ?? [])];
+  if (edl.source && !sources.some(m => m.file === edl.source!.file)) sources.unshift({ ...edl.source, id: "primary_source", name: "Original source" });
+  const used = new Set([...edl.clips, ...(edl.sequences ?? []).flatMap(s => s.items.map(i => i.clip))].flatMap(c => c.edits.flatMap(e => "src" in e ? [e.src] : [])));
+  const match = (name: string) => name.toLowerCase().includes(filter.toLowerCase());
+  const visible = assets.filter(a => match(a.name) && (tab === "library" ? a.scope === "library" : a.project_id === projectId || a.in_project || used.has(a.id)));
+  const collection:ViewerAsset[] = [
+    ...(tab==='project'?sources.filter(m=>match(m.name)).map(m=>({key:`video:${m.id}`,id:m.id,name:m.name,kind:'video' as const,url:edl.media.some(source=>source.id===m.id)?`/api/projects/${projectId}/media/${m.id}`:`/api/projects/${projectId}/source`,duration:m.durationSec,width:m.width,height:m.height,used:edl.sequences.some(s=>s.items.some(i=>i.mediaId===m.id)) || (edl.source?.file===m.file&&!!edl.clips.length),removable:edl.media.some(source=>source.id===m.id)})):[]),
+    ...visible.filter(a=>a.kind==='image'||a.kind==='audio').map(a=>({key:`asset:${a.id}`,id:a.id,name:a.name,kind:a.kind as 'image'|'audio',url:assetFileUrl(a.id),duration:a.duration_sec,width:a.width,height:a.height,license:a.license,attribution:a.attribution,used:used.has(a.id)})),
+  ].filter(a=>kind==='all'||a.kind===kind);
+  const place=(asset:ViewerAsset,mode?:'music'|'sfx')=>{
+    if(asset.kind==='video')onVideo(asset.id);
+    else {const original=assets.find(a=>a.id===asset.id);if(original)onPlace(original,mode);}
+    setNotice("");
+  };
+  const viewer=<AssetViewer assets={collection} selectedKey={selectedKey} onSelect={key=>{setSelectedKey(key);onPreview?.();}} onPlace={place} onOverlay={onVideoLayer?a=>{onVideoLayer(a.id);setNotice("");}:undefined} onRemove={onRemoveVideo?a=>onRemoveVideo(a.id):undefined} disabled={!canPlace||pending} videoAction={videoAction} emptyMessage={filter||kind!=='all'?'No matching assets. Try another filter.':tab==='project'?'Import media or browse your folders to start building your video.':'Reusable images and audio live here. Import files or explore online images.'} />;
+  return <Card className="min-w-0 gap-4 rounded-3xl border-white/12 bg-card/95 p-3 shadow-[inset_0_1px_0_rgb(255_255_255/0.06)]" aria-busy={pending}>
+    <div className="flex items-center justify-between gap-2"><h2 className="text-sm font-semibold">Assets</h2><div className="flex gap-1"><Button variant="ghost" size="icon-sm" aria-label="Refresh assets" disabled={pending} onClick={() => run(refresh)}><RefreshCw /></Button><Button variant="outline" size="sm" disabled={pending} onClick={() => input.current?.click()}><Upload />Import</Button></div></div>
+    <input ref={input} type="file" multiple accept="video/*,image/*,audio/*" className="hidden" onChange={e => { const files = Array.from(e.target.files ?? []); e.target.value = ""; if (files.length) void upload(files); }} />
+    <Tabs value={tab} onValueChange={v => {setTab(String(v));setKind("all");}}>
+      <TabsList className="grid h-auto w-full grid-cols-4"><TabsTrigger value="project" className="px-1 text-xs">Project</TabsTrigger><TabsTrigger value="library" className="px-1 text-xs">Library</TabsTrigger><TabsTrigger value="folders" className="px-1 text-xs">Folders</TabsTrigger><TabsTrigger value="online" className="px-1 text-xs">Online</TabsTrigger></TabsList>
+      {(tab === "project" || tab === "library") && <div className="my-4 space-y-3"><Input aria-label="Filter assets" placeholder="Search your media…" value={filter} onChange={e => setFilter(e.target.value)} /><div aria-label="Asset type" className="flex flex-wrap gap-1">{[['all','All'],['video','Video'],['image','Images'],['audio','Audio']].filter(([value])=>tab==='project'||value!=='video').map(([value,label])=><Button key={value} variant={kind===value?'secondary':'ghost'} size="xs" aria-pressed={kind===value} onClick={()=>setKind(value)}>{label}</Button>)}</div></div>}
+      <TabsContent value="project" className="space-y-3">{viewer}{children}</TabsContent>
+      <TabsContent value="library" className="space-y-3">{viewer}</TabsContent>
+      <TabsContent value="folders" className="space-y-3 pt-3">
+        <p className="text-xs leading-relaxed text-muted-foreground">Browse a folder on this computer. Imported files are copied into your workspace.</p>
+        <form className="flex gap-2" onSubmit={e => { e.preventDefault(); void browse(folder); }}><Input aria-label="Folder path" value={folder} onChange={e => setFolder(e.target.value)} placeholder="~/Movies" /><Button type="submit" size="sm" variant="outline" disabled={pending}>Open</Button></form>
+        <div className="flex flex-wrap gap-2"><Button size="xs" variant="outline" disabled={pending} onClick={() => browse()}>Home folder</Button><Button size="xs" variant="ghost" disabled={pending || !listing?.parent} onClick={() => browse(listing!.parent!)}><ArrowUp />Up</Button></div>
+        {listing && <><p className="break-all text-[11px] text-muted-foreground">{listing.path}</p><ul className="space-y-1">{listing.entries.map(entry => <li key={entry.path} className="flex min-w-0 items-center gap-2 rounded-lg bg-white/3 px-2 py-2">{entry.kind === "folder" ? <Folder aria-hidden className="size-4 shrink-0 text-muted-foreground" /> : entry.kind === "video" ? <Film aria-hidden className="size-4 shrink-0 text-muted-foreground" /> : entry.kind === "image" ? <ImageIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" /> : <Music aria-hidden className="size-4 shrink-0 text-muted-foreground" />}{entry.kind === "folder" ? <button className="min-w-0 flex-1 break-words rounded text-left text-xs focus-visible:outline-2 focus-visible:outline-ring" disabled={pending} onClick={() => browse(entry.path)}>{entry.name}</button> : <><span className="min-w-0 flex-1 break-words text-xs">{entry.name}</span><Button variant="ghost" size="icon-sm" aria-label={`Import ${entry.name}`} disabled={pending} onClick={() => importLocal(entry.path, entry.kind)}><Plus /></Button></>}</li>)}</ul>{!listing.entries.length && <p className="text-xs text-muted-foreground">No supported media or subfolders in this folder.</p>}<div className="flex items-center justify-between gap-2"><Button size="xs" variant="ghost" disabled={pending || listing.offset === 0} onClick={() => browse(listing.path, Math.max(0,listing.offset-100))}>Previous</Button><span className="text-[10px] text-muted-foreground">{listing.total} entries</span><Button size="xs" variant="ghost" disabled={pending || listing.nextOffset === null} onClick={() => browse(listing.path, listing.nextOffset!)}>Next</Button></div></>}
+      </TabsContent>
+      <TabsContent value="online" className="space-y-3 pt-3"><p className="text-xs leading-relaxed text-muted-foreground">Search images from Wikimedia Commons and Openverse. Credits stay with the asset.</p><ImageSearch projectId={projectId} onAdopt={asset => { setAssets(old=>[...old.filter(a=>a.id!==asset.id),asset]); setSelectedKey(`asset:${asset.id}`); setTab("project"); setKind("all"); setFilter(""); void refresh().catch(e=>setError(e.message)); setNotice("Image imported. Preview it, then choose where to place it."); }} /></TabsContent>
+    </Tabs>
+    {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
+    <p className="text-[11px] leading-relaxed text-muted-foreground">Select to preview. Adding media is always a separate step.</p>
+    <p role="status" className="text-xs text-muted-foreground">{pending ? <span className="flex items-center gap-2"><Loader2 className="size-3 motion-safe:animate-spin" />Loading assets…</span> : notice}</p>
+  </Card>;
+}

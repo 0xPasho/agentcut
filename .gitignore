@@ -43,3 +43,6 @@ next-env.d.ts
 # clipsmith
 workspace/
 .env.local
+
+# Share configuration documentation without committing local configuration.
+!.env.example

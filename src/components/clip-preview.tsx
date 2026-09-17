@@ -24,16 +24,20 @@ export function ClipPreview({
     [clip, edl.output.fps],
   );
 
+  // A project without a primary source has nothing to play behind the edits; the clip
+  // still previews on black, framed by the output rather than by absent footage.
+  const source = edl.source;
   const inputProps = useMemo(
     () => ({
       clip,
-      sourceUrl,
-      sourceWidth: edl.source.width,
-      sourceHeight: edl.source.height,
+      sourceUrl: source ? sourceUrl : "",
+      sourceWidth: source?.width ?? edl.output.width,
+      sourceHeight: source?.height ?? edl.output.height,
+      hideVideo: !source,
       assetBase,
       assetUrls,
     }),
-    [clip, sourceUrl, assetBase, assetUrls, edl.source.width, edl.source.height],
+    [clip, sourceUrl, assetBase, assetUrls, source, edl.output.width, edl.output.height],
   );
 
   return (

@@ -1,5 +1,13 @@
 # Liquid Glass improvement review
 
+## Implementation update
+
+Implemented the shared Button, Glass, Input, Textarea, Tabs, Slider, Select, Dialog, Skeleton and Progress refinements. The import form now has an associated label, validation and mobile stacking. Library deletion uses a confirmation with cancellation and inline failure recovery. Navigation and inspected editing controls have accessible names; ready badges are neutral. The editor adapts to narrow screens, and timeline timestamps use readable secondary text. Full media thumbnails and further ambient-light experiments remain design proposals.
+
+Validation: `pnpm exec tsc --noEmit`, `pnpm build`, and `git diff --check` passed. Browser checks used Chrome/Playwright with an isolated temporary workspace. Home and editor were checked at 1280px and 320px, including screenshots and horizontal overflow. Automated WCAG A/AA checks returned no violations in the tested home, library, editor, and deletion-dialog states. Keyboard checks covered tabs, sliders, select options, and cancellation focus restoration; deletion failure keeps the dialog open and permits retry. Reduced-motion computed styles were checked for buttons, menus, and dialogs. Build emits three filesystem-tracing warnings in the unchanged `src/lib/fileServer.ts`. These checks do not constitute a full screen-reader or cross-browser audit.
+
+The review below records the original findings, before implementation. Its original verdict is retained as historical context.
+
 ## Scope and Coverage
 
 Full source review of the home/import and library surfaces and their shared controls, with targeted inspection of project/editor navigation and caption controls. Stack: Next.js 16, React 19, Base UI/shadcn, Tailwind 4. Conventions inspected: AGENTS.md, CLAUDE.md, DESIGN.md. Preserve Figtree, the dark palette, solid content surfaces, and glass on the navigation layer.

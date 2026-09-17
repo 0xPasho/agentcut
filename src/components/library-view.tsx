@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Glass } from "@/components/ui/glass";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose, DialogTrigger } from "@/components/ui/dialog";
 import { api, assetFileUrl, type AssetSummary } from "@/lib/client";
 
 export function LibraryView() {
@@ -44,21 +45,20 @@ export function LibraryView() {
     });
   };
 
-  const remove = (id: string) =>
-    start(async () => {
-      await api.deleteAsset(id);
-      setAssets((prev) => prev.filter((a) => a.id !== id));
-    });
+  const remove = async (id: string) => {
+    await api.deleteAsset(id);
+    setAssets((prev) => prev.filter((a) => a.id !== id));
+  };
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-6 px-6 pt-4 pb-14">
-      <Glass shape="capsule" thickness="thick" className="sticky top-4 z-20 flex items-center gap-3 px-4 py-2.5">
-        <Button variant="ghost" size="icon" render={<Link href="/" />}>
+    <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-6 px-4 sm:px-6 pt-4 pb-14">
+      <Glass shape="capsule" thickness="thick" className="sticky top-4 z-20 flex items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-4">
+        <Button aria-label="Back to projects" variant="ghost" size="icon" render={<Link href="/" />}>
           <ArrowLeft className="size-4" />
         </Button>
         <h1 className="flex-1 text-sm font-medium">Library</h1>
         <Button size="sm" disabled={pending} onClick={() => fileInput.current?.click()}>
-          {pending ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+          {pending ? <Loader2 className="size-4 motion-safe:animate-spin" /> : <Upload className="size-4" />}
           Upload
         </Button>
       </Glass>
@@ -89,9 +89,7 @@ export function LibraryView() {
                     <span className="min-w-0 flex-1 truncate text-xs" title={a.name}>
                       {a.name}
                     </span>
-                    <Button size="icon-xs" variant="ghost" onClick={() => remove(a.id)}>
-                      <Trash2 className="size-3.5" />
-                    </Button>
+                    <DeleteAsset asset={a} onRemove={remove} />
                   </CardContent>
                   {a.license ? (
                     <span className="px-3 pb-2 text-[10px] text-muted-foreground">{a.license}</span>
@@ -100,7 +98,7 @@ export function LibraryView() {
               ))}
             </div>
           ) : (
-            <Empty kind="images" />
+            <Empty kind="images" pending={pending} />
           )}
         </TabsContent>
 
@@ -108,45 +106,84 @@ export function LibraryView() {
           {assets.length ? (
             <div className="flex flex-col gap-2">
               {assets.map((a) => (
-                <Card key={a.id} className="flex flex-row items-center gap-3 px-4 py-3">
+                <Card key={a.id} className="flex flex-row flex-wrap items-center gap-3 px-4 py-3">
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{a.name}</p>
+                    <p className="break-words text-sm font-medium">{a.name}</p>
                     {a.duration_sec ? (
                       <p className="font-mono text-xs text-muted-foreground">
                         {a.duration_sec.toFixed(1)}s
                       </p>
                     ) : null}
                   </div>
-                  <audio controls preload="none" src={assetFileUrl(a.id)} className="h-8 max-w-[240px]" />
-                  <Button size="icon-sm" variant="ghost" onClick={() => remove(a.id)}>
-                    <Trash2 className="size-4" />
-                  </Button>
+                  <audio controls preload="none" src={assetFileUrl(a.id)} aria-label={`Preview ${a.name}`} className="order-last h-9 w-full sm:order-none sm:max-w-[240px]" />
+                  <DeleteAsset asset={a} onRemove={remove} />
                 </Card>
               ))}
             </div>
           ) : (
-            <Empty kind="sounds" />
+            <Empty kind="sounds" pending={pending} />
           )}
         </TabsContent>
       </Tabs>
 
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
 
       <p className="mt-auto text-xs text-muted-foreground">
         Anything dropped into <code className="font-mono">workspace/library/</code> is picked up
-        automatically. Nothing is bundled — shipping sounds would mean shipping their licences.
+        automatically.
       </p>
     </main>
   );
 }
 
-function Empty({ kind }: { kind: string }) {
+function Empty({ kind, pending }: { kind: string; pending: boolean }) {
   return (
     <Card>
       <CardContent className="py-10 text-center text-sm text-muted-foreground">
-        No {kind} yet. Upload some, or drop files into{" "}
-        <code className="font-mono">workspace/library/</code>.
+        {pending ? "Loading your library…" : `No ${kind} yet. Choose Upload to add your first file.`}
       </CardContent>
     </Card>
+  );
+}
+
+
+function DeleteAsset({ asset, onRemove }: { asset: AssetSummary; onRemove: (id: string) => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const remove = async () => {
+    setPending(true);
+    setError(null);
+    try {
+      await onRemove(asset.id);
+      setOpen(false);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => { if (!pending) { setOpen(next); setError(null); } }}>
+      <DialogTrigger render={<Button size="icon-sm" variant="ghost" aria-label={`Delete ${asset.name}`} />}>
+        <Trash2 aria-hidden className="size-4" />
+      </DialogTrigger>
+      <DialogContent showCloseButton={!pending}>
+        <DialogHeader>
+          <DialogTitle>Delete this asset?</DialogTitle>
+          <DialogDescription className="break-words">Remove “{asset.name}” from your library?</DialogDescription>
+        </DialogHeader>
+        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+        <DialogFooter>
+          <DialogClose render={<Button variant="outline" disabled={pending} />}>Cancel</DialogClose>
+          <Button variant="destructive" disabled={pending} onClick={remove}>
+            {pending && <Loader2 aria-hidden className="motion-safe:animate-spin" />}
+            {pending ? "Deleting…" : "Delete asset"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

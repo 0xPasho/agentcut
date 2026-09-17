@@ -63,15 +63,28 @@ function open(): DatabaseSync {
     CREATE INDEX IF NOT EXISTS assets_scope ON assets(kind, scope, project_id);
     CREATE UNIQUE INDEX IF NOT EXISTS assets_sha ON assets(sha256) WHERE sha256 IS NOT NULL;
   `);
+  const columns = db.prepare("PRAGMA table_info(projects)").all() as { name: string }[];
+  if (!columns.some(c => c.name === "revision")) db.exec("ALTER TABLE projects ADD COLUMN revision INTEGER NOT NULL DEFAULT 0");
+  db.exec("PRAGMA busy_timeout = 5000");
   return db;
 }
 
 export const db: DatabaseSync = globalThis.__agentcutDb ?? (globalThis.__agentcutDb = open());
+// A dev hot reload can reuse a connection opened before a migration existed.
+if (!(db.prepare("PRAGMA table_info(projects)").all() as { name: string }[]).some(c => c.name === "revision")) {
+  db.exec("ALTER TABLE projects ADD COLUMN revision INTEGER NOT NULL DEFAULT 0");
+}
+
+db.exec(`CREATE TABLE IF NOT EXISTS project_assets (
+  project_id TEXT NOT NULL, asset_id TEXT NOT NULL,
+  PRIMARY KEY (project_id, asset_id)
+)`);
 
 export type ProjectRow = {
   id: string;
   name: string;
   source_path: string;
+  revision: number;
   status: string;
   probe: string | null;
   edl: string | null;
@@ -134,7 +147,7 @@ function plainAll<T>(rows: unknown[]): T[] {
 }
 
 export const q = {
-  insertProject: (p: Omit<ProjectRow, "probe" | "edl" | "error" | "status">) =>
+  insertProject: (p: Omit<ProjectRow, "probe" | "edl" | "error" | "status" | "revision">) =>
     db
       .prepare("INSERT INTO projects (id, name, source_path, status, created_at) VALUES (?, ?, ?, 'new', ?)")
       .run(p.id, p.name, p.source_path, p.created_at),
@@ -145,7 +158,7 @@ export const q = {
   getProject: (id: string) =>
     plain<ProjectRow>(db.prepare("SELECT * FROM projects WHERE id = ?").get(id)),
 
-  setProject: (id: string, patch: Partial<Pick<ProjectRow, "status" | "probe" | "edl" | "error">>) => {
+  setProject: (id: string, patch: Partial<Pick<ProjectRow, "status" | "probe" | "error">>) => {
     const keys = Object.keys(patch);
     if (!keys.length) return;
     db.prepare(`UPDATE projects SET ${keys.map((k) => `${k} = ?`).join(", ")} WHERE id = ?`)
@@ -162,7 +175,6 @@ export const q = {
     source_path: string;
     status: string;
     probe?: string | null;
-    edl?: string | null;
   }) =>
     db
       .prepare(
@@ -173,12 +185,12 @@ export const q = {
            source_path = excluded.source_path,
            status = excluded.status,
            probe = COALESCE(excluded.probe, projects.probe),
-           edl = COALESCE(excluded.edl, projects.edl),
            error = NULL`,
       )
-      .run(p.id, p.name, p.source_path, p.status, p.probe ?? null, p.edl ?? null, Date.now()),
+      .run(p.id, p.name, p.source_path, p.status, p.probe ?? null, null, Date.now()),
 
   deleteProject: (id: string) => {
+    db.prepare("DELETE FROM project_assets WHERE project_id = ?").run(id);
     db.prepare("DELETE FROM events WHERE project_id = ?").run(id);
     db.prepare("DELETE FROM jobs WHERE project_id = ?").run(id);
     db.prepare("DELETE FROM projects WHERE id = ?").run(id);
@@ -227,19 +239,25 @@ export const q = {
   assetBySha: (sha: string) =>
     plain<AssetRow>(db.prepare("SELECT * FROM assets WHERE sha256 = ?").get(sha)),
 
+  promoteAsset: (id: string) => db.prepare("UPDATE assets SET scope = 'library', project_id = NULL WHERE id = ?").run(id),
+  linkAsset: (projectId: string, assetId: string) => db.prepare("INSERT OR IGNORE INTO project_assets (project_id, asset_id) VALUES (?, ?)").run(projectId, assetId),
+
   /** Library assets plus the ones belonging to this project. */
   listAssets: (kind: string, projectId?: string) =>
     plainAll<AssetRow>(
       db
         .prepare(
-          `SELECT * FROM assets
-           WHERE kind = ? AND (scope = 'library' OR project_id = ?)
+          `SELECT assets.*, EXISTS(SELECT 1 FROM project_assets pa WHERE pa.asset_id = assets.id AND pa.project_id = ?) AS in_project
+           FROM assets WHERE kind = ? AND (scope = 'library' OR project_id = ? OR EXISTS(SELECT 1 FROM project_assets pa WHERE pa.asset_id = assets.id AND pa.project_id = ?))
            ORDER BY created_at DESC`,
         )
-        .all(kind, projectId ?? ""),
+        .all(projectId ?? "", kind, projectId ?? "", projectId ?? ""),
     ),
 
-  deleteAsset: (id: string) => db.prepare("DELETE FROM assets WHERE id = ?").run(id),
+  deleteAsset: (id: string) => {
+    db.prepare("DELETE FROM project_assets WHERE asset_id = ?").run(id);
+    return db.prepare("DELETE FROM assets WHERE id = ?").run(id);
+  },
 
   insertEvent: (e: Omit<EventRow, "id">) =>
     db

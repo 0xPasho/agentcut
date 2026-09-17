@@ -4,13 +4,14 @@ import { bundle } from "@remotion/bundler";
 import { renderMedia, selectComposition } from "@remotion/renderer";
 import { enableTailwind } from "@remotion/tailwind-v4";
 import { serveDir } from "./fileServer";
-import { WORKSPACE } from "./config";
+import { sequenceFrames } from "./sequences";
+import { WORKSPACE, ROOT } from "./config";
 import type { Edl, Clip } from "./edl";
 import { creditsFor } from "./assets";
 import { serverAssetUrls } from "./assetUrls";
 import { buildTimeMap } from "./timeline";
 
-const ENTRY = path.join(process.cwd(), "remotion", "index.ts");
+const ENTRY = path.join(ROOT, "remotion", "index.ts");
 
 export type RenderProgress = {
   clipId: string;
@@ -22,15 +23,18 @@ export type RenderProgress = {
   stage: "bundling" | "rendering" | "done";
 };
 
-let cachedBundle: string | null = null;
+let cachedBundle: Promise<string> | null = null;
 
 async function getBundle() {
   if (cachedBundle) return cachedBundle;
-  cachedBundle = await bundle({
+  cachedBundle = bundle({
     entryPoint: ENTRY,
     publicDir: null,
+    // CLI and web processes may bundle concurrently. Reuse the finished in-process
+    // bundle, but do not let independent renderers share a mutable disk cache.
+    enableCaching: false,
     webpackOverride: enableTailwind,
-  });
+  }).catch(error => { cachedBundle = null; throw error; });
   return cachedBundle;
 }
 
@@ -45,41 +49,54 @@ export async function renderClips(
   opts.onProgress?.({ clipId: "", title: "", index: 0, total: 0, progress: 0, stage: "bundling" });
   // Serve the whole workspace: the source and the project's assets/ directory are
   // both under it, and a source picked from elsewhere in the workspace still resolves.
-  const [serveUrl, files] = await Promise.all([getBundle(), serveDir(WORKSPACE)]);
+  const [serveUrl, files] = await Promise.all([getBundle(), serveDir(WORKSPACE, {
+    // Only a project that has a primary source gets an alias for it.
+    ...(edl.source ? { "/__primary_source": edl.source.file } : {}),
+    ...Object.fromEntries((edl.media ?? []).map(m => [`/__media/${m.id}`, m.file])),
+  })]);
   const rel = (p: string) =>
     path
       .relative(WORKSPACE, path.resolve(p))
       .split(path.sep)
       .map(encodeURIComponent)
       .join("/");
-  const sourceUrl = `${files.url}/${rel(edl.source.file)}`;
+  const sourceUrl = edl.source ? `${files.url}/__primary_source` : "";
   const assetBase = `${files.url}/${rel(path.join(dir, "assets"))}/`;
   const assetUrls = serverAssetUrls(edl, edl.projectId, files.url);
 
   try {
-  const clips = opts.only?.length ? edl.clips.filter((c) => opts.only!.includes(c.id)) : edl.clips;
-  const outputs: Array<{ clip: Clip; file: string }> = [];
+  const all = [...edl.clips, ...(edl.sequences ?? [])];
+  const clips = opts.only?.length ? all.filter((c) => opts.only!.includes(c.id)) : all;
+  const outputs: Array<{ clip: { id: string; title: string }; file: string }> = [];
 
   for (const [index, clip] of clips.entries()) {
-    const inputProps = {
+    const sequence = "items" in clip ? clip : null;
+    if (sequence && !sequence.items.length) throw new Error(`Add a scene to “${sequence.title}” before exporting`);
+    if (!sequence && !edl.source) throw new Error(`“${clip.title}” is cut from a source video this project does not have`);
+    const output = sequence?.output ?? edl.output;
+    const inputProps = sequence ? {
+      sequence, media: edl.media,
+      mediaUrls: Object.fromEntries(edl.media.map(m => [m.id, `${files.url}/__media/${m.id}`])),
+      assetBase, assetUrls,
+    } : {
       clip,
       sourceUrl,
       assetBase,
       assetUrls,
-      sourceWidth: edl.source.width,
-      sourceHeight: edl.source.height,
+      sourceWidth: edl.source!.width,
+      sourceHeight: edl.source!.height,
     };
 
-    const composition = await selectComposition({ serveUrl, id: "Clip", inputProps });
+    const composition = await selectComposition({ serveUrl, id: sequence ? "VideoSequence" : "Clip", inputProps });
     const outputLocation = path.join(outDir, `${clip.id}-${slug(clip.title)}.mp4`);
 
     await renderMedia({
       composition: {
         ...composition,
-        durationInFrames: Math.max(1, Math.round(buildTimeMap(clip).duration * edl.output.fps)),
-        fps: edl.output.fps,
-        width: edl.output.width,
-        height: edl.output.height,
+        durationInFrames: sequence ? sequenceFrames(sequence).duration : Math.max(1, Math.round(buildTimeMap(clip as Clip).duration * output.fps)),
+        fps: output.fps,
+        width: output.width,
+        height: output.height,
       },
       serveUrl,
       codec: "h264",
@@ -117,7 +134,7 @@ export async function renderClips(
 
 /** CREDITS.txt next to the clips — the only place the licence obligation can be met. */
 async function writeCredits(edl: Edl, outDir: string) {
-  const refs = edl.clips.flatMap((c) =>
+  const refs = [...edl.clips, ...(edl.sequences ?? []).flatMap(s => s.items.map(i => i.clip))].flatMap((c) =>
     c.edits.filter((e) => e.type === "image").map((e) => (e as { src: string }).src),
   );
   const lines = creditsFor(refs);

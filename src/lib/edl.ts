@@ -167,22 +167,62 @@ export const Clip = z.object({
 });
 export type Clip = z.infer<typeof Clip>;
 
+/** Imported source media. Files live in the local project workspace. */
+export const MediaSource = z.object({
+  id: z.string().regex(/^[a-zA-Z0-9_-]+$/), name: z.string().min(1), file: z.string().min(1),
+  width: z.number().int().positive(), height: z.number().int().positive(),
+  fps: z.number().positive(), durationSec: z.number().positive(),
+});
+export type MediaSource = z.infer<typeof MediaSource>;
+/**
+ * One shot on a sequence timeline. `mediaId: null` is a canvas segment: the same
+ * editable clip properties — duration, captions, titles, images, music — with no
+ * source video behind them. Its geometry is bounded by the sequence output frame.
+ */
+export const ItemTransform = z.object({
+  x: z.number(), y: z.number(), width: z.number().positive(), height: z.number().positive(),
+  rotation: z.number(), opacity: z.number().min(0).max(1),
+});
+export type ItemTransform = z.infer<typeof ItemTransform>;
+export const DEFAULT_ITEM_TRANSFORM: ItemTransform = { x: 0, y: 0, width: 100, height: 100, rotation: 0, opacity: 1 };
+/** Placement uses output seconds and percentages of the output frame. Null/absent at appends on this layer. */
+export const ItemPlacement = z.object({
+  at: z.number().nonnegative().nullable().optional(), layer: z.number().int().nonnegative().optional(),
+  transform: ItemTransform.optional(), volume: z.number().min(0).max(2).optional(),
+  muted: z.boolean().optional(), hidden: z.boolean().optional(),
+});
+export const SequenceItem = z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]+$/), mediaId: z.string().nullable().default(null), clip: Clip, ...ItemPlacement.shape });
+export type SequenceItem = z.infer<typeof SequenceItem>;
+export const VideoSequence = z.object({
+  id: z.string().regex(/^[a-zA-Z0-9_-]+$/), title: z.string().min(1),
+  output: z.object({ width: z.number().int().positive(), height: z.number().int().positive(), fps: z.number().positive() }),
+  items: z.array(SequenceItem).default([]),
+});
+export type VideoSequence = z.infer<typeof VideoSequence>;
+
 export const Edl = z.object({
   version: z.literal(1).default(1),
   projectId: z.string(),
+  /**
+   * The primary source video a clipping project was analyzed from. `null` is a
+   * project that never had one — a video assembled from imported media, or an
+   * empty canvas. Imported media live in `media`, never promoted to this identity.
+   */
   source: z.object({
     file: z.string(),
     width: z.number(),
     height: z.number(),
     fps: z.number(),
     durationSec: z.number(),
-  }),
+  }).nullable().default(null),
   output: z.object({
     width: z.number().default(1080),
     height: z.number().default(1920),
     fps: z.number().default(30),
   }).prefault({}),
   clips: z.array(Clip),
+  media: z.array(MediaSource).default([]),
+  sequences: z.array(VideoSequence).default([]),
 });
 export type Edl = z.infer<typeof Edl>;
 

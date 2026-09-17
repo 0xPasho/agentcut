@@ -5,6 +5,9 @@ function Slider({
   className,
   defaultValue,
   value,
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledBy,
+  "aria-valuetext": ariaValueText,
   min = 0,
   max = 100,
   ...props
@@ -13,7 +16,7 @@ function Slider({
     ? value
     : Array.isArray(defaultValue)
       ? defaultValue
-      : [min, max]
+      : [typeof value === "number" ? value : typeof defaultValue === "number" ? defaultValue : min]
 
   return (
     <SliderPrimitive.Root
@@ -26,21 +29,25 @@ function Slider({
       thumbAlignment="edge"
       {...props}
     >
-      <SliderPrimitive.Control className="relative flex w-full touch-none items-center select-none data-disabled:opacity-50 data-vertical:h-full data-vertical:min-h-40 data-vertical:w-auto data-vertical:flex-col">
+      <SliderPrimitive.Control className="relative flex min-h-9 w-full touch-none items-center select-none data-disabled:opacity-50 data-vertical:h-full data-vertical:min-h-40 data-vertical:w-auto data-vertical:flex-col">
         <SliderPrimitive.Track
           data-slot="slider-track"
-          className="relative grow overflow-hidden rounded-full bg-white/12 select-none data-horizontal:h-[3px] data-horizontal:w-full data-vertical:h-full data-vertical:w-1"
+          className="relative grow overflow-hidden rounded-full bg-white/12 shadow-(--field-shadow) select-none data-horizontal:h-1 data-horizontal:w-full data-vertical:h-full data-vertical:w-1"
         >
           <SliderPrimitive.Indicator
             data-slot="slider-range"
-            className="bg-white/70 select-none data-horizontal:h-full data-vertical:w-full"
+            className="bg-linear-to-r from-white/45 to-white/80 select-none data-horizontal:h-full data-vertical:w-full"
           />
         </SliderPrimitive.Track>
         {Array.from({ length: _values.length }, (_, index) => (
           <SliderPrimitive.Thumb
             data-slot="slider-thumb"
             key={index}
-            className="relative block size-3.5 shrink-0 rounded-full border-0 bg-white shadow-[0_1px_4px_rgba(0,0,0,0.6)] ring-ring/50 transition-[color,box-shadow] select-none after:absolute after:-inset-2 hover:ring-3 focus-visible:ring-3 focus-visible:outline-hidden active:ring-3 disabled:pointer-events-none disabled:opacity-50"
+            index={index}
+            aria-label={ariaLabel}
+            aria-labelledby={ariaLabelledBy}
+            aria-valuetext={ariaValueText}
+            className="relative block size-4 shrink-0 rounded-full border border-white/60 bg-linear-to-b from-white to-neutral-300 shadow-[inset_0_1px_0_white,0_2px_6px_rgb(0_0_0/0.5)] ring-ring/50 transition-[border-color,box-shadow] duration-150 motion-reduce:transition-none select-none after:absolute after:-inset-2 hover:ring-3 has-focus-visible:ring-3 has-focus-visible:ring-ring focus-visible:ring-3 focus-visible:outline-hidden active:ring-3 disabled:pointer-events-none disabled:opacity-50"
           />
         ))}
       </SliderPrimitive.Control>

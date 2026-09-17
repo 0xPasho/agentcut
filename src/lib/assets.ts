@@ -46,6 +46,16 @@ export type RegisterInput = {
   attribution?: string;
 };
 
+function reuseAsset(asset: AssetRow, input: RegisterInput): AssetRow {
+  if (input.scope === "project" && input.projectId) q.linkAsset(input.projectId, asset.id);
+  if (input.scope === "library" && asset.scope !== "library") {
+    if (asset.project_id) q.linkAsset(asset.project_id, asset.id);
+    q.promoteAsset(asset.id);
+    return { ...asset, scope: "library", project_id: null };
+  }
+  return asset;
+}
+
 /**
  * Register a file that is already on disk. Content-hashed, so the same image
  * fetched twice is stored once and re-registration is a no-op.
@@ -57,7 +67,7 @@ export async function registerAsset(input: RegisterInput): Promise<AssetRow> {
 
   const sha = await sha256(abs);
   const existing = q.assetBySha(sha);
-  if (existing) return existing;
+  if (existing) return reuseAsset(existing, input);
 
   const row: AssetRow = {
     id: `a_${randomUUID().replace(/-/g, "").slice(0, 12)}`,
@@ -88,7 +98,14 @@ export async function registerAsset(input: RegisterInput): Promise<AssetRow> {
     // metadata is a nicety; a file we can't probe is still usable
   }
 
-  q.insertAsset(row);
+  try { q.insertAsset(row); }
+  catch (error) {
+    // Two importers can probe identical bytes concurrently. Reuse the winner.
+    const winner = q.assetBySha(sha);
+    if (!winner) throw error;
+    return reuseAsset(winner, input);
+  }
+  if (input.scope === "project" && input.projectId) q.linkAsset(input.projectId, row.id);
   return row;
 }
 
@@ -131,4 +148,15 @@ export function creditsFor(refs: string[]): string[] {
     lines.push(row.attribution);
   }
   return lines;
+}
+
+
+/** Shared ingestion for uploads from either interface. Never overwrite an existing library file. */
+export async function uploadLibraryAsset(name: string, bytes: Uint8Array): Promise<AssetRow> {
+  const kind = kindFor(name);
+  if (!kind) throw new Error("Choose a supported image or audio file");
+  await ensureLibrary();
+  const file = path.join(LIBRARY, kind === "audio" ? "audio" : "images", `${randomUUID()}-${path.basename(name)}`);
+  await fs.writeFile(file, bytes);
+  return registerAsset({ file, kind, scope: "library", name: path.basename(name), source: "upload" });
 }

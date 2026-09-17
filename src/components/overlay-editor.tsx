@@ -9,6 +9,7 @@ import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api, assetUrl } from "@/lib/client";
+import { ProjectAssets } from "./project-assets";
 import { ImageSearch } from "@/components/image-search";
 import { AudioPicker } from "@/components/audio-picker";
 import { fmt } from "@/lib/transcript";
@@ -21,11 +22,15 @@ const num = (v: number | readonly number[]) => (Array.isArray(v) ? v[0] : (v as 
 
 export function OverlayEditor({
   projectId,
+  mediaId,
+  canCapture = true,
   clip,
   atSec = 0,
   onChange,
 }: {
   projectId: string;
+  mediaId?: string;
+  canCapture?: boolean;
   clip: Clip;
   /** Where new overlays land, clip-relative. The editor passes its playhead. */
   atSec?: number;
@@ -37,7 +42,7 @@ export function OverlayEditor({
 
   const hook = clip.edits.find((e): e is TextEdit => e.type === "text");
   const images = clip.edits.filter((e): e is ImageEdit => e.type === "image");
-  const others = clip.edits.filter((e) => e.type !== "text");
+  const hookIndex = clip.edits.findIndex(e => e.type === "text");
 
   const setHook = (patch: Partial<TextEdit>) => {
     const next: TextEdit = {
@@ -49,7 +54,8 @@ export function OverlayEditor({
       style: hook?.style ?? "card",
       ...patch,
     };
-    onChange(next.text.trim() ? [next, ...others] : others);
+    if (hookIndex < 0) { if (next.text.trim()) onChange([...clip.edits, next]); }
+    else onChange(clip.edits.flatMap((edit, index) => index !== hookIndex ? [edit] : next.text.trim() ? [next] : []));
   };
 
   const patchImage = (index: number, patch: Partial<ImageEdit>) => {
@@ -76,12 +82,13 @@ export function OverlayEditor({
 
   /** Times are clip-relative, but the capture reads from the full source. */
   const addImage = () => {
+    if (!canCapture) return setError("This canvas scene has no source video. Import an image below instead.");
     const rel = parseTime(at);
     if (rel === null) return setError("Use seconds or m:ss");
     setError(null);
     start(async () => {
       try {
-        const { name } = await api.captureFrame(projectId, clip.start + rel);
+        const { name } = await api.captureFrame(projectId, clip.start + rel, mediaId);
         onChange([
           ...clip.edits,
           { type: "image", t: rel, d: 3, src: name, query: "", credit: "", y: 0.3, widthPct: 78, caption: "" },
@@ -97,7 +104,7 @@ export function OverlayEditor({
     <div className="flex flex-col gap-5">
       <section className="flex flex-col gap-3">
         <Label className="text-xs text-muted-foreground">Hook title</Label>
-        <Textarea
+        <Textarea aria-label="Hook title"
           rows={2}
           value={hook?.text ?? ""}
           onChange={(e) => setHook({ text: e.target.value })}
@@ -108,7 +115,7 @@ export function OverlayEditor({
             value={hook?.style ?? "card"}
             onValueChange={(v) => setHook({ style: v as TextEdit["style"] })}
           >
-            <SelectTrigger className="flex-1">
+            <SelectTrigger aria-label="Hook style" className="flex-1">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -120,7 +127,7 @@ export function OverlayEditor({
             value={hook?.position ?? "top"}
             onValueChange={(v) => setHook({ position: v as TextEdit["position"] })}
           >
-            <SelectTrigger className="flex-1">
+            <SelectTrigger aria-label="Hook position" className="flex-1">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -135,7 +142,7 @@ export function OverlayEditor({
             <Label className="flex justify-between text-xs text-muted-foreground">
               Shows for <span className="font-mono">{hook.d.toFixed(1)}s</span>
             </Label>
-            <Slider min={1} max={10} step={0.5} value={[hook.d]} onValueChange={(v) => setHook({ d: num(v) })} />
+            <Slider aria-label="Title duration" min={1} max={10} step={0.5} value={[hook.d]} onValueChange={(v) => setHook({ d: num(v) })} />
           </div>
         ) : null}
       </section>
@@ -146,20 +153,22 @@ export function OverlayEditor({
 
       <section className="flex flex-col gap-3 border-t border-border pt-4">
         <Label className="text-xs text-muted-foreground">
-          Images — grabbed from the stream itself
+          Images from the source video
         </Label>
         <div className="flex gap-2">
-          <Input
+          <Input aria-label="Capture time in this clip"
             value={at}
             onChange={(e) => setAt(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addImage()}
             placeholder="When in the clip, e.g. 0:12"
           />
-          <Button variant="outline" disabled={pending || !at.trim()} onClick={addImage}>
-            {pending ? <Loader2 className="size-4 animate-spin" /> : <ImagePlus className="size-4" />}
+          <Button aria-label="Capture source frame" variant="outline" disabled={!canCapture || pending || !at.trim()} onClick={addImage}>
+            {pending ? <Loader2 className="size-4 motion-safe:animate-spin" /> : <ImagePlus className="size-4" />}
           </Button>
         </div>
         {error ? <p className="text-xs text-destructive">{error}</p> : null}
+
+        <ProjectAssets projectId={projectId} onChoose={asset => onChange([...clip.edits, { type: "image", t: atSec, d: 3, src: asset.id, query: "", credit: asset.attribution ?? "", y: 0.3, widthPct: 78, caption: "" }])} />
 
         <ImageSearch
           projectId={projectId}
@@ -193,17 +202,17 @@ export function OverlayEditor({
               <span className="flex-1 font-mono text-xs text-muted-foreground">
                 {fmt(im.t)} · {im.d}s
               </span>
-              <Button size="icon" variant="ghost" onClick={() => removeImage(i)}>
+              <Button aria-label={`Remove image ${i + 1}`} size="icon" variant="ghost" onClick={() => removeImage(i)}>
                 <Trash2 className="size-4" />
               </Button>
             </div>
-            <Input
+            <Input aria-label={`Image ${i + 1} caption`}
               value={im.caption}
               onChange={(e) => patchImage(i, { caption: e.target.value })}
               placeholder="Caption (optional)"
               className="h-8"
             />
-            <Slider
+            <Slider aria-label={`Image ${i + 1} duration`}
               min={1}
               max={10}
               step={0.5}

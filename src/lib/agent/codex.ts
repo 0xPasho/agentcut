@@ -47,7 +47,13 @@ export const codexProvider: AgentProvider = {
           return;
         }
         const type = String(msg.type ?? "");
-        if (type.includes("agent_message") && typeof msg.message === "string") {
+        const item = msg.item as { type?: string; text?: string; command?: string } | undefined;
+        if (type === "item.completed" && item?.type === "agent_message" && typeof item.text === "string") {
+          text = item.text;
+          emit(makeEvent("text", text));
+        } else if (type === "item.completed" && item?.type === "command_execution") {
+          emit(makeEvent("tool", item.command ?? "", "Bash"));
+        } else if (type.includes("agent_message") && typeof msg.message === "string") {
           text = msg.message;
           emit(makeEvent("text", msg.message));
         } else if (type.includes("command") || type.includes("exec")) {

@@ -1,8 +1,6 @@
-import fs from "node:fs/promises";
-import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import { q } from "@/lib/db";
-import { LIBRARY, ensureLibrary, registerAsset, scanLibrary, kindFor } from "@/lib/assets";
+import { uploadLibraryAsset, ensureLibrary, scanLibrary, kindFor } from "@/lib/assets";
 
 export const runtime = "nodejs";
 
@@ -23,16 +21,7 @@ export async function POST(req: NextRequest) {
   const kind = kindFor(file.name);
   if (!kind) return NextResponse.json({ error: `unsupported: ${file.name}` }, { status: 400 });
 
-  const dest = path.join(LIBRARY, kind === "audio" ? "audio" : "images", file.name);
-  await fs.writeFile(dest, Buffer.from(await file.arrayBuffer()));
-
-  const asset = await registerAsset({
-    file: dest,
-    kind,
-    scope: "library",
-    name: file.name,
-    source: "upload",
-  });
+  const asset = await uploadLibraryAsset(file.name, new Uint8Array(await file.arrayBuffer()));
   return NextResponse.json({ asset });
 }
 

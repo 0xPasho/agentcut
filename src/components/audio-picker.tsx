@@ -29,18 +29,15 @@ export function AudioPicker({
 }) {
   const [sounds, setSounds] = useState<AssetSummary[]>([]);
 
-  useEffect(() => {
-    api
-      .listAssets("audio", projectId)
-      .then((r) => setSounds(r.assets))
-      .catch(() => setSounds([]));
-  }, [projectId]);
+  const loadSounds = () => api.editorTool<AssetSummary[]>(projectId, { tool: "assets.list", kind: "audio" }).then(setSounds);
+  useEffect(() => { void loadSounds().catch(() => setSounds([])); }, [projectId]);
 
   const music = clip.edits.find((e): e is MusicEdit => e.type === "music");
   const sfx = clip.edits.filter((e): e is SfxEdit => e.type === "sfx");
 
   const setMusic = (patch: Partial<MusicEdit> | null) => {
-    const rest = clip.edits.filter((e) => e.type !== "music");
+    const musicIndex = clip.edits.findIndex(e => e.type === "music");
+    const rest = clip.edits.filter((_, index) => index !== musicIndex);
     if (!patch) return onChange(rest);
     const next: MusicEdit = {
       type: "music",
@@ -54,13 +51,15 @@ export function AudioPicker({
       ...music,
       ...patch,
     };
-    onChange(next.src ? [next, ...rest] : rest);
+    if (!next.src) onChange(rest);
+    else if (musicIndex < 0) onChange([...clip.edits, next]);
+    else onChange(clip.edits.map((edit, index) => index === musicIndex ? next : edit));
   };
 
   if (!sounds.length) {
     return (
       <p className="text-xs text-muted-foreground">
-        No sounds yet.{" "}
+        No sounds yet. <Button size="xs" variant="outline" onClick={() => void loadSounds().catch(() => setSounds([]))}>Refresh sounds</Button>{" "}
         <Link href="/library" className="underline underline-offset-4">
           Add some to the library
         </Link>{" "}
@@ -71,12 +70,13 @@ export function AudioPicker({
 
   return (
     <div className="flex flex-col gap-5">
+      <Button variant="outline" size="xs" onClick={() => void loadSounds().catch(() => setSounds([]))}>Refresh sounds</Button>
       <section className="flex flex-col gap-3">
         <Label className="flex items-center gap-2 text-xs text-muted-foreground">
           <Music className="size-3.5" /> Music bed
         </Label>
         <Select value={music?.src ?? "none"} onValueChange={(v) => setMusic(!v || v === "none" ? null : { src: v })}>
-          <SelectTrigger>
+          <SelectTrigger aria-label="Music bed">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -94,9 +94,9 @@ export function AudioPicker({
             <Label className="flex justify-between text-xs text-muted-foreground">
               Level <span className="font-mono">{Math.round(music.gain * 100)}%</span>
             </Label>
-            <Slider
+            <Slider aria-label="Music volume"
               min={0}
-              max={1}
+              max={2}
               step={0.01}
               value={[music.gain]}
               onValueChange={(v) => setMusic({ gain: num(v) })}
@@ -120,9 +120,11 @@ export function AudioPicker({
       <section className="flex flex-col gap-3 border-t border-border pt-4">
         <Label className="text-xs text-muted-foreground">Sound effect at playhead</Label>
         <div className="flex flex-wrap gap-2">
-          {sounds.slice(0, 8).map((s) => (
+          {sounds.map((s) => (
             <Button
               key={s.id}
+              aria-label={`Add sound effect ${s.name}`}
+              title={s.name}
               size="xs"
               variant="outline"
               onClick={() =>

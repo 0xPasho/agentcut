@@ -1,3 +1,4 @@
+import type { EditorOperation, EditorSnapshot } from "./editor/operations";
 import type { Edl } from "./edl";
 import type { Probe } from "./media";
 
@@ -7,6 +8,7 @@ export type ProjectSummary = {
   status: string;
   createdAt: number;
   clipCount: number;
+  sequenceCount?: number;
 };
 
 export type JobState = {
@@ -25,14 +27,18 @@ export type ProjectDetail = {
   sourcePath: string;
   probe: Probe | null;
   edl: Edl | null;
+  revision: number;
   rendered: string[];
   job: JobState | null;
 };
 
 export type LogEvent = { id: number; kind: string; name: string | null; text: string; at: number };
 
+export class ApiError extends Error {
+  constructor(message: string, public status: number) { super(message); }
+}
 async function json<T>(res: Response): Promise<T> {
-  if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? res.statusText);
+  if (!res.ok) throw new ApiError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? res.statusText, res.status);
   return res.json() as Promise<T>;
 }
 
@@ -56,12 +62,18 @@ export const api = {
 
   deleteProject: (id: string) => fetch(`/api/projects/${id}`, { method: "DELETE" }).then(json<{ ok: true }>),
 
-  saveEdl: (id: string, edl: Edl) =>
+  edit: (id: string, expectedRevision: number, operations: EditorOperation[]) =>
     fetch(`/api/projects/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ edl }),
-    }).then(json<{ ok: true }>),
+      body: JSON.stringify({ expectedRevision, operations }),
+    }).then(json<EditorSnapshot>),
+
+  agentEdit: (id: string, instruction: string, expectedRevision: number) =>
+    fetch(`/api/projects/${id}/edit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instruction, expectedRevision }) }).then(json<{ job: JobState }>),
+
+  editorTool: <T>(id: string, call: unknown) =>
+    fetch(`/api/projects/${id}/editor`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(call) }).then(json<T>),
 
   analyze: (id: string, options: Record<string, unknown>) =>
     fetch(`/api/projects/${id}/analyze`, {
@@ -92,18 +104,18 @@ export const api = {
   listAssets: (kind: string, projectId: string) =>
     fetch(`/api/assets?kind=${kind}&projectId=${projectId}`).then(json<{ assets: AssetSummary[] }>),
 
-  captureFrame: (id: string, atSec: number) =>
+  captureFrame: (id: string, atSec: number, mediaId?: string) =>
     fetch(`/api/projects/${id}/asset`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ atSec }),
+      body: JSON.stringify({ atSec, mediaId }),
     }).then(json<{ name: string }>),
 
-  render: (id: string, only?: string[]) =>
+  render: (id: string, only?: string[], expectedRevision?: number) =>
     fetch(`/api/projects/${id}/render`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ only }),
+      body: JSON.stringify({ only, expectedRevision }),
     }).then(json<{ job: JobState }>),
 };
 
@@ -131,6 +143,9 @@ export type SearchHit = {
 };
 
 export type AssetSummary = {
+  in_project?: number;
+  scope?: "library" | "project";
+  project_id?: string | null;
   id: string;
   kind: string;
   name: string;

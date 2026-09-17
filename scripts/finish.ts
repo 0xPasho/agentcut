@@ -6,6 +6,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { projectDir } from "../src/lib/config";
+import { publishClips } from "../src/lib/editor/store";
 import { q } from "../src/lib/db";
 import { probe as probeFile } from "../src/lib/media";
 import { Transcript, fmt } from "../src/lib/transcript";
@@ -32,7 +33,8 @@ async function main() {
     transcript,
   });
 
-  q.setProject(id, { edl: JSON.stringify(edl), status: "ready", error: null });
+  publishClips(id, edl);
+  q.setProject(id, { status: "ready", error: null });
   console.log(`${edl.clips.length} clips`);
   for (const c of edl.clips) {
     console.log(`  ${String(c.score).padStart(3)}  ${fmt(c.start)}–${fmt(c.end)}  ${c.title}`);

@@ -25,7 +25,7 @@ const glassVariants = cva(
     "border border-transparent",
     "glass-surface",
     // A restrained specular, and a soft ambient shadow for separation.
-    "shadow-[inset_0_1px_0_0_var(--glass-specular),0_10px_36px_-12px_rgb(0_0_0/0.6)]",
+    "shadow-(--glass-shadow)",
     // Reduce Transparency: frostier, obscuring more of the content behind.
     "reduce-transparency:backdrop-blur-none reduce-transparency:glass-flat reduce-transparency:bg-popover",
     // Increase Contrast: predominantly solid, with a contrasting border.
@@ -58,7 +58,7 @@ const glassVariants = cva(
       thickness: {
         thin: "",
         thick:
-          "backdrop-blur-[calc(var(--glass-blur)*1.5)] shadow-[inset_0_1px_0_0_var(--glass-specular),0_20px_60px_-12px_rgb(0_0_0/0.7)]",
+          "[--glass-tint:var(--glass-tint-strong)] backdrop-blur-[calc(var(--glass-blur)*1.25)] shadow-(--glass-shadow-raised)",
       },
     },
     defaultVariants: { variant: "regular", shape: "panel", thickness: "thin", interactive: false },

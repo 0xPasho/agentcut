@@ -1,4 +1,6 @@
 import React from "react";
+import { SequenceComposition } from "./SequenceComposition";
+import { sequenceFrames } from "../src/lib/sequences";
 import { Composition } from "remotion";
 import "./tailwind.css";
 import { ClipComposition, type ClipProps } from "./ClipComposition";
@@ -13,6 +15,7 @@ const PLACEHOLDER: ClipProps = {
 };
 
 export const RemotionRoot: React.FC = () => (
+  <>
   <Composition
     id="Clip"
     component={ClipComposition}
@@ -25,4 +28,10 @@ export const RemotionRoot: React.FC = () => (
       durationInFrames: Math.max(1, Math.round(buildTimeMap(props.clip).duration * 30)),
     })}
   />
+  <Composition id="VideoSequence" component={SequenceComposition}
+    defaultProps={{ sequence: { id: "preview", title: "Preview", output: { width: 1920, height: 1080, fps: 30 }, items: [] }, media: [], mediaUrls: {} }}
+    width={1920} height={1080} fps={30} durationInFrames={1}
+    calculateMetadata={({ props }) => ({ ...props.sequence.output, durationInFrames: sequenceFrames(props.sequence).duration })}
+  />
+  </>
 );

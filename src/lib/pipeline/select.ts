@@ -115,7 +115,7 @@ export async function buildEdl(o: {
         crop: p.crop.length ? p.crop : [fallbackCrop],
         layout: p.layout ?? { type: "crop" as const },
         captions: CaptionStyle.parse(p.captions ?? {}),
-        words: wordsBetween(transcript, start, end).map((w) => ({ ...w, t: w.t - start })),
+        words: wordsBetween(transcript, start, end).map((w) => ({ ...w, t: Math.max(0, w.t - start), d: Math.min(w.t + w.d, end) - Math.max(w.t, start) })).filter(w => w.d > 0),
         edits: p.edits ?? [],
       };
     })
@@ -138,7 +138,6 @@ export async function buildEdl(o: {
   });
 
   await resolveImageQueries(edl, o.projectId);
-  await fs.writeFile(path.join(dir, "edl.json"), JSON.stringify(edl, null, 2));
   return edl;
 }
 

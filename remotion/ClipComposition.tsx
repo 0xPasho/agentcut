@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { AbsoluteFill, Audio, Sequence, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, Audio, Img, Sequence, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 import type { Clip, CropKeyframe, Edit, Region } from "../src/lib/edl";
 import { buildTimeMap, mapWords, srcToOut } from "../src/lib/timeline";
 import { duckedVolume, speechSpans } from "../src/lib/ducking";
@@ -20,6 +20,15 @@ export type ClipProps = {
    * server and in the browser — so whoever mounts the composition resolves them.
    */
   assetUrls?: Record<string, string>;
+  /**
+   * Compose the clip's edits without source video. Sequence canvas layers also set
+   * transparent so their titles, images, and audio can overlap footage below.
+   */
+  hideVideo?: boolean;
+  transparent?: boolean;
+  hideVisuals?: boolean;
+  volume?: number;
+  muted?: boolean;
 };
 
 /** Linear interpolation between crop keyframes, in source pixel space. */
@@ -48,6 +57,11 @@ export const ClipComposition: React.FC<ClipProps> = ({
   sourceHeight,
   assetBase = "",
   assetUrls = {},
+  hideVideo = false,
+  transparent = false,
+  hideVisuals = false,
+  volume = 1,
+  muted = false,
 }) => {
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
@@ -86,16 +100,19 @@ export const ClipComposition: React.FC<ClipProps> = ({
     );
   }, 1);
 
-  const shared = { sourceUrl, sourceWidth, sourceHeight, clipStart: clip.start, map, zoom };
+  const shared = { sourceUrl, sourceWidth, sourceHeight, clipStart: clip.start, map, zoom, volume, muted };
 
-  let video: React.ReactNode;
-  if (clip.layout.type === "split") {
+  let video: React.ReactNode = null;
+  if (hideVideo) {
+    video = null;
+  } else if (clip.layout.type === "split") {
     const topHeight = Math.round((height * clip.layout.topPct) / 100);
     video = (
       <div className="flex h-full w-full flex-col">
         <VideoRegion {...shared} region={clip.layout.top} boxWidth={width} boxHeight={topHeight} />
         <VideoRegion
           {...shared}
+          muted
           region={clip.layout.bottom}
           boxWidth={width}
           boxHeight={height - topHeight}
@@ -110,8 +127,8 @@ export const ClipComposition: React.FC<ClipProps> = ({
   }
 
   return (
-    <AbsoluteFill className="overflow-hidden bg-black">
-      {video}
+    <AbsoluteFill className="overflow-hidden" style={{ backgroundColor: transparent ? "transparent" : "black" }}>
+      <AbsoluteFill style={{ visibility: hideVisuals ? "hidden" : "visible" }}>{video}</AbsoluteFill>
 
       {music.map((m, i) => {
         const from = Math.round(srcToOut(map, m.t) * fps);
@@ -121,7 +138,8 @@ export const ClipComposition: React.FC<ClipProps> = ({
             <Audio
               src={urlFor(m.src)}
               loop={m.loop}
-              volume={(f) => (m.duck ? duckedVolume(spans, (from + f) / fps, m.gain) : m.gain)}
+              muted={muted}
+              volume={(f) => volume * (m.duck ? duckedVolume(spans, (from + f) / fps, m.gain) : m.gain)}
             />
           </Sequence>
         );
@@ -136,11 +154,12 @@ export const ClipComposition: React.FC<ClipProps> = ({
             durationInFrames={Math.max(1, Math.round(s.d * fps))}
             layout="none"
           >
-            <Audio src={urlFor(s.src)} volume={s.gain} />
+            <Audio src={urlFor(s.src)} muted={muted} volume={volume * s.gain} />
           </Sequence>
         );
       })}
 
+      <AbsoluteFill style={{ visibility: hideVisuals ? "hidden" : "visible" }}>
       {images.map((im, i) => {
         const start = srcToOut(map, im.t);
         const end = srcToOut(map, im.t + im.d);
@@ -152,16 +171,22 @@ export const ClipComposition: React.FC<ClipProps> = ({
           [0, 1, 1, 0],
           { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
         );
+        // Centring lives in the inline transform. Tailwind v4's -translate-y-1/2 sets
+        // the separate `translate` property, which composes with it and would lift the
+        // picture a further half-height off the mark `y` asks for.
         return (
           <div
             key={`img-${i}`}
-            className="absolute inset-x-0 flex -translate-y-1/2 flex-col items-center gap-3"
+            className="absolute inset-x-0 flex flex-col items-center gap-3"
             style={{ top: `${im.y * 100}%`, opacity: appear, transform: `translateY(-50%) scale(${0.96 + appear * 0.04})` }}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            {/* Remotion's Img holds the frame until the picture has decoded; a plain
+                <img> exports as an empty box. A reference that cannot be fetched is
+                skipped rather than failing the whole export. */}
+            <Img
               src={urlFor(im.src)}
               alt=""
+              onError={() => console.warn(`Image asset could not be loaded: ${im.src}`)}
               className="rounded-[28px] border-[6px] border-white object-contain shadow-[0_24px_60px_-12px_rgba(0,0,0,0.75)]"
               style={{ width: `${im.widthPct}%` }}
             />
@@ -187,7 +212,7 @@ export const ClipComposition: React.FC<ClipProps> = ({
             : "text-white [text-shadow:0_4px_18px_rgba(0,0,0,0.75)]";
         return (
           <div key={`tx-${i}`} className={`absolute inset-x-0 ${place} flex justify-center px-[7%]`}>
-            <span className={`text-center text-[64px] font-black leading-[1.12] tracking-tight ${card}`}>
+            <span data-canvas-title className={`text-center text-[64px] font-black leading-[1.12] tracking-tight ${card}`}>
               {tx.text}
             </span>
           </div>
@@ -195,6 +220,7 @@ export const ClipComposition: React.FC<ClipProps> = ({
       })}
 
       <Captions words={words} style={clip.captions} emphasis={emphasis} />
+      </AbsoluteFill>
     </AbsoluteFill>
   );
 };

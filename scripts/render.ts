@@ -1,6 +1,8 @@
 /** Render an EDL to mp4 clips: npx tsx scripts/render.ts <projectId|edl.json> [--only id,id] */
 import fs from "node:fs/promises";
 import path from "node:path";
+import { renderProject } from "../src/lib/editor/render";
+import { readEditor } from "../src/lib/editor/store";
 import { Edl } from "../src/lib/edl";
 import { projectDir } from "../src/lib/config";
 import { renderClips } from "../src/lib/render";
@@ -14,14 +16,14 @@ async function main() {
   const target = process.argv[2];
   if (!target) throw new Error("usage: tsx scripts/render.ts <projectId|path/to/edl.json>");
 
-  const edlPath = target.endsWith(".json") ? path.resolve(target) : path.join(projectDir(target), "edl.json");
-  const dir = path.dirname(edlPath);
-  const edl = Edl.parse(JSON.parse(await fs.readFile(edlPath, "utf8")));
+  const snapshot = target.endsWith(".json");
+  const dir = snapshot ? path.dirname(path.resolve(target)) : projectDir(target);
+  const edl = snapshot ? Edl.parse(JSON.parse(await fs.readFile(path.resolve(target), "utf8"))) : readEditor(target).edl;
 
   console.log(`rendering ${edl.clips.length} clips at ${edl.output.width}x${edl.output.height}`);
   let lastLine = "";
 
-  const outputs = await renderClips(edl, dir, {
+  const options: Parameters<typeof renderClips>[2] = {
     only: arg("only")?.split(","),
     onProgress: (p) => {
       if (p.stage === "bundling") return console.log("bundling composition…");
@@ -32,7 +34,8 @@ async function main() {
       }
       if (p.stage === "done") process.stdout.write("\n");
     },
-  });
+  };
+  const outputs = snapshot ? await renderClips(edl, dir, options) : (await renderProject(target, options)).outputs;
 
   console.log("");
   for (const o of outputs) {

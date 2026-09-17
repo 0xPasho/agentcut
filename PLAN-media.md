@@ -1,5 +1,8 @@
 # Plan — sound library, image library, image search
 
+Historical implementation plan. New media editing work must follow the shared UI/agent
+operation and asset-service contract in [EDITOR.md](./EDITOR.md).
+
 Three features that share one substrate: agentcut needs a concept of **assets** it
 doesn't currently have. Today the only asset is a frame grabbed from the source, stored
 as a bare filename in the project's `assets/` folder. Everything below builds on fixing

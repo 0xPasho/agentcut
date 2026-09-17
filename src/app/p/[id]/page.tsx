@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { q } from "@/lib/db";
 import { renderedClips } from "@/lib/clipFiles";
+import { readEditor } from "@/lib/editor/store";
 import { ProjectView } from "@/components/project-view";
 import type { ProjectDetail } from "@/lib/client";
 
@@ -18,10 +19,11 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     error: p.error,
     sourcePath: p.source_path,
     probe: p.probe ? JSON.parse(p.probe) : null,
-    edl: p.edl ? JSON.parse(p.edl) : null,
+    revision: p.revision,
+    edl: p.edl ? readEditor(id).edl : null,
     rendered: Object.keys(await renderedClips(id)),
     job: q.latestJob(id) ?? null,
   };
 
-  return <ProjectView initial={initial} />;
+  return <ProjectView key={id} initial={initial} />;
 }

@@ -36,7 +36,7 @@ export function ClipInspector({
       </div>
 
       <Field label="Starts at" value={`${edit.t.toFixed(2)}s`}>
-        <Slider
+        <Slider aria-label="Start time" aria-valuetext={`${edit.t.toFixed(2)} seconds`}
           min={0}
           max={Math.max(edit.t + 30, 60)}
           step={0.05}
@@ -46,12 +46,12 @@ export function ClipInspector({
       </Field>
 
       <Field label="Lasts" value={`${edit.d.toFixed(2)}s`}>
-        <Slider min={0.1} max={12} step={0.05} value={[edit.d]} onValueChange={(v) => patch({ d: num(v) })} />
+        <Slider aria-label="Duration" aria-valuetext={`${edit.d.toFixed(2)} seconds`} min={0.1} max={12} step={0.05} value={[edit.d]} onValueChange={(v) => patch({ d: num(v) })} />
       </Field>
 
       {edit.type === "punch" ? (
         <Field label="Zoom" value={`${edit.scale.toFixed(2)}×`}>
-          <Slider
+          <Slider aria-label="Zoom"
             min={1}
             max={1.6}
             step={0.01}
@@ -64,14 +64,14 @@ export function ClipInspector({
       {edit.type === "emphasis" ? (
         <div className="flex flex-col gap-2">
           <Label className="text-xs text-muted-foreground">Words to highlight</Label>
-          <Input
+          <Input aria-label="Words to highlight"
             value={edit.words.join(" ")}
             onChange={(e) =>
               patch({ words: e.target.value.split(/\s+/).filter(Boolean) } as Partial<Edit>)
             }
           />
           <Input
-            type="color"
+            aria-label="Highlight color" type="color"
             value={edit.color}
             onChange={(e) => patch({ color: e.target.value } as Partial<Edit>)}
             className="h-9 cursor-pointer p-1"
@@ -82,14 +82,14 @@ export function ClipInspector({
       {edit.type === "text" ? (
         <div className="flex flex-col gap-2">
           <Label className="text-xs text-muted-foreground">Title</Label>
-          <Textarea
+          <Textarea aria-label="Title"
             rows={3}
             value={edit.text}
             onChange={(e) => patch({ text: e.target.value } as Partial<Edit>)}
           />
           <div className="flex gap-2">
             <Select value={edit.style} onValueChange={(v) => patch({ style: v } as Partial<Edit>)}>
-              <SelectTrigger className="flex-1">
+              <SelectTrigger aria-label="Text style" className="flex-1">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -98,7 +98,7 @@ export function ClipInspector({
               </SelectContent>
             </Select>
             <Select value={edit.position} onValueChange={(v) => patch({ position: v } as Partial<Edit>)}>
-              <SelectTrigger className="flex-1">
+              <SelectTrigger aria-label="Text position" className="flex-1">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -119,13 +119,13 @@ export function ClipInspector({
             alt=""
             className="w-full rounded-xl border border-border object-cover"
           />
-          <Input
+          <Input aria-label="Image caption"
             value={edit.caption}
             onChange={(e) => patch({ caption: e.target.value } as Partial<Edit>)}
             placeholder="Caption (optional)"
           />
           <Field label="Width" value={`${Math.round(edit.widthPct)}%`}>
-            <Slider
+            <Slider aria-label="Image width"
               min={20}
               max={100}
               step={1}
@@ -134,7 +134,7 @@ export function ClipInspector({
             />
           </Field>
           <Field label="Vertical position" value={`${Math.round(edit.y * 100)}%`}>
-            <Slider
+            <Slider aria-label="Vertical position"
               min={0.05}
               max={0.95}
               step={0.01}

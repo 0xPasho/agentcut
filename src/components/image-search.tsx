@@ -18,6 +18,7 @@ export function ImageSearch({
   onAdopt: (asset: AssetSummary) => void;
 }) {
   const [query, setQuery] = useState("");
+  const [searchedQuery, setSearchedQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [adopting, setAdopting] = useState<string | null>(null);
@@ -28,7 +29,8 @@ export function ImageSearch({
     setError(null);
     start(async () => {
       try {
-        setHits((await api.searchImages(query)).hits);
+        setHits(await api.editorTool<SearchHit[]>(projectId, { tool: "assets.search", query }));
+        setSearchedQuery(query);
       } catch (e) {
         setError((e as Error).message);
       }
@@ -39,7 +41,7 @@ export function ImageSearch({
     setAdopting(hit.id);
     void (async () => {
       try {
-        const { asset } = await api.adoptHit(hit, projectId);
+        const asset = await api.editorTool<AssetSummary>(projectId, { tool: "assets.adopt", query: searchedQuery, provider: hit.provider, id: hit.id });
         onAdopt(asset);
       } catch (e) {
         setError((e as Error).message);
@@ -52,14 +54,14 @@ export function ImageSearch({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex gap-2">
-        <Input
+        <Input aria-label="Search images"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && run()}
           placeholder="Something nameable: proxmox, macbook air…"
         />
-        <Button variant="outline" disabled={pending || !query.trim()} onClick={run}>
-          {pending ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
+        <Button aria-label="Search images" variant="outline" disabled={pending || !query.trim()} onClick={run}>
+          {pending ? <Loader2 className="size-4 motion-safe:animate-spin" /> : <Search className="size-4" />}
         </Button>
       </div>
 
@@ -80,6 +82,7 @@ export function ImageSearch({
               type="button"
               onClick={() => adopt(hit)}
               disabled={adopting !== null}
+              aria-label={`Add ${hit.title}`}
               title={`${hit.title} · ${hit.license}`}
               className="group relative overflow-hidden rounded-xl border border-border outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
             >
@@ -87,7 +90,7 @@ export function ImageSearch({
               <img src={hit.thumbUrl} alt="" className="aspect-square w-full object-cover" />
               {adopting === hit.id ? (
                 <span className="absolute inset-0 grid place-items-center bg-black/60">
-                  <Loader2 className="size-4 animate-spin" />
+                  <Loader2 className="size-4 motion-safe:animate-spin" />
                 </span>
               ) : null}
               <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/90 to-transparent px-1.5 pt-4 pb-1 text-left text-[10px] text-white/80">

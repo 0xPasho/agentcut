@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowLeft, Download, Loader2, Play, SlidersHorizontal, Sparkles, Trash2, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,23 +18,31 @@ import { Glass, ScrollEdge } from "@/components/ui/glass";
 import { CaptionControls } from "@/components/caption-controls";
 import { OverlayEditor } from "@/components/overlay-editor";
 import { ClipPreview } from "@/components/clip-preview";
+import { patchFromClip } from "@/lib/editor/operations";
+import { useEditor } from "@/lib/editor/use-editor";
+import { EditorStatus } from "./editor-status";
+import { AgentEditor } from "./agent-editor";
+import { Clip } from "@/lib/edl";
 import { api, assetUrl, clipUrl, sourceUrl, thumbUrl, type LogEvent, type ProjectDetail } from "@/lib/client";
 import { fmt } from "@/lib/transcript";
-import type { CaptionStyle, Edit, Edl } from "@/lib/edl";
+import { sequenceFrames } from "@/lib/sequences";
+import type { CaptionStyle, Edit } from "@/lib/edl";
 
 const BUSY = new Set(["download", "probe", "transcribe", "signals", "agent", "rendering", "bundling"]);
 
 export function ProjectView({ initial }: { initial: ProjectDetail }) {
+  const router = useRouter();
   const [project, setProject] = useState(initial);
   const [events, setEvents] = useState<LogEvent[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(initial.edl?.clips[0]?.id ?? null);
   const [clipCount, setClipCount] = useState(6);
   const [brief, setBrief] = useState("");
-  const [saving, setSaving] = useState(false);
+  const editor = useEditor(initial.id, initial.edl ? { edl: initial.edl, revision: initial.revision } : null);
+  const saving = editor.saving;
   const [reanalyzing, setReanalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const edl = project.edl;
+  const edl = editor.snapshot?.edl ?? null;
   const busy = BUSY.has(project.status) || project.job?.status === "running";
   const selected = useMemo(
     () => edl?.clips.find((c) => c.id === selectedId) ?? edl?.clips[0] ?? null,
@@ -63,6 +72,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
   useEffect(() => {
     const es = new EventSource(`/api/projects/${initial.id}/events`);
     let lastStatus = initial.status;
+    let lastRevision = initial.revision;
 
     es.addEventListener("log", (e) => {
       const data = JSON.parse((e as MessageEvent).data) as LogEvent;
@@ -72,10 +82,12 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
     es.addEventListener("status", (e) => {
       const data = JSON.parse((e as MessageEvent).data) as {
         status: string;
+        revision: number;
         error: string | null;
         job: ProjectDetail["job"];
       };
       setProject((p) => ({ ...p, status: data.status, error: data.error, job: data.job }));
+      if (data.revision !== lastRevision) { lastRevision = data.revision; void refresh(); }
       if (data.status !== lastStatus) {
         lastStatus = data.status;
         if (data.status === "ready" || data.status === "error") void refresh();
@@ -88,6 +100,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
   const run = async (fn: () => Promise<unknown>) => {
     setError(null);
     try {
+      if (!(await editor.save())) return;
       await fn();
       await refresh();
     } catch (e) {
@@ -95,19 +108,8 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
     }
   };
 
-  const patchClip = async (patch: { captions?: CaptionStyle; edits?: Edit[] }) => {
-    if (!edl || !selected) return;
-    const next: Edl = {
-      ...edl,
-      clips: edl.clips.map((c) => (c.id === selected.id ? { ...c, ...patch } : c)),
-    };
-    setProject((p) => ({ ...p, edl: next }));
-    setSaving(true);
-    try {
-      await api.saveEdl(initial.id, next);
-    } finally {
-      setSaving(false);
-    }
+  const patchClip = (patch: { captions?: CaptionStyle; edits?: Edit[] }) => {
+    if (selected) editor.dispatch([patchFromClip(selected, { ...selected, ...patch })]);
   };
 
   return (
@@ -118,7 +120,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
         thickness="thick"
         className="sticky top-4 z-20 flex flex-wrap items-center gap-3 px-4 py-2.5"
       >
-        <Button variant="ghost" size="icon" render={<Link href="/" />}>
+        <Button aria-label="Back to projects" variant="ghost" size="icon" render={<Link href="/" />}>
           <ArrowLeft className="size-4" />
         </Button>
         <div className="min-w-0 flex-1">
@@ -130,11 +132,16 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
           </p>
         </div>
         <Badge variant={project.status === "error" ? "destructive" : "secondary"}>
-          {busy && <Loader2 className="mr-1 size-3 animate-spin" />}
+          {busy && <Loader2 className="mr-1 size-3 motion-safe:animate-spin" />}
           {project.job?.stage ?? project.status}
         </Badge>
       </Glass>
 
+      {edl && <Card className="flex flex-wrap items-start justify-between gap-4 p-5 sm:flex-row sm:items-center"><div><h2 className="font-medium">Your videos</h2><p className="mt-1 text-sm text-muted-foreground">Open any video in the editor, or start an empty canvas.</p></div><Button variant="outline" onClick={() => run(async () => {
+        const id = crypto.randomUUID().slice(0, 8);
+        editor.dispatch([{ type: "sequence.add", sequence: { id, title: "New video", output: edl.output, items: [] } }]);
+        if (await editor.save()) router.push(`/p/${initial.id}/edit?sequence=${id}`);
+      })}>New video</Button></Card>}
       {busy && project.job ? <Progress value={project.job.progress * 100} className="h-1.5" /> : null}
       {error || project.error ? (
         <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -144,6 +151,23 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
 
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
         <div className="flex flex-col gap-4">
+          {edl?.sequences.map((sequence) => (
+            <Card key={sequence.id} className="gap-3 p-4">
+              <div className="min-w-0">
+                <h2 className="truncate text-sm font-medium">{sequence.title}</h2>
+                <p className="mt-1 text-xs text-muted-foreground">{sequence.items.length ? `${fmt(sequenceFrames(sequence).duration / sequence.output.fps)} · ${sequence.items.length} timeline items` : "Empty canvas"}</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" render={<Link href={`/p/${initial.id}/edit?sequence=${sequence.id}`} />} onClick={async (event) => {
+                  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                  event.preventDefault();
+                  if (await editor.save()) router.push(`/p/${initial.id}/edit?sequence=${sequence.id}`);
+                }}><SlidersHorizontal className="size-3.5" />Open editor</Button>
+                {project.rendered.includes(sequence.id) && <Button size="sm" variant="ghost" render={<a href={clipUrl(initial.id, sequence.id)} download />}><Download className="size-3.5" />Download</Button>}
+                <Button size="icon-sm" variant="ghost" aria-label={`Delete video ${sequence.title}`} onClick={() => { if (window.confirm(`Delete video “${sequence.title}”?`)) editor.dispatch([{ type: "sequence.remove", sequenceId: sequence.id }]); }}><Trash2 className="size-4" /></Button>
+              </div>
+            </Card>
+          ))}
           {!edl || reanalyzing ? (
             <Card>
               <CardHeader>
@@ -153,7 +177,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                 <div className="flex items-end gap-3">
                   <div className="flex w-28 flex-col gap-2">
                     <Label className="text-xs text-muted-foreground">How many</Label>
-                    <Input
+                    <Input aria-label="Number of clips"
                       type="number"
                       min={1}
                       max={20}
@@ -169,13 +193,13 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                       void run(() => api.analyze(initial.id, { targetClipCount: clipCount, userBrief: brief }));
                     }}
                   >
-                    {busy ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+                    {busy ? <Loader2 className="size-4 motion-safe:animate-spin" /> : <Sparkles className="size-4" />}
                     Analyze with agent
                   </Button>
                 </div>
                 <div className="flex flex-col gap-2">
                   <Label className="text-xs text-muted-foreground">Direction (optional)</Label>
-                  <Textarea
+                  <Textarea aria-label="Direction (optional)"
                     rows={2}
                     value={brief}
                     onChange={(e) => setBrief(e.target.value)}
@@ -189,9 +213,9 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-medium text-muted-foreground">{edl.clips.length} clips</h2>
                 <div className="flex gap-2">
-                  <Button size="sm" variant="ghost" disabled={busy} onClick={() => setReanalyzing(true)}>
+                  <Button size="sm" variant="ghost" disabled={busy || !edl.source} onClick={() => setReanalyzing(true)}>
                     <Sparkles className="size-3.5" />
-                    Find again
+                    Find more clips
                   </Button>
                   <Button size="sm" variant="outline" disabled={busy} onClick={() => run(() => api.render(initial.id))}>
                     <Wand2 className="size-3.5" />
@@ -248,11 +272,12 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                         size="icon-sm"
                         variant="ghost"
                         aria-label={`Open ${clip.title} in the editor`}
-                        onClick={(e) => e.stopPropagation()}
+                        onClick={async e => { e.stopPropagation(); if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return; e.preventDefault(); if (await editor.save()) router.push(`/p/${initial.id}/c/${clip.id}`); }}
                         render={<Link href={`/p/${initial.id}/c/${clip.id}`} />}
                       >
                         <SlidersHorizontal className="size-4" />
                       </Button>
+                      <Button size="icon-sm" variant="ghost" aria-label={`Delete clip ${clip.title}`} onClick={e => { e.stopPropagation(); if (window.confirm(`Delete clip “${clip.title}”?`)) editor.dispatch([{ type: "clip.remove", clipId: clip.id }]); }}><Trash2 className="size-4" /></Button>
                       {isRendered ? (
                         <Button
                           size="icon"
@@ -270,6 +295,9 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
             </div>
           )}
 
+          {edl && <Card className="p-4"><EditorStatus editor={editor} /><AgentEditor projectId={initial.id} beforeRun={editor.save} />
+            <Button variant="outline" disabled={!edl.source} onClick={() => editor.dispatch([{ type: "clip.add", clip: Clip.parse({ id: crypto.randomUUID().slice(0, 8), title: "New clip", start: 0, end: Math.min(30, edl.source?.durationSec ?? 0) }) }])}>Add clip</Button>
+          </Card>}
           <Card className="gap-0 py-0">
             <CardHeader className="px-4 py-3">
               <CardTitle className="text-xs font-medium text-muted-foreground">Agent</CardTitle>
@@ -361,7 +389,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                 onClick={() => run(() => api.render(initial.id, [selected.id]))}
                 className="w-full"
               >
-                {busy ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
+                {busy ? <Loader2 className="size-4 motion-safe:animate-spin" /> : <Play className="size-4" />}
                 Render this clip
               </Button>
               <p className="text-center text-xs text-muted-foreground">

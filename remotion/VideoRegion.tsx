@@ -16,6 +16,8 @@ type Props = {
   clipStart: number;
   map: TimeMap;
   zoom?: number;
+  volume?: number;
+  muted?: boolean;
 };
 
 /**
@@ -34,6 +36,8 @@ export const VideoRegion: React.FC<Props> = ({
   clipStart,
   map,
   zoom = 1,
+  volume = 1,
+  muted = false,
 }) => {
   const { fps } = useVideoConfig();
 
@@ -76,6 +80,8 @@ export const VideoRegion: React.FC<Props> = ({
           >
             <OffthreadVideo
               src={sourceUrl}
+              volume={volume}
+              muted={muted}
               trimBefore={Math.round((clipStart + span.srcStart) * fps)}
               trimAfter={Math.round((clipStart + span.srcEnd) * fps)}
               style={{ width: sourceWidth, height: sourceHeight, position: "absolute", top: 0, left: 0 }}

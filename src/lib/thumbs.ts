@@ -11,6 +11,10 @@ import type { Clip, Edl } from "./edl";
  * on every render of the list.
  */
 export async function clipThumb(projectId: string, edl: Edl, clip: Clip): Promise<string> {
+  // Generated clips always have a primary source. Fail loudly rather than inventing
+  // source dimensions that would silently misframe the thumbnail.
+  const source = edl.source;
+  if (!source) throw new Error("This project has no source video to take a thumbnail from");
   const dir = path.join(projectDir(projectId), "thumbs");
   await fs.mkdir(dir, { recursive: true });
   const file = path.join(dir, `${clip.id}.jpg`);
@@ -20,12 +24,12 @@ export async function clipThumb(projectId: string, edl: Edl, clip: Clip): Promis
 
   // A second in, rather than the very first frame, which is often a cut.
   const at = Math.min(clip.start + 1, clip.end - 0.2);
-  const filter = buildFilter(edl, clip);
+  const filter = buildFilter(source, clip);
 
   await run(FFMPEG, [
     "-y",
     "-ss", String(at),
-    "-i", edl.source.file,
+    "-i", source.file,
     "-frames:v", "1",
     "-vf", filter,
     "-q:v", "5",
@@ -40,7 +44,7 @@ function rect(x: number, y: number, w: number, h: number) {
   return `crop=${round(w)}:${round(h)}:${round(x)}:${round(y)}`;
 }
 
-function buildFilter(edl: Edl, clip: Clip): string {
+function buildFilter(source: NonNullable<Edl["source"]>, clip: Clip): string {
   const W = 270;
   const H = 480;
 
@@ -56,6 +60,6 @@ function buildFilter(edl: Edl, clip: Clip): string {
     );
   }
 
-  const c = clip.crop[0] ?? { x: 0, y: 0, w: edl.source.width, h: edl.source.height };
+  const c = clip.crop[0] ?? { x: 0, y: 0, w: source.width, h: source.height };
   return `${rect(c.x, c.y, c.w, c.h)},scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}`;
 }

@@ -31,6 +31,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           const job = q.latestJob(id);
           const project = q.getProject(id);
           send("status", {
+            revision: project?.revision ?? 0,
             status: project?.status ?? "unknown",
             error: project?.error ?? null,
             job: job ? { id: job.id, kind: job.kind, status: job.status, stage: job.stage, progress: job.progress } : null,

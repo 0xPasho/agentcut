@@ -30,14 +30,17 @@ export type FileServer = { url: string; close: () => Promise<void> };
  * unusable for multi-gigabyte sources. Serving over loopback with Range support
  * lets both the renderer and the browser <Player> stream the same file.
  */
-export async function serveDir(dir: string): Promise<FileServer> {
+export async function serveDir(dir: string, registeredFiles: Record<string, string> = {}): Promise<FileServer> {
   const root = path.resolve(dir);
 
   const server = http.createServer(async (req, res) => {
     try {
       const name = decodeURIComponent((req.url ?? "/").split("?")[0]);
-      const target = path.resolve(root, `.${name}`);
-      if (!target.startsWith(root)) {
+      // Explicit source aliases also support legacy projects referencing local files
+      // outside the workspace, without exposing their parent directories.
+      const registered = Object.hasOwn(registeredFiles, name) ? registeredFiles[name] : undefined;
+      const target = registered ?? path.resolve(root, `.${name}`);
+      if (!registered && target !== root && !target.startsWith(root + path.sep)) {
         res.writeHead(403).end("forbidden");
         return;
       }

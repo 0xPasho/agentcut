@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { q } from "@/lib/db";
 import { renderedClips } from "@/lib/clipFiles";
-import { Edl } from "@/lib/edl";
+import { editProject, readEditor, RevisionConflict } from "@/lib/editor/store";
 
 export const runtime = "nodejs";
 
@@ -20,7 +20,8 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
     error: p.error,
     sourcePath: p.source_path,
     probe: p.probe ? JSON.parse(p.probe) : null,
-    edl: p.edl ? JSON.parse(p.edl) : null,
+    revision: p.revision,
+    edl: p.edl ? readEditor(id).edl : null,
     rendered: Object.keys(rendered),
     job: q.latestJob(id) ?? null,
   });
@@ -32,18 +33,13 @@ export async function DELETE(_req: NextRequest, { params }: Ctx) {
   return NextResponse.json({ ok: true });
 }
 
-/** Persist clip edits made in the UI (caption style, edit track, trim). */
+/** Both UI and agent submit the same revision-checked operations. */
 export async function PATCH(req: NextRequest, { params }: Ctx) {
   const { id } = await params;
-  const p = q.getProject(id);
-  if (!p?.edl) return NextResponse.json({ error: "no EDL" }, { status: 404 });
-
-  const body = (await req.json()) as { edl?: unknown };
-  const parsed = Edl.safeParse(body.edl);
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "invalid EDL" }, { status: 400 });
+  try {
+    return NextResponse.json(editProject(id, await req.json()));
+  } catch (error) {
+    if (error instanceof RevisionConflict) return NextResponse.json({ error: error.message, current: error.current }, { status: 409 });
+    return NextResponse.json({ error: (error as Error).message }, { status: 400 });
   }
-
-  q.setProject(id, { edl: JSON.stringify(parsed.data) });
-  return NextResponse.json({ ok: true });
 }

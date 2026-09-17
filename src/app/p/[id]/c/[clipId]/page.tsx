@@ -16,7 +16,8 @@ export default async function ClipEditorPage({
 
   const edl = Edl.parse(JSON.parse(project.edl));
   const clip = edl.clips.find((c) => c.id === clipId);
-  if (!clip) notFound();
+  const timeline = edl.sequences.find((sequence) => sequence.id === clipId);
+  if (!clip && !timeline) notFound();
 
-  return <ClipEditor projectId={id} projectName={project.name} edl={edl} clipId={clipId} />;
+  return <ClipEditor key={`${id}:${clipId}`} projectId={id} projectName={project.name} edl={edl} revision={project.revision} clipId={clipId} />;
 }

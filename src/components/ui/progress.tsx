@@ -44,7 +44,7 @@ function ProgressIndicator({
   return (
     <ProgressPrimitive.Indicator
       data-slot="progress-indicator"
-      className={cn("h-full bg-gradient-to-r from-[oklch(0.93_0.16_98)] to-[oklch(0.83_0.17_92)] transition-all", className)}
+      className={cn("h-full bg-gradient-to-r from-[oklch(0.93_0.16_98)] to-[oklch(0.83_0.17_92)] transition-[width,transform] duration-200 motion-reduce:transition-none", className)}
       {...props}
     />
   )

@@ -13,12 +13,12 @@ export default function Home() {
   const projects = q.listProjects();
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-8 px-6 pt-4 pb-14">
+    <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-8 px-4 sm:px-6 pt-4 pb-14">
       {/* Navigation layer: glass floats above the content. */}
       <Glass
         shape="capsule"
         thickness="thick"
-        className="sticky top-4 z-20 flex items-center gap-3 px-5 py-3"
+        className="sticky top-4 z-20 flex items-center gap-2 px-3 py-3 sm:gap-3 sm:px-5"
       >
         <Clapperboard className="size-6 shrink-0 text-primary" />
         <h1 className="text-xl font-semibold tracking-tight">agentcut</h1>
@@ -44,6 +44,7 @@ export default function Home() {
                 name: p.name,
                 status: p.status,
                 createdAt: p.created_at,
+                sequenceCount: p.edl ? (JSON.parse(p.edl).sequences?.length ?? 0) : 0,
                 clipCount: p.edl ? (JSON.parse(p.edl).clips?.length ?? 0) : 0,
               }}
             />
@@ -51,9 +52,9 @@ export default function Home() {
         </section>
       ) : null}
 
-      <footer className="mt-auto flex items-center gap-2 text-xs text-muted-foreground">
+      <footer className="mt-auto flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <Trash2 className="size-3" />
-        Everything stays in <code className="font-mono">./workspace</code> on this machine.
+        Projects and media stay in your local workspace on this machine.
       </footer>
     </main>
   );

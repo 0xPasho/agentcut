@@ -3,14 +3,14 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Trash2 } from "lucide-react";
+import { Check, Film, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { api, type ProjectSummary } from "@/lib/client";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  ready: "default",
+  ready: "secondary",
   error: "destructive",
   new: "outline",
 };
@@ -27,19 +27,21 @@ export function ProjectRow({ project }: { project: ProjectSummary }) {
     });
 
   return (
-    <Card className="flex flex-row items-center gap-3 px-2 py-2 transition-colors hover:bg-white/[0.07]">
+    <Card className="flex flex-row flex-wrap items-center gap-3 px-2 py-2 transition-colors hover:bg-white/[0.07]">
       <Link
         href={`/p/${project.id}`}
-        className="flex min-w-0 flex-1 items-center gap-4 rounded-xl px-2 py-1 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl sm:gap-4 px-2 py-1 outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
+        <div aria-hidden className="hidden size-11 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/5 shadow-(--control-highlight) sm:flex"><Film className="size-5 text-muted-foreground" /></div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{project.name}</p>
-          <p className="font-mono text-xs text-muted-foreground">{project.id}</p>
+          <p className="break-words text-sm font-medium">{project.name}</p>
+
         </div>
+        {!!project.sequenceCount && <span className="shrink-0 text-xs text-muted-foreground">{project.sequenceCount} videos</span>}
         {project.clipCount ? (
           <span className="shrink-0 text-xs text-muted-foreground">{project.clipCount} clips</span>
         ) : null}
-        <Badge variant={STATUS_VARIANT[project.status] ?? "secondary"}>{project.status}</Badge>
+        <Badge variant={STATUS_VARIANT[project.status] ?? "secondary"}>{project.status === "ready" && <Check aria-hidden />}{project.status}</Badge>
       </Link>
 
       {confirming ? (

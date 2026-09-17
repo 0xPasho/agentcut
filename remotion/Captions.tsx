@@ -50,7 +50,7 @@ export const Captions: React.FC<Props> = ({ words, style, emphasis }) => {
         return (
           <span
             key={`${i}-${w.t}`}
-            className="inline-block leading-[1.15] transition-transform"
+            className="inline-block leading-[1.15]"
             style={{
               fontFamily: style.fontFamily === "Inter" ? inter : style.fontFamily,
               fontWeight: style.fontWeight,
@@ -58,6 +58,8 @@ export const Captions: React.FC<Props> = ({ words, style, emphasis }) => {
               color,
               WebkitTextStroke: `${style.strokeWidth}px #000`,
               paintOrder: "stroke fill",
+              // Frame-driven only: CSS transitions depend on render wall time and
+              // produce different frames across preview and export workers.
               transform: `scale(${active ? 1.08 : 1})`,
               textShadow: "0 4px 14px rgba(0,0,0,0.55)",
             }}

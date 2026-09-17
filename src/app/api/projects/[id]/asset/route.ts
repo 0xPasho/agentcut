@@ -2,8 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import { projectDir } from "@/lib/config";
-import { q } from "@/lib/db";
-import { grabFrame } from "@/lib/media";
+import { captureAsset } from "@/lib/editor/tools";
 
 export const runtime = "nodejs";
 
@@ -16,25 +15,12 @@ export const runtime = "nodejs";
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const project = q.getProject(id);
-  if (!project) return NextResponse.json({ error: "no project" }, { status: 404 });
-
-  const body = (await req.json()) as { atSec?: number };
-  const at = Number(body.atSec);
-  if (!Number.isFinite(at) || at < 0) {
-    return NextResponse.json({ error: "atSec required" }, { status: 400 });
-  }
-
-  const dir = path.join(projectDir(id), "assets");
-  await fs.mkdir(dir, { recursive: true });
-  const name = `frame-${Math.round(at * 100)}.jpg`;
-
   try {
-    await grabFrame(project.source_path, at, path.join(dir, name), 1280);
-    return NextResponse.json({ name });
-  } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
-  }
+    const body = await req.json();
+    const asset = await captureAsset(id, body.atSec, body.mediaId);
+    return NextResponse.json({ name: asset.id, asset });
+  } catch (e) { return NextResponse.json({ error: (e as Error).message }, { status: 400 }); }
+
 }
 
 /** Files already captured or dropped into assets/. */

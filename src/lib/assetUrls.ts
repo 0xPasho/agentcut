@@ -6,7 +6,7 @@ import type { Edl } from "./edl";
 /** Every asset reference an EDL makes, across images, sfx and music. */
 export function assetRefs(edl: Edl): string[] {
   const refs = new Set<string>();
-  for (const clip of edl.clips) {
+  for (const clip of [...edl.clips, ...(edl.sequences ?? []).flatMap(s => s.items.map(i => i.clip))]) {
     for (const edit of clip.edits) {
       if (edit.type === "image" || edit.type === "sfx" || edit.type === "music") {
         if (edit.src) refs.add(edit.src);
