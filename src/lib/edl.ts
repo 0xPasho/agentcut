@@ -95,14 +95,19 @@ export const TextEdit = z.object({
 });
 
 /**
- * An image alongside the captions. `src` names a file in the project's `assets/`
- * directory, so the renderer and the browser Player can both resolve it.
+ * An image alongside the captions.
+ *
+ * `src` is an asset id. Older EDLs hold a bare filename in the project's assets/
+ * folder and still resolve. `query` is what the agent writes instead: it has no
+ * network access, so it describes what to show and the resolver finds it.
  */
 export const ImageEdit = z.object({
   type: z.literal("image"),
   t: z.number(),
   d: z.number().default(3),
-  src: z.string(),
+  src: z.string().default(""),
+  query: z.string().default(""),
+  credit: z.string().default(""),
   /** Where it sits in the frame, 0..1 of height. */
   y: z.number().min(0).max(1).default(0.3),
   /** Share of frame width. */

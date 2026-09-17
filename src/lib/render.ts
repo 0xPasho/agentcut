@@ -6,6 +6,7 @@ import { enableTailwind } from "@remotion/tailwind-v4";
 import { serveDir } from "./fileServer";
 import { WORKSPACE } from "./config";
 import type { Edl, Clip } from "./edl";
+import { creditsFor } from "./assets";
 import { buildTimeMap } from "./timeline";
 
 const ENTRY = path.join(process.cwd(), "remotion", "index.ts");
@@ -104,10 +105,25 @@ export async function renderClips(
     });
   }
 
+  await writeCredits(edl, outDir);
   return outputs;
   } finally {
     await files.close();
   }
+}
+
+/** CREDITS.txt next to the clips — the only place the licence obligation can be met. */
+async function writeCredits(edl: Edl, outDir: string) {
+  const refs = edl.clips.flatMap((c) =>
+    c.edits.filter((e) => e.type === "image").map((e) => (e as { src: string }).src),
+  );
+  const lines = creditsFor(refs);
+  const file = path.join(outDir, "CREDITS.txt");
+  if (!lines.length) return void (await fs.rm(file, { force: true }));
+  await fs.writeFile(
+    file,
+    ["Images used in these clips require the credits below.", "", ...lines.map((l) => `- ${l}`), ""].join("\n"),
+  );
 }
 
 function slug(s: string) {

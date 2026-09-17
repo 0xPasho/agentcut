@@ -70,6 +70,19 @@ export const api = {
       body: JSON.stringify(options),
     }).then(json<{ job: JobState }>),
 
+  searchImages: (q: string) =>
+    fetch(`/api/search/images?q=${encodeURIComponent(q)}`).then(json<{ hits: SearchHit[] }>),
+
+  adoptHit: (hit: SearchHit, projectId: string) =>
+    fetch("/api/search/images", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hit, projectId }),
+    }).then(json<{ asset: AssetSummary }>),
+
+  listAssets: (kind: string, projectId: string) =>
+    fetch(`/api/assets?kind=${kind}&projectId=${projectId}`).then(json<{ assets: AssetSummary[] }>),
+
   captureFrame: (id: string, atSec: number) =>
     fetch(`/api/projects/${id}/asset`, {
       method: "POST",
@@ -85,8 +98,37 @@ export const api = {
     }).then(json<{ job: JobState }>),
 };
 
-export const assetUrl = (id: string, name: string) =>
-  `/api/projects/${id}/asset/${encodeURIComponent(name)}`;
+export const assetUrl = (projectId: string, ref: string) =>
+  // An asset id resolves through the library route; a bare filename is an older
+  // EDL pointing at the project's own assets folder.
+  ref.startsWith("a_")
+    ? `/api/assets/${ref}/file`
+    : `/api/projects/${projectId}/asset/${encodeURIComponent(ref)}`;
+
+export type SearchHit = {
+  provider: string;
+  id: string;
+  title: string;
+  url: string;
+  thumbUrl: string;
+  pageUrl: string;
+  license: string;
+  creator?: string;
+  width: number;
+  height: number;
+  relevance: number;
+};
+
+export type AssetSummary = {
+  id: string;
+  kind: string;
+  name: string;
+  license: string | null;
+  attribution: string | null;
+  width: number | null;
+  height: number | null;
+  duration_sec: number | null;
+};
 
 export const sourceUrl = (id: string) => `/api/projects/${id}/source`;
 export const thumbUrl = (id: string, clipId: string) =>

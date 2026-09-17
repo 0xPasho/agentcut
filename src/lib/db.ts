@@ -42,6 +42,26 @@ function open(): DatabaseSync {
       at         INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS events_project ON events(project_id, id);
+    CREATE TABLE IF NOT EXISTS assets (
+      id           TEXT PRIMARY KEY,
+      kind         TEXT NOT NULL,
+      scope        TEXT NOT NULL,
+      project_id   TEXT,
+      path         TEXT NOT NULL,
+      name         TEXT NOT NULL,
+      tags         TEXT NOT NULL DEFAULT '',
+      source       TEXT NOT NULL,
+      source_url   TEXT,
+      license      TEXT,
+      attribution  TEXT,
+      width        INTEGER,
+      height       INTEGER,
+      duration_sec REAL,
+      sha256       TEXT,
+      created_at   INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS assets_scope ON assets(kind, scope, project_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS assets_sha ON assets(sha256) WHERE sha256 IS NOT NULL;
   `);
   return db;
 }
@@ -69,6 +89,25 @@ export type JobRow = {
   error: string | null;
   created_at: number;
   updated_at: number;
+};
+
+export type AssetRow = {
+  id: string;
+  kind: "image" | "audio" | "video";
+  scope: "library" | "project";
+  project_id: string | null;
+  path: string;
+  name: string;
+  tags: string;
+  source: string;
+  source_url: string | null;
+  license: string | null;
+  attribution: string | null;
+  width: number | null;
+  height: number | null;
+  duration_sec: number | null;
+  sha256: string | null;
+  created_at: number;
 };
 
 export type EventRow = {
@@ -172,6 +211,35 @@ export const q = {
     plain<JobRow>(
       db.prepare("SELECT * FROM jobs WHERE project_id = ? ORDER BY created_at DESC LIMIT 1").get(projectId),
     ),
+
+  insertAsset: (a: AssetRow) =>
+    db
+      .prepare(
+        `INSERT INTO assets (id, kind, scope, project_id, path, name, tags, source, source_url,
+                             license, attribution, width, height, duration_sec, sha256, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(a.id, a.kind, a.scope, a.project_id, a.path, a.name, a.tags, a.source, a.source_url,
+           a.license, a.attribution, a.width, a.height, a.duration_sec, a.sha256, a.created_at),
+
+  getAsset: (id: string) => plain<AssetRow>(db.prepare("SELECT * FROM assets WHERE id = ?").get(id)),
+
+  assetBySha: (sha: string) =>
+    plain<AssetRow>(db.prepare("SELECT * FROM assets WHERE sha256 = ?").get(sha)),
+
+  /** Library assets plus the ones belonging to this project. */
+  listAssets: (kind: string, projectId?: string) =>
+    plainAll<AssetRow>(
+      db
+        .prepare(
+          `SELECT * FROM assets
+           WHERE kind = ? AND (scope = 'library' OR project_id = ?)
+           ORDER BY created_at DESC`,
+        )
+        .all(kind, projectId ?? ""),
+    ),
+
+  deleteAsset: (id: string) => db.prepare("DELETE FROM assets WHERE id = ?").run(id),
 
   insertEvent: (e: Omit<EventRow, "id">) =>
     db

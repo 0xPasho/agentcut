@@ -5,6 +5,7 @@ import { grabFrame, type Probe } from "../media";
 import { toAgentText, wordsBetween, type Transcript } from "../transcript";
 import { AgentClipProposals, CaptionStyle, Edl, centerCrop, type Clip } from "../edl";
 import { resolveProvider, type AgentEvent } from "../agent";
+import { resolveQuery } from "../search";
 import { buildSelectPrompt } from "./prompt";
 import type { Signals } from "./signals";
 
@@ -136,8 +137,31 @@ export async function buildEdl(o: {
     clips,
   });
 
+  await resolveImageQueries(edl, o.projectId);
   await fs.writeFile(path.join(dir, "edl.json"), JSON.stringify(edl, null, 2));
   return edl;
+}
+
+/**
+ * Turn the agent's `query` overlays into real assets.
+ *
+ * The agent has no network access on purpose, so it only says what it wants to
+ * show. Anything that finds nothing good is dropped rather than left pointing at
+ * a wrong picture.
+ */
+async function resolveImageQueries(edl: Edl, projectId: string) {
+  for (const clip of edl.clips) {
+    const kept: typeof clip.edits = [];
+    for (const edit of clip.edits) {
+      if (edit.type !== "image" || edit.src || !edit.query) {
+        kept.push(edit);
+        continue;
+      }
+      const asset = await resolveQuery(edit.query, projectId).catch(() => null);
+      if (asset) kept.push({ ...edit, src: asset.id, credit: asset.attribution ?? "" });
+    }
+    clip.edits = kept;
+  }
 }
 
 const CHUNK_MINUTES = 20;

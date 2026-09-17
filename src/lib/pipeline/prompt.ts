@@ -80,7 +80,10 @@ Each clip also carries an \`edits\` array — clip-relative seconds, not source 
 - \`{"type":"punch","t":0,"d":1.2,"scale":1.12}\` — zoom in on an emphasis beat. Use 2-4 per clip, on the line that lands. \`scale\` 1.08-1.2.
 - \`{"type":"emphasis","t":0,"d":1,"words":["ninety","two","percent"],"color":"#ffe600"}\` — colour specific words in the captions. Numbers, names, the claim.
 - \`{"type":"text","t":0,"d":3,"text":"Why you quit","position":"top","style":"card"}\` — the hook title. At most one per clip, in the first 3 seconds, and only when it adds something the captions do not. \`card\` is a white rounded card that reads on any footage; \`plain\` is bare text.
-- \`{"type":"image","t":0,"d":3,"src":"frames/frame-120.jpg","y":0.3,"widthPct":78,"caption":""}\` — show a still while something is being described. **Only use a frame you have actually read from \`frames/\`**, and only when the speaker refers to something visual that a viewer cannot see from the current framing — a site, a tool, a screen, a result. If the thing being discussed is already on screen in this clip, do not add one.
+- \`{"type":"image","t":0,"d":3,"src":"frames/frame-120.jpg","y":0.3,"widthPct":78}\` — show a still while something is being described. **Only use a frame you have actually read from \`frames/\`**, and only when the speaker refers to something visual a viewer cannot see from the current framing. If the thing is already on screen in this clip, do not add one.
+- \`{"type":"image","t":0,"d":3,"query":"proxmox virtual environment","y":0.3,"widthPct":78}\` — the same overlay, for something that is **not** anywhere in the stream. Write \`query\` instead of \`src\` and a picture will be found for it.
+
+  A frame from the stream is always the better answer when one exists; reach for \`query\` only when it does not. And \`query\` must name **a thing that exists and has a name** — a product, a company, a place, a person, a piece of software, an interface. It is a picture search, so it cannot illustrate an idea: "proxmox virtual environment", "macbook air" and "google gemini" all work; "git worktree", "technical debt" and "a developer working hard" return nothing and the overlay is dropped.
 
 Silence cuts shift the timeline; the renderer handles that. Keep writing every timestamp in clip-relative source seconds.
 

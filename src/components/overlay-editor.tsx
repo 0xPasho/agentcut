@@ -9,6 +9,7 @@ import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api, assetUrl } from "@/lib/client";
+import { ImageSearch } from "@/components/image-search";
 import { fmt } from "@/lib/transcript";
 import type { Clip, Edit } from "@/lib/edl";
 
@@ -79,7 +80,7 @@ export function OverlayEditor({
         const { name } = await api.captureFrame(projectId, clip.start + rel);
         onChange([
           ...clip.edits,
-          { type: "image", t: rel, d: 3, src: name, y: 0.3, widthPct: 78, caption: "" },
+          { type: "image", t: rel, d: 3, src: name, query: "", credit: "", y: 0.3, widthPct: 78, caption: "" },
         ]);
         setAt("");
       } catch (e) {
@@ -151,6 +152,26 @@ export function OverlayEditor({
           </Button>
         </div>
         {error ? <p className="text-xs text-destructive">{error}</p> : null}
+
+        <ImageSearch
+          projectId={projectId}
+          onAdopt={(asset) =>
+            onChange([
+              ...clip.edits,
+              {
+                type: "image",
+                t: 1,
+                d: 3,
+                src: asset.id,
+                query: "",
+                credit: asset.attribution ?? "",
+                y: 0.3,
+                widthPct: 78,
+                caption: "",
+              },
+            ])
+          }
+        />
 
         {images.map((im, i) => (
           <div key={`${im.src}-${i}`} className="flex flex-col gap-2 rounded-xl border border-border p-2">
