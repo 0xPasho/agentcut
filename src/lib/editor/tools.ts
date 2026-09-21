@@ -31,7 +31,7 @@ export const EditorToolCall = z.discriminatedUnion("tool", [
     place: z.object({ sequenceId: z.string(), at: z.number().nonnegative().nullable().optional(), layer: z.number().int().nonnegative().optional() }).optional() }),
   z.object({ tool: z.literal("media.upload"), name: z.string().min(1), base64: z.string().min(1), expectedRevision: z.number().int().nonnegative() }),
   z.object({ tool: z.literal("project.edit"), ...EditRequest.shape }),
-  z.object({ tool: z.literal("assets.browseLocal"), folder: z.string().optional(), offset: z.number().int().nonnegative().default(0) }),
+  z.object({ tool: z.literal("assets.browseLocal"), folder: z.string().optional(), offset: z.number().int().nonnegative().default(0), limit: z.number().int().positive().max(5000).default(100) }),
   z.object({ tool: z.literal("assets.importLocal"), file: z.string().min(1) }),
   z.object({ tool: z.literal("assets.list"), kind: z.enum(["image", "audio", "video"]) }),
   z.object({ tool: z.literal("assets.capture"), atSec: z.number().nonnegative(), mediaId: z.string().optional() }),
@@ -162,7 +162,7 @@ export async function executeEditorTool(projectId: string, raw: unknown, onActiv
     case "project.edit": return editProject(projectId, { expectedRevision: call.expectedRevision, operations: call.operations }, { actor: "agent" });
     case "assets.browseLocal": {
       const { browseLocalFolder } = await import("./local-assets");
-      return browseLocalFolder(call.folder, call.offset);
+      return browseLocalFolder(call.folder, call.offset, call.limit);
     }
     case "assets.importLocal": {
       const { importLocalAsset } = await import("./local-assets");

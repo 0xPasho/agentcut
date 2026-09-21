@@ -4,7 +4,7 @@ import type { Probe } from "./media";
 import type { Attachment, MessageContext } from "./editor/agent";
 import type { Message } from "./editor/conversation";
 import type { JobState } from "./job-state";
-import type { FolderListing } from "./editor/local-assets";
+import type { FilesResponse } from "./editor/local-assets";
 export type { Attachment, MessageContext, Message };
 export { JOB_ACTIVE, jobState, type JobState } from "./job-state";
 
@@ -78,8 +78,8 @@ export const api = {
     }).then(json<{ id: string; name: string }>),
 
   /** This machine's folders, for picking a source file without copying it anywhere. */
-  browseFiles: (folder?: string, offset = 0) =>
-    fetch(`/api/files?${new URLSearchParams({ ...(folder ? { folder } : {}), offset: String(offset) })}`).then(json<FolderListing>),
+  browseFiles: (folder?: string, offset = 0, limit = 100) =>
+    fetch(`/api/files?${new URLSearchParams({ ...(folder ? { folder } : {}), offset: String(offset), limit: String(limit) })}`).then(json<FilesResponse>),
 
   /** Several raw videos → one project, one video each, batch started. */
   createBatch: (name: string, files: File[], brief: string) => {
