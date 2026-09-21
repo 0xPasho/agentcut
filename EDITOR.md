@@ -18,6 +18,7 @@ trim behavior, and UI adapter. Both interfaces use these operations:
 | --- | --- |
 | `clip.promote` | Promote a clip in place to a layered timeline, preserving its ID and edits |
 | `item.place` | Patch item timing, layer, transform, volume, mute, and visibility |
+| `item.source` | Replace an item's footage in place, keeping its slot and overlays |
 | `clip.add` | Add a clip with a unique ID |
 | `clip.remove` | Remove the identified clip |
 | `clip.patch` | Change only supplied clip fields; caption fields merge individually |
@@ -27,7 +28,11 @@ trim behavior, and UI adapter. Both interfaces use these operations:
 | `output.patch` | Change only supplied output dimensions/frame rate |
 
 All seven edit types are supported: silence, punch, emphasis, text, image, sound effect,
-and music. Crop keyframes, split rectangles, caption settings, transcript words, clip
+and music.
+
+Undo and redo are `invertOperations` in `src/lib/editor/history.ts`: the inverse of a batch,
+expressed in these same operations and sent through the same save path. Nothing in the UI
+writes a remembered EDL back over the project. Crop keyframes, split rectangles, caption settings, transcript words, clip
 metadata, and output settings are accessible to both interfaces. The UI's **All clip
 properties** panel is generated from the same schema exposed to agents; compact controls
 remain shortcuts to that engine. Add/remove clips is available on the project screen.
@@ -45,7 +50,9 @@ and patch operation. Source identity/metadata cannot be changed by an editing op
 
 Both visual editing surfaces use `useEditor`. Controls preview the shared reducer locally
 and save after a short debounce. Save, export, and asking the agent flush pending edits
-first. Other writers' saved changes appear through polling, without replacing local drafts.
+first. Other writers' saved changes appear through polling, without replacing local drafts. A hidden
+tab has its timers throttled to roughly once a minute, so returning to the window polls at once
+rather than waiting: the agent edits the same project while nobody is looking at it.
 
 A revision conflict preserves the draft and blocks saving. The UI offers downloading the
 draft or explicitly discarding it and loading the latest state; it does not silently merge
@@ -61,13 +68,89 @@ and must reconsider its requested changes. It must not blindly replay a stale fu
 `src/lib/editor/tools.ts` exposes project-scoped tools used by the UI and agent transport:
 
 - `project.read`, `project.edit`, `project.render`
+- `transcript.resync` (re-recognise the source and refresh every clip's words)
 - `assets.list` (library plus project assets), `assets.capture` (source seconds)
 - `assets.search`, `assets.adopt` (select a returned provider/ID for a query)
 - `assets.import` (a file inside the project workspace)
 - `assets.upload` (name and base64 contents, using the same ingestion as UI uploads)
+- `assets.importFolder` (every image/audio file in a local folder, in filename order)
+- `assets.providers` (which image sources this machine has, and which need a key)
+- `templates.list`, `templates.get`, `templates.schema`, `templates.save`, `templates.delete`
+- `templates.suggest` (rank the templates against this video's own material)
+- `templates.looks` (named caption looks), `templates.preview` (schematic SVG of a template's layout)
+- `sequence.derive` (copy a video into another aspect as an editable sequence)
+- `template.plan` (a dry run over the transcript), `template.apply` (commits it)
+- `rules.list`, `rules.get`, `rules.schema`, `rules.save`, `rules.delete`
+- `rules.evaluate` (an agent judges which rules hold for a video), `rules.apply` (executes them as a template application)
+- `glossary.get`, `glossary.save`, `preferences.get`, `preferences.set` (see [RULES.md](./RULES.md))
+- `plan.read`, `plan.generate` (an agent writes a sequence plan or the shared project plan), `plan.apply`
+  (executes a plan as a template application; `all: true` reaches every video). Plans are part of the
+  EDL (`edl.plan`, `sequence.plan`) and are edited with the `plan.patch` / `sequence.plan.patch` operations.
+
+- `conversation.read` (the project's thread, oldest first)
+- `media.transcribe` (imported media get their own transcript; words land on every shot cut from them)
+- `project.batch` (starts the batch job: transcribe, plan and edit every pending video under the shared plan)
+- `observations.read` (what the owner has corrected), `observations.review` (an agent proposes rules, glossary
+  and preferences from it; nothing is saved until accepted)
+- `conversation.undo` (take back everything one agent turn did, as one revision-checked edit)
+- `packs.list`, `packs.inspect`, `packs.import`, `packs.remove`, `packs.export`, `quickactions.list` (see [PACKS.md](./PACKS.md))
+- `media.import` also accepts a library video's asset id, and `place` to put the shot on a timeline in the same revision
 
 The host binds the project ID. Asset services perform capture and search on behalf of
 the agent; granting general network/shell access is not required for these operations.
+
+### Conversation
+
+A project has one conversation. The web panel, `agentcut edit PROJECT ask`, and a terminal
+agent over MCP all write to the same `messages` table, and the analysis brief is its first
+turn. Every editing run receives the recent turns (`conversation.json` in its run
+directory, trimmed from the oldest) and the editor's context (`context.json`: open
+sequence, selected items, playhead), so "shorter, like the last one" and "move this" mean
+something. The agent's reply is recorded as a turn; a failed run leaves a turn saying so.
+
+### MCP
+
+`agentcut mcp` serves the same tools over stdio as an MCP server: one MCP tool per editor
+tool, generated from the same schema (`agentcut_project_edit`, `agentcut_plan_apply`, …)
+with a `projectId` argument, plus `agentcut_projects_list`, `agentcut_message_record` (log
+what you did into the thread) and `agentcut_message_send` (ask the host's editing agent).
+Revision conflicts come back as tool errors carrying the current revision, like HTTP.
+
+`transcript.resync` is the "Re-sync captions" button in the UI. It is not a second
+mutation path either: it recognises the audio again and then submits `clip.patch` /
+`item.patch` operations that replace only `words`, so boundaries, edits, framing and
+caption styling survive. Anything cut from imported media, and any canvas scene, is left
+alone — the transcript belongs to the primary source.
+
+## Transcription
+
+`src/lib/transcribe/` owns the words every caption, template and clip selection is built
+from. `ensureTranscript` is the single entry point: it reuses `transcript.json` only when
+it came from the current engine, so improving the recogniser re-runs old projects instead
+of silently keeping their worse words.
+
+- `whispercpp.ts` runs whisper.cpp with `large-v3-turbo`, Silero VAD, and DTW token
+  timestamps (which require flash attention off). It falls back to `small` if the model
+  will not load, and records per-word confidence.
+- `align.ts` snaps word starts onto the audio's own speech onsets and stops a word when
+  its speech run stops. Whisper's word times are estimates on a 20ms grid; the audio is
+  the ground truth for when a word begins.
+- `polish.ts` sends only the segments whisper doubted to the local agent, which may
+  correct wording but never timing: corrected words inherit the times of the words they
+  replace, and a rewrite that keeps too little is refused. `AGENTCUT_TRANSCRIPT_POLISH=0`
+  turns it off.
+
+A caption's own timing lives in `src/lib/timeline.ts` (`lineAt`, `activeWordIndex`), which
+the preview, the export and the tests all share.
+
+`template.apply` is not a second mutation path. It plans against the transcript, resolves
+each picture to an asset, and then submits ordinary `EditorOperation[]` through
+`project.edit` with an `expectedRevision`, so a template's captions, cuts, punch-ins, hook
+layer and images are all editable by hand afterwards. Every edit it writes carries
+`by: "template:<id>"`; re-applying replaces only those, and only canvas layers whose every
+edit still carries one. The agent receives `templates.json` in its run directory alongside
+`project.json`. See [TEMPLATES.md](./TEMPLATES.md) for the document format, the picture
+cadence, and the image providers.
 
 Read the live JSON Schema with `GET /api/projects/<id>/editor`. Invoke tools with
 `POST /api/projects/<id>/editor`. Human saves use `PATCH /api/projects/<id>` with the
@@ -175,3 +258,10 @@ same stale-form protection as other staged edits. Omitted/null start times appen
 the item's own layer. Independent source-free layers provide titles, images, and audio
 across multiple footage cuts. Preview and export use the same frame placement and
 composition. See SEQUENCES.md for field units and current limits.
+
+What sits inside a layer moves through `item.patch` in the same way. A title carries an
+optional free centre (`x`/`y`, 0..1 of the frame) that overrides its `position` preset, a
+picture already had `x`/`y`, and the caption block has `captions.positionY`. The canvas
+writes those fields when a title, picture or the captions are dragged, through the shared
+`moveOverlay` in `src/lib/editor/canvas.ts`; the agent sets the same fields directly, and
+the Selected panel shows them as sliders either way.

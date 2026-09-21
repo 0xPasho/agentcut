@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Download, Loader2, Play, SlidersHorizontal, Sparkles, Trash2, Wand2 } from "lucide-react";
+import { ArrowLeft, Captions, Download, Loader2, Play, SlidersHorizontal, Sparkles, Trash2, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,6 +23,7 @@ import { useEditor } from "@/lib/editor/use-editor";
 import { EditorStatus } from "./editor-status";
 import { AgentEditor } from "./agent-editor";
 import { Clip } from "@/lib/edl";
+import { emptySequencePlan } from "@/lib/plan/schema";
 import { api, assetUrl, clipUrl, sourceUrl, thumbUrl, type LogEvent, type ProjectDetail } from "@/lib/client";
 import { fmt } from "@/lib/transcript";
 import { sequenceFrames } from "@/lib/sequences";
@@ -137,9 +138,12 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
         </Badge>
       </Glass>
 
-      {edl && <Card className="flex flex-wrap items-start justify-between gap-4 p-5 sm:flex-row sm:items-center"><div><h2 className="font-medium">Your videos</h2><p className="mt-1 text-sm text-muted-foreground">Open any video in the editor, or start an empty canvas.</p></div><Button variant="outline" onClick={() => run(async () => {
+      {edl && <Card className="flex flex-wrap items-start justify-between gap-4 p-5 sm:flex-row sm:items-center"><div><h2 className="font-medium">Your videos</h2><p className="mt-1 text-sm text-muted-foreground">Open any video in the editor, or start an empty canvas.</p></div><div className="flex flex-wrap gap-2">
+        {edl.sequences.some((s) => s.plan.status === "pending") && <Button size="sm" variant="outline" disabled={busy} title="Transcribe, plan and edit every pending video under the shared plan" onClick={() => run(() => api.runBatch(initial.id, { brief }))}>{busy ? <Loader2 className="size-3.5 motion-safe:animate-spin" /> : <Sparkles className="size-3.5" />}Edit pending videos</Button>}
+        {edl.sequences.some((s) => s.plan.status === "approved") && <Button size="sm" disabled={busy} title="Render every approved video" onClick={() => run(() => api.render(initial.id))}><Wand2 className="size-3.5" />Render approved</Button>}
+      </div><Button variant="outline" onClick={() => run(async () => {
         const id = crypto.randomUUID().slice(0, 8);
-        editor.dispatch([{ type: "sequence.add", sequence: { id, title: "New video", output: edl.output, items: [] } }]);
+        editor.dispatch([{ type: "sequence.add", sequence: { id, title: "New video", output: edl.output, items: [], plan: emptySequencePlan() } }]);
         if (await editor.save()) router.push(`/p/${initial.id}/edit?sequence=${id}`);
       })}>New video</Button></Card>}
       {busy && project.job ? <Progress value={project.job.progress * 100} className="h-1.5" /> : null}
@@ -154,8 +158,9 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
           {edl?.sequences.map((sequence) => (
             <Card key={sequence.id} className="gap-3 p-4">
               <div className="min-w-0">
-                <h2 className="truncate text-sm font-medium">{sequence.title}</h2>
-                <p className="mt-1 text-xs text-muted-foreground">{sequence.items.length ? `${fmt(sequenceFrames(sequence).duration / sequence.output.fps)} · ${sequence.items.length} timeline items` : "Empty canvas"}</p>
+                <div className="flex items-center gap-2"><h2 className="min-w-0 truncate text-sm font-medium">{sequence.title}</h2><Badge variant={sequence.plan.status === "approved" || sequence.plan.status === "rendered" ? "default" : "outline"} className="shrink-0 text-[10px]">{sequence.plan.status}</Badge></div>
+                <p className="mt-1 text-xs text-muted-foreground">{sequence.items.length ? `${fmt(sequenceFrames(sequence).duration / sequence.output.fps)} · ${sequence.items.length} timeline items` : "Empty canvas"}{sequence.plan.tags.length ? ` · ${sequence.plan.tags.join(", ")}` : ""}</p>
+                {sequence.plan.summary && <p className="mt-1 truncate text-xs text-muted-foreground">{sequence.plan.summary}</p>}
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="outline" render={<Link href={`/p/${initial.id}/edit?sequence=${sequence.id}`} />} onClick={async (event) => {
@@ -164,6 +169,10 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                   if (await editor.save()) router.push(`/p/${initial.id}/edit?sequence=${sequence.id}`);
                 }}><SlidersHorizontal className="size-3.5" />Open editor</Button>
                 {project.rendered.includes(sequence.id) && <Button size="sm" variant="ghost" render={<a href={clipUrl(initial.id, sequence.id)} download />}><Download className="size-3.5" />Download</Button>}
+                <select aria-label={`Status of ${sequence.title}`} className="h-8 rounded-xl border border-border bg-background px-2 text-xs focus-visible:outline-2 focus-visible:outline-ring" value={sequence.plan.status} onChange={(e) => editor.dispatch([{ type: "sequence.plan.patch", sequenceId: sequence.id, patch: { status: e.target.value as "pending" | "edited" | "approved" | "rendered" } }])}>
+                  {(["pending", "edited", "approved", "rendered"] as const).map((v) => <option key={v} value={v}>{v}</option>)}
+                </select>
+                {sequence.plan.reasons.error && <span className="text-xs text-destructive" title={sequence.plan.reasons.error}>failed — {sequence.plan.reasons.error.slice(0, 60)}</span>}
                 <Button size="icon-sm" variant="ghost" aria-label={`Delete video ${sequence.title}`} onClick={() => { if (window.confirm(`Delete video “${sequence.title}”?`)) editor.dispatch([{ type: "sequence.remove", sequenceId: sequence.id }]); }}><Trash2 className="size-4" /></Button>
               </div>
             </Card>
@@ -216,6 +225,16 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                   <Button size="sm" variant="ghost" disabled={busy || !edl.source} onClick={() => setReanalyzing(true)}>
                     <Sparkles className="size-3.5" />
                     Find more clips
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy || !edl.source}
+                    title="Transcribe the source again and refresh the captions on every clip, keeping your edits"
+                    onClick={() => run(() => api.resyncTranscript(initial.id, { userBrief: brief }))}
+                  >
+                    <Captions className="size-3.5" />
+                    Re-sync captions
                   </Button>
                   <Button size="sm" variant="outline" disabled={busy} onClick={() => run(() => api.render(initial.id))}>
                     <Wand2 className="size-3.5" />
@@ -295,7 +314,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
             </div>
           )}
 
-          {edl && <Card className="p-4"><EditorStatus editor={editor} /><AgentEditor projectId={initial.id} beforeRun={editor.save} />
+          {edl && <Card className="p-4"><EditorStatus editor={editor} /><AgentEditor projectId={initial.id} beforeRun={editor.save} afterUndo={editor.reload} />
             <Button variant="outline" disabled={!edl.source} onClick={() => editor.dispatch([{ type: "clip.add", clip: Clip.parse({ id: crypto.randomUUID().slice(0, 8), title: "New clip", start: 0, end: Math.min(30, edl.source?.durationSec ?? 0) }) }])}>Add clip</Button>
           </Card>}
           <Card className="gap-0 py-0">

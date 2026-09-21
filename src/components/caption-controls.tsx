@@ -85,6 +85,25 @@ export function CaptionControls({
         />
       </div>
 
+      <div className="flex flex-col gap-2">
+        <Label id={`${id}-sync`} className="flex justify-between text-xs text-muted-foreground">
+          Sync{" "}
+          <span className="font-mono">
+            {value.syncOffsetMs > 0 ? "+" : ""}
+            {value.syncOffsetMs} ms
+          </span>
+        </Label>
+        <Slider
+          aria-labelledby={`${id}-sync`}
+          aria-valuetext={`${value.syncOffsetMs} milliseconds`}
+          min={-500}
+          max={500}
+          step={10}
+          value={[value.syncOffsetMs]}
+          onValueChange={(v) => set("syncOffsetMs", asNumber(v))}
+        />
+      </div>
+
       <div className="flex items-center gap-5">
         <Swatch label="Text" value={value.color} onChange={(v) => set("color", v)} />
         <Swatch label="Highlight" value={value.highlight} onChange={(v) => set("highlight", v)} />

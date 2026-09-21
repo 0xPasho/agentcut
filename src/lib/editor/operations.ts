@@ -3,6 +3,7 @@ import { CaptionStyle, Clip, Edl, Edit, type CropKeyframe, MediaSource, VideoSeq
 import { promoteClipToSequence } from "./editable-timeline";
 import { sequenceFrames } from "../sequences";
 import { buildTimeMap } from "../timeline";
+import { ProjectPlan, SequencePlan } from "../plan/schema";
 
 /** Zod .partial() still applies nested defaults. Patch schemas MUST leave omitted fields absent. */
 function patchSchema<T extends z.ZodRawShape>(shape: T) {
@@ -16,6 +17,9 @@ function patchSchema<T extends z.ZodRawShape>(shape: T) {
 export const ClipPatch = patchSchema({ ...Clip.omit({ id: true, captions: true }).shape, captions: patchSchema(CaptionStyle.shape) });
 export const OutputPatch = patchSchema(Edl.shape.output.unwrap().shape);
 export const ItemPlacementPatch = patchSchema({ ...ItemPlacement.shape, transform: patchSchema(ItemTransform.shape) });
+/** Plan patches are shallow: a nested section (brief, series) or an array (beats, rules) is replaced whole. */
+export const ProjectPlanPatch = patchSchema(ProjectPlan.shape);
+export const SequencePlanPatch = patchSchema(SequencePlan.shape);
 export const EditorOperation = z.discriminatedUnion("type", [
   z.object({ type: z.literal("clip.promote"), clipId: z.string() }).strict(),
   z.object({ type: z.literal("item.place"), sequenceId: z.string(), itemId: z.string(), patch: ItemPlacementPatch, before: ItemPlacementPatch.optional() }).strict(),
@@ -31,6 +35,7 @@ export const EditorOperation = z.discriminatedUnion("type", [
   z.object({ type: z.literal("item.move"), sequenceId: z.string(), itemId: z.string(), index: z.number().int().nonnegative() }).strict(),
   z.object({ type: z.literal("item.patch"), sequenceId: z.string(), itemId: z.string(), patch: ClipPatch, before: ClipPatch.optional() }).strict(),
   z.object({ type: z.literal("item.split"), sequenceId: z.string(), itemId: z.string(), at: z.number().positive(), newItemId: z.string().regex(/^[a-zA-Z0-9_-]+$/) }).strict(),
+  z.object({ type: z.literal("item.source"), sequenceId: z.string(), itemId: z.string(), mediaId: z.string().nullable(), start: z.number().nonnegative().optional(), end: z.number().positive().optional(), title: z.string().min(1).optional(), before: z.object({ mediaId: z.string().nullable() }).strict().optional() }).strict(),
   z.object({ type: z.literal("clip.add"), clip: Clip }).strict(),
   z.object({ type: z.literal("clip.remove"), clipId: z.string() }).strict(),
   z.object({ type: z.literal("clip.patch"), clipId: z.string(), patch: ClipPatch, before: ClipPatch.optional() }).strict(),
@@ -38,6 +43,8 @@ export const EditorOperation = z.discriminatedUnion("type", [
   z.object({ type: z.literal("edit.replace"), clipId: z.string(), index: z.number().int().nonnegative(), edit: Edit }).strict(),
   z.object({ type: z.literal("edit.remove"), clipId: z.string(), index: z.number().int().nonnegative() }).strict(),
   z.object({ type: z.literal("output.patch"), patch: OutputPatch }).strict(),
+  z.object({ type: z.literal("plan.patch"), patch: ProjectPlanPatch }).strict(),
+  z.object({ type: z.literal("sequence.plan.patch"), sequenceId: z.string(), patch: SequencePlanPatch }).strict(),
 ]);
 export type EditorOperation = z.infer<typeof EditorOperation>;
 export const EditRequest = z.object({
@@ -139,6 +146,36 @@ function trim(clip: Clip, start: number, end: number): Clip {
   return { ...clip, start, end, words: timed(clip.words), edits: timed(clip.edits), crop };
 }
 
+/**
+ * Clamp word timings that a project may have been saved with before clip cutting
+ * clamped them — a word starting a fraction before its clip's in-point.
+ *
+ * Validation runs over the whole EDL, so one such word froze every clip in the
+ * project: no edit anywhere could be saved. Reading repairs it in place instead,
+ * which is the only sound reading — a word cannot begin before its clip does.
+ * Newly produced words are still rejected by validateClip, so this heals old data
+ * without hiding a regression.
+ */
+export function repairWordTimes(edl: Edl): Edl {
+  const words = (list: Clip["words"]) =>
+    list.flatMap((word) => {
+      if (word.t >= 0 && word.d > 0) return [word];
+      const stop = word.t + word.d;
+      const t = Math.max(0, word.t);
+      // A word entirely before the clip's start has nothing left to show.
+      return stop - t >= 0.01 ? [{ ...word, t, d: stop - t }] : [];
+    });
+  const clip = (c: Clip): Clip => (c.words.some((w) => w.t < 0 || w.d <= 0) ? { ...c, words: words(c.words) } : c);
+  return {
+    ...edl,
+    clips: edl.clips.map(clip),
+    sequences: edl.sequences.map((sequence) => ({
+      ...sequence,
+      items: sequence.items.map((item) => ({ ...item, clip: clip(item.clip) })),
+    })),
+  };
+}
+
 /** Pure, immutable operation engine. No UI- or provider-specific rules belong here. */
 export function applyOperations(input: Edl, raw: unknown): Edl {
   const operations = z.array(EditorOperation).parse(raw);
@@ -151,6 +188,21 @@ export function applyOperations(input: Edl, raw: unknown): Edl {
       next.media = next.media.filter(m => m.id !== op.mediaId); continue;
     }
     if (op.type === "sequence.add") { next.sequences.push(op.sequence); continue; }
+    if (op.type === "plan.patch") {
+      next.plan = ProjectPlan.parse({ ...next.plan, ...op.patch });
+      // A series can only order videos that exist.
+      next.plan.series.order = next.plan.series.order.filter(id => next.sequences.some(s => s.id === id) || next.clips.some(c => c.id === id));
+      continue;
+    }
+    if (op.type === "sequence.plan.patch") {
+      const sequence = next.sequences.find(s => s.id === op.sequenceId);
+      if (!sequence) throw new Error("Sequence not found");
+      sequence.plan = SequencePlan.parse({ ...sequence.plan, ...op.patch });
+      // A beat can only point at shots on this timeline.
+      const ids = new Set(sequence.items.map(i => i.id));
+      sequence.plan.beats = sequence.plan.beats.map(b => ({ ...b, itemIds: b.itemIds.filter(id => ids.has(id)) }));
+      continue;
+    }
     if (op.type === "sequence.remove" || op.type === "sequence.patch" || op.type.startsWith("item.")) {
       if (!("sequenceId" in op)) throw new Error("Missing sequence ID");
       const sequence = next.sequences.find(s => s.id === op.sequenceId);
@@ -184,7 +236,13 @@ export function applyOperations(input: Edl, raw: unknown): Edl {
         if (transform) item.transform = { ...current.transform, ...transform };
       }
       if (op.type === "item.edit.add") item.clip.edits.push(op.edit);
-      if (op.type === "item.remove") sequence.items.splice(index, 1);
+      if (op.type === "item.remove") {
+        sequence.items.splice(index, 1);
+        // A beat that spanned only this shot has nothing left to point at.
+        sequence.plan.beats = sequence.plan.beats
+          .map(b => ({ ...b, itemIds: b.itemIds.filter(id => id !== op.itemId) }))
+          .filter(b => b.itemIds.length > 0 || !sequence.plan.beats.find(o => o.id === b.id)?.itemIds.length);
+      }
       if (op.type === "item.reorder") {
         const resolved = sequenceFrames(sequence).items;
         const chronological = [...resolved].sort((a, b) => a.from - b.from);
@@ -213,6 +271,24 @@ export function applyOperations(input: Edl, raw: unknown): Edl {
         let clip = item.clip;
         if (op.patch.start !== undefined || op.patch.end !== undefined) clip = trim(clip, op.patch.start ?? clip.start, op.patch.end ?? clip.end);
         item.clip = { ...clip, ...op.patch, captions: { ...clip.captions, ...op.patch.captions } };
+      }
+      if (op.type === "item.source") {
+        if (op.before && (item.mediaId ?? null) !== op.before.mediaId) throw new Error("The item's source changed. Review the latest values before applying this edit.");
+        const source = op.mediaId === null ? null : next.media.find(m => m.id === op.mediaId);
+        if (op.mediaId !== null && !source) throw new Error("Timeline item references missing media");
+        const start = op.start ?? 0;
+        // Replacing footage keeps the slot the item already occupies, clamped to the new source.
+        const wanted = op.end ?? start + (item.clip.end - item.clip.start);
+        const end = Math.max(start + 1 / sequence.output.fps, Math.min(wanted, source?.durationSec ?? wanted));
+        const duration = end - start;
+        // The transcript and crop rectangles describe the footage that is being replaced.
+        const edits = item.clip.edits.flatMap(edit => {
+          const stop = Math.min(duration, edit.t + edit.d);
+          return edit.t < duration && stop > edit.t ? [{ ...edit, d: stop - edit.t }] : [];
+        });
+        item.mediaId = op.mediaId;
+        item.clip = { ...item.clip, start, end, edits, words: [], crop: [], title: op.title ?? item.clip.title };
+        continue;
       }
       if (op.type === "item.split") {
         const split = item.clip.start + op.at;

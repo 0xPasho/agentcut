@@ -42,6 +42,19 @@ function open(): DatabaseSync {
       at         INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS events_project ON events(project_id, id);
+    CREATE TABLE IF NOT EXISTS messages (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id  TEXT NOT NULL,
+      role        TEXT NOT NULL,
+      source      TEXT NOT NULL,
+      text        TEXT NOT NULL,
+      sequence_id TEXT,
+      context     TEXT,
+      job_id      TEXT,
+      changes     TEXT,
+      at          INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS messages_project ON messages(project_id, id);
     CREATE TABLE IF NOT EXISTS assets (
       id           TEXT PRIMARY KEY,
       kind         TEXT NOT NULL,
@@ -75,6 +88,9 @@ if (!(db.prepare("PRAGMA table_info(projects)").all() as { name: string }[]).som
   db.exec("ALTER TABLE projects ADD COLUMN revision INTEGER NOT NULL DEFAULT 0");
 }
 
+if (!(db.prepare("PRAGMA table_info(messages)").all() as { name: string }[]).some(c => c.name === "changes")) {
+  db.exec("ALTER TABLE messages ADD COLUMN changes TEXT");
+}
 db.exec(`CREATE TABLE IF NOT EXISTS project_assets (
   project_id TEXT NOT NULL, asset_id TEXT NOT NULL,
   PRIMARY KEY (project_id, asset_id)
@@ -121,6 +137,22 @@ export type AssetRow = {
   duration_sec: number | null;
   sha256: string | null;
   created_at: number;
+};
+
+/** One turn of a project's conversation. `role` is who spoke; `source` is which interface. */
+export type MessageRow = {
+  id: number;
+  project_id: string;
+  role: "user" | "agent";
+  source: "web" | "cli" | "mcp" | "agent" | "brief";
+  text: string;
+  sequence_id: string | null;
+  /** JSON: selection, playhead, visible range at the time of the message. */
+  context: string | null;
+  job_id: string | null;
+  /** Agent turns: JSON of what the run changed and how to undo it. */
+  changes: string | null;
+  at: number;
 };
 
 export type EventRow = {
@@ -263,6 +295,18 @@ export const q = {
     db
       .prepare("INSERT INTO events (project_id, job_id, kind, name, text, at) VALUES (?, ?, ?, ?, ?, ?)")
       .run(e.project_id, e.job_id, e.kind, e.name, e.text, e.at),
+
+  insertMessage: (m: Omit<MessageRow, "id">) =>
+    Number(db
+      .prepare("INSERT INTO messages (project_id, role, source, text, sequence_id, context, job_id, changes, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(m.project_id, m.role, m.source, m.text, m.sequence_id, m.context, m.job_id, m.changes, m.at).lastInsertRowid),
+
+  setMessageChanges: (id: number, changes: string | null) => db.prepare("UPDATE messages SET changes = ? WHERE id = ?").run(changes, id),
+  getMessage: (id: number) => plain<MessageRow>(db.prepare("SELECT * FROM messages WHERE id = ?").get(id)),
+
+  /** The latest `limit` messages, oldest first. */
+  messages: (projectId: string, limit = 50) =>
+    plainAll<MessageRow>(db.prepare("SELECT * FROM (SELECT * FROM messages WHERE project_id = ? ORDER BY id DESC LIMIT ?) ORDER BY id").all(projectId, limit)),
 
   eventsSince: (projectId: string, sinceId: number) =>
     plainAll<EventRow>(

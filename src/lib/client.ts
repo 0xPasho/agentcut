@@ -1,6 +1,9 @@
 import type { EditorOperation, EditorSnapshot } from "./editor/operations";
 import type { Edl } from "./edl";
 import type { Probe } from "./media";
+import type { MessageContext } from "./editor/agent";
+import type { Message } from "./editor/conversation";
+export type { MessageContext, Message };
 
 export type ProjectSummary = {
   id: string;
@@ -58,6 +61,16 @@ export const api = {
     return fetch("/api/projects", { method: "POST", body: form }).then(json<{ id: string; name: string }>);
   },
 
+  /** Several raw videos → one project, one video each, batch started. */
+  createBatch: (name: string, files: File[], brief: string) => {
+    const form = new FormData();
+    form.append("name", name); form.append("brief", brief);
+    for (const file of files) form.append("files", file);
+    return fetch("/api/projects/batch", { method: "POST", body: form }).then(json<{ id: string; name: string; job: JobState }>);
+  },
+  runBatch: (id: string, options: { brief?: string; force?: boolean } = {}) =>
+    fetch(`/api/projects/${id}/batch`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(options) }).then(json<{ job: JobState }>),
+
   getProject: (id: string) => fetch(`/api/projects/${id}`).then(json<ProjectDetail>),
 
   deleteProject: (id: string) => fetch(`/api/projects/${id}`, { method: "DELETE" }).then(json<{ ok: true }>),
@@ -69,14 +82,33 @@ export const api = {
       body: JSON.stringify({ expectedRevision, operations }),
     }).then(json<EditorSnapshot>),
 
-  agentEdit: (id: string, instruction: string, expectedRevision: number) =>
-    fetch(`/api/projects/${id}/edit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instruction, expectedRevision }) }).then(json<{ job: JobState }>),
+  agentEdit: (id: string, instruction: string, expectedRevision: number, context?: MessageContext) =>
+    fetch(`/api/projects/${id}/edit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instruction, expectedRevision, sequenceId: context?.sequenceId, context }) }).then(json<{ job: JobState }>),
+
+  undoMessage: (id: string, messageId: number, expectedRevision?: number) =>
+    fetch(`/api/projects/${id}/editor`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tool: "conversation.undo", messageId, expectedRevision }) }).then(json<{ revision: number; reverted: number }>),
+
+  messages: (id: string, limit = 50) => fetch(`/api/projects/${id}/messages?limit=${limit}`).then(json<{ messages: Message[] }>),
+
+  /** Workspace-level rules, glossary and preferences, when no project is open. */
+  workspace: <T>(body?: Record<string, unknown>) =>
+    (body
+      ? fetch("/api/workspace", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      : fetch("/api/workspace")).then(json<T>),
 
   editorTool: <T>(id: string, call: unknown) =>
     fetch(`/api/projects/${id}/editor`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(call) }).then(json<T>),
 
   analyze: (id: string, options: Record<string, unknown>) =>
     fetch(`/api/projects/${id}/analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(options),
+    }).then(json<{ job: JobState }>),
+
+  /** Re-recognise the source audio and refresh the words on every clip cut from it. */
+  resyncTranscript: (id: string, options: Record<string, unknown> = {}) =>
+    fetch(`/api/projects/${id}/transcribe`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(options),
@@ -149,6 +181,8 @@ export type AssetSummary = {
   id: string;
   kind: string;
   name: string;
+  /** Workspace-relative file path. Present on rows the asset tools return. */
+  path?: string;
   license: string | null;
   attribution: string | null;
   width: number | null;

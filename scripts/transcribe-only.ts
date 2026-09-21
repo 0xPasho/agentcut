@@ -1,37 +1,38 @@
-/** Extract audio + transcribe an existing project, then stop. */
-import path from "node:path";
-import fs from "node:fs/promises";
+/**
+ * Transcribe an existing project, then stop — the same recogniser, alignment and
+ * proofread the analyze job runs, without selecting clips afterwards.
+ *
+ *   tsx scripts/transcribe-only.ts <projectId> [--resync]
+ *
+ * --resync also puts the new words back into every clip cut from the source,
+ * exactly like the "Re-sync captions" button.
+ */
+import { q } from "../src/lib/db";
 import { projectDir } from "../src/lib/config";
-import { probe, extractAudio } from "../src/lib/media";
-import { transcribe, DEFAULT_MODEL } from "../src/lib/transcribe/whispercpp";
+import { isUrl } from "../src/lib/ingest";
+import { ensureTranscript } from "../src/lib/transcribe";
+import { resyncTranscript } from "../src/lib/transcribe/resync";
+import { DEFAULT_MODEL } from "../src/lib/transcribe/whispercpp";
 
 async function main() {
-  const id = process.argv[2];
-  const dir = projectDir(id);
-  const source = path.join(dir, "source.mp4");
-
-  const meta = await probe(source);
-  console.log(`source: ${meta.width}x${meta.height} ${Math.round(meta.durationSec)}s`);
-
-  const wav = path.join(dir, "audio.wav");
-  if (!(await fs.stat(wav).catch(() => null))) {
-    console.log("extracting audio…");
-    const t = Date.now();
-    await extractAudio(source, wav);
-    console.log(`audio done in ${((Date.now() - t) / 1000).toFixed(0)}s`);
-  } else {
-    console.log("audio.wav already present");
-  }
+  const [id, ...flags] = process.argv.slice(2);
+  if (!id) throw new Error("usage: transcribe-only.ts <projectId> [--resync]");
+  const project = q.getProject(id);
+  if (!project) throw new Error(`project not found: ${id}`);
+  if (!project.source_path || isUrl(project.source_path)) throw new Error("project has no downloaded source");
 
   console.log(`transcribing with ${DEFAULT_MODEL}…`);
   const t = Date.now();
-  const tr = await transcribe(wav, { outDir: dir });
-  await fs.writeFile(path.join(dir, "transcript.json"), JSON.stringify(tr));
+  const log = (text: string) => console.log(`  ${text}`);
+  const { transcript } = flags.includes("--resync")
+    ? await resyncTranscript(id, { onLog: log })
+    : await ensureTranscript({ dir: projectDir(id), sourcePath: project.source_path, force: true, onLog: log });
+
   console.log(
     `TRANSCRIBED in ${((Date.now() - t) / 60000).toFixed(1)}min — ` +
-      `lang=${tr.language} ${tr.segments.length} segments ${tr.words.length} words`,
+      `lang=${transcript.language} ${transcript.segments.length} segments ${transcript.words.length} words`,
   );
-  console.log("sample:", tr.segments.slice(0, 3).map((s) => s.text).join(" | "));
+  console.log("sample:", transcript.segments.slice(0, 3).map((s) => s.text).join(" | "));
 }
 
 main().catch((e) => {

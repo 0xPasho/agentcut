@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ProjectPlan, SequencePlan } from "./plan/schema";
 import { Word } from "./transcript";
 
 /** Crop window in SOURCE pixel space, sampled at time `t`. Renderer interpolates between keyframes. */
@@ -54,8 +55,24 @@ export const CaptionStyle = z.object({
   positionY: z.number().min(0).max(1).default(0.72),
   maxWordsPerLine: z.number().min(1).max(12).default(3),
   uppercase: z.boolean().default(false),
+  /**
+   * Shifts the whole caption track against the audio. Positive is later.
+   *
+   * Word times come from the recogniser and are snapped to the audio, so this is
+   * not where sync is meant to be fixed — it is the escape hatch for a source whose
+   * own audio and video are offset, which no transcript can correct.
+   */
+  syncOffsetMs: z.number().min(-1000).max(1000).default(0),
 });
 export type CaptionStyle = z.infer<typeof CaptionStyle>;
+
+/**
+ * Who authored an edit. Empty is a hand-made edit — from the UI, the agent, or
+ * the original selection. `template:<id>` marks one a template generated, which
+ * is the only reason re-applying a template can replace its own previous output
+ * without touching anything a person placed by hand.
+ */
+export const EditAuthor = z.string().default("");
 
 /**
  * Edits are expressed in CLIP-RELATIVE SOURCE seconds. Silence cuts shift the
@@ -66,6 +83,7 @@ export const SilenceEdit = z.object({
   type: z.literal("silence"),
   t: z.number(),
   d: z.number(),
+  by: EditAuthor,
 });
 
 export const PunchEdit = z.object({
@@ -73,6 +91,7 @@ export const PunchEdit = z.object({
   t: z.number(),
   d: z.number().default(1.2),
   scale: z.number().min(1).max(2).default(1.12),
+  by: EditAuthor,
 });
 
 export const EmphasisEdit = z.object({
@@ -82,6 +101,7 @@ export const EmphasisEdit = z.object({
   /** Words to highlight, matched case-insensitively within the span. */
   words: z.array(z.string()).default([]),
   color: z.string().default("#ffe600"),
+  by: EditAuthor,
 });
 
 export const TextEdit = z.object({
@@ -90,8 +110,16 @@ export const TextEdit = z.object({
   d: z.number().default(2.5),
   text: z.string(),
   position: z.enum(["top", "center", "bottom"]).default("top"),
+  /**
+   * Free placement, 0..1 of the frame, as the centre of the title block. Dragging the
+   * title on the canvas writes these; while `y` is null the `position` preset decides
+   * where it sits. `x` alone is ignored — a title without `y` is always centred.
+   */
+  x: z.number().min(0).max(1).nullable().default(null),
+  y: z.number().min(0).max(1).nullable().default(null),
   /** "card" is the white rounded hook that reads on any footage; "plain" is bare text. */
   style: z.enum(["card", "plain"]).default("card"),
+  by: EditAuthor,
 });
 
 /**
@@ -110,9 +138,30 @@ export const ImageEdit = z.object({
   credit: z.string().default(""),
   /** Where it sits in the frame, 0..1 of height. */
   y: z.number().min(0).max(1).default(0.3),
+  /**
+   * Horizontal centre, 0..1 of width. `null` centres it, which is what a single
+   * overlay wants. Two logos side by side — "Google and Facebook" — need two
+   * images with different `x`, so this has to be expressible.
+   */
+  x: z.number().min(0).max(1).nullable().default(null),
   /** Share of frame width. */
-  widthPct: z.number().min(20).max(100).default(78),
+  widthPct: z.number().min(5).max(100).default(78),
+  /**
+   * Ceiling on the share of frame height. A photograph is wider than it is tall and
+   * behaves under a width alone; a phone screenshot is the opposite and, in a vertical
+   * frame, runs off both ends of it. The picture fits inside both bounds and keeps its
+   * own aspect ratio.
+   */
+  heightPct: z.number().min(5).max(100).default(100),
+  /**
+   * `card` is the white-bordered photo plate; `plain` is the bare picture, for a
+   * cutout or a screenshot that already has its own edges; `logo` is a white
+   * rounded plate with padding, which is the only way a monochrome brand mark
+   * reads on arbitrary footage.
+   */
+  style: z.enum(["card", "plain", "logo"]).default("card"),
   caption: z.string().default(""),
+  by: EditAuthor,
 });
 
 /** A one-shot sound tied to a beat — a whoosh on a punch-in, a ding on a number. */
@@ -122,6 +171,7 @@ export const SfxEdit = z.object({
   d: z.number().default(2),
   src: z.string(),
   gain: z.number().min(0).max(2).default(0.8),
+  by: EditAuthor,
 });
 
 /**
@@ -137,6 +187,7 @@ export const MusicEdit = z.object({
   gain: z.number().min(0).max(2).default(0.28),
   duck: z.boolean().default(true),
   loop: z.boolean().default(true),
+  by: EditAuthor,
 });
 
 export const Edit = z.discriminatedUnion("type", [
@@ -164,6 +215,8 @@ export const Clip = z.object({
   captions: CaptionStyle.prefault({}),
   words: z.array(Word).default([]),
   edits: z.array(Edit).default([]),
+  /** Short labels for what this is — "gameplay", "tutorial". Written by the agent, edited by hand, read by rules. */
+  tags: z.array(z.string()).default([]),
 });
 export type Clip = z.infer<typeof Clip>;
 
@@ -197,6 +250,8 @@ export const VideoSequence = z.object({
   id: z.string().regex(/^[a-zA-Z0-9_-]+$/), title: z.string().min(1),
   output: z.object({ width: z.number().int().positive(), height: z.number().int().positive(), fps: z.number().positive() }),
   items: z.array(SequenceItem).default([]),
+  /** What the agent decided for this video and why. See plan/schema.ts. */
+  plan: SequencePlan.prefault({}),
 });
 export type VideoSequence = z.infer<typeof VideoSequence>;
 
@@ -223,6 +278,8 @@ export const Edl = z.object({
   clips: z.array(Clip),
   media: z.array(MediaSource).default([]),
   sequences: z.array(VideoSequence).default([]),
+  /** What every video in this project shares: brief, template, rules, series. */
+  plan: ProjectPlan.prefault({}),
 });
 export type Edl = z.infer<typeof Edl>;
 
@@ -238,6 +295,9 @@ export const AgentClipProposal = z.object({
   layout: Layout.optional(),
   captions: CaptionStyle.partial().optional(),
   edits: z.array(Edit).default([]),
+  tags: z.array(z.string()).default([]),
+  /** Ids of edit-stage rules the agent judged to hold for this clip. Executed by the host after publishing. */
+  rules: z.array(z.string()).default([]),
 });
 export const AgentClipProposals = z.object({ clips: z.array(AgentClipProposal) });
 export type AgentClipProposal = z.infer<typeof AgentClipProposal>;

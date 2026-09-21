@@ -61,6 +61,7 @@ engine. UI and agent boundaries use the same validation.
 | `item.move` | Move an item to a zero-based destination index |
 | `item.patch` | Update changed clip properties; optional `before` protects staged edits |
 | `item.split` | Split at seconds relative to the item's source start, before silence cuts |
+| `item.source` | Replace an item's footage in place, keeping its slot, overlays and placement |
 
 `media.import` and `media.upload` are project tools accepting an `expectedRevision`.
 Both use the same probing/copying service as visual imports. Path imports read a local
@@ -155,9 +156,12 @@ preview, timeline, properties, and agent controls. On narrower clip-editor scree
 - **Folders:** explicitly browse a folder on this machine, move into subfolders/up to
   parents, and import supported videos, images, or audio. Listings are nonrecursive,
   omit hidden/unsupported entries, and paginate at 100 entries.
-- **Online:** the existing Wikimedia Commons/Openverse image search and adoption tools.
-  Attribution is retained for exported credits. This is image search, not a new remote
-  video or music provider integration.
+- **Online:** image search and adoption. Brand logos (Simple Icons, CC0) answer when the
+  query is a company or product name; Wikimedia Commons and Openverse need no key. Pexels,
+  Unsplash and Google Programmable Search are used only when their keys are configured and
+  return nothing otherwise. `assets.providers` reports which are available. Attribution is
+  retained for exported credits. This is image search, not a new remote video or music
+  provider integration.
 
 Source videos have inline previews and timeline placement controls. Images and
 music/sound effects are placed at the playhead. These capabilities are identical
@@ -193,6 +197,36 @@ placement is an explicit separate action. Online image adoption also imports fir
 for inspection. Browser checks verify video/audio playback, selection without edits,
 explicit placements, desktop/mobile accessibility, and Escape dismissal.
 
+## Templates
+
+A template applies structure to one sequence: caption styling, dead-air cuts, punch-ins,
+emphasis, a hook on its own canvas layer, optional title cards, and pictures placed on the
+sentences that name something. It is not a separate assembly path — `template.apply` builds
+`EditorOperation[]` and commits them through the same revision-checked store, so everything
+it writes is an ordinary timeline item or edit. Every generated edit carries
+`by: "template:<id>"`, which is what lets a second apply replace the template's own work while
+leaving hand-made edits and hand-edited layers alone. A generated clip named as the target is
+promoted in place first. See [TEMPLATES.md](./TEMPLATES.md).
+
+Rules decide when a template applies: a plain-language condition an agent judges, and a
+structured action (template, overrides, instruction) the host executes through
+`template.apply`, marked `template:<id>/rule:<ids>`. A workspace glossary and preferences
+reach every agent prompt and the transcription. See [RULES.md](./RULES.md).
+
+Template verification: sentence segmentation, salience, cue spacing/density, application from
+the HTTP and tool transports, re-application preserving hand edits, stills captured from the
+footage, uncapitalised transcripts, structural cards, and the registry are covered by `pnpm test`. `pnpm test:render` exports a real video and checks that the planned
+pictures appear in folder order at the planned beats, the gaps between them stay bare, the
+hook layer survives every cut, and dead air is removed. Browser checks confirm the panel
+plans and applies a template, its slot inputs, the online provider chips, no axe violations
+on the editor page, and no horizontal overflow from the panel in a 288px column. A live
+render also confirmed two brand marks placed side by side with the footage visible between
+them, and that a corner watermark holds across every cut. A three-shot render was read
+frame by frame either side of each cut: footage changes while the hook, the corner mark
+and the ducked music bed hold, and each shot's pictures land on its own sentences. A live Claude Code run through
+the file tool transport chose a template with `templates.suggest`, dry-ran it and applied
+it without placing anything by hand. Production build passes.
+
 ## Timeline interaction
 
 The editor has one time ruler and a draggable playback marker. Ordinary clip dragging
@@ -201,11 +235,79 @@ which pins automatic neighbors to preserve their timing. Alt-drag onto Main inse
 between neighboring clips and closes gaps through `item.reorder`. Drag the ends of a clip to trim it.
 The shared `buildTimelineTrim` adapter maps output movement through silence cuts,
 bounds source footage, and resizes a standalone title/image/audio layer’s content.
-Main-track trims ripple following clips; overlay timing stays fixed. Selected clip
-effects appear under the same ruler rather than on a second timeline.
+Main-track trims ripple following clips; overlay timing stays fixed. `buildTimelineSlip`
+changes which part of the footage a clip shows without moving it or changing its length: it is
+one `item.patch` that moves both bounds and passes the author's overlays through unchanged, so
+the engine's own rebasing carries the transcript and crop with the footage while titles stay
+where they were put. It is bounded by the source at both ends, and the Trim & split panel drives
+it, so slipping needs no hidden modifier and no new operation. Selected clip
+effects appear under the same ruler rather than on a second timeline, and each one has the same
+two edges a clip has: dragging them changes how long that title, zoom or sound runs, in the
+clip's own source time, bounded by the clip that carries it.
 
-Drag asset thumbnails onto a track to add media there. Explicit placement buttons
-remain available for keyboard and touch users. Project-level video creation and
+Dragging snaps: a moved clip, a trimmed edge and an incoming asset all lock onto the
+origin, the playhead and any other item's edges through the shared `snapTargets`/`snapSpan`
+helpers, whichever of the moving span's two edges is closer. A white guide marks what it
+locked onto. Snapping is a visible toggle in the timeline toolbar, and holding Command or
+Control inverts it for the length of one drag. Only an edge that actually moves in output
+time can snap, so trimming the head of a packed main clip still ripples instead of sliding.
+
+Drag asset thumbnails onto a track to add media there, or drop video, image and audio files
+straight from the desktop onto the track and position where they should land; both routes
+ingest through the same import service and then place through the same operations. The drop
+preview shows the real footprint of what is arriving, not a bare insertion line. Dropping
+media onto the middle of a compatible clip replaces that clip's footage through `item.source`
+(or, for a title/image/sound scene, patches only that scene's `src`), keeping its position,
+trim and overlays; the outer fifth of a clip still inserts. Dropping onto the preview frame
+places the media where it was dropped, carrying the spot into the item transform or the image
+overlay's own coordinates. Right-clicking a clip opens split, duplicate, mute, hide and remove. Every way of adding media is draggable, not only clickable: project and library assets,
+files listed in the folder browser, online image results, and files dragged in from the
+desktop. Each lands through its own existing service — `media.import`, `assets.importLocal`,
+`assets.adopt`, the upload route — and is then placed with the ordinary timeline operations
+where it was dropped. Dropping files on the asset panel imports them without placing anything. The same holds
+outside the editor: both start flows and the library page take a drop wherever they take a
+click, and each one says what it will accept before the drop lands rather than failing after it. Dragging past either end of
+the visible timeline scrolls it, and the playhead snaps to the same targets while scrubbing.
+Stacking two clips on one track is legal — items layer by array order — but it hides one behind
+the other, so a move or drop that would do it is drawn hatched and labelled before it lands,
+through the shared `timelineCollides` check.
+Command or Control with the wheel — a trackpad pinch — zooms the timeline around the pointer,
+keeping the moment under it still; Shift with the wheel scrolls sideways. Transport keys work
+wherever you are looking: Space or K plays and pauses, `,` and `.` step a frame, Up and Down
+jump to the previous or next cut — every edge the snapping engine already knows about — and
+Home and End jump to the ends. Space defers to a focused button or link so it never steals a control's key,
+and a step reads the player's live frame so holding the key does not repeat from a stale one.
+Clips copy and paste (Cmd/Ctrl + C and V) with their trim, overlays and placement intact.
+Several clips can be selected at once — Shift- or Command-click, or sweep a band across
+empty track space — and dragging any of them moves the whole selection in one
+`buildTimelineGroupMove` transaction that freezes every clip left behind at the time it
+resolved to. Delete removes the selection together, the timeline header says how many clips are held and
+offers to let go of them, and Escape clears it. Removing from Main closes the gap only while
+that track is still following on its own: once its clips carry times the author set by hand,
+a removal leaves every other clip where it was, because packing the track would discard them. The selection is view state: it never reaches
+the project, only the next transaction. Trim handles belong to the one clip being edited, so a
+selection of several never covers the timeline in handles.
+Every drag has a click equivalent, so nothing here is mouse-only: assets and folder files
+have add buttons, online results adopt on click, desktop files come in through Import, and
+a compatible selected clip can be swapped from the asset panel's Replace action instead of a
+drop. Each track's label opens a menu — select its clips, move the track up or down among the
+overlays (an ordinary group move), or clear it — which keeps track order reachable without a
+pointer. Selecting several clips at once remains a pointer gesture; every edit it enables is
+available one clip at a time from the keyboard.
+
+Changes that are easy to miss or hard to reverse — a removal, a replacement, an import, or
+an add from the asset panel, which happens away from the timeline — confirm themselves in a
+toast that carries Undo. A drag that lands in view stays quiet, as do ordinary moves and
+trims; those only announce themselves to assistive technology.
+
+Inverting a batch normally replays it one operation at a time, since each inverse is read
+against the state before its own operation. A batch of placements or patches on distinct items
+never reads its siblings, so those — group moves, track swaps, the packing of a whole track —
+invert against the original state in one pass instead, which keeps drag release off a quadratic
+path. Undo and redo (Command or Control + Z, and the toolbar buttons) replay inverse operations
+through the shared engine and the ordinary revision protocol, so they obey the same
+validation as any other edit rather than restoring a remembered EDL. Reloading the project
+clears the history, because it describes edits against the state being replaced. Project-level video creation and
 selection live on the project information screen; the editor focuses on one output.
 Precise position/audio and trim/split forms are collapsed until needed. Selecting a
 visual clip exposes canvas handles automatically while playback is paused.
@@ -216,6 +318,14 @@ Escape cancellation, native video/image drops, effect nudging on the shared rule
 and navigation back to project information. Desktop and 320px mobile checks found
 no axe violations or horizontal page overflow in those tested states. Production
 build passes with existing dynamic-filesystem tracing warnings.
+
+A source clip draws a strip of frames sampled evenly across what it actually shows, so the
+strip changes with the footage instead of repeating one frame; samples are cached per source
+and range, at most two sources are sampled at a time, and a source that will not decode simply
+has no strip. A sound on the timeline draws its own waveform: the file is decoded once in the browser, its
+average energy is sampled into fixed buckets, and the shape is drawn to fit whatever width the
+clip has at the current zoom. Decoded peaks are cached per file, and a file that cannot be
+decoded keeps its plain block — the waveform is a reading aid, never a requirement.
 
 Standalone title/image/audio items appear once on their track, labeled with their
 content; selecting one opens its edit controls. Their internal full-duration effect
@@ -228,6 +338,9 @@ away from zero, persisted positions after reload, and a single standalone title
 block. Main reordering remains verified with Alt-drag. All 40 editing tests, 6 render
 tests, the production build, and desktop/mobile browser accessibility checks pass.
 
+Canvas placement is magnetic in the same way the timeline is: a dragged layer catches the
+frame's edges and its centre through the shared `snapAxis`, drawing the guide it caught, and
+Command or Control passes them by. Holding Shift while resizing keeps the layer's proportions.
 Canvas manipulation previews the actual transformed content while dragging and
 commits one `item.place` transaction on release; Escape/cancellation restores the
 saved preview. Standalone title selection follows the rendered text bounds rather
@@ -235,6 +348,18 @@ than the transparent full-canvas layer. Title resizing anchors its top-left corn
 selection handles stay inside the preview and clear of playback controls. The
 preview draft is temporary UI state; exported and agent-visible state remains the
 shared saved transform.
+
+The content inside a layer moves too. While a layer is selected, every visible title,
+picture and the caption block inside it gets its own handle: dragging one writes the
+overlay's free position (`x`/`y` for a title or picture, `positionY` for captions) through
+one `item.patch`, previewing the real composition until release and snapping to the
+frame's edges and centre with the same guides a whole layer gets. Captions keep their
+horizontal centring and only move up and down. A press that does not move selects the
+overlay so its controls open; arrow keys nudge by 1% and Shift by 5%. A title with a free
+position keeps its preset width, so it wraps exactly as before; choosing a preset again in
+the Selected panel or the Add panel clears the free position. A grid of thirds, the centre
+and a 10% mesh covers the frame for the length of any canvas drag, including media dragged
+in from the asset panel, so the size of what is moving stays legible against the frame.
 
 Canvas browser checks verify live title/video movement, title-sized selection,
 no saved mutation before release, no release jump, Escape restoration, live title

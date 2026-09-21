@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api, type AssetSummary, type SearchHit } from "@/lib/client";
+import type { ProviderInfo } from "@/lib/search";
+import { setActiveDrag, writeDrag } from "@/lib/editor/dnd";
 
 /**
  * Concrete named things come back clean; abstract phrases return nothing, which
@@ -22,14 +24,25 @@ export function ImageSearch({
   const [hits, setHits] = useState<SearchHit[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [adopting, setAdopting] = useState<string | null>(null);
+  const [providers, setProviders] = useState<ProviderInfo[]>([]);
+  // Empty means every configured provider, which is the right default: the ranking
+  // already prefers a brand mark over a photograph when the query names a brand.
+  const [chosen, setChosen] = useState<string[]>([]);
   const [pending, start] = useTransition();
+
+  useEffect(() => {
+    void api.editorTool<ProviderInfo[]>(projectId, { tool: "assets.providers" })
+      .then(setProviders)
+      .catch(() => setProviders([]));
+  }, [projectId]);
+  const restriction = chosen.length ? { providers: chosen } : {};
 
   const run = () => {
     if (!query.trim()) return;
     setError(null);
     start(async () => {
       try {
-        setHits(await api.editorTool<SearchHit[]>(projectId, { tool: "assets.search", query }));
+        setHits(await api.editorTool<SearchHit[]>(projectId, { tool: "assets.search", query, ...restriction }));
         setSearchedQuery(query);
       } catch (e) {
         setError((e as Error).message);
@@ -41,7 +54,7 @@ export function ImageSearch({
     setAdopting(hit.id);
     void (async () => {
       try {
-        const asset = await api.editorTool<AssetSummary>(projectId, { tool: "assets.adopt", query: searchedQuery, provider: hit.provider, id: hit.id });
+        const asset = await api.editorTool<AssetSummary>(projectId, { tool: "assets.adopt", query: searchedQuery, provider: hit.provider, id: hit.id, ...restriction });
         onAdopt(asset);
       } catch (e) {
         setError((e as Error).message);
@@ -65,12 +78,33 @@ export function ImageSearch({
         </Button>
       </div>
 
+      {providers.length ? (
+        <fieldset className="flex flex-wrap gap-1">
+          <legend className="sr-only">Image sources</legend>
+          {providers.map((provider) => (
+            <Button
+              key={provider.id}
+              size="xs"
+              variant={chosen.includes(provider.id) ? "secondary" : "ghost"}
+              aria-pressed={chosen.includes(provider.id)}
+              disabled={!provider.configured}
+              title={provider.note}
+              onClick={() => setChosen((current) =>
+                current.includes(provider.id) ? current.filter((id) => id !== provider.id) : [...current, provider.id])}
+            >
+              {provider.label}{provider.configured ? "" : " · needs a key"}
+            </Button>
+          ))}
+        </fieldset>
+      ) : null}
+
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
 
       {hits?.length === 0 ? (
         <p className="text-xs text-muted-foreground">
           Nothing relevant enough. Search works for things with a name — a product, a company, a
-          place, an interface — not for concepts.
+          place, an interface — not for concepts. A company or product name also returns its
+          official logo.
         </p>
       ) : null}
 
@@ -80,11 +114,19 @@ export function ImageSearch({
             <button
               key={`${hit.provider}-${hit.id}`}
               type="button"
+              draggable={adopting === null}
+              onDragStart={(event) => {
+                // The image is adopted into the library by whoever receives the drop.
+                const payload = { kind: "image" as const, name: hit.title, search: { provider: hit.provider, id: hit.id, query: searchedQuery, ...restriction } };
+                writeDrag(event.dataTransfer, payload);
+                setActiveDrag(payload);
+              }}
+              onDragEnd={() => setActiveDrag(null)}
               onClick={() => adopt(hit)}
               disabled={adopting !== null}
               aria-label={`Add ${hit.title}`}
               title={`${hit.title} · ${hit.license}`}
-              className="group relative overflow-hidden rounded-xl border border-border outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              className="group relative cursor-grab overflow-hidden rounded-xl border border-border outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing disabled:opacity-50"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={hit.thumbUrl} alt="" className="aspect-square w-full object-cover" />
@@ -94,7 +136,7 @@ export function ImageSearch({
                 </span>
               ) : null}
               <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/90 to-transparent px-1.5 pt-4 pb-1 text-left text-[10px] text-white/80">
-                {hit.license}
+                {hit.provider} · {hit.license}
               </span>
             </button>
           ))}
@@ -103,7 +145,8 @@ export function ImageSearch({
 
       {hits?.length ? (
         <p className="text-[11px] text-muted-foreground">
-          Credit lines are saved automatically and exported with the clips.
+          Credit lines are saved automatically and exported with the clips. A result marked
+          unverified carries no licence of its own — check its rights before publishing it.
         </p>
       ) : null}
     </div>

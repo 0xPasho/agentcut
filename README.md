@@ -66,6 +66,45 @@ same edit rather than creating a separate editor.
 
 *Screenshots show the running app with original illustrated demo media.*
 
+## Build a video from a template
+
+A template is the structure of a finished video — where the hook sits, how the captions
+read, how often a picture is allowed to interrupt. Open **Templates** in the editor's
+properties column, choose one, and press **Preview plan**: it lists every sentence and
+marks the ones that would get a picture, without changing anything. **Apply** commits it.
+
+Pictures land on the sentences that name something — a company, a product, a place, a
+figure — and the sentences in between are left bare, which is what the cadence of a good
+short actually looks like. A named brand resolves to its own logo rather than a stock
+photo. A folder of screenshots can be handed to a template and used in order.
+
+Adjust the sliders, press **Apply** again — re-applying replaces the template's own work
+and leaves anything you placed by hand alone. **Save these settings as…** writes your own
+template into `workspace/templates/`, where it sits alongside the built-in ones.
+
+Templates work on a clip the agent found for you as well as on a video you assembled:
+applying one promotes the clip in place, keeping its link and its footage.
+
+Your coding agent has the same templates through the same tools, and is told which ones
+exist before it starts. See [TEMPLATES.md](TEMPLATES.md).
+
+**Rules** tell it when to use which: "when the clip is gameplay, use this template and no
+pictures". A **glossary** keeps names spelled right in captions, and **preferences** say
+how you like your videos in your own words. All three are files the panel, the agent and
+the CLI share. See [RULES.md](RULES.md).
+
+## Edit a set of raw videos
+
+**Edit a set** takes several raw recordings and a sentence about what you want. Each becomes
+its own video in one project: transcribed, captioned, given a hook and edited under one
+shared plan so they read as a series. Open any of them to see the plan — what the agent
+decided and why — change a decision and apply it again, or fix things on the timeline.
+Approve the ones you like; **Render approved** renders only those. From the terminal:
+
+```sh
+node scripts/agentcut.mjs projects batch "Tips" --brief "Five tips for TikTok" a.mp4 b.mp4 c.mp4
+```
+
 ## Find clips in an existing video
 
 This workflow additionally needs:
@@ -88,8 +127,16 @@ from a terminal where `claude` is on `PATH`. See the official
 [whisper.cpp Homebrew formula](https://formulae.brew.sh/formula/whisper.cpp).
 
 Choose **Find clips**, supply a local video or supported URL, and describe what you
-want. The first transcription downloads the Whisper model automatically; subsequent
-runs reuse it. The default `small` model is multilingual.
+want. The first transcription downloads the Whisper model automatically (about 1.6 GB
+for the default `large-v3-turbo`, plus a small voice-activity model); subsequent runs
+reuse them. The default model is multilingual and falls back to `small` if your
+whisper.cpp build cannot load it; `AGENTCUT_WHISPER_MODEL` overrides the choice.
+
+Word timings are snapped to the audio itself, and the segments the recogniser was
+unsure of are proofread by the same agent CLI (set `AGENTCUT_TRANSCRIPT_POLISH=0` to
+skip that). **Re-sync captions** in a project re-transcribes the source and refreshes
+the words on every clip without touching your edits; the caption panel's **Sync**
+slider is for sources whose own audio and video are offset.
 
 The editor's **Edit with agent** action changes an existing edit without rerunning
 the whole clipping workflow. Claude is preferred when both supported CLIs are
@@ -128,7 +175,23 @@ node scripts/agentcut.mjs projects list
 node scripts/agentcut.mjs edit PROJECT_ID read
 node scripts/agentcut.mjs edit PROJECT_ID ask "Move the title to the bottom"
 node scripts/agentcut.mjs render PROJECT_ID
+
+# Templates: see what exists, preview what one would do, then apply it.
+pnpm exec tsx scripts/templates.ts list
+pnpm exec tsx scripts/templates.ts plan PROJECT_ID explainer-broll
+pnpm exec tsx scripts/templates.ts apply PROJECT_ID chat-story --slot screenshots=./my-screenshots
 ```
+
+Or let the coding agent in your terminal drive the editor directly. Register the MCP server
+once and the web shows what it does:
+
+```sh
+claude mcp add agentcut -- node /absolute/path/to/scripts/agentcut.mjs mcp
+codex mcp add agentcut -- node /absolute/path/to/scripts/agentcut.mjs mcp
+```
+
+OpenCode: add the same command under `mcp` in its config. Every project tool is exposed as
+`agentcut_<tool>` with a `projectId` argument; `agentcut_projects_list` finds the id.
 
 No web server is required for these commands. To launch from another folder, use the
 absolute path to `scripts/agentcut.mjs`; it resolves the checkout and default workspace.
@@ -169,6 +232,10 @@ Render tests use real media rendering and take longer than editing tests. See
 
 - [Setup, configuration, troubleshooting](docs/SETUP.md)
 - [Shared editor and agent tools](EDITOR.md)
+- [Templates and image providers](TEMPLATES.md)
+- [Rules, glossary and preferences](RULES.md)
+- [Packs: share templates, rules and assets](PACKS.md)
+- [Agent-first direction and status](AGENT-FIRST.md)
 - [Sequences, layers, and timeline behavior](SEQUENCES.md)
 - [Product requirements](SPEC.md)
 - [Design conventions](DESIGN.md)

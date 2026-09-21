@@ -21,8 +21,11 @@ const COMMANDS = {
   dev: { kind: "pnpm", script: "dev", help: "start the Next dev server" },
   start: { kind: "pnpm", script: "start", help: "start the built Next server" },
   edit: { kind: "tsx", entry: "scripts/edit.ts", help: "headless editor: <projectId> [read | call req.json | ask ...]" },
-  projects: { kind: "tsx", entry: "scripts/projects.ts", help: 'list | create "Project name" video1.mp4 video2.mp4 ...' },
+  projects: { kind: "tsx", entry: "scripts/projects.ts", help: 'list | create "Project name" video1.mp4 ... | batch "Set name" [--brief "..."] video1.mp4 video2.mp4 ...' },
   render: { kind: "tsx", entry: "scripts/render.ts", help: "render clips: <projectId|edl.json> [--only id,id]" },
+  mcp: { kind: "tsx", entry: "scripts/mcp.ts", help: "serve the editor tools over MCP (stdio) for Claude Code, Codex or OpenCode" },
+  rules: { kind: "tsx", entry: "scripts/rules.ts", help: "list | show <id> | evaluate <projectId> [--sequence ID] | apply <projectId> <ruleId,...> [--sequence ID] | glossary | preferences" },
+  templates: { kind: "tsx", entry: "scripts/templates.ts", help: "list | show <id> | plan|apply <projectId> <templateId> [--sequence ID] [--slot name=folder] [--text name=line] [--asset name=id]" },
 };
 
 function findPackageRoot(start) {
@@ -68,8 +71,19 @@ function plan(command, rest, root, from) {
   const spec = COMMANDS[command];
   const args = rest.map((arg, index) => {
     // Only path positions are rewritten. Instructions and project titles are literal.
-    if (command === "projects" && rest[0] === "create" && index >= 2) return path.resolve(from, arg.replace(/^~(?=\/)/, process.env.HOME ?? "~"));
+    if (command === "projects" && (rest[0] === "create" || rest[0] === "batch") && index >= 2 && !arg.startsWith("--") && rest[index - 1] !== "--brief") return path.resolve(from, arg.replace(/^~(?=\/)/, process.env.HOME ?? "~"));
     if ((command === "render" && index === 0 && /\.json$/i.test(arg)) || (command === "edit" && rest[1] === "call" && index === 2)) return path.resolve(from, arg);
+    // --slot name=folder: the folder is a caller-relative path; the slot name is not.
+    if (command === "templates") {
+      const inline = /^--slot=(.*)$/s.exec(arg);
+      if (inline || rest[index - 1] === "--slot") {
+        const [name, folder] = (inline ? inline[1] : arg).split(/=(.*)/s);
+        if (folder) {
+          const target = path.resolve(from, folder.replace(/^~(?=\/)/, process.env.HOME ?? "~"));
+          return inline ? `--slot=${name}=${target}` : `${name}=${target}`;
+        }
+      }
+    }
     return arg;
   });
   if (spec.kind === "tsx") {
@@ -85,7 +99,7 @@ function plan(command, rest, root, from) {
 }
 
 function usage() {
-  const lines = Object.entries(COMMANDS).map(([name, spec]) => `  ${name.padEnd(7)} ${spec.help}`);
+  const lines = Object.entries(COMMANDS).map(([name, spec]) => `  ${name.padEnd(9)} ${spec.help}`);
   return [`usage: agentcut <${Object.keys(COMMANDS).join("|")}> [args…]`, ...lines, "", "  --dry-run   print the resolved command as JSON instead of running it"].join("\n");
 }
 

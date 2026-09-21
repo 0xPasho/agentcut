@@ -2,12 +2,22 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { grabFrame, type Probe } from "../media";
-import { toAgentText, wordsBetween, type Transcript } from "../transcript";
+import { toAgentText, wordsForClip, type Transcript } from "../transcript";
 import { AgentClipProposals, CaptionStyle, Edl, centerCrop, type Clip } from "../edl";
 import { resolveProvider, type AgentEvent } from "../agent";
 import { resolveQuery } from "../search";
 import { buildSelectPrompt } from "./prompt";
 import type { Signals } from "./signals";
+import { listRules } from "../rules/registry";
+import { candidateRules } from "../rules/evaluate";
+import { readPreferences, preferencesBlock } from "../preferences";
+import { readGlossary, glossaryBrief } from "../glossary";
+
+/** Where buildEdl leaves the agent's per-clip rule matches for the host to execute after publishing. */
+export const ruleMatchesFile = (dir: string) => path.join(dir, "rule-matches.json");
+export async function readRuleMatches(dir: string): Promise<Record<string, string[]>> {
+  try { return JSON.parse(await fs.readFile(ruleMatchesFile(dir), "utf8")); } catch { return {}; }
+}
 
 /**
  * The agent reads a transcript of third-party video — attacker-controlled text.
@@ -50,11 +60,21 @@ export async function selectClips(o: SelectOptions): Promise<Edl> {
 
   await fs.mkdir(dir, { recursive: true });
   const chunks = await writeTranscriptChunks(dir, transcript, probe.durationSec);
+  // The owner's rules, preferences and glossary travel with the material. Rules are
+  // judged here, not executed: the host runs the matched ones after publishing.
+  const allRules = await listRules(o.projectId);
+  const selectRules = candidateRules(allRules, "select").map((r) => ({ id: r.id, when: r.when, prompt: r.promptText.trim() }));
+  const editRules = candidateRules(allRules, "edit").map((r) => ({ id: r.id, name: r.name, when: r.when }));
+  const preferences = preferencesBlock(await readPreferences(o.projectId));
+  const glossary = await readGlossary(o.projectId);
   await Promise.all([
     fs.writeFile(path.join(dir, "transcript.txt"), toAgentText(transcript)),
     fs.writeFile(path.join(dir, "transcript.json"), JSON.stringify(transcript)),
     fs.writeFile(path.join(dir, "signals.json"), JSON.stringify(signals, null, 2)),
     fs.writeFile(path.join(dir, "source.json"), JSON.stringify(probe, null, 2)),
+    fs.writeFile(path.join(dir, "rules.json"), JSON.stringify(allRules.filter((r) => r.enabled).map(({ id, name, when, stage, priority, description }) => ({ id, name, when, stage, priority, description })), null, 2)),
+    fs.writeFile(path.join(dir, "glossary.json"), JSON.stringify(glossary, null, 2)),
+    fs.writeFile(path.join(dir, "preferences.md"), preferences),
   ]);
 
   const hasFrames = await sampleFrames(videoPath, dir, probe.durationSec, frameEvery)
@@ -68,7 +88,7 @@ export async function selectClips(o: SelectOptions): Promise<Edl> {
   const provider = await resolveProvider(o.provider);
   const result = await provider.run({
     cwd: dir,
-    prompt: buildSelectPrompt({ probe, targetClipCount, minSec, maxSec, userBrief, hasFrames, chunks }),
+    prompt: buildSelectPrompt({ probe, targetClipCount, minSec, maxSec, userBrief, hasFrames, chunks, rules: { select: selectRules, edit: editRules }, preferences, glossary: glossaryBrief(glossary) }),
     allowedTools: shellEnabled() ? [...ALLOWED_TOOLS, ...SHELL_TOOLS] : ALLOWED_TOOLS,
     deniedTools: shellEnabled() ? DENIED_TOOLS : [...DENIED_TOOLS, "Bash"],
     model: o.model,
@@ -101,11 +121,14 @@ export async function buildEdl(o: {
   const proposals = AgentClipProposals.parse(JSON.parse(raw));
   const fallbackCrop = centerCrop(probe.width, probe.height, 1080, 1920);
 
+  const matches: Record<string, string[]> = {};
   const clips: Clip[] = proposals.clips
     .map((p) => {
       const [start, end] = snapToWords(transcript, p.start, p.end, probe.durationSec);
+      const id = randomUUID().slice(0, 8);
+      if (p.rules.length) matches[id] = [...new Set(p.rules)];
       return {
-        id: randomUUID().slice(0, 8),
+        id,
         title: p.title,
         hook: p.hook,
         reason: p.reason,
@@ -115,8 +138,9 @@ export async function buildEdl(o: {
         crop: p.crop.length ? p.crop : [fallbackCrop],
         layout: p.layout ?? { type: "crop" as const },
         captions: CaptionStyle.parse(p.captions ?? {}),
-        words: wordsBetween(transcript, start, end).map((w) => ({ ...w, t: Math.max(0, w.t - start), d: Math.min(w.t + w.d, end) - Math.max(w.t, start) })).filter(w => w.d > 0),
+        words: wordsForClip(transcript, start, end),
         edits: p.edits ?? [],
+        tags: [...new Set(p.tags.map((t) => t.toLowerCase().trim()).filter(Boolean))],
       };
     })
     .filter((c) => c.end - c.start >= Math.min(5, minSec))
@@ -138,6 +162,9 @@ export async function buildEdl(o: {
   });
 
   await resolveImageQueries(edl, o.projectId);
+  // Keep only matches for clips that survived filtering, so the host never applies a rule to nothing.
+  const kept = new Set(edl.clips.map((c) => c.id));
+  await fs.writeFile(ruleMatchesFile(dir), JSON.stringify(Object.fromEntries(Object.entries(matches).filter(([id]) => kept.has(id))), null, 2));
   return edl;
 }
 

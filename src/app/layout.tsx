@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Figtree, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Ambient } from "@/components/ambient";
+import { Toaster } from "@/components/ui/sonner";
 
 /**
  * The reference uses a proprietary grotesque (artlistSans) that can't be shipped.
@@ -27,6 +28,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="flex min-h-full flex-col font-sans">
         <Ambient />
         {children}
+        {/* Editing feedback that needs an action — an undo, a failed import — lands here. */}
+        <Toaster position="top-center" offset="88px" closeButton toastOptions={{ classNames: { toast: "rounded-2xl" } }} />
       </body>
     </html>
   );

@@ -123,7 +123,7 @@ test("folder tools browse supported media without recursion and import reusable 
     assert.ok(database.q.listAssets("image").some(asset => asset.id === importedA.id));
     await fs.unlink(original);
     assert.equal(await fs.readFile(path.join(workspace, importedA.path), "utf8"), "fixture", "original can be removed without breaking the imported asset");
-    await assert.rejects(tools.executeEditorTool(a.id, { tool: "assets.importLocal", file: path.join(originals,"private.txt") }), /Choose an image or audio/);
+    await assert.rejects(tools.executeEditorTool(a.id, { tool: "assets.importLocal", file: path.join(originals,"private.txt") }), /Choose an image, audio or video/);
     await assert.rejects(tools.executeEditorTool(a.id, { tool: "assets.browseLocal", folder: path.join(originals,"missing") }));
   } finally { await fs.rm(originals, { recursive: true, force: true }); }
 });

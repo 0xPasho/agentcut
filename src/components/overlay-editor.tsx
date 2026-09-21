@@ -51,7 +51,10 @@ export function OverlayEditor({
       d: hook?.d ?? 2.5,
       text: hook?.text ?? "",
       position: hook?.position ?? "top",
+      x: hook?.x ?? null,
+      y: hook?.y ?? null,
       style: hook?.style ?? "card",
+      by: hook?.by ?? "",
       ...patch,
     };
     if (hookIndex < 0) { if (next.text.trim()) onChange([...clip.edits, next]); }
@@ -91,7 +94,7 @@ export function OverlayEditor({
         const { name } = await api.captureFrame(projectId, clip.start + rel, mediaId);
         onChange([
           ...clip.edits,
-          { type: "image", t: rel, d: 3, src: name, query: "", credit: "", y: 0.3, widthPct: 78, caption: "" },
+          { type: "image", t: rel, d: 3, src: name, query: "", credit: "", y: 0.3, x: null, widthPct: 78, heightPct: 100, style: "card", caption: "", by: "" },
         ]);
         setAt("");
       } catch (e) {
@@ -125,7 +128,7 @@ export function OverlayEditor({
           </Select>
           <Select
             value={hook?.position ?? "top"}
-            onValueChange={(v) => setHook({ position: v as TextEdit["position"] })}
+            onValueChange={(v) => setHook({ position: v as TextEdit["position"], x: null, y: null })}
           >
             <SelectTrigger aria-label="Hook position" className="flex-1">
               <SelectValue />
@@ -168,7 +171,7 @@ export function OverlayEditor({
         </div>
         {error ? <p className="text-xs text-destructive">{error}</p> : null}
 
-        <ProjectAssets projectId={projectId} onChoose={asset => onChange([...clip.edits, { type: "image", t: atSec, d: 3, src: asset.id, query: "", credit: asset.attribution ?? "", y: 0.3, widthPct: 78, caption: "" }])} />
+        <ProjectAssets projectId={projectId} onChoose={asset => onChange([...clip.edits, { type: "image", t: atSec, d: 3, src: asset.id, query: "", credit: asset.attribution ?? "", y: 0.3, x: null, widthPct: 78, heightPct: 100, style: "card", caption: "", by: "" }])} />
 
         <ImageSearch
           projectId={projectId}
@@ -183,8 +186,12 @@ export function OverlayEditor({
                 query: "",
                 credit: asset.attribution ?? "",
                 y: 0.3,
+                x: null,
                 widthPct: 78,
+                heightPct: 100,
+                style: "card",
                 caption: "",
+                by: "",
               },
             ])
           }

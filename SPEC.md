@@ -104,6 +104,15 @@ modify the current project. Full clip properties expose crop/split and all suppo
 fields to humans. Agent tools expose the same asset services. Reanalysis appends clips,
 and project-ID rendering reads the database through the shared render service.
 
+Templates are implemented on the same contract. `template.plan` is a read-only dry run and
+`template.apply` submits ordinary operations through `project.edit` with an `expectedRevision`,
+so a template's captions, cuts, punch-ins, hook layer and images are ordinary edits a human can
+change afterwards. The **Templates** panel and the agent's `template.*` tools call the same
+service; built-in and user templates are the same JSON documents, and user templates in the
+workspace override built-ins by id. Picture placement is decided by sentence salience, so a
+picture lands where a sentence names something and the sentences between are left bare.
+See [TEMPLATES.md](./TEMPLATES.md).
+
 Conflicts preserve local drafts instead of overwriting newer changes. Equivalence is covered
 by state/HTTP/tool-transport tests and decoded-frame comparisons across UI, agent, and CLI
 exports. See [EDITOR.md](./EDITOR.md) for the protocol, supported operations, recovery behavior,
@@ -123,6 +132,7 @@ targeted edits through the real tool transport, preserving the rest of the proje
 | 7 | **Remotion** for composition + captions; ffmpeg for probe/cut/encode. | Captions become TSX the agent can read, edit and diff. ffmpeg `drawtext`/ASS is opaque and painful. | Pure ffmpeg filtergraphs. |
 | 8 | **Reframe v1: scene-detect + face pass per scene → static crop per scene**, exposed as EDL keyframes. | Covers most talking-head/podcast footage at a fraction of the cost. Agent can repair the keyframes. | Per-frame active-speaker tracking — a real CV project; v2. |
 | 9 | **Transcription pluggable**, local `whisper.cpp` default, hosted API optional, SRT/VTT import always. | Keeps the zero-key path intact without blocking people who want speed. | API-only — breaks the zero-key story. |
+| 10 | **Agent-first editing: rules, an editable plan artifact, a conversation per project, and shareable packs.** | The video is built by the agent from a brief and rules; the human reviews decisions and fine-tunes on the timeline. See [AGENT-FIRST.md](./AGENT-FIRST.md). | A traditional timeline-first editor with an agent on the side. |
 
 ## Open risk: prompt injection
 

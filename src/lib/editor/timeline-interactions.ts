@@ -60,13 +60,63 @@ export function buildTimelineTrim(sequence: VideoSequence, itemId: string, edge:
 
 /** Free placement preserves every other item's resolved time, including auto-follow items. */
 export function buildTimelineMove(sequence: VideoSequence, itemId: string, at: number, layer: number): EditorOperation[] {
-  if (!Number.isFinite(at) || at < 0 || !Number.isInteger(layer) || layer < 0) throw new Error("Invalid timeline placement");
-  if (!sequence.items.some(item => item.id === itemId)) throw new Error("Timeline item not found");
+  return buildTimelineGroupMove(sequence, [{ itemId, at, layer }]);
+}
+
+/**
+ * Move several items in one transaction. Everything that was not picked up keeps the time it
+ * resolved to, so dragging a selection never reshuffles the clips around it.
+ */
+export function buildTimelineGroupMove(sequence: VideoSequence, moves: { itemId: string; at: number; layer: number }[]): EditorOperation[] {
+  if (!moves.length) return [];
+  const seen = new Set<string>();
+  for (const move of moves) {
+    if (!Number.isFinite(move.at) || move.at < 0 || !Number.isInteger(move.layer) || move.layer < 0) throw new Error("Invalid timeline placement");
+    if (!sequence.items.some(item => item.id === move.itemId)) throw new Error("Timeline item not found");
+    if (seen.has(move.itemId)) throw new Error("An item can only be placed once in a move");
+    seen.add(move.itemId);
+  }
   const fps = sequence.output.fps;
   return sequenceFrames(sequence).items.flatMap(({ item, from }): EditorOperation[] => {
-    if (item.id !== itemId && item.at != null) return [];
+    const move = moves.find(candidate => candidate.itemId === item.id);
+    if (!move && item.at != null) return [];
     return [{ type: "item.place", sequenceId: sequence.id, itemId: item.id,
-      patch: item.id === itemId ? { at: Math.round(at * fps) / fps, layer } : { at: from / fps },
+      patch: move ? { at: Math.round(move.at * fps) / fps, layer: move.layer } : { at: from / fps },
       before: { at: item.at ?? null, layer: item.layer ?? 0 } }];
   });
+}
+
+/**
+ * Whether a span would land on top of something already on that track. Overlap is legal —
+ * items stack — but it hides one clip behind another, so the editor says so before it happens.
+ */
+export function timelineCollides(sequence: VideoSequence, layer: number, at: number, duration: number, ignore: Iterable<string> = []): boolean {
+  if (!(duration > 0)) return false;
+  const skip = new Set(ignore);
+  const fps = sequence.output.fps;
+  return sequenceFrames(sequence).items.some(({ item, from, duration: span }) => {
+    if (skip.has(item.id) || (item.layer ?? 0) !== layer) return false;
+    const start = from / fps, end = (from + span) / fps;
+    return at < end - 1e-6 && start < at + duration - 1e-6;
+  });
+}
+
+/**
+ * Slip: change which part of the footage a clip shows without moving it or changing its length.
+ * The transcript and crop follow the footage — the engine's own trim rebases them — while the
+ * overlays the author wrote stay where they were put, which is why the edits are passed through.
+ */
+export function buildTimelineSlip(sequence: VideoSequence, itemId: string, deltaSeconds: number, media: MediaSource[]): EditorOperation[] {
+  if (!Number.isFinite(deltaSeconds)) throw new Error("Slip movement must be finite");
+  const item = sequence.items.find(candidate => candidate.id === itemId);
+  if (!item) throw new Error("Timeline item not found");
+  if (item.mediaId === null) throw new Error("A scene with no footage has nothing to slip");
+  const source = media.find(candidate => candidate.id === item.mediaId);
+  if (!source) throw new Error("Timeline item references missing media");
+  const clip = item.clip, fps = sequence.output.fps;
+  const delta = Math.max(-clip.start, Math.min(source.durationSec - clip.end, Math.round(deltaSeconds * fps) / fps));
+  if (!delta) return [];
+  return [{ type: "item.patch", sequenceId: sequence.id, itemId,
+    patch: { start: clip.start + delta, end: clip.end + delta, edits: clip.edits },
+    before: { start: clip.start, end: clip.end } }];
 }

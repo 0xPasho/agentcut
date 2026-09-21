@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../client";
 import { applyOperations, type EditorOperation, type EditorSnapshot } from "./operations";
+import { invertOperations } from "./history";
 
 /** Same revision protocol for every visual editing surface. Drafts never get replaced by polling. */
 export function useEditor(projectId: string, initial: EditorSnapshot | null) {
@@ -14,6 +15,12 @@ export function useEditor(projectId: string, initial: EditorSnapshot | null) {
   const [error, setError] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
   const blocked = useRef(false);
+  // Undo replays inverse operations through the same engine, so it obeys the same
+  // validation and revision protocol as any other edit rather than restoring a remembered EDL.
+  const undos = useRef<EditorOperation[][]>([]);
+  const redos = useRef<EditorOperation[][]>([]);
+  const [depth, setDepth] = useState({ undo: 0, redo: 0 });
+  const syncDepth = () => setDepth({ undo: undos.current.length, redo: redos.current.length });
   const draftKey = `agentcut:draft:${projectId}`;
   const persist = () => {
     try {
@@ -23,17 +30,43 @@ export function useEditor(projectId: string, initial: EditorSnapshot | null) {
   };
   const publish = (next: EditorSnapshot | null) => { current.current = next; setSnapshot(next); };
 
-  const dispatch = useCallback((operations: EditorOperation[]) => {
+  const commit = (operations: EditorOperation[], history: "record" | "undo" | "redo" | "skip") => {
     const state = current.current;
-    if (!state) return;
+    if (!state) return false;
+    if (!operations.length) return true;
     try {
+      const inverse = history === "skip" ? null : invertOperations(state.edl, operations);
       const edl = applyOperations(state.edl, operations);
       queue.current.push(...operations);
       publish({ ...state, edl });
       persist();
       setDirty(true);
+      if (inverse) {
+        if (history === "undo") redos.current.push(inverse);
+        else undos.current.push(inverse);
+        // A fresh edit forks the timeline of edits; anything redone from here is unreachable.
+        if (history === "record") redos.current = [];
+        if (undos.current.length > 200) undos.current.shift();
+        syncDepth();
+      }
       if (!blocked.current) setError(null);
-    } catch (e) { setError((e as Error).message); }
+      return true;
+    } catch (e) { setError((e as Error).message); return false; }
+  };
+  /** Returns whether the edit applied, so a caller can report it without duplicating validation. */
+  const dispatch = useCallback((operations: EditorOperation[], options?: { history?: "record" | "skip" }) =>
+    commit(operations, options?.history ?? "record"), []);
+  const undo = useCallback(() => {
+    const operations = undos.current.pop();
+    if (!operations) return;
+    if (!commit(operations, "undo")) undos.current.push(operations);
+    syncDepth();
+  }, []);
+  const redo = useCallback(() => {
+    const operations = redos.current.pop();
+    if (!operations) return;
+    if (!commit(operations, "redo")) redos.current.push(operations);
+    syncDepth();
   }, []);
 
   const save = useCallback(async (): Promise<boolean> => {
@@ -68,6 +101,8 @@ export function useEditor(projectId: string, initial: EditorSnapshot | null) {
     try {
       const p = await api.getProject(projectId);
       queue.current = []; blocked.current = false;
+      // Undo history describes edits against the state being replaced.
+      undos.current = []; redos.current = []; syncDepth();
       publish(p.edl ? { edl: p.edl, revision: p.revision } : null);
       persist();
       setDirty(false); setConflict(false); setError(null);
@@ -111,7 +146,16 @@ export function useEditor(projectId: string, initial: EditorSnapshot | null) {
       } catch { /* preserve local state on a transient network failure */ }
     };
     const timer = setInterval(poll, 1000);
-    return () => { disposed = true; clearInterval(timer); };
+    // A background tab's timers are throttled to about once a minute, and the agent edits the
+    // same project. Coming back to the window has to show its work at once, not a minute later.
+    const resume = () => { if (document.visibilityState === "visible") void poll(); };
+    document.addEventListener("visibilitychange", resume);
+    window.addEventListener("focus", resume);
+    return () => {
+      disposed = true; clearInterval(timer);
+      document.removeEventListener("visibilitychange", resume);
+      window.removeEventListener("focus", resume);
+    };
   }, [projectId]);
 
   useEffect(() => {
@@ -125,5 +169,5 @@ export function useEditor(projectId: string, initial: EditorSnapshot | null) {
     const url = URL.createObjectURL(new Blob([JSON.stringify(current.current, null, 2)], { type: "application/json" }));
     const a = document.createElement("a"); a.href = url; a.download = `${projectId}-draft.json`; a.click(); URL.revokeObjectURL(url);
   };
-  return { snapshot, dispatch, save, reload, downloadDraft, dirty, saving, error, conflict };
+  return { snapshot, dispatch, undo, redo, canUndo: depth.undo > 0, canRedo: depth.redo > 0, save, reload, downloadDraft, dirty, saving, error, conflict };
 }

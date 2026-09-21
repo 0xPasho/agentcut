@@ -48,6 +48,7 @@ export function AudioPicker({
       gain: music?.gain ?? 0.28,
       duck: music?.duck ?? true,
       loop: music?.loop ?? true,
+      by: music?.by ?? "",
       ...music,
       ...patch,
     };
@@ -128,7 +129,7 @@ export function AudioPicker({
               size="xs"
               variant="outline"
               onClick={() =>
-                onChange([...clip.edits, { type: "sfx", t: atSec, d: 2, src: s.id, gain: 0.8 }])
+                onChange([...clip.edits, { type: "sfx", t: atSec, d: 2, src: s.id, gain: 0.8, by: "" }])
               }
             >
               {s.name.replace(/\.[a-z0-9]+$/i, "").slice(0, 18)}

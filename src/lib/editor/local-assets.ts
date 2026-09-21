@@ -24,7 +24,7 @@ export async function browseLocalFolder(folder?: string, offset = 0): Promise<Fo
 export async function importLocalAsset(projectId: string, source: string) {
   const original = await fs.realpath(localPath(source));
   const kind = kindFor(original);
-  if (!kind || !(await fs.stat(original)).isFile()) throw new Error("Choose an image or audio file. Import videos through media.import.");
+  if (!kind || !(await fs.stat(original)).isFile()) throw new Error("Choose an image, audio or video file.");
   const dir = path.join(projectDir(projectId), "assets");
   await fs.mkdir(dir, { recursive: true });
   const file = path.join(dir, `${randomUUID()}${path.extname(original)}`);
@@ -34,4 +34,27 @@ export async function importLocalAsset(projectId: string, source: string) {
     if (path.resolve(toAbs(asset.path)) !== path.resolve(file)) await fs.rm(file, { force: true });
     return asset;
   } catch (error) { await fs.rm(file, { force: true }); throw error; }
+}
+
+/**
+ * Import every supported image or audio file in a folder, in filename order. A
+ * template's picture pool is a folder of screenshots, and importing them one call
+ * at a time is not something either interface should have to script.
+ */
+export async function importLocalFolder(projectId: string, folder: string, limit = 200) {
+  const root = await fs.realpath(localPath(folder));
+  const entries = await fs.readdir(root, { withFileTypes: true });
+  const files = entries
+    .filter(entry => entry.isFile() && !entry.name.startsWith(".") && kindFor(entry.name))
+    .map(entry => entry.name)
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }))
+    .slice(0, limit);
+  if (!files.length) throw new Error(`No images or audio in ${root}.`);
+  const imported = [];
+  const failed: string[] = [];
+  for (const name of files) {
+    try { imported.push(await importLocalAsset(projectId, path.join(root, name))); }
+    catch (error) { failed.push(`${name}: ${(error as Error).message}`); }
+  }
+  return { folder: root, imported, failed };
 }

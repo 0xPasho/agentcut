@@ -9,8 +9,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { assetUrl } from "@/lib/client";
 import type { Edit } from "@/lib/edl";
+import { describeAuthor } from "@/lib/editor/authorship";
 
 const num = (v: number | readonly number[]) => (Array.isArray(v) ? v[0] : (v as number));
+/** Where each preset's block roughly centres, so switching to a free position starts from there. */
+const PRESET_Y = { top: 0.15, center: 0.5, bottom: 0.78 } as const;
 
 /** Edits the one selected edit. Fields differ per type, so this is a small switch. */
 export function ClipInspector({
@@ -34,6 +37,7 @@ export function ClipInspector({
           <Trash2 className="size-4" />
         </Button>
       </div>
+      <p className="-mt-2 text-xs text-muted-foreground" title={edit.by || undefined}>{describeAuthor(edit.by)}</p>
 
       <Field label="Starts at" value={`${edit.t.toFixed(2)}s`}>
         <Slider aria-label="Start time" aria-valuetext={`${edit.t.toFixed(2)} seconds`}
@@ -97,7 +101,8 @@ export function ClipInspector({
                 <SelectItem value="plain">Plain text</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={edit.position} onValueChange={(v) => patch({ position: v } as Partial<Edit>)}>
+            {/* A dragged title carries its own x/y; picking a preset again lets those go. */}
+            <Select value={edit.y === null ? edit.position : "custom"} onValueChange={(v) => patch(v === "custom" ? { x: 0.5, y: PRESET_Y[edit.position] } as Partial<Edit> : { position: v, x: null, y: null } as Partial<Edit>)}>
               <SelectTrigger aria-label="Text position" className="flex-1">
                 <SelectValue />
               </SelectTrigger>
@@ -105,9 +110,20 @@ export function ClipInspector({
                 <SelectItem value="top">Top</SelectItem>
                 <SelectItem value="center">Center</SelectItem>
                 <SelectItem value="bottom">Bottom</SelectItem>
+                <SelectItem value="custom">Custom</SelectItem>
               </SelectContent>
             </Select>
           </div>
+          {edit.y !== null ? (
+            <>
+              <Field label="Horizontal position" value={`${Math.round((edit.x ?? 0.5) * 100)}%`}>
+                <Slider aria-label="Horizontal position" min={0} max={1} step={0.01} value={[edit.x ?? 0.5]} onValueChange={(v) => patch({ x: num(v) } as Partial<Edit>)} />
+              </Field>
+              <Field label="Vertical position" value={`${Math.round(edit.y * 100)}%`}>
+                <Slider aria-label="Vertical position" min={0} max={1} step={0.01} value={[edit.y]} onValueChange={(v) => patch({ y: num(v) } as Partial<Edit>)} />
+              </Field>
+            </>
+          ) : null}
         </div>
       ) : null}
 
@@ -131,6 +147,15 @@ export function ClipInspector({
               step={1}
               value={[edit.widthPct]}
               onValueChange={(v) => patch({ widthPct: num(v) } as Partial<Edit>)}
+            />
+          </Field>
+          <Field label="Horizontal position" value={edit.x === null ? "Centred" : `${Math.round(edit.x * 100)}%`}>
+            <Slider aria-label="Horizontal position"
+              min={0}
+              max={1}
+              step={0.01}
+              value={[edit.x ?? 0.5]}
+              onValueChange={(v) => patch({ x: num(v) } as Partial<Edit>)}
             />
           </Field>
           <Field label="Vertical position" value={`${Math.round(edit.y * 100)}%`}>

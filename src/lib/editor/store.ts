@@ -2,8 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { db, q } from "../db";
 import { projectDir } from "../config";
-import { applyOperations, EditRequest, validateEdl, type EditorSnapshot } from "./operations";
+import { applyOperations, EditRequest, repairWordTimes, validateEdl, type EditorSnapshot } from "./operations";
 import { Edl } from "../edl";
+import { observeHumanEdit, recordObservation } from "../observations";
 
 export class RevisionConflict extends Error {
   constructor(public current: EditorSnapshot) { super("This project changed elsewhere. Review the latest version before saving your draft."); }
@@ -11,7 +12,7 @@ export class RevisionConflict extends Error {
 export function readEditor(projectId: string): EditorSnapshot {
   const project = q.getProject(projectId);
   if (!project?.edl) throw new Error("Project has no edit list");
-  return { revision: project.revision, edl: Edl.parse(JSON.parse(project.edl)) };
+  return { revision: project.revision, edl: repairWordTimes(Edl.parse(JSON.parse(project.edl))) };
 }
 
 /** DB is authoritative. Serialize writes and mirror a complete snapshot while holding the write lock. */
@@ -21,7 +22,7 @@ function commit(projectId: string, expectedRevision: number, build: (current: Ed
     const row = q.getProject(projectId);
     if (!row) throw new Error("Project not found");
     if (row.revision !== expectedRevision) throw new RevisionConflict(readEditor(projectId));
-    const current = row.edl ? Edl.parse(JSON.parse(row.edl)) : null;
+    const current = row.edl ? repairWordTimes(Edl.parse(JSON.parse(row.edl))) : null;
     const edl = validateEdl(build(current));
     // A project without a primary source keeps an empty source_path; its identity is
     // still immutable, and imported media never become the primary source.
@@ -50,12 +51,24 @@ function commit(projectId: string, expectedRevision: number, build: (current: Ed
     throw error;
   }
 }
-export function editProject(projectId: string, request: unknown): EditorSnapshot {
+/**
+ * `actor` says who is editing. A person's changes to generated work are worth
+ * remembering (the observation bank); an agent's are not corrections.
+ */
+export function editProject(projectId: string, request: unknown, options: { actor?: "human" | "agent" } = {}): EditorSnapshot {
   const { expectedRevision, operations } = EditRequest.parse(request);
-  return commit(projectId, expectedRevision, current => {
+  let before: Edl | null = null;
+  const saved = commit(projectId, expectedRevision, current => {
     if (!current) throw new Error("Project has no edit list");
+    before = current;
     return applyOperations(current, operations);
   });
+  if (options.actor === "human" && before) {
+    try {
+      for (const o of observeHumanEdit(projectId, before, operations)) recordObservation(o);
+    } catch (error) { console.error("observation not recorded", error); }
+  }
+  return saved;
 }
 /** Selection adds clips; it never replaces edits in existing clips. */
 export function publishClips(projectId: string, proposal: Edl): EditorSnapshot {

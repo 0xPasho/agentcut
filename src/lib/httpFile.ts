@@ -21,7 +21,9 @@ const TYPES: Record<string, string> = {
   ".gif": "image/gif",
   ".avif": "image/avif",
   ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
   ".png": "image/png",
+  ".svg": "image/svg+xml",
 };
 
 /** Range-aware file response — <video> and Remotion's Player both need it to seek. */
@@ -30,6 +32,11 @@ export async function fileResponse(filePath: string, rangeHeader: string | null)
   if (!stat) return new Response("not found", { status: 404 });
 
   const type = TYPES[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
+  // An SVG is a document. Nothing runs when one is drawn into an <img>, but opening
+  // its URL directly would, so it is served sandboxed and never content-sniffed.
+  const guard: Record<string, string> = type === "image/svg+xml"
+    ? { "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox", "X-Content-Type-Options": "nosniff" }
+    : {};
   const m = rangeHeader ? /bytes=(\d*)-(\d*)/.exec(rangeHeader) : null;
 
   if (m) {
@@ -47,6 +54,7 @@ export async function fileResponse(filePath: string, rangeHeader: string | null)
         "Content-Length": String(end - start + 1),
         "Content-Range": `bytes ${start}-${end}/${stat.size}`,
         "Accept-Ranges": "bytes",
+        ...guard,
       },
     });
   }
@@ -56,6 +64,7 @@ export async function fileResponse(filePath: string, rangeHeader: string | null)
       "Content-Type": type,
       "Content-Length": String(stat.size),
       "Accept-Ranges": "bytes",
+      ...guard,
     },
   });
 }

@@ -75,13 +75,71 @@ export function mapWords(map: TimeMap, words: Word[]): Word[] {
     .filter((w) => !isCut(map, w.t + w.d / 2))
     .map((w) => {
       const t = srcToOut(map, w.t);
-      return { w: w.w, t, d: Math.max(0.04, srcToOut(map, w.t + w.d) - t) };
+      return { ...w, t, d: Math.max(0.04, srcToOut(map, w.t + w.d) - t) };
     });
 }
 
+/** A word stays lit until the next one starts, but never through a long pause. */
+export const WORD_HOLD = 0.25;
+/** A line appears slightly before its first word and lingers after its last. */
+export const LINE_LEAD = 0.15;
+export const LINE_TAIL = 0.35;
+
+export type CaptionLine = { start: number; end: number; words: Word[] };
+
+/**
+ * The line on screen at `t`: the last one that has started, not the first that
+ * matches. Their windows overlap, and preferring the earlier one leaves the next
+ * line's opening words being spoken with the previous line still up.
+ */
+export function lineAt(lines: CaptionLine[], t: number): CaptionLine | null {
+  let found: CaptionLine | null = null;
+  for (const line of lines) {
+    if (t >= line.start - LINE_LEAD) found = line;
+    else break;
+  }
+  if (!found || t > found.end + LINE_TAIL) return null;
+  return found;
+}
+
+/**
+ * Which word is being spoken at `t`: the last one that has started, lit until the
+ * next one starts. Running to the next word rather than to this word's own end is
+ * what removes the flicker in the gaps between recogniser word times — but a line's
+ * final word still goes dark rather than holding through the pause after it.
+ */
+export function activeWordIndex(words: Word[], t: number): number {
+  let index = -1;
+  for (let i = 0; i < words.length; i++) {
+    if (t >= words[i].t) index = i;
+    else break;
+  }
+  if (index < 0) return -1;
+  const current = words[index];
+  const next = words[index + 1];
+  const until = Math.min(next ? next.t : Infinity, current.t + current.d + WORD_HOLD);
+  return t > until ? -1 : index;
+}
+
+/**
+ * Which words a preset puts on screen at this moment.
+ *
+ * `popline` shows one word at a time, so between words — and before the first one —
+ * it shows nothing at all. The line-reading presets always show the whole line.
+ */
+export function visibleWords(
+  words: Word[],
+  activeIndex: number,
+  preset: "karaoke" | "popline" | "boxed" | "none",
+): Word[] {
+  if (preset === "none") return [];
+  if (preset !== "popline") return words;
+  return activeIndex >= 0 && words[activeIndex] ? [words[activeIndex]] : [];
+}
+
 /** Group words into caption lines that fit `maxWords` and never straddle a long pause. */
-export function toLines(words: Word[], maxWords: number, pauseGap = 0.6) {
-  const lines: Array<{ start: number; end: number; words: Word[] }> = [];
+export function toLines(words: Word[], maxWords: number, pauseGap = 0.6): CaptionLine[] {
+  const lines: CaptionLine[] = [];
   let current: Word[] = [];
 
   const flush = () => {

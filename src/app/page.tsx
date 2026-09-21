@@ -6,11 +6,14 @@ import { NewProject } from "@/components/new-project";
 import { Badge } from "@/components/ui/badge";
 import { ProjectRow } from "@/components/project-row";
 import { Glass } from "@/components/ui/glass";
+import { Onboarding } from "@/components/onboarding";
+import { onboardingState, ONBOARDING_QUESTIONS } from "@/lib/onboarding";
 
 export const dynamic = "force-dynamic";
 
-export default function Home() {
+export default async function Home() {
   const projects = q.listProjects();
+  const onboarding = await onboardingState();
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-8 px-4 sm:px-6 pt-4 pb-14">
@@ -31,6 +34,7 @@ export default function Home() {
         </Button>
       </Glass>
 
+      {!onboarding.done && !onboarding.hasPreferences && <Onboarding questions={ONBOARDING_QUESTIONS} />}
       <NewProject />
 
       {projects.length > 0 ? (

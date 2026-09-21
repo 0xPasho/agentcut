@@ -6,8 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "tsx --test tests/editor.test.ts tests/sequence.test.ts tests/workspace.test.ts tests/layers.test.ts tests/timeline-interactions.test.ts",
-    "test:render": "tsx --test tests/render-parity.test.ts tests/sequence-render.test.ts tests/layers-render.test.ts"
+    "test": "tsx --test tests/packs.test.ts tests/library-video.test.ts tests/templates-m6.test.ts tests/observations.test.ts tests/batch.test.ts tests/conversation.test.ts tests/plan.test.ts tests/rules.test.ts tests/templates.test.ts tests/editor.test.ts tests/sequence.test.ts tests/workspace.test.ts tests/layers.test.ts tests/timeline-interactions.test.ts tests/interaction.test.ts tests/transcribe.test.ts",
+    "test:render": "tsx --test tests/render-parity.test.ts tests/sequence-render.test.ts tests/layers-render.test.ts tests/templates-render.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

@@ -1,13 +1,10 @@
-import fs from "node:fs/promises";
-import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { projectDir } from "./config";
 import { db, q, type JobRow } from "./db";
-import { probe as probeFile, extractAudio } from "./media";
-import { transcribe, available as whisperAvailable } from "./transcribe/whispercpp";
-import { Transcript } from "./transcript";
+import { probe as probeFile } from "./media";
+import { ensureTranscript } from "./transcribe";
 import { computeSignals } from "./pipeline/signals";
-import { selectClips } from "./pipeline/select";
+import { selectClips, readRuleMatches } from "./pipeline/select";
 import { readEditor, publishClips, RevisionConflict } from "./editor/store";
 import { downloadUrl, isUrl } from "./ingest";
 
@@ -16,7 +13,7 @@ declare global {
 }
 const running = (globalThis.__agentcutRunning ??= new Set<string>());
 
-export type JobKind = "analyze" | "render" | "edit";
+export type JobKind = "analyze" | "render" | "edit" | "transcribe" | "batch";
 
 function log(projectId: string, jobId: string, kind: string, text: string, name?: string) {
   q.insertEvent({ project_id: projectId, job_id: jobId, kind, name: name ?? null, text, at: Date.now() });
@@ -31,6 +28,14 @@ export type AnalyzeOptions = {
   model?: string;
   instruction?: string;
   expectedRevision?: number;
+  /** For an edit: which video is open and what is selected. */
+  sequenceId?: string;
+  context?: import("./editor/agent").MessageContext;
+  /** Which interface sent the instruction. */
+  source?: "web" | "cli" | "mcp";
+  /** Batch: redo videos that already have a plan. */
+  force?: boolean;
+  concurrency?: number;
 };
 
 export function startJob(projectId: string, kind: JobKind, options: AnalyzeOptions & { only?: string[] } = {}) {
@@ -49,7 +54,7 @@ export function startJob(projectId: string, kind: JobKind, options: AnalyzeOptio
     project_id: projectId,
     kind,
     status: "running",
-    stage: kind === "analyze" ? "probe" : "bundling",
+    stage: kind === "analyze" ? "probe" : kind === "transcribe" ? "transcribe" : kind === "batch" ? "batch" : kind === "edit" ? "agent" : "bundling",
     progress: 0,
     error: null,
     created_at: now,
@@ -77,13 +82,45 @@ async function execute(job: JobRow, options: AnalyzeOptions & { only?: string[] 
   const dir = projectDir(project.id);
 
   if (job.kind === "edit") {
-    const { runEditorAgent } = await import("./editor/agent");
+    const { sendMessage } = await import("./editor/conversation");
     q.setProject(project.id, { status: "agent", error: null });
-    await runEditorAgent(project.id, options.instruction ?? "", {
-      provider: options.provider, model: options.model,
+    await sendMessage(project.id, options.instruction ?? "", {
+      provider: options.provider, model: options.model, jobId: job.id,
+      source: options.source ?? "web", sequenceId: options.sequenceId, context: options.context,
       onEvent: e => log(project.id, job.id, e.kind, e.text, e.name),
     });
     q.setProject(project.id, { status: "ready", error: null });
+    return;
+  }
+  if (job.kind === "batch") {
+    const { runBatch } = await import("./batch");
+    q.setProject(project.id, { status: "agent", error: null });
+    const result = await runBatch(project.id, {
+      brief: options.userBrief, provider: options.provider, model: options.model, force: options.force, concurrency: options.concurrency, jobId: job.id,
+      onStage: (stage, progress) => { q.setJob(job.id, { stage, progress }); log(project.id, job.id, "stage", stage); },
+      onLog: (kind, text) => log(project.id, job.id, kind, text, "batch"),
+      onEvent: (e) => { if (e.kind !== "log") log(project.id, job.id, e.kind, e.text.slice(0, 2000), e.name); },
+    });
+    q.setProject(project.id, { status: "ready", error: null });
+    const failed = result.videos.filter((v) => !v.ok);
+    log(project.id, job.id, "stage", `batch done — ${result.videos.length - failed.length} of ${result.videos.length} videos edited${failed.length ? `; still pending: ${failed.map((v) => v.title).join(", ")}` : ""}`);
+    return;
+  }
+  if (job.kind === "transcribe") {
+    q.setProject(project.id, { status: "transcribe", error: null });
+    const { resyncTranscript } = await import("./transcribe/resync");
+    const result = await resyncTranscript(project.id, {
+      brief: options.userBrief,
+      provider: options.provider,
+      model: options.model,
+      expectedRevision: options.expectedRevision,
+      onLog: (text) => log(project.id, job.id, "log", text),
+      onEvent: (e) => {
+        if (e.kind !== "log") log(project.id, job.id, e.kind, e.text.slice(0, 2000), e.name);
+      },
+    });
+    q.setProject(project.id, { status: "ready", error: null });
+    log(project.id, job.id, "stage", `captions re-synced from ${result.transcript.words.length} words`);
     return;
   }
   if (job.kind === "analyze") {
@@ -107,24 +144,30 @@ async function analyze(job: JobRow, sourcePath: string, dir: string, options: An
     log(pid, job.id, "stage", name);
   };
 
+  // The brief is the first turn of the project's conversation, and the plan's goal.
+  if (options.userBrief?.trim()) {
+    const { recordMessage } = await import("./editor/conversation");
+    recordMessage(pid, { role: "user", source: "brief", text: options.userBrief.trim(), jobId: job.id });
+  }
+
   stage("probe", 0.02);
   const meta = await probeFile(sourcePath);
   q.setProject(pid, { probe: JSON.stringify(meta) });
   log(pid, job.id, "log", `${meta.width}x${meta.height} ${meta.fps.toFixed(0)}fps ${Math.round(meta.durationSec)}s`);
 
   stage("transcribe", 0.1);
-  const transcriptPath = path.join(dir, "transcript.json");
-  const cached = await fs.readFile(transcriptPath, "utf8").catch(() => null);
-  let transcript: Transcript;
-  if (cached) {
-    transcript = Transcript.parse(JSON.parse(cached));
-    log(pid, job.id, "log", `reusing transcript (${transcript.words.length} words)`);
-  } else {
-    if (!(await whisperAvailable())) throw new Error("whisper-cli not found — run: brew install whisper-cpp");
-    const wav = await extractAudio(sourcePath, path.join(dir, "audio.wav"));
-    transcript = await transcribe(wav, { outDir: dir });
-    log(pid, job.id, "log", `${transcript.segments.length} segments, ${transcript.words.length} words`);
-  }
+  const { transcript } = await ensureTranscript({
+    dir,
+    sourcePath,
+    projectId: pid,
+    brief: options.userBrief,
+    provider: options.provider,
+    model: options.model,
+    onLog: (text) => log(pid, job.id, "log", text),
+    onEvent: (e) => {
+      if (e.kind !== "log") log(pid, job.id, e.kind, e.text.slice(0, 2000), e.name);
+    },
+  });
 
   stage("signals", 0.45);
   const signals = await computeSignals(sourcePath, meta);
@@ -151,8 +194,37 @@ async function analyze(job: JobRow, sourcePath: string, dir: string, options: An
   });
 
   publishClips(pid, edl);
+  if (options.userBrief?.trim()) {
+    const current = readEditor(pid);
+    if (!current.edl.plan.brief.goal) {
+      const { editProject } = await import("./editor/store");
+      editProject(pid, { expectedRevision: current.revision, operations: [{ type: "plan.patch", patch: { brief: { ...current.edl.plan.brief, goal: options.userBrief.trim() } } }] });
+    }
+  }
+  await applyMatchedRules(pid, dir, (kind, text) => log(pid, job.id, kind, text, "rules"));
   q.setProject(pid, { status: "ready", error: null });
   log(pid, job.id, "stage", `ready — ${edl.clips.length} clips`);
+}
+
+/**
+ * Execute the editing rules the selection agent judged to hold, clip by clip. Each
+ * is an ordinary template application through the shared operations; a failure
+ * is logged and the clip is left as generated rather than failing the whole job.
+ */
+export async function applyMatchedRules(projectId: string, dir: string, report: (kind: string, text: string) => void) {
+  const matches = await readRuleMatches(dir);
+  const entries = Object.entries(matches).filter(([, ids]) => ids.length);
+  if (!entries.length) return;
+  const { applyRules } = await import("./rules/apply");
+  for (const [clipId, ruleIds] of entries) {
+    try {
+      const { revision } = readEditor(projectId);
+      const result = await applyRules(projectId, { clipId, ruleIds }, revision);
+      report("tool", `clip ${clipId}: rules ${ruleIds.join(", ")} → template ${result.templateId} (${result.templateFrom})${result.applied ? `, ${result.applied.images} pictures` : ", no timeline change"}${result.ignored.length ? `; ignored ${result.ignored.join(", ")}` : ""}`);
+    } catch (error) {
+      report("error", `clip ${clipId}: rules ${ruleIds.join(", ")} failed — ${(error as Error).message}`);
+    }
+  }
 }
 
 async function render(job: JobRow, dir: string, only?: string[], expectedRevision?: number) {
@@ -162,8 +234,10 @@ async function render(job: JobRow, dir: string, only?: string[], expectedRevisio
 
   q.setProject(pid, { status: "rendering" });
   const { renderProject } = await import("./editor/render");
-  await renderProject(pid, {
-    only, expectedRevision,
+  const { renderTargets, markRendered } = await import("./batch");
+  const targets = renderTargets(readEditor(pid).edl, only);
+  const rendered = await renderProject(pid, {
+    only: targets, expectedRevision,
     onProgress: (p) => {
       if (p.stage === "bundling") {
         q.setJob(job.id, { stage: "bundling", progress: 0 });
@@ -175,6 +249,7 @@ async function render(job: JobRow, dir: string, only?: string[], expectedRevisio
     },
   });
 
+  markRendered(pid, rendered.outputs.map((o) => o.clip.id));
   q.setProject(pid, { status: "ready" });
   log(pid, job.id, "stage", "render complete");
 }

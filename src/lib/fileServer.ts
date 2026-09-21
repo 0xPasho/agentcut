@@ -20,7 +20,9 @@ const TYPES: Record<string, string> = {
   ".avif": "image/avif",
   ".webm": "video/webm",
   ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
   ".png": "image/png",
+  ".svg": "image/svg+xml",
 };
 
 export type FileServer = { url: string; close: () => Promise<void> };

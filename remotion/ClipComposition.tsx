@@ -1,10 +1,13 @@
 import React, { useMemo } from "react";
-import { AbsoluteFill, Audio, Img, Sequence, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, Audio, Easing, Img, Sequence, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 import type { Clip, CropKeyframe, Edit, Region } from "../src/lib/edl";
 import { buildTimeMap, mapWords, srcToOut } from "../src/lib/timeline";
 import { duckedVolume, speechSpans } from "../src/lib/ducking";
 import { Captions } from "./Captions";
 import { VideoRegion } from "./VideoRegion";
+
+/** Seconds a punch-in takes to reach full scale, and to come back. */
+const PUNCH_RAMP_SEC = 0.3;
 
 export type ClipProps = {
   clip: Clip;
@@ -84,19 +87,21 @@ export const ClipComposition: React.FC<ClipProps> = ({
   const spans = useMemo(() => speechSpans(words), [words]);
   const urlFor = (ref: string) => assetUrls[ref] ?? `${assetBase}${ref}`;
 
-  // Punch-in: ease up over 200ms, hold, ease back down.
+  // Punch-in: ease up over ~300ms, hold, ease back down. Both ramps use an
+  // ease-in-out curve; a linear ramp starts and stops dead and reads as a jump
+  // rather than a zoom. Short punches shrink the ramps so they never cross.
   const zoom = punches.reduce((acc, p) => {
     const start = srcToOut(map, p.t);
     const end = srcToOut(map, p.t + p.d);
     if (t < start || t > end) return acc;
+    const ramp = Math.min(PUNCH_RAMP_SEC, (end - start) / 2);
     return (
       acc *
-      interpolate(
-        t,
-        [start, start + 0.2, Math.max(start + 0.25, end - 0.25), end],
-        [1, p.scale, p.scale, 1],
-        { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
-      )
+      interpolate(t, [start, start + ramp, end - ramp, end], [1, p.scale, p.scale, 1], {
+        easing: Easing.inOut(Easing.quad),
+        extrapolateLeft: "clamp",
+        extrapolateRight: "clamp",
+      })
     );
   }, 1);
 
@@ -110,9 +115,12 @@ export const ClipComposition: React.FC<ClipProps> = ({
     video = (
       <div className="flex h-full w-full flex-col">
         <VideoRegion {...shared} region={clip.layout.top} boxWidth={width} boxHeight={topHeight} />
+        {/* The punch is for the speaker. Zooming the screen pane too makes the
+            shared content lurch on every beat. */}
         <VideoRegion
           {...shared}
           muted
+          zoom={1}
           region={clip.layout.bottom}
           boxWidth={width}
           boxHeight={height - topHeight}
@@ -174,27 +182,64 @@ export const ClipComposition: React.FC<ClipProps> = ({
         // Centring lives in the inline transform. Tailwind v4's -translate-y-1/2 sets
         // the separate `translate` property, which composes with it and would lift the
         // picture a further half-height off the mark `y` asks for.
+        // A centred overlay spans the frame and centres inside it. An overlay with an
+        // explicit `x` is only as wide as it asks for, so two of them can sit side by side.
+        const placed = im.x !== null;
+        // Exact pixels rather than percentages: a percentage max-height against an
+        // auto-height absolute wrapper resolves to "none", which is precisely the case
+        // that lets a tall screenshot run off the top of the frame.
+        const boxWidth = (im.widthPct / 100) * width;
+        const boxHeight = (im.heightPct / 100) * height;
+        /* Remotion's Img holds the frame until the picture has decoded; a plain
+           <img> exports as an empty box. A reference that cannot be fetched is
+           skipped rather than failing the whole export. */
+        const picture = (
+          <Img
+            src={urlFor(im.src)}
+            alt=""
+            onError={() => console.warn(`Image asset could not be loaded: ${im.src}`)}
+            className={
+              im.style === "card"
+                ? "rounded-[28px] border-[6px] border-white object-contain shadow-[0_24px_60px_-12px_rgba(0,0,0,0.75)]"
+                : im.style === "logo"
+                  ? "w-full object-contain"
+                  : "object-contain"
+            }
+            style={im.style === "logo" ? undefined : { maxWidth: boxWidth, maxHeight: boxHeight, width: "auto", height: "auto" }}
+          />
+        );
         return (
           <div
             key={`img-${i}`}
-            className="absolute inset-x-0 flex flex-col items-center gap-3"
-            style={{ top: `${im.y * 100}%`, opacity: appear, transform: `translateY(-50%) scale(${0.96 + appear * 0.04})` }}
+            data-canvas-image={im.src}
+            className={`absolute flex flex-col items-center ${placed ? "" : "inset-x-0"}`}
+            style={{
+              top: `${im.y * 100}%`,
+              ...(placed ? { left: `${im.x! * 100}%`, width: `${im.widthPct}%` } : {}),
+              opacity: appear,
+              transform: `translate(${placed ? "-50%" : "0"}, -50%) scale(${0.96 + appear * 0.04})`,
+            }}
           >
-            {/* Remotion's Img holds the frame until the picture has decoded; a plain
-                <img> exports as an empty box. A reference that cannot be fetched is
-                skipped rather than failing the whole export. */}
-            <Img
-              src={urlFor(im.src)}
-              alt=""
-              onError={() => console.warn(`Image asset could not be loaded: ${im.src}`)}
-              className="rounded-[28px] border-[6px] border-white object-contain shadow-[0_24px_60px_-12px_rgba(0,0,0,0.75)]"
-              style={{ width: `${im.widthPct}%` }}
-            />
+          {/* The inner box is what the canvas handles measure: the picture and its caption,
+              not the full-width row that centres them. */}
+          <div data-canvas-edit={clip.edits.indexOf(im)} className="flex flex-col items-center gap-3">
+            {im.style === "logo" ? (
+              // A monochrome brand mark disappears into dark footage without a plate.
+              <div
+                className="flex aspect-square items-center justify-center rounded-[18%] bg-white p-[12%] shadow-[0_24px_60px_-12px_rgba(0,0,0,0.75)]"
+                style={{ width: Math.min(boxWidth, boxHeight) }}
+              >
+                {picture}
+              </div>
+            ) : (
+              picture
+            )}
             {im.caption ? (
               <span className="rounded-full bg-white px-6 py-2 text-3xl font-black text-black">
                 {im.caption}
               </span>
             ) : null}
+          </div>
           </div>
         );
       })}
@@ -210,9 +255,17 @@ export const ClipComposition: React.FC<ClipProps> = ({
           tx.style === "card"
             ? "rounded-[40px] bg-white px-10 py-6 text-black shadow-[0_20px_50px_-12px_rgba(0,0,0,0.6)]"
             : "text-white [text-shadow:0_4px_18px_rgba(0,0,0,0.75)]";
+        // A dragged title carries its own centre. The row keeps the preset's 86% width so the
+        // text wraps exactly as it did before it was moved; only where it sits changes.
+        const free = tx.y !== null;
+        const freeStyle: React.CSSProperties | undefined = free
+          ? tx.x !== null
+            ? { left: `${tx.x * 100}%`, top: `${tx.y! * 100}%`, width: "86%", transform: "translate(-50%, -50%)" }
+            : { top: `${tx.y! * 100}%`, transform: "translateY(-50%)" }
+          : undefined;
         return (
-          <div key={`tx-${i}`} className={`absolute inset-x-0 ${place} flex justify-center px-[7%]`}>
-            <span data-canvas-title className={`text-center text-[64px] font-black leading-[1.12] tracking-tight ${card}`}>
+          <div key={`tx-${i}`} className={`absolute ${free ? (tx.x !== null ? "" : "inset-x-0") : `inset-x-0 ${place}`} flex justify-center ${free && tx.x !== null ? "" : "px-[7%]"}`} style={freeStyle}>
+            <span data-canvas-title data-canvas-edit={clip.edits.indexOf(tx)} className={`text-center text-[64px] font-black leading-[1.12] tracking-tight ${card}`}>
               {tx.text}
             </span>
           </div>

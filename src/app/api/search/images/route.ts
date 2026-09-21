@@ -6,8 +6,11 @@ export const runtime = "nodejs";
 export async function GET(req: NextRequest) {
   const query = req.nextUrl.searchParams.get("q")?.trim();
   if (!query) return NextResponse.json({ error: "q required" }, { status: 400 });
+  // `providers` restricts the search the same way the project tool does, so this
+  // route and `assets.search` cannot answer the same question differently.
+  const providers = req.nextUrl.searchParams.get("providers")?.split(",").map(p => p.trim()).filter(Boolean);
   try {
-    return NextResponse.json({ hits: await searchImages(query, 12) });
+    return NextResponse.json({ hits: await searchImages(query, 12, providers?.length ? providers : undefined) });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 502 });
   }

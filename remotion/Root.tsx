@@ -1,4 +1,5 @@
 import React from "react";
+import { emptySequencePlan } from "../src/lib/plan/schema";
 import { SequenceComposition } from "./SequenceComposition";
 import { sequenceFrames } from "../src/lib/sequences";
 import { Composition } from "remotion";
@@ -29,7 +30,7 @@ export const RemotionRoot: React.FC = () => (
     })}
   />
   <Composition id="VideoSequence" component={SequenceComposition}
-    defaultProps={{ sequence: { id: "preview", title: "Preview", output: { width: 1920, height: 1080, fps: 30 }, items: [] }, media: [], mediaUrls: {} }}
+    defaultProps={{ sequence: { id: "preview", title: "Preview", output: { width: 1920, height: 1080, fps: 30 }, items: [], plan: emptySequencePlan() }, media: [], mediaUrls: {} }}
     width={1920} height={1080} fps={30} durationInFrames={1}
     calculateMetadata={({ props }) => ({ ...props.sequence.output, durationInFrames: sequenceFrames(props.sequence).duration })}
   />

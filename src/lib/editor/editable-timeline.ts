@@ -1,4 +1,5 @@
 import { Edl } from "../edl";
+import { emptySequencePlan } from "../plan/schema";
 
 /** Project a generated clip into the same editable timeline without changing its identity. */
 export function promoteClipToSequence(input: Edl, clipId: string): Edl {
@@ -15,6 +16,6 @@ export function promoteClipToSequence(input: Edl, clipId: string): Edl {
     edl.media.push(media);
   }
   edl.clips = edl.clips.filter(candidate => candidate.id !== clipId);
-  edl.sequences.push({ id: clipId, title: clip.title, output: { ...edl.output }, items: [{ id: clip.id, mediaId: media.id, clip }] });
+  edl.sequences.push({ id: clipId, title: clip.title, output: { ...edl.output }, items: [{ id: clip.id, mediaId: media.id, clip }], plan: { ...emptySequencePlan(), tags: clip.tags } });
   return edl;
 }

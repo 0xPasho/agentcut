@@ -1,0 +1,293 @@
+import type { Word } from "../transcript";
+import type { Casing } from "../search/brand";
+import type { TemplateImages, TemplateRhythm } from "./schema";
+
+/**
+ * Deciding *which* sentences deserve a picture is the whole difference between a
+ * video that looks edited and a slideshow. The rule this file implements is the
+ * one a human editor uses without thinking about it: illustrate a sentence that
+ * names something, leave the sentence that only explains it alone, and never put
+ * two pictures back to back.
+ */
+
+export type Sentence = { index: number; text: string; t: number; d: number; words: Word[] };
+
+const TERMINAL = /[.!?…]["')\]]*$/;
+/** A pause this long is a full stop even when the transcriber wrote no punctuation. */
+const PAUSE_BREAK = 0.75;
+const MAX_WORDS = 24;
+
+/** Split clip-relative words into sentences. Times stay in the clip's own source seconds. */
+export function toSentences(words: Word[]): Sentence[] {
+  const sentences: Sentence[] = [];
+  let current: Word[] = [];
+  const flush = () => {
+    if (!current.length) return;
+    const first = current[0];
+    const last = current[current.length - 1];
+    sentences.push({
+      index: sentences.length,
+      text: current.map((w) => w.w).join(" ").replace(/\s+/g, " ").trim(),
+      t: first.t,
+      d: Math.max(0.05, last.t + last.d - first.t),
+      words: current,
+    });
+    current = [];
+  };
+  for (const word of words) {
+    const previous = current[current.length - 1];
+    if (previous && word.t - (previous.t + previous.d) >= PAUSE_BREAK) flush();
+    current.push(word);
+    if (TERMINAL.test(word.w) || current.length >= MAX_WORDS) flush();
+  }
+  flush();
+  return sentences.map((s, index) => ({ ...s, index }));
+}
+
+export type Subject = {
+  text: string;
+  kind: "brand" | "entity";
+  /** Set when the subject is a recognised brand; drives the logo plate. */
+  brandSlug?: string;
+  brandHex?: string;
+};
+
+export type BrandMention = { text: string; slug: string; hex: string };
+
+export type SentenceAnalysis = {
+  sentence: Sentence;
+  salience: number;
+  subjects: Subject[];
+  numbers: string[];
+  brands: BrandMention[];
+};
+
+/**
+ * Words that start a sentence and mean nothing on their own. A capital letter at
+ * position 0 is grammar, not a name, so these are never mistaken for a subject.
+ */
+const SENTENCE_STARTERS = new Set([
+  "the","a","an","and","but","so","if","when","then","this","that","these","those","it","its","it's",
+  "i","i'm","i've","we","we're","you","you're","they","they're","he","she","there","there's","here",
+  "what","why","how","who","where","which","because","just","now","also","in","on","at","for","to","of",
+  "with","my","your","our","their","his","her","is","are","was","were","do","does","did","don't","doesn't",
+  "let","let's","okay","ok","yeah","yes","no","not","really","very","actually","basically","like","well",
+  "right","look","listen","imagine","think","first","second","third","next","finally","after","before",
+  "every","most","some","any","all","one","two","three","maybe","probably","obviously","honestly","anyway",
+]);
+
+/** Common words that are capitalised mid-sentence often enough to be noise. */
+const NOT_A_NAME = new Set(["I", "I'm", "I've", "OK", "TV", "A", "The"]);
+
+const NUMBER_WORD = /^(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|trillion|percent|half|double|triple)$/i;
+
+const strip = (word: string) => word.replace(/^[^\p{L}\p{N}$€£#]+|[^\p{L}\p{N}%+]+$/gu, "");
+
+/** Numbers are the cheapest thing to emphasise and the most reliably worth it. */
+export function numbersIn(text: string): string[] {
+  return text
+    .split(/\s+/)
+    .map(strip)
+    .filter((word) => word && (/\d/.test(word) || NUMBER_WORD.test(word)));
+}
+
+/**
+ * Runs of capitalised words are the only name signal a transcript reliably carries.
+ * A run at position 0 is only a name when its first word is not ordinary grammar.
+ *
+ * When every word is capitalised, or none is, the signal is gone. Guessing from it
+ * anyway would either name every word or name none, so this says nothing instead and
+ * leaves the decision to brand matching, which does not depend on case.
+ */
+export function entitiesIn(text: string, casing: Casing = "mixed"): string[] {
+  if (casing !== "mixed") return [];
+  const tokens = text.split(/\s+/).map((token) => ({ raw: token, word: strip(token) }));
+  const entities: string[] = [];
+  let run: string[] = [];
+  const flush = (startedAtZero: boolean) => {
+    if (!run.length) return;
+    const phrase = run.join(" ");
+    const single = run.length === 1;
+    const ordinary = SENTENCE_STARTERS.has(run[0].toLowerCase()) || NOT_A_NAME.has(run[0]);
+    if (!(startedAtZero && ordinary) && !(single && ordinary) && phrase.length > 1) entities.push(phrase);
+    run = [];
+  };
+  let runStart = -1;
+  tokens.forEach(({ word }, index) => {
+    const named = /^[\p{Lu}][\p{L}\p{N}'’.&-]*$/u.test(word) || /^[\p{Lu}\p{N}]{2,6}$/u.test(word);
+    if (named) {
+      if (!run.length) runStart = index;
+      run.push(word);
+    } else flush(runStart === 0);
+  });
+  flush(runStart === 0);
+  return entities;
+}
+
+/**
+ * Salience answers one question: does this sentence point at something a viewer
+ * could be *shown*? Naming a company or a product is the strongest evidence;
+ * a number is supporting evidence; an explanation with neither scores near zero,
+ * and that is the sentence the template deliberately leaves bare.
+ */
+export function analyzeSentences(
+  sentences: Sentence[],
+  brandsBySentence: Map<number, BrandMention[]>,
+  casing: Casing = "mixed",
+): SentenceAnalysis[] {
+  return sentences.map((sentence) => {
+    const brands = brandsBySentence.get(sentence.index) ?? [];
+    const brandTexts = new Set(brands.map((b) => b.text.toLowerCase()));
+    const entities = entitiesIn(sentence.text, casing).filter((entity) => {
+      const lower = entity.toLowerCase();
+      return ![...brandTexts].some((brand) => lower === brand || lower.includes(brand));
+    });
+    const numbers = numbersIn(sentence.text);
+    const acronym = casing === "mixed" && /\b[\p{Lu}]{2,6}\b/u.test(sentence.text);
+    const wordCount = sentence.words.length;
+
+    let salience = 0;
+    if (brands.length) salience += 0.55 + Math.min(0.1, (brands.length - 1) * 0.1);
+    if (entities.length) salience += 0.4 + Math.min(0.12, (entities.length - 1) * 0.06);
+    if (numbers.length) salience += 0.25;
+    if (acronym) salience += 0.1;
+    if (wordCount >= 7) salience += 0.1;
+    if (wordCount <= 3) salience -= 0.25;
+
+    const subjects: Subject[] = [
+      ...brands.map((b): Subject => ({ text: b.text, kind: "brand", brandSlug: b.slug, brandHex: b.hex })),
+      ...entities.map((text): Subject => ({ text, kind: "entity" })),
+    ];
+    return { sentence, salience: Math.max(0, Math.min(1, salience)), subjects, numbers, brands };
+  });
+}
+
+/** One planned picture: when it appears, for how long, and what it should show. */
+export type ImageCue = {
+  sentenceIndex: number;
+  /** Clip-relative source seconds, the timebase every edit uses. */
+  t: number;
+  d: number;
+  /** What to look for. Empty when the template wants a pool picture with no subject. */
+  query: string;
+  subjects: Subject[];
+  salience: number;
+};
+
+/**
+ * Greedy by how much a sentence wants a picture, then filtered by spacing. Picking
+ * the best sentences first and *then* enforcing the gaps is what produces the
+ * "roughly every other sentence, where it helps" pattern instead of a metronome.
+ */
+export function selectImageCues(
+  analyses: SentenceAnalysis[],
+  images: TemplateImages,
+  options: { subjectFree?: boolean; clipDuration?: number } = {},
+): ImageCue[] {
+  if (images.mode === "off" || !analyses.length) return [];
+  // The salience floor exists to stop the tool searching for a picture of something
+  // the sentence never named. A still cut from this shot's own footage, or the next
+  // picture out of a folder you supplied, has nothing to search for — it needs a
+  // moment, not a name — so neither the floor nor the subject applies to it.
+  const requireSubject = !options.subjectFree;
+  const eligible = analyses.filter((a) => {
+    if (requireSubject && !a.subjects.length) return false;
+    if (images.mode === "auto" && requireSubject) return a.salience >= images.minSalience;
+    return true;
+  });
+  if (!eligible.length) return [];
+
+  const cap = images.mode === "every"
+    ? eligible.length
+    : images.mode === "alternate"
+      ? Math.ceil(eligible.length / (images.minSentenceGap + 1))
+      : Math.max(1, Math.round(images.density * analyses.length));
+  const limit = Math.min(images.maxCount, cap);
+
+  const ordered = images.mode === "auto"
+    ? [...eligible].sort((a, b) => b.salience - a.salience || a.sentence.index - b.sentence.index)
+    : eligible;
+
+  const accepted: SentenceAnalysis[] = [];
+  for (const candidate of ordered) {
+    if (accepted.length >= limit) break;
+    const tooClose = accepted.some((other) =>
+      Math.abs(other.sentence.index - candidate.sentence.index) <= images.minSentenceGap ||
+      Math.abs(other.sentence.t - candidate.sentence.t) < images.minGapSec);
+    if (!tooClose) accepted.push(candidate);
+  }
+
+  return accepted
+    .sort((a, b) => a.sentence.t - b.sentence.t)
+    .map((analysis) => {
+      const start = Math.max(0, analysis.sentence.t - images.leadSec);
+      const available = options.clipDuration === undefined ? Infinity : Math.max(0.2, options.clipDuration - start);
+      return {
+        sentenceIndex: analysis.sentence.index,
+        t: start,
+        d: Math.min(images.durationSec, available),
+        query: analysis.subjects[0]?.text ?? "",
+        subjects: analysis.subjects,
+        salience: analysis.salience,
+      };
+    })
+    .filter((cue) => cue.d >= 0.2);
+}
+
+/** Dead-air cuts from the word timestamps alone. Returns clip-relative silence edits. */
+export function silenceCuts(words: Word[], rhythm: TemplateRhythm["silence"], clipDuration: number) {
+  if (!rhythm.enabled) return [] as Array<{ type: "silence"; t: number; d: number }>;
+  const cuts: Array<{ type: "silence"; t: number; d: number }> = [];
+  for (let i = 1; i < words.length; i++) {
+    const previousEnd = words[i - 1].t + words[i - 1].d;
+    const gap = words[i].t - previousEnd;
+    if (gap < rhythm.minGapSec || gap > rhythm.maxGapSec) continue;
+    const t = previousEnd + rhythm.keepSec / 2;
+    const d = gap - rhythm.keepSec;
+    if (d >= 0.1 && t >= 0 && t + d <= clipDuration) cuts.push({ type: "silence", t, d });
+  }
+  return cuts;
+}
+
+/**
+ * Punch-ins land on the sentences that carry the claim, spaced by the template's
+ * rate. A punch on every sentence reads as a nervous tic rather than emphasis.
+ */
+export function punchBeats(analyses: SentenceAnalysis[], rhythm: TemplateRhythm["punch"], clipDuration: number) {
+  if (!rhythm.enabled || !analyses.length) return [] as Array<{ type: "punch"; t: number; d: number; scale: number }>;
+  const target = Math.max(0, Math.round((clipDuration / 60) * rhythm.perMinute));
+  if (!target) return [];
+  const spacing = Math.max(rhythm.durationSec * 2, clipDuration / (target + 1));
+  const chosen: SentenceAnalysis[] = [];
+  for (const candidate of [...analyses].sort((a, b) => b.salience - a.salience || a.sentence.index - b.sentence.index)) {
+    if (chosen.length >= target) break;
+    if (candidate.sentence.t + rhythm.durationSec > clipDuration) continue;
+    if (chosen.some((other) => Math.abs(other.sentence.t - candidate.sentence.t) < spacing)) continue;
+    chosen.push(candidate);
+  }
+  return chosen
+    .sort((a, b) => a.sentence.t - b.sentence.t)
+    .map((analysis) => ({
+      type: "punch" as const,
+      t: analysis.sentence.t,
+      d: Math.min(rhythm.durationSec, Math.max(0.3, clipDuration - analysis.sentence.t)),
+      scale: rhythm.scale,
+    }));
+}
+
+/** Colour the words worth colouring: the figure, the name. */
+export function emphasisBeats(analyses: SentenceAnalysis[], rhythm: TemplateRhythm["emphasis"], clipDuration: number) {
+  if (!rhythm.enabled) return [] as Array<{ type: "emphasis"; t: number; d: number; words: string[]; color: string }>;
+  const wants = new Set(rhythm.targets);
+  return analyses.flatMap((analysis) => {
+    const words = [
+      ...(wants.has("numbers") ? analysis.numbers : []),
+      ...(wants.has("brands") ? analysis.brands.map((b) => b.text) : []),
+      ...(wants.has("entities") ? analysis.subjects.filter((s) => s.kind === "entity").map((s) => s.text) : []),
+    ].flatMap((phrase) => phrase.split(/\s+/)).filter(Boolean);
+    if (!words.length) return [];
+    const d = Math.min(analysis.sentence.d, Math.max(0.3, clipDuration - analysis.sentence.t));
+    if (d <= 0) return [];
+    return [{ type: "emphasis" as const, t: analysis.sentence.t, d, words: [...new Set(words)], color: rhythm.color }];
+  });
+}

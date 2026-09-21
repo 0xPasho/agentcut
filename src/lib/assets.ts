@@ -13,19 +13,26 @@ export async function ensureLibrary() {
   await Promise.all([
     fs.mkdir(path.join(LIBRARY, "images"), { recursive: true }),
     fs.mkdir(path.join(LIBRARY, "audio"), { recursive: true }),
+    fs.mkdir(path.join(LIBRARY, "video"), { recursive: true }),
   ]);
 }
+
+/** Where a kind lives inside the library. */
+export const libraryDirFor = (kind: AssetKind) => path.join(LIBRARY, kind === "audio" ? "audio" : kind === "video" ? "video" : "images");
 
 /** Paths are stored relative to the workspace so the DB survives a move. */
 export const toRel = (abs: string) => path.relative(WORKSPACE, path.resolve(abs));
 export const toAbs = (rel: string) => path.join(WORKSPACE, rel);
 
-const IMAGE_EXT = /\.(jpe?g|png|webp|gif|avif)$/i;
+const IMAGE_EXT = /\.(jpe?g|png|webp|gif|avif|svg)$/i;
 const AUDIO_EXT = /\.(mp3|wav|m4a|aac|ogg|flac)$/i;
+/** Reusable footage — intros, outros, stings, b-roll — lives in the library like any other asset. */
+const VIDEO_EXT = /\.(mp4|mov|mkv|webm|m4v)$/i;
 
 export function kindFor(file: string): AssetKind | null {
   if (IMAGE_EXT.test(file)) return "image";
   if (AUDIO_EXT.test(file)) return "audio";
+  if (VIDEO_EXT.test(file)) return "video";
   return null;
 }
 
@@ -93,7 +100,7 @@ export async function registerAsset(input: RegisterInput): Promise<AssetRow> {
     const meta = await probe(abs);
     row.width = meta.width || null;
     row.height = meta.height || null;
-    row.duration_sec = kind === "audio" ? meta.durationSec || null : null;
+    row.duration_sec = kind === "audio" || kind === "video" ? meta.durationSec || null : null;
   } catch {
     // metadata is a nicety; a file we can't probe is still usable
   }
@@ -113,7 +120,7 @@ export async function registerAsset(input: RegisterInput): Promise<AssetRow> {
 export async function scanLibrary(): Promise<number> {
   await ensureLibrary();
   let added = 0;
-  for (const sub of ["images", "audio"] as const) {
+  for (const sub of ["images", "audio", "video"] as const) {
     const dir = path.join(LIBRARY, sub);
     for (const file of await fs.readdir(dir).catch(() => [] as string[])) {
       const abs = path.join(dir, file);
@@ -154,9 +161,9 @@ export function creditsFor(refs: string[]): string[] {
 /** Shared ingestion for uploads from either interface. Never overwrite an existing library file. */
 export async function uploadLibraryAsset(name: string, bytes: Uint8Array): Promise<AssetRow> {
   const kind = kindFor(name);
-  if (!kind) throw new Error("Choose a supported image or audio file");
+  if (!kind) throw new Error("Choose a supported image, audio or video file");
   await ensureLibrary();
-  const file = path.join(LIBRARY, kind === "audio" ? "audio" : "images", `${randomUUID()}-${path.basename(name)}`);
+  const file = path.join(libraryDirFor(kind), `${randomUUID()}-${path.basename(name)}`);
   await fs.writeFile(file, bytes);
   return registerAsset({ file, kind, scope: "library", name: path.basename(name), source: "upload" });
 }
