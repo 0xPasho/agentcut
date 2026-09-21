@@ -2,13 +2,14 @@
 
 import { useId, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, FileVideo, Link2, Loader2, Scissors, Sparkles, Upload } from "lucide-react";
+import { ArrowRight, FileVideo, FolderOpen, Link2, Loader2, Scissors, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StartChatPanel } from "./start-chat";
+import { LocalFilePicker } from "./local-file-picker";
 import { api } from "@/lib/client";
 import { classifyFile } from "@/lib/editor/dnd";
 
@@ -40,8 +41,8 @@ function ClippingStart() {
   const [source, setSource] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [picking, setPicking] = useState(false);
   const [pending, start] = useTransition();
-  const fileInput = useRef<HTMLInputElement>(null);
   const sourceInput = useRef<HTMLInputElement>(null);
 
   const open = (projectId: string) => {
@@ -49,23 +50,24 @@ function ClippingStart() {
     router.refresh();
   };
 
-  const submit = () => {
+  const submit = (value = source) => {
     if (pending) return;
-    if (!source.trim()) {
-      setError("Paste a video link or local path, or choose Upload video.");
+    if (!value.trim()) {
+      setError("Paste a video link or local path, or choose a file from this computer.");
       sourceInput.current?.focus();
       return;
     }
     setError(null);
     start(async () => {
       try {
-        open((await api.createProject(source)).id);
+        open((await api.createProject(value)).id);
       } catch (e) {
         setError((e as Error).message);
       }
     });
   };
 
+  /** A drop hands over bytes and no path, so those are copied in; a picked file is not. */
   const upload = (file: File) => {
     if (pending) return;
     setError(null);
@@ -137,15 +139,19 @@ function ClippingStart() {
           <span className="text-xs text-muted-foreground">or</span>
           <span className="h-px flex-1 bg-border" />
         </div>
-        <Button variant="outline" size="lg" disabled={pending} onClick={() => fileInput.current?.click()}>
-          <Upload aria-hidden /> Upload video
+        <Button variant="outline" size="lg" disabled={pending} onClick={() => setPicking(true)}>
+          <FolderOpen aria-hidden /> Choose from this computer
         </Button>
-        <p role="status" className="min-h-5 text-xs text-muted-foreground">{pending ? "Adding your video…" : "Choose a video file to get started."}</p>
-        <input ref={fileInput} type="file" accept="video/*" className="hidden" onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) upload(file);
-          e.target.value = "";
-        }} />
+        <p role="status" className="min-h-5 text-xs text-muted-foreground">
+          {pending ? "Adding your video…" : "Your file stays where it is — the project just points at it."}
+        </p>
+        <LocalFilePicker
+          open={picking}
+          onOpenChange={setPicking}
+          title="Choose a video on this computer"
+          description="Nothing is copied or uploaded. The project reads the file where it already lives, and the agent gets the same path."
+          onPick={(file) => { setPicking(false); setSource(file.path); submit(file.path); }}
+        />
       </CardContent>
     </Card>
   );

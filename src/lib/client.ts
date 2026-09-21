@@ -4,6 +4,7 @@ import type { Probe } from "./media";
 import type { Attachment, MessageContext } from "./editor/agent";
 import type { Message } from "./editor/conversation";
 import type { JobState } from "./job-state";
+import type { FolderListing } from "./editor/local-assets";
 export type { Attachment, MessageContext, Message };
 export { JOB_ACTIVE, jobState, type JobState } from "./job-state";
 
@@ -64,11 +65,21 @@ export const api = {
       body: JSON.stringify({ source }),
     }).then(json<{ id: string; name: string }>),
 
-  uploadProject: (file: File) => {
-    const form = new FormData();
-    form.append("file", file);
-    return fetch("/api/projects", { method: "POST", body: form }).then(json<{ id: string; name: string }>);
-  },
+  /**
+   * A dropped file, sent as the raw request body rather than a multipart form: the server
+   * writes it straight to disk, so a long recording is never held in memory whole. Prefer
+   * `createProject` with a path when one is known — that copies nothing at all.
+   */
+  uploadProject: (file: File) =>
+    fetch("/api/projects", {
+      method: "POST",
+      headers: { "content-type": file.type || "application/octet-stream", "x-file-name": encodeURIComponent(file.name) },
+      body: file,
+    }).then(json<{ id: string; name: string }>),
+
+  /** This machine's folders, for picking a source file without copying it anywhere. */
+  browseFiles: (folder?: string, offset = 0) =>
+    fetch(`/api/files?${new URLSearchParams({ ...(folder ? { folder } : {}), offset: String(offset) })}`).then(json<FolderListing>),
 
   /** Several raw videos → one project, one video each, batch started. */
   createBatch: (name: string, files: File[], brief: string) => {
