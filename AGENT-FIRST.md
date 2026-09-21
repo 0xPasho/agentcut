@@ -148,6 +148,13 @@ uses, and everything the agent decides is inspectable and editable in the UI.
   carry a sound design (`sound.transitions`, `sound.opener`, a `query` on any sound source) with
   `sound.mode: "off"` to refuse all of it. Transitions between shots are stings, not renderer transitions,
   which is what Phase 2 deferred.
+- **A template repertoire that ships with sound: implemented 2026-09-21.** Five more built-ins
+  — `fast-cuts`, `quote-card`, `how-to-steps`, `news-brief`, `music-montage` — each with its own
+  sound design, and `music-montage` is the first template that needs no transcript at all. A
+  template names a shipped sound with `sound.*.starter` ("whoosh", "ding", …) rather than an
+  asset id, which cannot be written into a shipped document because ids are per machine; the
+  six older templates were deliberately left silent so an update never makes an existing video
+  start making noise.
 - **Phase 3: not started** (registry, caption translation, publishing, non-footage sources).
 
 ## Phases

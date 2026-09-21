@@ -105,7 +105,14 @@ export const TemplateSoundSource = z.object({
   enabled: z.boolean().default(false),
   slot: z.string().default(""),
   assetId: z.string().default(""),
-  /** Free-licence audio search, e.g. "whoosh transition". Only used when no slot or asset answers. */
+  /**
+   * One of the sounds that ship with the app, by name: whoosh, ding, pop, impact, riser,
+   * click, swipe, sparkle. An asset id cannot be written into a built-in template — ids are
+   * generated per machine — and this is how a template arrives with its sound design already
+   * working, offline. A starter sound the owner deleted is simply not played.
+   */
+  starter: z.string().default(""),
+  /** Free-licence audio search, e.g. "whoosh transition". Only used when nothing above answers. */
   query: z.string().default(""),
 });
 export type TemplateSoundSource = z.infer<typeof TemplateSoundSource>;

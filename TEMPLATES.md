@@ -59,6 +59,10 @@ it decides which one the material wants.
   `assetId` or a `query` — a free-licence audio search, run once and downloaded into the
   project like a picture. A search that finds nothing, or a machine with no network, leaves
   that sound out and applies the rest of the template anyway.
+  `starter` names one of the sounds that ship with the app — whoosh, ding, pop, impact,
+  riser, click, swipe, sparkle — which is how a built-in template can arrive with its sound
+  already working: an asset id is generated per machine and cannot be written into a shipped
+  document. A starter sound the owner deleted is simply not played.
   **`sound.mode: "off"` silences all of it in one field**, so sound is something a video can
   refuse whole rather than unpick edit by edit. Transitions and the opener are placed as
   ordinary sfx layers, authored by the template, so re-applying replaces them and a person
@@ -350,6 +354,16 @@ No web server is required for any of them.
 | `chat-story` | A folder of screenshots told in order, one every couple of sentences, with boxed captions |
 | `story-arc` | Gives a story a shape: the hook holds, a card marks the turn, a closing line lands at the end. Both lines are slots you write when you apply it |
 | `product-demo` | Illustrates from the footage itself, capturing a still at the moment something is described |
+| `fast-cuts` | Short-form at speed: every pause cut, a punch-in with a whoosh on it, a swipe on each cut, a riser on the first frame |
+| `quote-card` | One line, centred on a plate. No hook, no pictures, no push-ins — a ding opens it |
+| `how-to-steps` | A ding and a push-in on every step, illustrated from your screenshots or from the footage, with a closing recap card |
+| `news-brief` | Company marks and lit numbers, captions low, an impact on each cut and a riser to open |
+| `music-montage` | Footage with nobody talking: no captions, a bed across the whole thing, a whoosh on every cut. The one that needs no transcript |
+
+The last five carry a sound design out of the box, built from the sounds that ship with the
+app — so they work with no network and nothing to fill in. The first six are silent unless
+you give them a music slot, which is deliberate: they were here before sound was, and a
+template should not start making noise because the app was updated.
 
 Copy one, change what you want, save it under a new `id` — or override a built-in by
 saving a template with its id. Saving a *variation* is `templates.save` with `from`,

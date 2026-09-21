@@ -254,7 +254,7 @@ function resolveSlotAsset(
  * over it would be the wrong trade.
  */
 async function resolveSound(
-  setting: { enabled: boolean; slot: string; assetId: string; query: string },
+  setting: { enabled: boolean; slot: string; assetId: string; starter: string; query: string },
   slots: Record<string, SlotValue>,
   label: string,
   projectId: string,
@@ -268,6 +268,14 @@ async function resolveSound(
     const asset = q.getAsset(id);
     if (!asset || asset.kind !== "audio") throw new Error(`${label} asset ${id} is not an audio asset in this project.`);
     return { src: asset.id };
+  }
+  const starter = setting.starter.trim();
+  if (starter) {
+    const { installStarterSounds } = await import("../assets");
+    // Idempotent, and it never resurrects one the owner deleted: that is a decision.
+    await installStarterSounds();
+    const found = q.listAssets("audio").find(a => a.source === "starter" && a.name.toLowerCase() === starter.toLowerCase());
+    return found ? { src: found.id } : null;
   }
   const query = setting.query.trim();
   if (!query) return null;

@@ -776,9 +776,10 @@ test("suggestion and folder import work on a project that has no footage at all"
   assert.equal(signals.sentences, 0);
   assert.equal(signals.hasFootage, false);
   assert.equal(signals.durationSec, 0);
-  // With nothing to read, the honest answer is the template that needs nothing to read.
-  assert.equal(suggestions[0].templateId, "talking-head");
-  assert.ok(suggestions[0].why.some(w => /needs no transcript/.test(w)));
+  // With nothing to read, the honest answer is a template that needs nothing to read.
+  // Which one of those wins a tie is not the invariant; that it leads is.
+  assert.ok(suggestions[0].why.some(w => /needs no transcript/.test(w)), JSON.stringify(suggestions[0]));
+  assert.ok(suggestions.find(s => s.templateId === "talking-head")!.why.some(w => /needs no transcript/.test(w)));
   const broll = suggestions.find(s => s.templateId === "explainer-broll")!;
   assert.ok(broll.why.some(w => /no transcript yet/.test(w)));
   // A template that wants stills from footage must not be recommended for a blank canvas.
@@ -1087,7 +1088,7 @@ test("a dry run counts the folder it is given rather than assuming it is full", 
 
 test("every built-in template actually does something on a video it suits", async () => {
   const builtins = (await registry.listTemplates()).filter(t => t.builtin);
-  assert.ok(builtins.length >= 6, "the sweep is only worth running if it covers them all");
+  assert.ok(builtins.length >= 11, "the sweep is only worth running if it covers them all");
 
   const { id, sequenceId, itemId } = await projectWithScript();
   const tone = path.join(workspace, "sweep.wav");
@@ -1433,4 +1434,33 @@ test("a template places its sounds as ordinary sfx layers, and one switch turns 
   const silent = store.readEditor(quiet).edl.sequences.find(s => s.id === quietSequence.id)!;
   assert.equal(silent.items.filter(i => ["Opener", "Transitions", "Music bed"].includes(i.clip.title)).length, 0);
   assert.ok(silent.items.every(i => i.clip.edits.every(e => e.type !== "sfx" && e.type !== "music")), "no sound of any kind");
+});
+
+test("a built-in template arrives with its sound working, offline, without naming an asset id", async () => {
+  // Asset ids are generated per machine, so a shipped template cannot contain one. It
+  // names the sound instead, and the sounds that ship with the app answer to that name.
+  const { id } = await mediaService.createVideoProject("Sounded by default", [{ file: source }, { file: source }]);
+  let snapshot = store.readEditor(id);
+  const sequence = snapshot.edl.sequences[0];
+  snapshot = store.editProject(id, { expectedRevision: snapshot.revision, operations: [
+    { type: "item.patch", sequenceId: sequence.id, itemId: sequence.items[0].id,
+      patch: { title: "Ranking", hook: "How ranking really works", start: 0, end: 20, words: speak(SCRIPT) } },
+  ] });
+
+  // No slots at all: everything this places, it found on this machine.
+  await tools.executeEditorTool(id, { tool: "template.apply", templateId: "fast-cuts", sequenceId: sequence.id,
+    expectedRevision: snapshot.revision, overrides: { images: { mode: "off" } } });
+
+  const after = store.readEditor(id).edl.sequences.find(s => s.id === sequence.id)!;
+  const named = (itemTitle: string) => {
+    const item = after.items.find(i => i.clip.title === itemTitle);
+    const src = item?.clip.edits.find(e => e.type === "sfx")?.src ?? "";
+    return database.q.getAsset(src)?.name ?? null;
+  };
+  assert.equal(named("Opener"), "Riser", "the opening sound came from the app's own sounds");
+  assert.equal(named("Transitions"), "Swipe", "so did the sting on the cut between the two shots");
+  const punches = after.items.find(i => i.id === sequence.items[0].id)!.clip.edits.filter(e => e.type === "sfx");
+  assert.ok(punches.length > 0, "every punch-in got its whoosh");
+  assert.equal(database.q.getAsset(punches[0].src)?.name, "Whoosh");
+  assert.ok(database.q.getAsset(punches[0].src)?.license === null, "a synthesised sound carries no licence to credit");
 });
