@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { catalogNote, chipLabel, favKeyFor, favoriteRows, filterRows, harnessRows, shortReason } from "../src/lib/agent/model-rows";
+import { catalogNote, chipLabel, chipParts, favKeyFor, favoriteRows, filterRows, harnessRows, shortReason } from "../src/lib/agent/model-rows";
 import type { HarnessStatus } from "../src/lib/agent/detect";
 
 /**
@@ -55,4 +55,11 @@ test("the chip names the model, never a bare slug, and says when it has nothing"
   assert.equal(chipLabel(undefined, "", false), "No agent installed");
   assert.match(catalogNote(harness({ modelSource: "curated" })), /Built-in list/);
   assert.match(catalogNote(harness()), /2 models from Claude Code, just now/);
+
+  // The same sentence split for the two-line chip: the agent labels it, the model is
+  // the value. Never a bare slug, and never empty on either line.
+  assert.deepEqual(chipParts(harness(), "sonnet", false), { agent: "Claude Code", model: "Sonnet" });
+  assert.deepEqual(chipParts(harness(), "", false), { agent: "Claude Code", model: "Default" });
+  assert.deepEqual(chipParts(undefined, "", true), { agent: "Agent", model: "Checking…" });
+  assert.deepEqual(chipParts(undefined, "", false), { agent: "Agent", model: "None installed" });
 });

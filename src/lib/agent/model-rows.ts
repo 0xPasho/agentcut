@@ -83,6 +83,17 @@ export function chipLabel(harness: HarnessStatus | undefined, model: string, loa
   return `${harness.label} · ${model ? (row ? prettyModelLabel(row) : model) : "default"}`;
 }
 
+/**
+ * The same label split in two, for the chip that reads like the template picker: which
+ * agent on top, which model under it. One line would repeat the harness on every surface
+ * that already shows its mark.
+ */
+export function chipParts(harness: HarnessStatus | undefined, model: string, loading: boolean): { agent: string; model: string } {
+  if (!harness) return { agent: "Agent", model: loading ? "Checking…" : "None installed" };
+  const row = model ? harness.models.find((m) => m.id === model) : undefined;
+  return { agent: harness.label, model: model ? (row ? prettyModelLabel(row) : model) : "Default" };
+}
+
 /** The rail is narrow; the whole sentence lives in the title attribute. */
 export function shortReason(harness: HarnessStatus, locked: boolean): string {
   if (!harness.installed) return "not installed";

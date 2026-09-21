@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Loader2, RefreshCw, Star, Terminal } from "lucide-react";
 import { cn } from "cn";
 import { useAgents } from "@/lib/agent-store";
-import { catalogNote, chipLabel, favKeyFor, favoriteRows, filterRows, harnessRows, shortReason, type ModelRow } from "@/lib/agent/model-rows";
+import { catalogNote, chipLabel, chipParts, favKeyFor, favoriteRows, filterRows, harnessRows, shortReason, type ModelRow } from "@/lib/agent/model-rows";
 import type { HarnessStatus } from "@/lib/agent/detect";
 import { HARNESS_MARKS } from "./brand-marks";
 import { Button } from "./ui/button";
@@ -67,6 +67,7 @@ export function AgentPicker({
   const active = harnesses.find((h) => h.id === selection.provider) ?? harnesses.find((h) => h.ready);
   // Nothing chosen yet still has an answer: whatever would run if you hit send now.
   const chosen = { provider: selection.provider || active?.id || "", model: selection.model };
+  const parts = chipParts(active, selection.model, loading);
   const browsing = view && view !== FAVOURITES ? harnesses.find((h) => h.id === view) ?? active : active;
   const showingFavourites = view === FAVOURITES;
 
@@ -129,11 +130,21 @@ export function AgentPicker({
         if (next) { setView(active?.id ?? ""); setQuery(""); setIndex(0); }
       }}
     >
+      {/* Shaped like the template chip beside it: a control, not a line of text floating
+          in the toolbar. What it says is one thing on two lines. */}
       <PopoverTrigger
         render={
-          <Button type="button" size="xs" variant="ghost" className={cn("gap-1.5 font-normal text-muted-foreground", className)}>
-            {loading ? <Loader2 className="size-3.5 motion-safe:animate-spin" /> : active ? <HarnessMark id={active.id} className="size-3.5 shrink-0" /> : null}
-            <span className="max-w-44 truncate">{chipLabel(active, selection.model, loading)}</span>
+          <Button
+            type="button"
+            variant="outline"
+            title={chipLabel(active, selection.model, loading)}
+            className={cn("h-10 gap-2 px-3 font-normal", selection.model && "border-primary/50 bg-primary/10", className)}
+          >
+            {loading ? <Loader2 className="size-4 shrink-0 motion-safe:animate-spin" /> : active ? <HarnessMark id={active.id} className="size-4 shrink-0" /> : null}
+            <span className="flex flex-col items-start leading-tight">
+              <span className="text-[10px] text-muted-foreground">{parts.agent}</span>
+              <span className="max-w-40 truncate text-xs">{parts.model}</span>
+            </span>
             <ChevronDown className="size-3 opacity-60" strokeWidth={2} />
           </Button>
         }
