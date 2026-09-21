@@ -64,7 +64,7 @@ export function MotionInspector({ sequence, item, dispatch, onSeek }: {
     </> : <>
       <ul className="flex flex-col gap-2">
         {keyframes.map((key, index) => <li key={index}
-          className={`rounded-2xl border p-2.5 transition-colors ${lit === index ? "border-primary bg-primary/10" : "border-white/10 bg-white/5"}`}>
+          className={`rounded-2xl border p-2.5 transition-colors duration-150 ease-out motion-reduce:transition-none ${lit === index ? "border-primary bg-primary/10" : "border-white/10 bg-white/5"}`}>
           <div className="flex items-center gap-2">
             <Button size="xs" variant="ghost" className="tabular-nums" aria-current={lit === index ? "true" : undefined}
               onClick={() => onSeek(offset + key.t)}>{seconds(key.t)}</Button>
