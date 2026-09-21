@@ -123,10 +123,30 @@ test("UI HTTP endpoint and agent tools reject the same invalid operations", asyn
   assert.equal(response.status, 400);
   await assert.rejects(tools.executeEditorTool("http", { tool: "project.edit", ...invalid }));
   assert.deepEqual(store.readEditor("http"), start);
-  const valid = { expectedRevision: start.revision, operations: [{ type: "clip.patch", clipId: "one", patch: { title: "HTTP edit" } }] };
+  // The same holds for the operations added since: a keyframe past the end of the shot
+  // is refused identically through both doors, with the same sentence.
+  const promoted = await tools.executeEditorTool("http", { tool: "project.edit", expectedRevision: start.revision, operations: [{ type: "clip.promote", clipId: "one" }] }) as EditorSnapshot;
+  const impossible = { expectedRevision: promoted.revision, operations: [{ type: "item.keyframes", sequenceId: "one", itemId: "one", keyframes: [{ t: 99, opacity: 0 }] }] };
+  const refused = await PATCH(new Request("http://localhost/api/projects/http", { method: "PATCH", body: JSON.stringify(impossible) }) as never, { params: Promise.resolve({ id: "http" }) });
+  assert.equal(refused.status, 400);
+  assert.match((await refused.json()).error ?? "", /past the end/);
+  await assert.rejects(tools.executeEditorTool("http", { tool: "project.edit", ...impossible }), /past the end/);
+  assert.deepEqual(store.readEditor("http"), promoted, "and neither door left anything behind");
+  const animated = { expectedRevision: promoted.revision, operations: [{ type: "item.keyframes", sequenceId: "one", itemId: "one", keyframes: [{ t: 0, opacity: 0 }, { t: 2, opacity: 1 }] }] };
+  const moved = await PATCH(new Request("http://localhost/api/projects/http", { method: "PATCH", body: JSON.stringify(animated) }) as never, { params: Promise.resolve({ id: "http" }) });
+  assert.equal(moved.status, 200);
+  assert.deepEqual((await moved.json()).edl, applyOperations(promoted.edl, animated.operations as never));
+  // A fixed value for a field the move decides is refused through both doors too.
+  const fixed = { expectedRevision: store.readEditor("http").revision, operations: [{ type: "item.place", sequenceId: "one", itemId: "one", patch: { transform: { opacity: 0.5 } } }] };
+  const blocked = await PATCH(new Request("http://localhost/api/projects/http", { method: "PATCH", body: JSON.stringify(fixed) }) as never, { params: Promise.resolve({ id: "http" }) });
+  assert.equal(blocked.status, 400);
+  await assert.rejects(tools.executeEditorTool("http", { tool: "project.edit", ...fixed }), /animates its opacity/);
+
+  const valid = { expectedRevision: store.readEditor("http").revision, operations: [{ type: "item.patch", sequenceId: "one", itemId: "one", patch: { title: "HTTP edit" } }] };
+  const before = store.readEditor("http");
   const result = await PATCH(new Request("http://localhost/api/projects/http", { method: "PATCH", body: JSON.stringify(valid) }) as never, { params: Promise.resolve({ id: "http" }) });
   assert.equal(result.status, 200);
-  assert.deepEqual((await result.json()).edl, applyOperations(start.edl, valid.operations));
+  assert.deepEqual((await result.json()).edl, applyOperations(before.edl, valid.operations as never));
 });
 
 test("asset upload/list/import use the same project-scoped services", async () => {

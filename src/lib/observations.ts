@@ -90,6 +90,15 @@ export function observeHumanEdit(projectId: string, before: Edl, operations: Edi
       const by = found?.clip.edits.find((e) => isGeneratedAuthor(e.by))?.by;
       if (found && by && found.clip.edits.every((e) => isGeneratedAuthor(e.by))) push(found.sequenceId, "removed", `Removed "${found.clip.title}" (${describeAuthor(by).toLowerCase()})`, by);
     }
+    if (op.type === "item.keyframes") {
+      const found = clipOf(op);
+      // The mark is on the keyframes being replaced, not on the clip's edits: a move the
+      // agent placed is the generated work here, whatever else is on the shot.
+      const previous = before.sequences.find((s) => s.id === op.sequenceId)?.items.find((i) => i.id === op.itemId)?.keyframes ?? [];
+      const by = previous.find((k) => isGeneratedAuthor(k.by))?.by;
+      if (found && by) push(found.sequenceId, op.keyframes?.length ? "moved" : "removed",
+        `${op.keyframes?.length ? "Changed" : "Removed"} the motion on "${found.clip.title}" (${describeAuthor(by).toLowerCase()})`, by);
+    }
     if (op.type === "item.place") {
       const found = clipOf(op);
       const by = found?.clip.edits.find((e) => isGeneratedAuthor(e.by))?.by;

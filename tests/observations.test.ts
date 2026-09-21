@@ -93,6 +93,19 @@ test("a person's changes to generated work are observed; an agent's are not; wor
   assert.equal(observations.observationsBlock([]), "");
   const viaTool = await tools.executeEditorTool(id, { tool: "observations.read" }) as unknown[];
   assert.equal(viaTool.length, 5);
+
+  // A move the agent placed is generated work too: taking it away is a correction, and the
+  // mark that says so lives on the keyframes rather than on anything else on the shot.
+  const { stampAuthor } = await import("../src/lib/editor/authorship");
+  const placed = await tools.executeEditorTool(id, stampAuthor({ tool: "project.edit", expectedRevision: store.readEditor(id).revision,
+    operations: [{ type: "item.keyframes", sequenceId, itemId, keyframes: [{ t: 0, opacity: 0 }, { t: 1, opacity: 1 }] }] }, "agent:9")) as { revision: number };
+  assert.equal(store.readEditor(id).edl.sequences[0].items[0].keyframes![0].by, "agent:9");
+  assert.equal(observations.readObservations().length, 5, "the agent placing it is not a correction");
+  store.editProject(id, { expectedRevision: placed.revision, operations: [{ type: "item.keyframes", sequenceId, itemId, keyframes: null }] }, { actor: "human" });
+  const withMotion = observations.readObservations();
+  assert.equal(withMotion.length, 6);
+  assert.match(withMotion.at(-1)!.text, /Removed the motion on .+ \(placed by the agent \(message 9\)\)/);
+  assert.equal(withMotion.at(-1)!.by, "agent:9");
 });
 
 test("review is on request: an agent proposes from the bank, existing rules are filtered, and nothing is saved", async () => {
