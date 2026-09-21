@@ -53,6 +53,12 @@ A good clip:
 - starts and ends on a sentence boundary — use the word timestamps, never cut mid-word
 - resolves. A setup with no payoff is not a clip.
 
+Boundaries are tightened for you after you write them: dead air at either end is trimmed
+back to a quarter second — unless \`peaks\` says something audible is happening in it, which
+is a reaction worth opening or closing on — and an end inside a word is extended past it.
+So a boundary a little loose is safe. A boundary that starts the clip in the middle of the
+previous thought is not, and nothing downstream can fix it.
+
 Use the tools. Cross-reference \`peaks\` against the transcript to find reactions the text alone does not show.${i.hasFrames ? " Read frames around your candidates to confirm the speaker is actually on screen and to place the crop." : ""} You may run \`ffprobe\` and \`ffmpeg\` to inspect the source further.
 
 ${i.userBrief ? `## Additional direction from the user\n${i.userBrief}\n` : ""}
@@ -93,7 +99,9 @@ Two rows is the most that reads well. Spanish and other long-word languages need
 ## Editing
 Each clip also carries an \`edits\` array — clip-relative seconds, not source seconds. Vocabulary:
 
-- \`{"type":"silence","t":0,"d":0.6}\` — cut dead air. This is the single biggest quality win: scan the word timestamps for gaps over ~0.45s between words and cut most of them, leaving ~0.12s so it does not sound clipped. Do not cut a pause that is doing rhetorical work before a punchline.
+- \`{"type":"silence","t":0,"d":0.6}\` — remove a span of the clip. Dead air is what it is mostly for, and that is the single biggest quality win: scan the word timestamps for gaps over ~0.45s between words and cut most of them, leaving ~0.12s so it does not sound clipped. Do not cut a pause that is doing rhetorical work before a punchline.
+
+  The same edit removes speech, which is how a stumble goes: a false start ("y entonces yo… y entonces yo creo que"), a sentence abandoned halfway, a point made twice in a row. Cut the first run and keep the one that continues. Leave the material natural — repetition that is doing work stays — but a restart is not natural, it is a stream.
 - \`{"type":"punch","t":0,"d":1.2,"scale":1.12}\` — zoom in on an emphasis beat. Use 2-4 per clip, on the line that lands. \`scale\` 1.08-1.2.
 - \`{"type":"emphasis","t":0,"d":1,"words":["ninety","two","percent"],"color":"#ffe600"}\` — colour specific words in the captions. Numbers, names, the claim.
 - \`{"type":"text","t":0,"d":3,"text":"Why you quit","position":"top","style":"card"}\` — the hook title. At most one per clip, in the first 3 seconds, and only when it adds something the captions do not. \`card\` is a white rounded card that reads on any footage; \`plain\` is bare text. \`position\` is a preset; give \`"x"\` and \`"y"\` (0..1 of the frame, the block's centre) instead only when the title has to sit somewhere specific.

@@ -1,7 +1,7 @@
 import React from "react";
 import { OffthreadVideo, Sequence, useVideoConfig } from "remotion";
 import type { Region } from "../src/lib/edl";
-import type { TimeMap } from "../src/lib/timeline";
+import { spanFrames, type TimeMap } from "../src/lib/timeline";
 
 type Props = {
   sourceUrl: string;
@@ -72,13 +72,17 @@ export const VideoRegion: React.FC<Props> = ({
           transformOrigin: "0 0",
         }}
       >
-        {map.spans.map((span) => {
-          const from = Math.round(span.outStart * fps);
+        {spanFrames(map, fps).map((span) => {
+          const { from, durationInFrames } = span;
+          // The window read out of the source is exactly as long as the window it plays
+          // in: a trim a frame shorter than its Sequence holds nothing on the last frame,
+          // which is the same black frame by another route.
+          const trimBefore = Math.round((clipStart + span.srcStart) * fps);
           return (
           <Sequence
             key={span.srcStart}
             from={from}
-            durationInFrames={Math.max(1, Math.round((span.srcEnd - span.srcStart) * fps))}
+            durationInFrames={durationInFrames}
             layout="none"
           >
             <OffthreadVideo
@@ -87,8 +91,8 @@ export const VideoRegion: React.FC<Props> = ({
               // into the shot's timebase before the ramp can be read off it.
               volume={typeof volume === "function" ? (f: number) => volume(from + f) : volume}
               muted={muted}
-              trimBefore={Math.round((clipStart + span.srcStart) * fps)}
-              trimAfter={Math.round((clipStart + span.srcEnd) * fps)}
+              trimBefore={trimBefore}
+              trimAfter={trimBefore + durationInFrames}
               style={{ width: sourceWidth, height: sourceHeight, position: "absolute", top: 0, left: 0 }}
             />
           </Sequence>

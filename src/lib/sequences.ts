@@ -1,5 +1,5 @@
 import type { SequenceItem, Transition, VideoSequence } from "./edl";
-import { buildTimeMap } from "./timeline";
+import { buildTimeMap, clipFrames } from "./timeline";
 
 /** A transition as the renderer needs it: the blend, and how many frames it actually gets. */
 export type ResolvedTransition = { transition: Transition; frames: number };
@@ -34,7 +34,7 @@ export function sequenceFrames(sequence: VideoSequence) {
   let end = 0;
   for (const item of sequence.items) {
     const layer = item.layer ?? 0;
-    const duration = Math.max(1, Math.round(buildTimeMap(item.clip).duration * fps));
+    const duration = clipFrames(buildTimeMap(item.clip), fps);
     const cursor = cursors.get(layer) ?? 0;
     const previousIndex = last.get(layer);
     const previous = previousIndex === undefined ? null : items[previousIndex];

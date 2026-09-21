@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { Player } from "@remotion/player";
 import { ClipComposition } from "@/../remotion/ClipComposition";
-import { buildTimeMap } from "@/lib/timeline";
+import { buildTimeMap, clipFrames } from "@/lib/timeline";
 import type { Clip, Edl } from "@/lib/edl";
 
 export function ClipPreview({
@@ -20,7 +20,7 @@ export function ClipPreview({
   assetUrls: Record<string, string>;
 }) {
   const durationInFrames = useMemo(
-    () => Math.max(1, Math.round(buildTimeMap(clip).duration * edl.output.fps)),
+    () => clipFrames(buildTimeMap(clip), edl.output.fps),
     [clip, edl.output.fps],
   );
 

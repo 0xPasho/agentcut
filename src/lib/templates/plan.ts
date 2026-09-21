@@ -6,7 +6,7 @@ import { sequenceFrames } from "../sequences";
 import { brandsInText, transcriptCasing, type Casing } from "../search/brand";
 import { VideoTemplate } from "./schema";
 import {
-  analyzeSentences, emphasisBeats, punchBeats, selectImageCues, silenceCuts, toSentences,
+  analyzeSentences, emphasisBeats, punchBeats, redundancyCuts, selectImageCues, silenceCuts, toSentences,
   type BrandMention, type ImageCue, type SentenceAnalysis,
 } from "./script";
 
@@ -82,6 +82,8 @@ export type PlannedItem = {
   analyses: SentenceAnalysis[];
   cues: ImageCue[];
   silences: Array<{ type: "silence"; t: number; d: number }>;
+  /** Phrases said twice in a row, removed. Also silence edits — a cut is a cut. */
+  redundancies: Array<{ type: "silence"; t: number; d: number }>;
   punches: Array<{ type: "punch"; t: number; d: number; scale: number }>;
   emphasis: Array<{ type: "emphasis"; t: number; d: number; words: string[]; color: string }>;
 };
@@ -96,7 +98,7 @@ export type TemplatePlan = {
   hook: { text: string; seconds: number | null; position: string; style: string } | null;
   cards: Array<{ id: string; text: string; atFraction: number; seconds: number }>;
   items: PlannedItem[];
-  totals: { sentences: number; images: number; silences: number; punches: number; emphasis: number };
+  totals: { sentences: number; images: number; silences: number; redundancies: number; punches: number; emphasis: number };
   warnings: string[];
 };
 
@@ -200,6 +202,7 @@ export async function planTemplate(
       analyses: analyses.map(analysis => ({ ...analysis, sentence: { ...analysis.sentence, words: [] } })),
       cues,
       silences: silenceCuts(item.clip.words, template.rhythm.silence, duration),
+      redundancies: redundancyCuts(item.clip.words, template.rhythm.redundancy, duration),
       punches: punchBeats(analyses, template.rhythm.punch, duration),
       emphasis: emphasisBeats(analyses, template.rhythm.emphasis, duration),
     });
@@ -210,10 +213,11 @@ export async function planTemplate(
       sentences: sum.sentences + item.sentences,
       images: sum.images + item.cues.length,
       silences: sum.silences + item.silences.length,
+      redundancies: sum.redundancies + item.redundancies.length,
       punches: sum.punches + item.punches.length,
       emphasis: sum.emphasis + item.emphasis.length,
     }),
-    { sentences: 0, images: 0, silences: 0, punches: 0, emphasis: 0 },
+    { sentences: 0, images: 0, silences: 0, redundancies: 0, punches: 0, emphasis: 0 },
   );
   // A card at the bottom of the frame occupies the caption band. The dry run can see
   // that coming from the template and the shot's own caption settings.
@@ -389,6 +393,7 @@ export function templateOperations(
     const sfx = template.rhythm.punch.sfx;
     const generated = [
       ...planned.silences.map((edit) => ({ ...edit, by })),
+      ...planned.redundancies.map((edit) => ({ ...edit, by })),
       ...planned.punches.map((edit) => ({ ...edit, by })),
       ...(sounds.punch ? planned.punches.map((edit) => ({ type: "sfx" as const, t: edit.t, d: Math.min(sfx.durationSec, edit.d), src: sounds.punch!.src, gain: sfx.gain, by })) : []),
       ...planned.emphasis.map((edit) => ({ ...edit, by })),

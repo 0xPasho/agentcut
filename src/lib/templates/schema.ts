@@ -127,6 +127,20 @@ export const TemplateRhythm = z.object({
     /** A gap longer than this is a scene change, not a pause; leave it alone. */
     maxGapSec: z.number().min(0.5).default(4),
   }).prefault({}),
+  /**
+   * A phrase said twice in a row — the false start every stream is full of: "y entonces
+   * yo… y entonces yo creo que". Natural to say, wrong to publish, and invisible to the
+   * dead-air pass because there is no silence in it. The stumble goes, the complete run stays.
+   */
+  redundancy: z.object({
+    enabled: z.boolean().default(true),
+    /** How long the restart may take. Past this, saying it again is deliberate. */
+    maxGapSec: z.number().min(0).default(1.5),
+    /** The shortest repeated run worth cutting. One word is emphasis ("muy, muy"); two is a stumble. */
+    minWords: z.number().int().min(1).max(8).default(2),
+    /** Left before the second run so the join does not sound clipped. */
+    keepSec: z.number().min(0).default(0.08),
+  }).prefault({}),
   punch: z.object({
     enabled: z.boolean().default(true),
     perMinute: z.number().min(0).max(30).default(4),

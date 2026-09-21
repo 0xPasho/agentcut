@@ -1,6 +1,6 @@
 import type { MediaSource, VideoSequence } from "../edl";
 import { sequenceFrames } from "../sequences";
-import { buildTimeMap, type TimeMap } from "../timeline";
+import { buildTimeMap, clipFrames, type TimeMap } from "../timeline";
 import type { EditorOperation } from "./operations";
 
 /** At a cut boundary, a left edge keeps the following span; a right edge keeps the preceding one. */
@@ -52,7 +52,7 @@ export function buildTimelineTrim(sequence: VideoSequence, itemId: string, edge:
       const t = edit.t - shift, stop = Math.min(end - start, t + edit.d);
       return stop > Math.max(0, t) ? [{ ...edit, t: Math.max(0, t), d: stop - Math.max(0, t) }] : [];
     });
-    const duration = Math.max(1, Math.round(buildTimeMap({ ...clip, start, end, edits }).duration * fps));
+    const duration = clipFrames(buildTimeMap({ ...clip, start, end, edits }), fps);
     operations.push({ type: "item.place", sequenceId: sequence.id, itemId, patch: { at: Math.max(0, (entry.from + entry.duration - duration) / fps) }, before: { at: item.at ?? null } });
   }
   return operations;

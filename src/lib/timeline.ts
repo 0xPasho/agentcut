@@ -56,6 +56,37 @@ export function buildTimeMap(clip: Clip): TimeMap {
   return { spans, duration: out };
 }
 
+/** A kept span as whole output frames: where it starts in the programme, and how long it holds. */
+export type SpanFrames = KeptSpan & { from: number; durationInFrames: number };
+
+/**
+ * The kept spans in frames, tiled without a gap between them.
+ *
+ * Rounding each span's length on its own is what puts a black frame on a splice:
+ * `round(a) + round(b)` is not `round(a + b)`, so two spans that meet in seconds can
+ * end a frame apart in frames and the renderer shows nothing in between. Rounding the
+ * cumulative boundary instead makes every span begin exactly where the previous one
+ * ended, and the last one end exactly on the clip's own frame count.
+ */
+export function spanFrames(map: TimeMap, fps: number): SpanFrames[] {
+  const frames: SpanFrames[] = [];
+  for (const span of map.spans) {
+    const previous = frames.at(-1);
+    // Contiguity is structural: a span begins on the frame the one before it ended,
+    // never on a rounding of its own start that can land a frame away from it.
+    const from = previous ? previous.from + previous.durationInFrames : Math.round(span.outStart * fps);
+    const until = Math.max(from + 1, Math.round((span.outStart + span.srcEnd - span.srcStart) * fps));
+    frames.push({ ...span, from, durationInFrames: until - from });
+  }
+  return frames;
+}
+
+/** How many frames a clip occupies. The same arithmetic the spans are tiled with. */
+export function clipFrames(map: TimeMap, fps: number): number {
+  const last = spanFrames(map, fps).at(-1);
+  return Math.max(1, last ? last.from + last.durationInFrames : 0);
+}
+
 /** Clip-relative source seconds -> output seconds. Times inside a cut snap to the cut's edge. */
 export function srcToOut(map: TimeMap, t: number): number {
   for (const s of map.spans) {

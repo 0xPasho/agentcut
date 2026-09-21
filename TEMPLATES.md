@@ -276,6 +276,7 @@ each adopted asset and reported by `template.apply`.
               "y": 0.32, "widthPct": 76, "style": "auto",
               "sources": ["slot", "brand", "project", "web"] },
   "rhythm": { "silence": { "enabled": true, "minGapSec": 0.45 },
+              "redundancy": { "enabled": true, "minWords": 2, "maxGapSec": 1.5 },
               "punch":   { "enabled": true, "perMinute": 4 },
               "emphasis":{ "enabled": true, "targets": ["numbers", "brands"] } },
   "cards":  [{ "id": "cta", "atFraction": 1, "text": "Follow for more", "seconds": 2 }],
@@ -286,6 +287,12 @@ each adopted asset and reported by `template.apply`.
 - `captions` is a patch: omitted fields keep the video's current caption settings. Any
   preset applies — `karaoke` lights the spoken word, `popline` shows one word at a time,
   `boxed` sets the line on a plate, `none` turns captions off.
+- `rhythm.redundancy` cuts a phrase said twice in a row — the false start a stream is full
+  of, "y entonces yo… y entonces yo creo que". There is no silence in it, so the dead-air
+  pass cannot see it; what marks it is the repetition. The stumble goes and the run that
+  continues the sentence stays. `minWords` is 2 because a single repeated word is as often
+  emphasis ("muy, muy bueno") as a stutter, and `maxGapSec` is what separates a stumble
+  from saying something again on purpose.
 - `hook.mode` is `sticky` (its own layer, the whole video), `intro` (`seconds` only) or `off`.
   Its text comes from `hookText`, then the template's own `hook.text`, then a hook written
   on any shot, then a footage shot's title — never a canvas layer's title, whatever order

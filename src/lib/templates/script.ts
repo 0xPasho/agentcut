@@ -249,6 +249,54 @@ export function silenceCuts(words: Word[], rhythm: TemplateRhythm["silence"], cl
   return cuts;
 }
 
+/** Letters and digits only, accent-folded: "Entonces," and "entonces" are the same word said twice. */
+const spoken = (word: string) =>
+  word.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\p{L}\p{N}]/gu, "");
+
+/** The longest run of words a false start is worth looking for. Past this it is a rehearsed refrain. */
+const MAX_RUN = 10;
+
+/**
+ * Cuts for phrases said twice in a row.
+ *
+ * A false start leaves no gap, so the dead-air pass cannot see it: the words are
+ * spoken, at speed, and then spoken again. What marks it is the repetition itself —
+ * the same run of words immediately after itself, with only a stumble between them.
+ * The first run is removed and the second, which is the one that continues into the
+ * sentence, is kept.
+ *
+ * Only runs of `minWords` or more count. A single repeated word is as often emphasis
+ * ("muy, muy bueno") as a stutter, and cutting it changes what was said.
+ */
+export function redundancyCuts(words: Word[], rhythm: TemplateRhythm["redundancy"], clipDuration: number) {
+  const cuts: Array<{ type: "silence"; t: number; d: number }> = [];
+  if (!rhythm.enabled || words.length < rhythm.minWords * 2) return cuts;
+  const text = words.map((w) => spoken(w.w));
+
+  let i = 0;
+  while (i < words.length) {
+    let taken = 0;
+    // Longest first: "y entonces yo" is one false start, not "y entonces" plus a word.
+    for (let n = Math.min(MAX_RUN, Math.floor((words.length - i) / 2)); n >= rhythm.minWords; n--) {
+      let repeats = true;
+      for (let k = 0; k < n && repeats; k++) repeats = Boolean(text[i + k]) && text[i + k] === text[i + n + k];
+      if (!repeats) continue;
+      const firstEnd = words[i + n - 1].t + words[i + n - 1].d;
+      const secondStart = words[i + n].t;
+      // A long pause between the two is a deliberate repetition, not a stumble.
+      if (secondStart - firstEnd > rhythm.maxGapSec) continue;
+      const t = words[i].t;
+      const d = secondStart - rhythm.keepSec - t;
+      if (d < 0.1 || t < 0 || t + d > clipDuration) continue;
+      cuts.push({ type: "silence", t, d });
+      taken = n;
+      break;
+    }
+    i += taken || 1;
+  }
+  return cuts;
+}
+
 /**
  * Punch-ins land on the sentences that carry the claim, spaced by the template's
  * rate. A punch on every sentence reads as a nervous tic rather than emphasis.

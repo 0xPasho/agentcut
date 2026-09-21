@@ -6,7 +6,7 @@ import { ClipComposition } from "@/../remotion/ClipComposition";
 import { SequenceComposition } from "@/../remotion/SequenceComposition";
 import { sourceUrl } from "@/lib/client";
 import { sequenceFrames } from "@/lib/sequences";
-import { buildTimeMap } from "@/lib/timeline";
+import { buildTimeMap, clipFrames } from "@/lib/timeline";
 import type { Edl } from "@/lib/edl";
 import type { ProjectVideo } from "@/lib/overview";
 
@@ -97,7 +97,7 @@ export function VideoPreview({
     <Player
       component={ClipComposition}
       inputProps={clipProps}
-      durationInFrames={Math.max(1, Math.round(buildTimeMap(clip).duration * edl.output.fps))}
+      durationInFrames={clipFrames(buildTimeMap(clip), edl.output.fps)}
       fps={edl.output.fps}
       compositionWidth={edl.output.width}
       compositionHeight={edl.output.height}

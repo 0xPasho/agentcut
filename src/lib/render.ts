@@ -9,7 +9,7 @@ import { WORKSPACE, ROOT } from "./config";
 import type { Edl, Clip } from "./edl";
 import { creditsFor } from "./assets";
 import { serverAssetUrls } from "./assetUrls";
-import { buildTimeMap } from "./timeline";
+import { buildTimeMap, clipFrames } from "./timeline";
 
 const ENTRY = path.join(ROOT, "remotion", "index.ts");
 
@@ -93,7 +93,7 @@ export async function renderClips(
     await renderMedia({
       composition: {
         ...composition,
-        durationInFrames: sequence ? sequenceFrames(sequence).duration : Math.max(1, Math.round(buildTimeMap(clip as Clip).duration * output.fps)),
+        durationInFrames: sequence ? sequenceFrames(sequence).duration : clipFrames(buildTimeMap(clip as Clip), output.fps),
         fps: output.fps,
         width: output.width,
         height: output.height,

@@ -363,7 +363,9 @@ export function TemplatePanel({ projectId, sequenceId, beforeApply, afterApply, 
         {plan && <div className="space-y-2 rounded-xl border border-border bg-black/20 p-3">
           <p className="text-xs">
             {plan.totals.sentences} sentence{plan.totals.sentences === 1 ? "" : "s"} · {plan.totals.images} picture{plan.totals.images === 1 ? "" : "s"}
-            {" "}· {plan.totals.silences} dead-air cut{plan.totals.silences === 1 ? "" : "s"} · {plan.totals.punches} punch-in{plan.totals.punches === 1 ? "" : "s"}
+            {" "}· {plan.totals.silences} dead-air cut{plan.totals.silences === 1 ? "" : "s"}
+            {plan.totals.redundancies > 0 && <> · {plan.totals.redundancies} false start{plan.totals.redundancies === 1 ? "" : "s"}</>}
+            {" "}· {plan.totals.punches} punch-in{plan.totals.punches === 1 ? "" : "s"}
           </p>
           {plan.hook && <p className="text-xs text-muted-foreground">Hook: “{plan.hook.text}” {plan.hook.seconds === null ? "for the whole video" : `for ${plan.hook.seconds}s`}</p>}
           {plan.warnings.map((warning) => <p key={warning} role="alert" className="text-xs text-amber-400">{warning}</p>)}

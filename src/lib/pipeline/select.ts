@@ -7,6 +7,7 @@ import { AgentClipProposals, CaptionStyle, Edl, centerCrop, type Clip } from "..
 import { resolveProvider, type AgentEvent } from "../agent";
 import { resolveQuery } from "../search";
 import { buildSelectPrompt } from "./prompt";
+import { tightenBoundaries } from "./boundaries";
 import type { Signals } from "./signals";
 import { listRules } from "../rules/registry";
 import { candidateRules } from "../rules/evaluate";
@@ -99,7 +100,7 @@ export async function selectClips(o: SelectOptions): Promise<Edl> {
     throw new Error(`agent did not write clips.json. Last message: ${result.text.slice(0, 500)}`);
   });
 
-  return buildEdl({ projectId: o.projectId, videoPath, dir, probe, transcript, minSec });
+  return buildEdl({ projectId: o.projectId, videoPath, dir, probe, transcript, minSec, signals });
 }
 
 /**
@@ -115,8 +116,11 @@ export async function buildEdl(o: {
   probe: Probe;
   transcript: Transcript;
   minSec?: number;
+  /** Loudness peaks, so a boundary is never tightened past a reaction. Read from the run when absent. */
+  signals?: Signals;
 }): Promise<Edl> {
   const { dir, probe, transcript, videoPath, minSec = 20 } = o;
+  const peaks = (o.signals ?? (await readSignals(dir))).peaks.map((p) => p.t);
   const raw = await fs.readFile(path.join(dir, "clips.json"), "utf8");
   const proposals = AgentClipProposals.parse(JSON.parse(raw));
   const fallbackCrop = centerCrop(probe.width, probe.height, 1080, 1920);
@@ -124,7 +128,9 @@ export async function buildEdl(o: {
   const matches: Record<string, string[]> = {};
   const clips: Clip[] = proposals.clips
     .map((p) => {
-      const [start, end] = snapToWords(transcript, p.start, p.end, probe.durationSec);
+      const [start, end] = tightenBoundaries(transcript.words, p.start, p.end, {
+        duration: probe.durationSec, fps: probe.fps, peaks,
+      });
       const id = randomUUID().slice(0, 8);
       if (p.rules.length) matches[id] = [...new Set(p.rules)];
       return {
@@ -231,21 +237,13 @@ function fmtClock(sec: number) {
   return `${h}:${String(m).padStart(2, "0")}`;
 }
 
-/**
- * Agents routinely land a boundary a few hundred ms inside a word. Snapping is
- * deterministic and fixes it without another round trip.
- */
-function snapToWords(t: Transcript, start: number, end: number, duration: number): [number, number] {
-  let s = Math.max(0, Math.min(start, duration));
-  let e = Math.max(s + 1, Math.min(end, duration));
-
-  const straddlingStart = t.words.find((w) => w.t < s && w.t + w.d > s + 0.05);
-  if (straddlingStart) s = straddlingStart.t;
-
-  const straddlingEnd = t.words.find((w) => w.t < e - 0.05 && w.t + w.d > e);
-  if (straddlingEnd) e = straddlingEnd.t + straddlingEnd.d;
-
-  return [Number(s.toFixed(3)), Number(e.toFixed(3))];
+/** The run's own signals, for a buildEdl called on its own after the agent finished. */
+async function readSignals(dir: string): Promise<Signals> {
+  try {
+    return JSON.parse(await fs.readFile(path.join(dir, "signals.json"), "utf8")) as Signals;
+  } catch {
+    return { scenes: [], peaks: [] };
+  }
 }
 
 const MAX_FRAMES = 60;

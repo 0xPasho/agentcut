@@ -6,7 +6,7 @@ import { Composition } from "remotion";
 import "./tailwind.css";
 import { ClipComposition, type ClipProps } from "./ClipComposition";
 import { Clip } from "../src/lib/edl";
-import { buildTimeMap } from "../src/lib/timeline";
+import { buildTimeMap, clipFrames } from "../src/lib/timeline";
 
 const PLACEHOLDER: ClipProps = {
   clip: Clip.parse({ id: "preview", title: "Preview", start: 0, end: 10, words: [] }),
@@ -26,7 +26,7 @@ export const RemotionRoot: React.FC = () => (
     fps={30}
     durationInFrames={300}
     calculateMetadata={({ props }) => ({
-      durationInFrames: Math.max(1, Math.round(buildTimeMap(props.clip).duration * 30)),
+      durationInFrames: clipFrames(buildTimeMap(props.clip), 30),
     })}
   />
   <Composition id="VideoSequence" component={SequenceComposition}
