@@ -244,7 +244,46 @@ export const ItemPlacement = z.object({
   transform: ItemTransform.optional(), volume: z.number().min(0).max(2).optional(),
   muted: z.boolean().optional(), hidden: z.boolean().optional(),
 });
-export const SequenceItem = z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]+$/), mediaId: z.string().nullable().default(null), clip: Clip, ...ItemPlacement.shape });
+/** Named so an agent can ask for one by the word an editor would use. */
+export const TransitionKind = z.enum(["dissolve", "dip", "wipe", "slide"]);
+export type TransitionKind = z.infer<typeof TransitionKind>;
+/** The side the incoming shot arrives from. */
+export const TransitionDirection = z.enum(["left", "right", "up", "down"]);
+
+/**
+ * How a shot opens against the one before it on its own track.
+ *
+ * A transition lives on the *incoming* shot because that is the only thing it can
+ * belong to without going stale: which two shots meet is already decided by the
+ * track, the array order and `at`, and a separate entity holding two item ids would
+ * have to be repaired after every move, split and removal. On the item, it travels
+ * with the shot for free.
+ *
+ * `durationSec` is how long the two shots play at once. The overlap is taken out of
+ * the programme, not out of the footage: neither shot is trimmed, and neither needs
+ * source handles it may not have — a canvas scene has none at all. Removing the
+ * transition therefore restores the timing exactly, which consuming handles could not.
+ */
+export const Transition = z.object({
+  kind: TransitionKind.default("dissolve"),
+  /** How long the two shots overlap, in output seconds. */
+  durationSec: z.number().positive().max(10).default(0.5),
+  /** `dip` only: the colour both shots pass through. */
+  color: z.string().default("#000000"),
+  /** `wipe` and `slide` only: which side the incoming shot arrives from. */
+  direction: TransitionDirection.default("left"),
+  by: EditAuthor,
+});
+export type Transition = z.infer<typeof Transition>;
+export const SequenceItem = z.object({
+  id: z.string().regex(/^[a-zA-Z0-9_-]+$/), mediaId: z.string().nullable().default(null), clip: Clip,
+  /**
+   * Absent is a hard cut, which is what every existing project has. Optional rather
+   * than defaulted so saving an old timeline does not write `null` into every shot.
+   */
+  transition: Transition.nullable().optional(),
+  ...ItemPlacement.shape,
+});
 export type SequenceItem = z.infer<typeof SequenceItem>;
 export const VideoSequence = z.object({
   id: z.string().regex(/^[a-zA-Z0-9_-]+$/), title: z.string().min(1),

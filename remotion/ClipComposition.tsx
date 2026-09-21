@@ -3,6 +3,7 @@ import { AbsoluteFill, Audio, Easing, Img, Sequence, interpolate, useCurrentFram
 import type { Clip, CropKeyframe, Edit, Region } from "../src/lib/edl";
 import { buildTimeMap, mapWords, srcToOut } from "../src/lib/timeline";
 import { duckedVolume, speechSpans } from "../src/lib/ducking";
+import { crossfadeGain, type AudioFade } from "../src/lib/sequences";
 import { Captions } from "./Captions";
 import { VideoRegion } from "./VideoRegion";
 
@@ -32,6 +33,11 @@ export type ClipProps = {
   hideVisuals?: boolean;
   volume?: number;
   muted?: boolean;
+  /**
+   * Ramps at either end of the shot, in its own frames, when a transition overlaps it.
+   * Absent is no ramp at all, which is what a timeline of hard cuts renders.
+   */
+  fade?: AudioFade;
 };
 
 /** Linear interpolation between crop keyframes, in source pixel space. */
@@ -65,6 +71,7 @@ export const ClipComposition: React.FC<ClipProps> = ({
   hideVisuals = false,
   volume = 1,
   muted = false,
+  fade,
 }) => {
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
@@ -85,6 +92,8 @@ export const ClipComposition: React.FC<ClipProps> = ({
   // Words are already mapped to output time, which is the timebase the ducking
   // envelope is sampled in.
   const spans = useMemo(() => speechSpans(words), [words]);
+  /** This shot's gain at one of its own frames, once a transition's crossfade is in it. */
+  const gainAt = (f: number) => (fade ? volume * crossfadeGain(f, fade) : volume);
   const urlFor = (ref: string) => assetUrls[ref] ?? `${assetBase}${ref}`;
 
   // Punch-in: ease up over ~300ms, hold, ease back down. Both ramps use an
@@ -105,7 +114,7 @@ export const ClipComposition: React.FC<ClipProps> = ({
     );
   }, 1);
 
-  const shared = { sourceUrl, sourceWidth, sourceHeight, clipStart: clip.start, map, zoom, volume, muted };
+  const shared = { sourceUrl, sourceWidth, sourceHeight, clipStart: clip.start, map, zoom, volume: fade ? gainAt : volume, muted };
 
   let video: React.ReactNode = null;
   if (hideVideo) {
@@ -147,7 +156,7 @@ export const ClipComposition: React.FC<ClipProps> = ({
               src={urlFor(m.src)}
               loop={m.loop}
               muted={muted}
-              volume={(f) => volume * (m.duck ? duckedVolume(spans, (from + f) / fps, m.gain) : m.gain)}
+              volume={(f) => gainAt(from + f) * (m.duck ? duckedVolume(spans, (from + f) / fps, m.gain) : m.gain)}
             />
           </Sequence>
         );
@@ -162,7 +171,7 @@ export const ClipComposition: React.FC<ClipProps> = ({
             durationInFrames={Math.max(1, Math.round(s.d * fps))}
             layout="none"
           >
-            <Audio src={urlFor(s.src)} muted={muted} volume={volume * s.gain} />
+            <Audio src={urlFor(s.src)} muted={muted} volume={fade ? (f) => gainAt(from + f) * s.gain : volume * s.gain} />
           </Sequence>
         );
       })}

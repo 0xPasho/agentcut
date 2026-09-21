@@ -130,6 +130,7 @@ function invertOne(edl: Edl, op: EditorOperation): EditorOperation[] {
     // Order and automatic placement are entangled, so both are restored wholesale.
     case "item.reorder": case "item.move": return restoreOrder(op.sequenceId, sequence.items);
     case "item.edit.add": return [{ type: "item.patch", sequenceId: op.sequenceId, itemId: op.itemId, patch: { edits: item.clip.edits } }];
+    case "item.transition": return [{ type: "item.transition", sequenceId: op.sequenceId, itemId: op.itemId, transition: item.transition ?? null }];
     case "item.patch": {
       const keys = Object.keys(op.patch) as (keyof typeof item.clip)[];
       const restored = keys.some(key => key === "start" || key === "end") ? [...new Set([...keys, ...TIMED])] : keys;

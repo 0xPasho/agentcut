@@ -16,7 +16,8 @@ type Props = {
   clipStart: number;
   map: TimeMap;
   zoom?: number;
-  volume?: number;
+  /** A number, or the shot's gain at a frame of its own — that is how a crossfade arrives. */
+  volume?: number | ((itemFrame: number) => number);
   muted?: boolean;
 };
 
@@ -71,23 +72,28 @@ export const VideoRegion: React.FC<Props> = ({
           transformOrigin: "0 0",
         }}
       >
-        {map.spans.map((span) => (
+        {map.spans.map((span) => {
+          const from = Math.round(span.outStart * fps);
+          return (
           <Sequence
             key={span.srcStart}
-            from={Math.round(span.outStart * fps)}
+            from={from}
             durationInFrames={Math.max(1, Math.round((span.srcEnd - span.srcStart) * fps))}
             layout="none"
           >
             <OffthreadVideo
               src={sourceUrl}
-              volume={volume}
+              // A span starts partway into the shot, so its own frame has to be put back
+              // into the shot's timebase before the ramp can be read off it.
+              volume={typeof volume === "function" ? (f: number) => volume(from + f) : volume}
               muted={muted}
               trimBefore={Math.round((clipStart + span.srcStart) * fps)}
               trimAfter={Math.round((clipStart + span.srcEnd) * fps)}
               style={{ width: sourceWidth, height: sourceHeight, position: "absolute", top: 0, left: 0 }}
             />
           </Sequence>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

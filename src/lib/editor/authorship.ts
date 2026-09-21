@@ -24,6 +24,12 @@ export function describeAuthor(by: string): string {
 
 type WithBy = { by?: string };
 const stampEdits = <T extends WithBy>(edits: T[] | undefined, author: string) => edits?.map((e) => (e.by ? e : { ...e, by: author }));
+/** A shot arriving with a transition already on it carries the same mark as its edits. */
+const stampItem = <T extends { clip: { edits?: WithBy[] }; transition?: WithBy | null }>(item: T, author: string) => ({
+  ...item,
+  ...(item.transition && !item.transition.by ? { transition: { ...item.transition, by: author } } : {}),
+  clip: { ...item.clip, edits: stampEdits(item.clip.edits, author) ?? [] },
+});
 
 /** An agent's project.edit request, with its authorship on every edit it creates. Existing marks are kept. */
 export function stampAuthor(request: unknown, author: string): unknown {
@@ -37,15 +43,18 @@ export function stampAuthor(request: unknown, author: string): unknown {
       switch (op.type) {
         case "edit.add": case "edit.replace": case "item.edit.add":
           return { ...o, edit: (o.edit as WithBy).by ? o.edit : { ...(o.edit as object), by: author } };
+        // A transition is placed, so it is authored: "why is this here" reads the same mark.
+        case "item.transition":
+          return o.transition && !(o.transition as WithBy).by ? { ...o, transition: { ...(o.transition as object), by: author } } : op;
         case "clip.patch": case "item.patch": {
           const patch = o.patch as { edits?: WithBy[] };
           return patch?.edits ? { ...o, patch: { ...patch, edits: stampEdits(patch.edits, author) } } : op;
         }
         case "clip.add": { const clip = o.clip as { edits?: WithBy[] }; return { ...o, clip: { ...clip, edits: stampEdits(clip.edits, author) ?? [] } }; }
-        case "item.add": { const item = o.item as { clip: { edits?: WithBy[] } }; return { ...o, item: { ...item, clip: { ...item.clip, edits: stampEdits(item.clip.edits, author) ?? [] } } }; }
+        case "item.add": { const item = o.item as { clip: { edits?: WithBy[] }; transition?: WithBy | null }; return { ...o, item: stampItem(item, author) }; }
         case "sequence.add": {
-          const sequence = o.sequence as { items?: Array<{ clip: { edits?: WithBy[] } }> };
-          return { ...o, sequence: { ...sequence, items: sequence.items?.map((item) => ({ ...item, clip: { ...item.clip, edits: stampEdits(item.clip.edits, author) ?? [] } })) } };
+          const sequence = o.sequence as { items?: Array<{ clip: { edits?: WithBy[] }; transition?: WithBy | null }> };
+          return { ...o, sequence: { ...sequence, items: sequence.items?.map((item) => stampItem(item, author)) } };
         }
         default: return op;
       }

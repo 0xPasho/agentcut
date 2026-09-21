@@ -95,3 +95,104 @@ test("HTTP promotion and agent placement share state, both handoffs, and atomic 
   assert.throws(() => store.editProject("layers", { expectedRevision: human.revision, operations: [{ ...placement, patch: { at: 5 } }, { type: "item.add", sequenceId: "generated", item: { id: "invalid", mediaId: "absent", clip: clip("invalid") } }] }), /missing media/);
   assert.deepEqual(store.readEditor("layers"), human);
 });
+
+/* ---- Transitions: the joint between two shots on one track ---- */
+
+const dissolve = (itemId: string, durationSec = 0.5, extra: object = {}) =>
+  ({ type: "item.transition", sequenceId: "main", itemId, transition: { kind: "dissolve", durationSec, ...extra } });
+/** Three shots on Main: 4s, 2s, 3s at 10 fps. */
+const three = () => {
+  const edl = fixture();
+  edl.sequences[0].items.push({ id: "three", mediaId: null, clip: clip("three", 3) });
+  return edl;
+};
+
+test("a transition overlaps the two shots it joins, shortens the programme and puts it back", () => {
+  const edl = fixture();
+  assert.equal(sequenceFrames(edl.sequences[0]).duration, 60);
+  const dissolved = applyOperations(edl, [dissolve("two", 0.5)]);
+  const frames = sequenceFrames(dissolved.sequences[0]);
+  assert.deepEqual(frames.items.map(entry => [entry.from, entry.duration]), [[0, 40], [35, 20]]);
+  assert.equal(frames.items[1].transition!.frames, 5, "the incoming shot blends over its first five frames");
+  assert.equal(frames.items[0].outFrames, 5, "the outgoing shot knows its own half of the joint");
+  assert.equal(frames.duration, 55, "the overlap comes out of the programme, not out of the footage");
+  // Neither shot was trimmed, so removing the transition restores the timing exactly.
+  for (const shot of dissolved.sequences[0].items) assert.deepEqual([shot.clip.start, shot.clip.end], [0, shot.id === "one" ? 4 : 2]);
+  const removed = applyOperations(dissolved, [{ type: "item.transition", sequenceId: "main", itemId: "two", transition: null }]);
+  assert.deepEqual(removed, edl);
+});
+
+test("a transition is refused where it cannot mean anything, and says why", () => {
+  const edl = three();
+  assert.throws(() => applyOperations(edl, [dissolve("one")]), /first shot on its track/);
+  // "two" is 2s long, so the joint can give 1.9s: one frame of each shot must survive.
+  applyOperations(edl, [dissolve("two", 1.9)]);
+  assert.throws(() => applyOperations(edl, [dissolve("two", 2)]), /longest this joint can take is 1\.90s/);
+  assert.throws(() => applyOperations(edl, [dissolve("two", 0.04)]), /at least one frame/);
+  assert.throws(() => applyOperations(edl, [{ ...dissolve("two"), transition: { kind: "dissolve", durationSec: 0 } }]));
+  // Two transitions on one shot may not overlap each other: "two" has 20 frames to give.
+  const both = applyOperations(edl, [dissolve("three", 1.5)]);
+  assert.throws(() => applyOperations(both, [dissolve("two", 0.5)]), /longest this joint can take is 0\.40s/);
+  applyOperations(both, [dissolve("two", 0.4)]);
+  // A shot on another track has nothing before it there, whatever sits below it.
+  const overlay = applyOperations(edl, [place("three", { layer: 1, at: 1 })]);
+  assert.throws(() => applyOperations(overlay, [dissolve("three")]), /first shot on its track/);
+  // A shot pinned to a fixed time cannot be pulled back, so it blends over what it has.
+  const pinned = applyOperations(edl, [place("two", { at: 4.5 })]);
+  assert.throws(() => applyOperations(pinned, [dissolve("two", 0.5)]), /overlaps “one” by 0\.00s/);
+  const touching = applyOperations(edl, [place("two", { at: 3.7 })]);
+  applyOperations(touching, [dissolve("two", 0.3)]);
+  assert.throws(() => applyOperations(touching, [dissolve("two", 0.5)]), /overlaps “one” by 0\.30s/);
+});
+
+test("a transition never makes an unrelated edit fail: what a joint loses is clamped, not refused", () => {
+  const edl = applyOperations(three(), [dissolve("two", 1.5)]);
+  assert.equal(sequenceFrames(edl.sequences[0]).items[1].transition!.frames, 15);
+  // Removing the shot before it leaves nothing to blend from. The edit still applies.
+  const orphan = applyOperations(edl, [{ type: "item.remove", sequenceId: "main", itemId: "one" }]);
+  assert.equal(orphan.sequences[0].items[0].transition!.durationSec, 1.5, "the author's transition is kept");
+  assert.equal(sequenceFrames(orphan.sequences[0]).items[0].transition, null, "but it resolves to nothing");
+  assert.equal(sequenceFrames(orphan.sequences[0]).duration, 50);
+  // Shortening the incoming shot under a transition clamps it to what is left.
+  const short = applyOperations(edl, [{ type: "item.patch", sequenceId: "main", itemId: "two", patch: { end: 1 } }]);
+  assert.equal(sequenceFrames(short.sequences[0]).items[1].transition!.frames, 9);
+});
+
+test("splitting a shot leaves the opening blend on the half that still has the joint", () => {
+  const edl = applyOperations(fixture(), [dissolve("two", 0.5)]);
+  const split = applyOperations(edl, [{ type: "item.split", sequenceId: "main", itemId: "two", at: 1, newItemId: "tail" }]);
+  assert.equal(split.sequences[0].items[1].transition!.kind, "dissolve");
+  assert.equal(split.sequences[0].items[2].transition, undefined, "the second half meets the first on a hard cut");
+  assert.equal(sequenceFrames(split.sequences[0]).duration, 55);
+});
+
+test("transitions undo through the same operations, and carry who placed them", async () => {
+  const { invertOperations } = await import("../src/lib/editor/history");
+  const { stampAuthor } = await import("../src/lib/editor/authorship");
+  const { describeAuthor } = await import("../src/lib/editor/authorship");
+  const edl = fixture();
+  const add = [dissolve("two", 0.5)] as never;
+  const added = applyOperations(edl, add);
+  assert.deepEqual(applyOperations(added, invertOperations(edl, add)), edl);
+  const change = [{ ...dissolve("two", 0.8, { kind: "dip", color: "#ffffff" }), before: added.sequences[0].items[1].transition }] as never;
+  const changed = applyOperations(added, change);
+  assert.equal(changed.sequences[0].items[1].transition!.kind, "dip");
+  assert.deepEqual(applyOperations(changed, invertOperations(added, change)), added);
+  assert.throws(() => applyOperations(changed, [{ ...dissolve("two"), before: null }] as never), /transition changed/);
+  const stamped = stampAuthor({ tool: "project.edit", operations: [dissolve("two")] }, "agent:42") as { operations: [{ transition: { by: string } }] };
+  assert.equal(stamped.operations[0].transition.by, "agent:42");
+  assert.equal(describeAuthor(stamped.operations[0].transition.by), "Placed by the agent (message 42)");
+});
+
+test("an equal-power crossfade holds its loudness through the joint", async () => {
+  const { crossfadeGain } = await import("../src/lib/sequences");
+  const fade = { inFrames: 10, outFrames: 0, durationFrames: 40 };
+  const out = { inFrames: 0, outFrames: 10, durationFrames: 40 };
+  for (const frame of [0, 2, 5, 8, 10]) {
+    const rising = crossfadeGain(frame, fade), falling = crossfadeGain(30 + frame, out);
+    assert.ok(Math.abs(rising ** 2 + falling ** 2 - 1) < 1e-9, `${rising} and ${falling} at frame ${frame}`);
+  }
+  assert.equal(crossfadeGain(0, fade), 0);
+  assert.equal(crossfadeGain(10, fade), 1);
+  assert.equal(crossfadeGain(25, fade), 1, "a shot with no ramp under it is untouched");
+});

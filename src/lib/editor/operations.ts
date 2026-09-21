@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { CaptionStyle, Clip, Edl, Edit, type CropKeyframe, MediaSource, VideoSequence, SequenceItem, ItemPlacement, ItemTransform, DEFAULT_ITEM_TRANSFORM } from "../edl";
+import { CaptionStyle, Clip, Edl, Edit, type CropKeyframe, MediaSource, VideoSequence, SequenceItem, ItemPlacement, ItemTransform, Transition, DEFAULT_ITEM_TRANSFORM } from "../edl";
 import { promoteClipToSequence } from "./editable-timeline";
-import { sequenceFrames } from "../sequences";
+import { sequenceFrames, transitionJoint } from "../sequences";
 import { buildTimeMap } from "../timeline";
 import { ProjectPlan, SequencePlan } from "../plan/schema";
 
@@ -34,6 +34,9 @@ export const EditorOperation = z.discriminatedUnion("type", [
   z.object({ type: z.literal("item.reorder"), sequenceId: z.string(), itemId: z.string(), layer: z.number().int().nonnegative(), index: z.number().int().nonnegative() }).strict(),
   z.object({ type: z.literal("item.move"), sequenceId: z.string(), itemId: z.string(), index: z.number().int().nonnegative() }).strict(),
   z.object({ type: z.literal("item.patch"), sequenceId: z.string(), itemId: z.string(), patch: ClipPatch, before: ClipPatch.optional() }).strict(),
+  // The joint between this shot and the one before it on its track. `null` is a hard cut.
+  // `before` is the same stale-form protection the staged panels use; `null` asserts there is none.
+  z.object({ type: z.literal("item.transition"), sequenceId: z.string(), itemId: z.string(), transition: Transition.nullable(), before: Transition.nullable().optional() }).strict(),
   z.object({ type: z.literal("item.split"), sequenceId: z.string(), itemId: z.string(), at: z.number().positive(), newItemId: z.string().regex(/^[a-zA-Z0-9_-]+$/) }).strict(),
   z.object({ type: z.literal("item.detachAudio"), sequenceId: z.string(), itemId: z.string(), newItemId: z.string().regex(/^[a-zA-Z0-9_-]+$/), layer: z.number().int().nonnegative().optional() }).strict(),
   z.object({ type: z.literal("item.source"), sequenceId: z.string(), itemId: z.string(), mediaId: z.string().nullable(), start: z.number().nonnegative().optional(), end: z.number().positive().optional(), title: z.string().min(1).optional(), before: z.object({ mediaId: z.string().nullable() }).strict().optional() }).strict(),
@@ -236,6 +239,24 @@ export function applyOperations(input: Edl, raw: unknown): Edl {
         Object.assign(item, placement);
         if (transform) item.transform = { ...current.transform, ...transform };
       }
+      if (op.type === "item.transition") {
+        if (op.before !== undefined && JSON.stringify(item.transition ?? null) !== JSON.stringify(op.before))
+          throw new Error("The shot's transition changed. Review the latest values before applying this edit.");
+        if (op.transition === null) { delete item.transition; continue; }
+        const joint = transitionJoint(sequence, op.itemId);
+        if (!joint) throw new Error(`“${item.clip.title}” is the first shot on its track, so there is nothing before it to transition from.`);
+        const fps = sequence.output.fps, wanted = Math.round(op.transition.durationSec * fps);
+        if (wanted < 1) throw new Error(`A transition has to last at least one frame — ${(1 / fps).toFixed(3)}s at ${fps} frames per second.`);
+        if (wanted > joint.maxFrames) throw new Error(joint.maxFrames < 1
+          ? `“${joint.previous.clip.title}” and “${item.clip.title}” are too short to hold a transition between them.`
+          : `A ${op.transition.durationSec}s transition does not fit between “${joint.previous.clip.title}” and “${item.clip.title}”. The longest this joint can take is ${(joint.maxFrames / fps).toFixed(2)}s.`);
+        // A shot pinned to a fixed time cannot be pulled back into its neighbour, so it can
+        // only blend over the overlap it already has.
+        if (joint.overlapFrames !== null && joint.overlapFrames < wanted)
+          throw new Error(`“${item.clip.title}” starts at a time set by hand and overlaps “${joint.previous.clip.title}” by ${(joint.overlapFrames / fps).toFixed(2)}s. Let it follow the shot before it, or move it back, before asking for a ${op.transition.durationSec}s transition.`);
+        item.transition = op.transition;
+        continue;
+      }
       if (op.type === "item.edit.add") item.clip.edits.push(op.edit);
       if (op.type === "item.remove") {
         sequence.items.splice(index, 1);
@@ -320,9 +341,12 @@ export function applyOperations(input: Edl, raw: unknown): Edl {
         const first = trim(item.clip, item.clip.start, split);
         const from = sequenceFrames(sequence).items[index].from;
         const firstFrames = Math.max(1, Math.round(buildTimeMap(first).duration * sequence.output.fps));
+        // The opening blend belongs to the joint before the shot, which only the first
+        // half still has. The second half meets the first on a hard cut.
+        const { transition: _opening, ...halved } = item; void _opening;
         sequence.items.splice(index, 1,
           { ...item, clip: first },
-          { ...item, ...(item.at == null ? {} : { at: (from + firstFrames) / sequence.output.fps }), id: op.newItemId, clip: { ...trim(item.clip, split, item.clip.end), id: op.newItemId } });
+          { ...halved, ...(item.at == null ? {} : { at: (from + firstFrames) / sequence.output.fps }), id: op.newItemId, clip: { ...trim(item.clip, split, item.clip.end), id: op.newItemId } });
       }
       continue;
     }

@@ -231,3 +231,39 @@ test("asset placement appends to the same shot through HTTP and tools without re
   const saved = store.readEditor(id).edl.sequences[0].items[0].clip.edits;
   assert.deepEqual(saved.map(e=>e.type), ["image", "music"]); assert.equal(saved[0].t, 0.5);
 });
+
+test("transitions are one editor: HTTP and agent write the same joint, and a bad one rolls the batch back", async () => {
+  const { id } = await mediaService.createVideoProject("Dissolves", [{ file: source }, { file: source }, { file: source }]);
+  const initial = store.readEditor(id), seq = initial.edl.sequences[0];
+  for (const item of seq.items) assert.equal("transition" in item, false, "an ordinary import has hard cuts and says nothing about transitions");
+  const { PATCH } = await import("../src/app/api/projects/[id]/route");
+  const { NextRequest } = await import("next/server");
+  const human = [{ type: "item.transition", sequenceId: seq.id, itemId: seq.items[1].id, transition: { kind: "dissolve", durationSec: 0.4 } }];
+  const response = await PATCH(new NextRequest(`http://localhost/api/projects/${id}`, { method: "PATCH", body: JSON.stringify({ expectedRevision: initial.revision, operations: human }) }), { params: Promise.resolve({ id }) });
+  assert.equal(response.status, 200);
+  const ui = await response.json() as { edl: typeof initial.edl; revision: number };
+  assert.deepEqual(ui.edl, applyOperations(initial.edl, human));
+  assert.equal(sequenceFrames(ui.edl.sequences[0]).duration, 56, "three one-second shots minus a 0.4s overlap");
+  // The agent continues the human's edit through the same operation and the same validation.
+  const agentOps = [{ type: "item.transition", sequenceId: seq.id, itemId: seq.items[2].id, transition: { kind: "wipe", durationSec: 0.3, direction: "up", by: "agent:7" } }];
+  const agent = await tools.executeEditorTool(id, { tool: "project.edit", expectedRevision: ui.revision, operations: agentOps }) as { edl: typeof initial.edl; revision: number };
+  assert.deepEqual(agent.edl, applyOperations(ui.edl, agentOps));
+  assert.equal(agent.edl.sequences[0].items[2].transition!.by, "agent:7", "why is this here survives the round trip");
+  assert.equal(sequenceFrames(agent.edl.sequences[0]).duration, 53);
+  // The identical HTTP request refuses the identical impossible joint.
+  const refused = { type: "item.transition", sequenceId: seq.id, itemId: seq.items[0].id, transition: { kind: "dip", durationSec: 0.5 } };
+  const bad = await PATCH(new NextRequest(`http://localhost/api/projects/${id}`, { method: "PATCH", body: JSON.stringify({ expectedRevision: agent.revision, operations: [{ type: "sequence.patch", sequenceId: seq.id, title: "Must roll back" }, refused] }) }), { params: Promise.resolve({ id }) });
+  assert.equal(bad.status, 400);
+  await assert.rejects(tools.executeEditorTool(id, { tool: "project.edit", expectedRevision: agent.revision, operations: [refused] }), /first shot on its track/);
+  assert.deepEqual(store.readEditor(id), agent, "nothing in the refused batch landed");
+});
+
+test("a saved timeline of hard cuts stays free of transitions, and an old EDL still parses", () => {
+  const legacy = Edl.parse({ projectId: "old", source: null, clips: [], sequences: [{ id: "s", title: "Old", output: { width: 640, height: 360, fps: 10 },
+    items: [{ id: "a", mediaId: null, clip: { id: "a", title: "A", start: 0, end: 2 } }, { id: "b", mediaId: null, clip: { id: "b", title: "B", start: 0, end: 2 } }] }] });
+  assert.equal(sequenceFrames(legacy.sequences[0]).duration, 40);
+  assert.equal(JSON.stringify(legacy).includes("transition"), false, "reading an old EDL does not write a migration into it");
+  const edited = applyOperations(legacy, [{ type: "item.patch", sequenceId: "s", itemId: "b", patch: { title: "B again" } }]);
+  assert.equal(JSON.stringify(edited).includes("transition"), false);
+  assert.deepEqual(sequenceFrames(edited.sequences[0]).items.map(i => i.from), [0, 20]);
+});
