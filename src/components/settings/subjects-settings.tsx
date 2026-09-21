@@ -122,7 +122,7 @@ export function SubjectsSettings() {
 
       {!!plain.length && (
         <div className="flex flex-col gap-2 rounded-2xl bg-card px-4 py-3.5 ring-1 ring-foreground/10">
-          <p className="text-sm font-medium">Make a subject out of a name you already have</p>
+          <h3 className="text-sm font-medium">Make a subject out of a name you already have</h3>
           <p className="text-xs text-muted-foreground">
             These are in your glossary with no look of their own. Giving one a colour or a logo makes it a subject.
           </p>
@@ -251,7 +251,7 @@ function SubjectForm({ initial, isNew, images, rules, pending, error, onSave, on
       <fieldset className="flex flex-col gap-4 rounded-2xl bg-card px-4 py-4 ring-1 ring-foreground/10">
         <legend className="sr-only">How it looks</legend>
         <div>
-          <p className="text-sm font-medium">How it looks</p>
+          <h3 className="text-sm font-medium">How it looks</h3>
           <p className="mt-1 text-sm text-muted-foreground">
             A project whose plan names this subject starts from these. Anything the project or a rule
             sets wins over them, so this is a starting point, not a lock.
@@ -293,7 +293,7 @@ function SubjectForm({ initial, isNew, images, rules, pending, error, onSave, on
 
       {!!rules.length && (
         <div className="flex flex-col gap-2 rounded-2xl bg-card px-4 py-3.5 ring-1 ring-foreground/10">
-          <p className="text-sm font-medium">Rules about {term}</p>
+          <h3 className="text-sm font-medium">Rules about {term}</h3>
           <ul className="text-sm text-muted-foreground">{rules.map((r) => <li key={r.id}>{r.name}</li>)}</ul>
           <Link href="/settings/rules" className="text-xs underline underline-offset-2">Open your rules</Link>
         </div>

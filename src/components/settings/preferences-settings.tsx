@@ -78,7 +78,7 @@ export function PreferencesSettings() {
           <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
             <Sparkles aria-hidden className="mt-0.5 size-4 shrink-0 text-primary" />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">The setup interview</p>
+              <h3 className="text-sm font-medium">The setup interview</h3>
               <p className="mt-0.5 text-sm text-muted-foreground">{interviewLine(onboarding.status, !!parts.generated)}</p>
             </div>
             <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/welcome" />}>
@@ -160,7 +160,7 @@ function Review({ observations, glossary, preferences, pending, onError, onAccep
     <section className="flex flex-col gap-3 rounded-2xl bg-card px-4 py-4 ring-1 ring-foreground/10">
       <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium">What you have corrected</p>
+          <h3 className="text-sm font-medium">What you have corrected</h3>
           <p className="mt-0.5 text-sm text-muted-foreground">
             {observations.length
               ? `${observations.length} recent correction${observations.length === 1 ? "" : "s"}, noted without asking. Ask for a review and an agent proposes rules, names and preferences from them.`

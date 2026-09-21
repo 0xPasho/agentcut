@@ -13,6 +13,7 @@ import { cachedFrames, loadFrames } from "@/lib/editor/filmstrip";
 import { activeDrag, classifyFile, dropDuration, hasFileDrag, hasMediaDrag, readDrag, type DragKind, type DragPayload } from "@/lib/editor/dnd";
 import { sequenceFrames, transitionJoints } from "@/lib/sequences";
 import { keyframeSummary } from "@/lib/editor/motion";
+import { effectLabel, shotName, standaloneScene } from "@/lib/editor/canvas";
 import { DEFAULT_TRANSITION_SEC, TRANSITION_DURATIONS, TRANSITION_KINDS, TRANSITION_LABELS, describeTransition } from "@/lib/editor/transitions";
 import { buildTimeMap, srcToOut, type TimeMap } from "@/lib/timeline";
 import { Button } from "./ui/button";
@@ -96,7 +97,7 @@ function TransitionJointControl({ left, width, current, title, previousTitle, ma
           </MenuRadioItem>)}
         </MenuRadioGroup>
         <ContextMenuSeparator />
-        <ContextMenuItem disabled={!current} onClick={() => onSet(null)}><Trash2 />No transition</ContextMenuItem>
+        <ContextMenuItem disabled={!current} onClick={() => onSet(null)}><Trash2 />Remove the transition</ContextMenuItem>
       </MenuContent>
     </Menu>
   </>;
@@ -148,11 +149,6 @@ function sourceAt(map: TimeMap, output: number) {
     if (output <= span.outStart + span.srcEnd - span.srcStart) return span.srcStart + Math.max(0, output - span.outStart);
   }
   return map.spans.at(-1)?.srcEnd ?? 0;
-}
-function effectLabel(edit: Edit) {
-  if (edit.type === "text") return edit.text || "Title";
-  if (edit.type === "emphasis") return edit.words.join(" ") || "Emphasis";
-  return ({ silence: "Cut", punch: "Zoom", image: "Image", music: "Music", sfx: "Sound" } as Record<string, string>)[edit.type] ?? edit.type;
 }
 
 /** Frames sampled across what the clip shows, so the strip changes with the footage. */
@@ -317,10 +313,7 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
   const selection = new Set([...(selectedId ? [selectedId] : []), ...extra].filter(alive));
   const selected = layout.items.find(({ item }) => item.id === selectedId);
   const selectedMap = selected ? buildTimeMap(selected.item.clip) : null;
-  const standalone = (item: VideoSequence["items"][number]) => item.mediaId === null && item.clip.edits.length === 1 && item.clip.edits[0].t === 0 && Math.abs(item.clip.edits[0].d - (item.clip.end - item.clip.start)) < .001;
-  /** What this shot is called wherever it is named: a standalone scene is its own content. */
-  const shotName = (item: VideoSequence["items"][number]) => standalone(item) ? effectLabel(item.clip.edits[0]) : item.clip.title;
-  const effectTypes = [...new Set(selected && !standalone(selected.item) ? selected.item.clip.edits.map(edit => edit.type) : [])];
+  const effectTypes = [...new Set(selected && !standaloneScene(selected.item) ? selected.item.clip.edits.map(edit => edit.type) : [])];
   const roundFrame = (value: number) => Math.round(value * fps) / fps;
   geometry.current = { scale, fps };
   useLayoutEffect(() => {
@@ -770,7 +763,7 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
                   onClick={event => {
                     if (!suppressClick.current) {
                       if (event.shiftKey || event.metaKey || event.ctrlKey) toggleSelection(item.id);
-                      else { setExtra([]); onSelect(item.id, Math.max(from / fps, Math.min((from + duration - 1) / fps, positionAt(event.clientX)))); if (standalone(item)) onSelectEdit?.(0); }
+                      else { setExtra([]); onSelect(item.id, Math.max(from / fps, Math.min((from + duration - 1) / fps, positionAt(event.clientX)))); if (standaloneScene(item)) onSelectEdit?.(0); }
                     }
                     suppressClick.current = false;
                   }}
@@ -796,7 +789,7 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
                       : <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-1 h-3 opacity-25" style={{ backgroundImage: "repeating-linear-gradient(90deg, currentColor 0 2px, transparent 2px 6px)" }} />;
                   })()}
                   <span className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/65 via-black/10 to-black/25" />
-                  <span className="pointer-events-none relative flex items-center gap-1 px-3 py-1 text-[11px] font-medium text-white">{audio && <Music2 aria-hidden className="size-3 shrink-0" />}<span className="truncate">{standalone(item) ? effectLabel(item.clip.edits[0]) : item.clip.title}</span>{item.hidden && <EyeOff aria-label="Visuals hidden" className="size-3 shrink-0" />}{item.muted && <VolumeX aria-label="Audio muted" className="size-3 shrink-0" />}</span>
+                  <span className="pointer-events-none relative flex items-center gap-1 px-3 py-1 text-[11px] font-medium text-white">{audio && <Music2 aria-hidden className="size-3 shrink-0" />}<span className="truncate">{shotName(item)}</span>{item.hidden && <EyeOff aria-label="Visuals hidden" className="size-3 shrink-0" />}{item.muted && <VolumeX aria-label="Audio muted" className="size-3 shrink-0" />}</span>
                 </button>
                 {(["start", "end"] as const).map(edge => <button key={edge} type="button" aria-label={`Trim ${edge} of ${item.clip.title}`} title={`Drag to trim ${edge}; arrow keys adjust one frame`} className={`absolute inset-y-0 z-20 w-3 cursor-ew-resize touch-none rounded-sm bg-primary/80 text-primary-foreground focus-visible:outline-2 focus-visible:outline-ring ${primary ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"} ${edge === "start" ? "left-0" : "right-0"} ${clipWidth >= 64 ? `after:absolute after:inset-y-0 after:w-6 after:content-[''] ${edge === "start" ? "after:left-0" : "after:right-0"}` : ""}`} onPointerDown={event => begin(event, item.id, edge)} {...sharedPointer} onClick={event => event.stopPropagation()} onKeyDown={event => {
                   if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
@@ -805,7 +798,7 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
                 }}><span aria-hidden className="mx-auto block h-5 w-px bg-current/80" /></button>)}
                 </ContextMenuTrigger>
                 <ContextMenuContent>
-                  <ContextMenuLabel>{standalone(item) ? effectLabel(item.clip.edits[0]) : item.clip.title}</ContextMenuLabel>
+                  <ContextMenuLabel>{shotName(item)}</ContextMenuLabel>
                   {onSplit && <SplitItem from={from / fps} until={(from + duration) / fps} onSplit={() => onSplit(item.id)} />}
                   {onDuplicate && <ContextMenuItem shortcut="D" onClick={() => onDuplicate(item.id)}><Copy />Duplicate</ContextMenuItem>}
                   {onAskAgent && <ContextMenuItem onClick={() => onAskAgent(item.id)}><MessageSquare />Ask the agent about this</ContextMenuItem>}

@@ -1,4 +1,4 @@
-import type { Clip } from "../edl";
+import type { Clip, Edit, SequenceItem } from "../edl";
 import { snapAxis } from "./snapping";
 
 /** A measured rectangle, in the same pixels as the frame it was measured against. */
@@ -47,3 +47,26 @@ export function overlayLabel(clip: Clip, target: OverlayTarget): string {
   if (edit.type === "image") return edit.caption.trim() ? `image “${edit.caption.trim().slice(0, 24)}”` : "image";
   return edit.type;
 }
+
+/** What one edit is called where it stands for a whole shot or a block on the timeline. */
+export function effectLabel(edit: Edit): string {
+  if (edit.type === "text") return edit.text || "Title";
+  if (edit.type === "emphasis") return edit.words.join(" ") || "Emphasis";
+  return ({ silence: "Cut", punch: "Zoom", image: "Image", music: "Music", sfx: "Sound" } as Record<string, string>)[edit.type] ?? edit.type;
+}
+
+/** A scene with no footage under it, whose one edit fills it: a title card, a piece of music. */
+export const standaloneScene = (item: Pick<SequenceItem, "mediaId" | "clip">) =>
+  item.mediaId === null && item.clip.edits.length === 1 && item.clip.edits[0].t === 0
+  && Math.abs(item.clip.edits[0].d - (item.clip.end - item.clip.start)) < 0.001;
+
+/**
+ * What this shot is called wherever it is named — the block on the timeline, the seam
+ * menu between two of them, the Transition section in the properties panel.
+ *
+ * A source-backed shot is its clip's title. A standalone scene's title is the word
+ * "Title", which names the kind and not the thing, so it is called by what it holds.
+ * One answer, because a shot called two things in two panels reads as two shots.
+ */
+export const shotName = (item: Pick<SequenceItem, "mediaId" | "clip">) =>
+  standaloneScene(item) ? effectLabel(item.clip.edits[0]) : item.clip.title;

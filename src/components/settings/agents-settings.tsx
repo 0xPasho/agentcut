@@ -258,7 +258,9 @@ function ProviderKeyField({ info, pending, onSave }: { info: ProviderKeyInfo; pe
           ? `Answering right now from ${info.env} in this machine's environment; saving one here takes over.`
           : info.set
             ? "Saved on this machine."
-            : <>Get one at <span className="break-all">{info.from}</span></>}
+            : <>Get one at{" "}
+              {/* A new tab, so a key half-typed in the field above survives the trip. */}
+              <a href={info.from} target="_blank" rel="noreferrer" className="break-all underline underline-offset-2">{info.from}</a></>}
       </p>
     </form>
   );

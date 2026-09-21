@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Player, type PlayerRef } from "@remotion/player";
 import { ArrowLeft, Check, ChevronLeft, ChevronRight, Copy, Download, FolderOpen, ImagePlus, Loader2, MousePointerClick, Music2, Plus, Redo2, Scissors, Settings2, Square, Undo2, Wand2 } from "lucide-react";
 import { promoteClipToSequence } from "@/lib/editor/editable-timeline";
+import { shotName } from "@/lib/editor/canvas";
 import { LayerInspector } from "./layer-inspector";
 import { MotionInspector } from "./motion-inspector";
 import { CanvasGrid, CanvasSelection, type CanvasPreview } from "./canvas-selection";
@@ -145,7 +146,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
     const found = transitionJoints(sequence).get(item.id);
     if (!found) return null;
     const room = Math.min(found.maxFrames, found.overlapFrames ?? found.maxFrames);
-    return { sequenceId: sequence.id, itemId: item.id, previousTitle: found.previous.clip.title, maxSeconds: room / sequence.output.fps, current: item.transition ?? null };
+    return { sequenceId: sequence.id, itemId: item.id, previousTitle: shotName(found.previous), maxSeconds: room / sequence.output.fps, current: item.transition ?? null };
   }, [sequence, item]);
   /** The layer's motion, and what a keyframe added by hand should start out as. */
   const motion = useMemo(() => {
