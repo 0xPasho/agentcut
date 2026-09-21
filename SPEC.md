@@ -60,8 +60,9 @@ ability fully equivalent to manual editing, including revising an existing proje
 
 - Every edit available through the UI must be available to the agent, with the same
   parameters and supported ranges. Every supported agent edit must be inspectable
-  and editable through the UI. This includes clip boundaries, crop keyframes, split
-  layouts, captions, timeline edits, titles, images, music, and sound effects.
+  and editable through the UI. This includes clip boundaries, crop keyframes, keyframed
+  layer motion, split layouts, captions, timeline edits, titles, images, music, and
+  sound effects.
 - Both interfaces must invoke shared editing operations. Domain behavior must not
   live only in React handlers or be independently reimplemented in an agent prompt.
   Sharing an EDL schema alone does not satisfy this requirement.

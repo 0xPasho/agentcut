@@ -210,6 +210,24 @@ uses, and everything the agent decides is inspectable and editable in the UI.
   words that a transcript is still coming, so it cannot read empty words as "nothing is said here".
   Not done, deliberately: a shot placed from a source *after* its transcript landed does not
   back-fill its words on its own; `media.transcribe` does it instantly from the cache.
+- **Keyframed layer transforms: implemented 2026-09-21.** The schema for these landed and then
+  nothing read it: `item.keyframes` was a field the app wrote nowhere. A layer now moves, grows,
+  turns, fades and changes its level across the shot it lives on, resolved in one place
+  (`src/lib/keyframes.ts`) that the timeline, the Player and the export all go through, with the
+  schema's five named curves — `linear`, `ease`, `in`, `out`, `hold` — actually implemented,
+  because a pack is data and may never ship code. `t` stays what the schema said it was: seconds
+  from the item's own first frame, so a move survives being dragged along the timeline, dropped on
+  another track or given a transition, and a shot that arrives on a blend starts its own clock at
+  the first frame of the overlap. A trim leaves the motion where it is in the item's own time; a
+  split gives each half its share with a keyframe on the seam, so cutting a shot in two changes no
+  pixel. A fixed value for a field the keyframes animate is refused rather than silently stored,
+  because it could never be seen. In the editor, **Motion** lists every pinned moment and retimes,
+  re-eases and removes them, dragging the layer on the frame pins the moment the playhead is on,
+  the timeline draws a diamond per keyframe, and a still gets a slow push without anybody typing a
+  number — Ken Burns falls out of this rather than being built beside it. Every keyframe carries
+  `by`, so an agent's move reads in "why is this here" like any other edit. Not done, deliberately:
+  templates place no motion, and there is no curve editor — the five named eases are the catalogue.
+  See [SEQUENCES.md](./SEQUENCES.md#keyframed-layer-transforms).
 - **Phase 3: not started** (registry, caption translation, publishing, non-footage sources).
 
 ## Phases

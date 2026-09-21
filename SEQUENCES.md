@@ -38,6 +38,7 @@ In the editor:
 - Move items earlier/later, remove them, trim their source in/out, or split them.
 - Set an absolute start time and layer, overlap videos, and place a video in a corner.
 - Adjust each layer’s position, size, rotation, opacity, volume, mute, and visibility.
+- Animate any of those over the shot's own time, on the frame or in the **Motion** panel.
 - Place titles, images, and audio on independent canvas layers, including music spanning cuts.
 - Use **Captions** and **Add** for common shot edits. Source-frame
   capture uses the selected shot’s media, through the same `assets.capture` tool.
@@ -82,6 +83,7 @@ engine. UI and agent boundaries use the same validation.
 | `item.detachAudio` | Lift a shot's sound onto its own track, muting the picture it came from |
 | `item.source` | Replace an item's footage in place, keeping its slot, overlays and placement |
 | `item.transition` | Set or clear how a shot arrives over the one before it on its track |
+| `item.keyframes` | Set or clear how a layer's transform and volume travel over the shot's own time |
 
 `media.import` and `media.upload` are project tools accepting an `expectedRevision`.
 Both use the same probing/copying service as visual imports. Path imports read a local
@@ -284,6 +286,130 @@ across the middle of the joint while a mark on the track above does not darken, 
 the outgoing shot's sound ramping down across the overlap, and checks that the
 UI service, the agent's render tool and the CLI export the same video frame for frame.
 
+## Keyframed layer transforms
+
+A layer can move, grow, turn, fade and change its level across the shot it lives on.
+`keyframes` on the **item** is a list of sampled moments; each one has `t`, any of `x`,
+`y`, `width`, `height`, `rotation`, `opacity` and `volume`, and an `ease` saying how it
+travels to the next. Absent — which is every project that existed before this — is the
+static `transform`, rendered exactly as it always was.
+
+**`t` is seconds from the item's own first frame**, in the item's own output time: not a
+source timecode and not a time on the sequence. That is what lets a move survive being
+dragged along the timeline, dropped on another track or given a transition, for the same
+reason a transition lives on the shot it opens rather than in a record naming two shots.
+It is also the only time base a canvas scene has, and a drift across a still is exactly
+the case this has to serve without a special case.
+
+Every field is optional and an absent one is simply not animated: it keeps the static
+`transform` (or `volume`) underneath. So a title that only fades says `opacity` and
+nothing else, and resizing it afterwards still works. A field named by exactly one
+keyframe holds that value for the whole item, the way a single crop keyframe does, and
+outside the keyframes the value holds at the nearest one at either end.
+
+The catalogue of curves is small and named — `linear`, `ease`, `in`, `out`, `hold` —
+because a pack is data and may never ship code, so the only curves that exist are the
+ones spelled in the schema. They are quadratic: `ease` is the punch-in's own
+`inOut(quad)`, which is the shape this editor has already agreed reads as arriving
+rather than jumping. `hold` does not travel at all; the value steps on the frame the
+next keyframe starts. `src/lib/keyframes.ts` is the whole resolver, and `sequenceFrames`
+plus `SequenceComposition` carry it identically to the timeline, the Remotion Player and
+the export — an animation that only looked right in the preview would be a failure.
+
+### Ken Burns is not a feature
+
+A slow push across a still falls out of this rather than being built beside it: the same
+`x`, `y`, `width` and `height` any layer animates, travelling from where the layer is to
+somewhere about 14% larger and off to one side, over the whole shot. The editor's **Add
+a slow push** button writes exactly that as two ordinary keyframes, so an agent can
+produce the identical thing by writing the list, and a person can then drag either end
+of it. Nobody types a number to get one.
+
+### Ducking, and which one to reach for
+
+`src/lib/ducking.ts` is untouched and stays where it is. It is *automatic* and *local*:
+a `music` edit with `duck: true` is lowered under the words of the clip it is inside,
+computed from word timestamps rather than from audio. A `volume` keyframe is the other
+thing — a gain envelope a person or an agent drew by hand, on the item as a whole.
+
+They compose by multiplication rather than competing: `ClipComposition` computes the
+item's own gain at the frame, and the music edit's ducked gain within it. Reach for the
+keyframes when the automatic one cannot see the problem, which is the common case for a
+bed on its own layer: it only reads the words of its own clip, and a bed sitting under
+somebody speaking on a *different* layer has no words of its own to duck under.
+
+### What is refused, and what is clamped
+
+`item.keyframes` refuses, with the number in the message: two keyframes at the same `t`
+or out of order (it names both times), a keyframe that animates nothing at all, and one
+past the end of the shot (it says how long the shot runs). It also refuses `item.place`
+setting a fixed `transform` field or `volume` that the keyframes animate — that edit
+could never be seen — but only when the value would actually change, so restoring a
+placement an item already has, which is what undoing a reorder writes back for every
+item on the track, still goes through. An empty list and `null` are the same thing and
+both leave the field absent, so "holds still" has exactly one representation and saving
+an old timeline never writes one into it.
+
+After that it is clamped, following the transition precedent: an ordinary edit somewhere
+else must never fail because of a keyframe.
+
+- **A trim leaves the keyframes where they are in the item's own time.** Trimming the
+  head means the move now starts at the new first frame; trimming the tail can leave
+  keyframes past the end, which are kept and simply never reached. Two alternatives were
+  rejected. Rebasing them through the source, the way words and crop keyframes are
+  rebased, would make `t` a source timecode by the back door — contradicting the schema,
+  and impossible for a canvas scene, which has no source time at all. Rescaling them to
+  the new length would silently change a fade a person had timed at half a second.
+  Keeping a keyframe that has fallen off the end, rather than deleting it, is the same
+  choice: a trim is usually adjusted twice, and the second adjustment should find the
+  work still there.
+- **A split gives each half the part of the move it still has**, with a keyframe on the
+  seam holding exactly the value the animation had reached, so cutting a shot in two
+  changes no rendered pixel. That is the repair `trim` already makes to crop keyframes at
+  a clip's new start. The seam keyframe carries the ease and the authorship of the one it
+  was cut out of; for `linear` and `hold` the two halves are exactly the original, and
+  for a curved ease the remaining travel is re-eased over what is left of it, which is
+  the same approximation the crop trim makes and is stated rather than hidden.
+- **Replacing an item's footage leaves its motion alone.** `item.source` clears the
+  transcript and the crop rectangles, which describe the footage being replaced; where
+  the layer sits in the frame describes the layer.
+
+Every keyframe carries `by`, so one a template, a rule or an agent turn placed reads in
+"why is this here" exactly like every other edit. Templates do not place motion yet.
+
+### Using them
+
+Select a layer and **Motion** sits beside **Position & audio**. With nothing on it, it
+offers the slow push and **Pin it here** — everything the layer is now, pinned where the
+playhead is. Once there is something to travel between, dragging or resizing the layer on
+the frame pins *that moment* rather than writing the fixed value underneath the motion,
+and the handles sit where the layer actually is rather than where the static transform
+says. The panel lists every moment with what it decides, who put it there and how it
+travels, and retimes, re-eases and removes them; the timeline draws a diamond per
+keyframe on the block, lit when the agent placed it. Exact values live in **All item
+properties**, whose Motion section is generated from the same `TransformKeyframe` schema
+the agent reads, seeded with what the layer is doing now. The placement panel marks the
+fields the motion decides and says where to change them, so the refusal is never the
+first anyone hears of it.
+
+Agents use `item.keyframes` through `project.edit`, over the file tool transport, HTTP
+and MCP, with the same validation and the same messages. Undo inverts it like any other
+operation.
+
+Motion verification: `pnpm test` covers the resolver and every ease curve, a single
+keyframe holding, an un-animated field keeping its static value, every refusal and its
+message, clearing, the `item.place` rule and the placement-undo it must not break, trim,
+split and source replacement, inversion, authorship, HTTP/agent-tool parity with
+rollback and both handoffs, MCP, the panel's own shortcuts including Ken Burns, and that
+an old EDL neither carries nor gains the field. `pnpm test:render` exports a real move
+and reads it out of the pixels — the layer on the left at the first frame and on the
+right at the last, the run of it along a scanline wider every time it is measured, the
+spot under the fading layer going from footage to layer, and the bed's level dipping
+through the middle of the video and coming back — then confirms the UI service, the
+agent's render tool and the CLI produce the same file frame for frame. A second render
+test covers a keyframed shot arriving on a dissolve: its own clock starts at the first
+frame of the overlap, so it has already travelled by the time the blend finishes.
+
 ## Run from any folder
 
 The default workspace resolves against the installation checkout, not the terminal's
@@ -318,9 +444,11 @@ item and `hidden` hides its visuals. Source-free layers have a transparent backg
 so titles, images, and audio can span cuts without covering the footage underneath.
 The final uncovered background is black.
 
-Consecutive shots on a track can be joined by a transition; see below. Keyframed
-layer transforms are not implemented. Newly imported sources are transcribed
-automatically; see below. Existing source-crop keyframes remain supported.
+Consecutive shots on a track can be joined by a transition; see below. A layer's
+`transform` and `volume` can be keyframed over the item's own time; see below. Newly
+imported sources are transcribed automatically; see below. Existing source-crop
+keyframes remain supported and are a separate thing: they move a window across the
+footage, in source pixels and source seconds.
 Per-item captions can be authored through properties or carried in from generated clips.
 The existing manual conflict resolution, transcript-extension, and crashed-render-lock
 limitations documented in [EDITOR.md](./EDITOR.md) still apply.

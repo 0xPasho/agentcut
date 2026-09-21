@@ -21,6 +21,7 @@ trim behavior, and UI adapter. Both interfaces use these operations:
 | `item.source` | Replace an item's footage in place, keeping its slot and overlays |
 | `item.detachAudio` | Lift a shot's own sound onto its own hidden track and mute the picture |
 | `item.transition` | How a shot arrives over the one before it on its track; `null` is a hard cut |
+| `item.keyframes` | How a layer's transform and volume travel over the item's own time; `null` holds still |
 | `clip.add` | Add a clip with a unique ID |
 | `clip.remove` | Remove the identified clip |
 | `clip.patch` | Change only supplied clip fields; caption fields merge individually |
@@ -42,6 +43,21 @@ else on the track. The overlap shortens the video; no footage is trimmed, so the
 operation restores the timing exactly. See [SEQUENCES.md](./SEQUENCES.md#transitions-between-shots)
 for the model, the edges and why the overlap is not taken out of source handles.
 
+`item.keyframes` is the layer's motion: the whole list is set at once, the way `crop`
+already is through `item.patch`, so a keyframe is never addressed by an index a retime
+would invalidate and one write is one undo. `t` is seconds from the item's own first
+frame, which is the only time base that survives moving the shot, changing its layer or
+giving it a transition — and the only one a canvas scene has at all. Every animatable
+field is optional and an absent one keeps the static `transform` (or `volume`)
+underneath; `src/lib/keyframes.ts` resolves the list for the timeline, the Player and the
+export alike. The operation refuses out-of-order or duplicate times, a keyframe that
+animates nothing, and one past the end of the shot, each with the number in the message;
+it also refuses `item.place` changing a fixed value the keyframes animate, since that
+edit could never be seen. A trim leaves keyframes where they are in the item's own time,
+and a split gives each half its share with a keyframe on the seam so no pixel changes.
+See [SEQUENCES.md](./SEQUENCES.md#keyframed-layer-transforms) for the model, the rejected
+alternatives, and how this relates to automatic music ducking.
+
 `item.detachAudio` is how a shot's sound becomes editable on its own. It adds a second item
 over the same media with `hidden: true`, carrying the shot's silence cuts — and therefore its
 exact length — but none of its captions, titles or pictures, and mutes the original. Nothing
@@ -56,7 +72,7 @@ returns an empty envelope rather than an error.
 
 Undo and redo are `invertOperations` in `src/lib/editor/history.ts`: the inverse of a batch,
 expressed in these same operations and sent through the same save path. Nothing in the UI
-writes a remembered EDL back over the project. Crop keyframes, split rectangles, caption settings, transcript words, clip
+writes a remembered EDL back over the project. Crop keyframes, layer motion keyframes, split rectangles, caption settings, transcript words, clip
 metadata, and output settings are accessible to both interfaces. The UI's **All clip
 properties** panel is generated from the same schema exposed to agents; compact controls
 remain shortcuts to that engine. Add/remove clips is available on the project screen.
