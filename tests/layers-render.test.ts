@@ -274,3 +274,92 @@ test("a keyframed layer travels, grows and fades in decoded pixels, ducks its ow
   assert.equal(cli.status, 0, cli.stderr);
   assert.equal(decodedHash(), expected, "and so is the command line's");
 });
+
+/** A whole decoded frame, as flat rgb triples. */
+const frameAt = (file: string, sec: number) =>
+  ffmpeg(["-ss", String(sec), "-i", file, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
+
+/** How far apart two decoded frames are, averaged over every channel of every pixel. */
+function difference(a: Buffer, b: Buffer) {
+  assert.equal(a.length, b.length, "frames of the same size");
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) sum += Math.abs(a[i] - b[i]);
+  return sum / a.length;
+}
+
+/**
+ * Where the blue layer is and how much of it there is, weighed out of a decoded frame.
+ *
+ * Comparing two encodings pixel for pixel would be comparing the encoder: cutting a shot
+ * in two changes where its key frames land, and h264 re-quantises around that. Position
+ * and area survive that, and they are what a split must not move.
+ */
+function blueMass(buf: Buffer, width: number) {
+  let weight = 0, x = 0;
+  for (let i = 0; i < buf.length; i += 3) {
+    const blueness = Math.max(0, buf[i + 2] - Math.max(buf[i], buf[i + 1]));
+    weight += blueness;
+    x += blueness * ((i / 3) % width);
+  }
+  return { weight: weight / (buf.length / 3), centre: weight ? x / weight : -1 };
+}
+
+test("splitting a moving layer is invisible: the same seconds decode to the same picture", { timeout: 300_000 }, async () => {
+  const { createVideoProject } = await import("../src/lib/editor/media");
+  const { readEditor, editProject } = await import("../src/lib/editor/store");
+  const { renderProject } = await import("../src/lib/editor/render");
+  const inputs = [];
+  for (const colour of ["green", "blue"]) {
+    const file = path.join(workspace, `split-move-${colour}.mp4`);
+    ffmpeg(["-y", "-f", "lavfi", "-i", `color=${colour}:size=640x360:rate=10:duration=3`, "-pix_fmt", "yuv420p", file]);
+    inputs.push({ file });
+  }
+  const { id } = await createVideoProject("A move cut in two", inputs);
+  const initial = readEditor(id), seq = initial.edl.sequences[0];
+  const [bed, mover] = seq.items;
+  const whole = editProject(id, { expectedRevision: initial.revision, operations: [
+    { type: "sequence.remove", sequenceId: seq.id },
+    { type: "sequence.add", sequence: { ...seq, output: { width: 640, height: 360, fps: 10 }, items: [
+      { ...bed, at: 0, muted: true },
+      { ...mover, id: "mover", at: 0, layer: 1, muted: true, clip: { ...mover.clip, id: "mover" },
+        transform: { x: 0, y: 40, width: 20, height: 20, rotation: 0, opacity: 1 },
+        // `linear`, which is what every move this editor writes by hand starts as, and the
+        // only kind a split can reproduce exactly — see the curve note below.
+        keyframes: [{ t: 0, x: 0, opacity: 0.4 }, { t: 3, x: 70, opacity: 1 }] },
+    ] } },
+  ] });
+  const before = (await renderProject(id, { only: [seq.id], expectedRevision: whole.revision })).outputs[0].file;
+  const moments = [0.2, 0.7, 1.4, 1.6, 2.2, 2.8];
+  const original = moments.map(sec => frameAt(before, sec));
+
+  const cut = editProject(id, { expectedRevision: whole.revision, operations: [
+    { type: "item.split", sequenceId: seq.id, itemId: "mover", at: 1.5, newItemId: "tail" },
+  ] });
+  const halves = cut.edl.sequences[0].items.filter(item => item.id === "mover" || item.id === "tail");
+  assert.equal(halves.length, 2, "the layer really was cut in two");
+  assert.deepEqual(halves.map(half => half.keyframes!.length), [2, 2], "and each half carries its share of the move");
+  assert.equal(sequenceFrames(cut.edl.sequences[0]).duration, 30, "cutting it changes nothing about the timing");
+
+  const after = (await renderProject(id, { only: [seq.id], expectedRevision: cut.revision })).outputs[0].file;
+  const cutFrames = moments.map(sec => frameAt(after, sec));
+  const was = original.map(frame => blueMass(frame, 640)), now = cutFrames.map(frame => blueMass(frame, 640));
+  for (const [index, sec] of moments.entries()) {
+    assert.ok(Math.abs(was[index].centre - now[index].centre) < 2,
+      `at ${sec}s the layer is where it was before the cut: ${was[index].centre.toFixed(1)} vs ${now[index].centre.toFixed(1)}`);
+    assert.ok(Math.abs(was[index].weight - now[index].weight) < 1.5,
+      `and as much of it is there: ${was[index].weight.toFixed(1)} vs ${now[index].weight.toFixed(1)}`);
+    assert.ok(difference(original[index], cutFrames[index]) < 6,
+      `and the frame as a whole only differs by what the encoder did: ${difference(original[index], cutFrames[index]).toFixed(2)}`);
+  }
+  // A curved ease is the stated limit, not a second bug: the catalogue has no curve that
+  // is "the first 40% of an ease", so each half re-eases the travel it still has. The seam
+  // itself is still exact, which is what stops a cut from making the layer jump.
+  const curved = editProject(id, { expectedRevision: cut.revision, operations: [
+    { type: "item.keyframes", sequenceId: seq.id, itemId: "mover", keyframes: [{ t: 0, x: 0, opacity: 0.4, ease: "ease" }, { t: 1.5, x: 35, opacity: 0.7 }] },
+  ] });
+  assert.equal(curved.edl.sequences[0].items[1].keyframes![0].ease, "ease");
+
+  // And the test is not vacuous: the layer really does travel and fade up across the shot.
+  assert.ok(was.at(-1)!.centre - was[0].centre > 300, `it travels: ${was.map(m => m.centre.toFixed(0))}`);
+  assert.ok(was.at(-1)!.weight > was[0].weight * 1.8, `and fades up: ${was.map(m => m.weight.toFixed(1))}`);
+});

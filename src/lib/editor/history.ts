@@ -141,13 +141,13 @@ function invertOne(edl: Edl, op: EditorOperation): EditorOperation[] {
       const restored = keys.some(key => key === "start" || key === "end") ? [...new Set([...keys, ...TIMED])] : keys;
       return [{ type: "item.patch", sequenceId: op.sequenceId, itemId: op.itemId, patch: pick(item.clip, restored) }];
     }
-    // A split halves the motion as well as the footage, so undoing it has to put the
-    // whole list back — before the placement, which refuses a fixed value for a field
-    // the keyframes still on the item animate.
+    // A split halves the motion as well as the footage, so undoing it has to put the whole
+    // list back — but only after the clip's own length is back. A keyframe is measured
+    // against the shot it sits on, and the half-length shot cannot hold all of them yet.
     case "item.split": return [
       { type: "item.remove", sequenceId: op.sequenceId, itemId: op.newItemId },
-      { type: "item.keyframes", sequenceId: op.sequenceId, itemId: op.itemId, keyframes: item.keyframes ?? null },
       { type: "item.patch", sequenceId: op.sequenceId, itemId: op.itemId, patch: pick(item.clip, TIMED) },
+      { type: "item.keyframes", sequenceId: op.sequenceId, itemId: op.itemId, keyframes: item.keyframes ?? null },
       { type: "item.place", sequenceId: op.sequenceId, itemId: op.itemId, patch: pick(placementOf(item), PLACEMENT) },
     ];
     case "item.source": return [

@@ -301,7 +301,13 @@ export function applyOperations(input: Edl, raw: unknown): Edl {
         if (!op.keyframes?.length) { delete item.keyframes; continue; }
         validateKeyframes(op.keyframes, item.clip.title);
         const seconds = itemSeconds(item, sequence.output.fps);
-        const past = op.keyframes.find(key => key.t > seconds + 1e-6);
+        // A keyframe past the end is refused while somebody is *authoring* it, and carried
+        // when a trim stranded it there. Refusing both would be a contradiction the
+        // transition work already rejected: the list is always written whole, so one
+        // stranded keyframe would make every other edit to this layer's motion impossible —
+        // an ease, a removal, a drag on the frame — with no way out but throwing it all away.
+        const stranded = new Set((item.keyframes ?? []).filter(key => key.t > seconds + 1e-6).map(key => key.t));
+        const past = op.keyframes.find(key => key.t > seconds + 1e-6 && !stranded.has(key.t));
         if (past) throw new Error(`A keyframe at ${past.t}s is past the end of “${item.clip.title}”, which runs for ${seconds.toFixed(2)}s.`);
         item.keyframes = op.keyframes;
         continue;

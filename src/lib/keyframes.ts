@@ -111,15 +111,17 @@ export const roundTime = (value: number) => Math.round(value * 1e6) / 1e6;
  * The keyframes each half of a split keeps.
  *
  * Both halves gain a keyframe on the seam holding exactly the value the animation had
- * reached there, so cutting a shot in two does not change a single rendered pixel. That is
- * the same repair `trim` already makes to crop keyframes when it interpolates a new one at
- * the clip's new start, and it is the property worth having: a split is a structural edit
- * and must not be a creative one.
+ * reached there. That is the same repair `trim` already makes to crop keyframes when it
+ * interpolates a new one at the clip's new start, and it is what stops a cut from making
+ * the layer jump: a split is a structural edit and must not be a creative one.
  *
+ * With `linear` or `hold` either side, the two halves are the original frame for frame.
+ * With a curve they are not, and this is the honest limit of a named catalogue: there is
+ * no member of `Ease` that means "the first 40% of an ease", so each half re-eases the
+ * travel it still has and the middle of each half lands somewhere slightly different.
+ * Sampling the curve into a polyline would be exact and would throw away the author's
+ * curve, which is worse — the value at the seam is the property worth being exact about.
  * The seam keyframe carries the ease and the authorship of the keyframe it was cut out of.
- * For `linear` and `hold` the two halves are then exactly the original; for a curved ease
- * the remaining travel is re-eased over what is left of it, which is an approximation and
- * is stated rather than hidden.
  */
 export function splitKeyframes(keyframes: TransformKeyframe[] | undefined, at: number): {
   first: TransformKeyframe[] | undefined; second: TransformKeyframe[] | undefined;

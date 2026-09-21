@@ -38,11 +38,14 @@ export function MotionInspector({ sequence, item, dispatch, onSeek }: {
     const local = Math.round((at - offset) * fps) / fps;
     return local >= 0 && local <= span + 1e-6 ? local : null;
   };
-  // Only the index re-renders as the preview plays, not the whole panel every frame.
+  // Two primitives, not the position itself: the panel has a form in it and must not
+  // re-render thirty times a second while the preview plays. `inside` changes only as the
+  // playhead crosses this shot's edges, which is exactly when the Pin buttons change.
   const lit = usePlayheadSelector(at => {
     const local = localAt(at);
     return local === null ? -1 : keyframes.findIndex(key => Math.abs(key.t - local) < 0.5 / fps);
   });
+  const inside = usePlayheadSelector(at => localAt(at) !== null);
   const here = () => localAt(playhead.get());
   const commit = (next: TransformKeyframe[] | null) =>
     dispatch([{ type: "item.keyframes", sequenceId: sequence.id, itemId: item.id, keyframes: next?.length ? next : null, before: item.keyframes ?? null }]);
@@ -58,7 +61,7 @@ export function MotionInspector({ sequence, item, dispatch, onSeek }: {
       <p className="text-xs text-muted-foreground">This layer holds still for the whole shot. Add a slow push, or pin where it is now and move it somewhere else later in the shot.</p>
       <div className="flex flex-wrap gap-2">
         <Button size="sm" onClick={() => commit(kenBurns(item, span))}><ZoomIn />Add a slow push</Button>
-        <Button size="sm" variant="outline" disabled={here() === null} title={here() === null ? outside : undefined}
+        <Button size="sm" variant="outline" disabled={!inside} title={inside ? undefined : outside}
           onClick={() => { const at = here(); if (at !== null) commit(pinPlacement(item, at)); }}><Diamond />Pin it here</Button>
       </div>
     </> : <>
@@ -76,7 +79,7 @@ export function MotionInspector({ sequence, item, dispatch, onSeek }: {
           </div>
           <div className="mt-2 grid grid-cols-2 gap-2">
             <TimeField label="Moment (seconds)" value={key.t} max={span}
-              onCommit={t => { if (t !== key.t) commit(retimeKeyframe(keyframes, index, t)); }} />
+              onCommit={t => { if (t !== key.t) commit(retimeKeyframe(keyframes, index, t, span)); }} />
             <label className="flex flex-col gap-1 text-xs">Travel to the next
               <select className="h-8 rounded-xl border border-border bg-background px-2 text-sm focus-visible:outline-2 focus-visible:outline-ring"
                 value={key.ease} disabled={index === keyframes.length - 1}
@@ -88,9 +91,9 @@ export function MotionInspector({ sequence, item, dispatch, onSeek }: {
         </li>)}
       </ul>
       <div className="flex flex-wrap gap-2">
-        <Button size="xs" variant="outline" disabled={here() === null} title={here() === null ? outside : undefined}
+        <Button size="xs" variant="outline" disabled={!inside} title={inside ? undefined : outside}
           onClick={() => { const at = here(); if (at !== null) commit(pinPlacement(item, at)); }}><Diamond />Pin the placement here</Button>
-        <Button size="xs" variant="outline" disabled={here() === null} title={here() === null ? outside : undefined}
+        <Button size="xs" variant="outline" disabled={!inside} title={inside ? undefined : outside}
           onClick={() => { const at = here(); if (at !== null) commit(pinVolume(item, at)); }}><Volume2 />Pin the volume here</Button>
         <Button size="xs" variant="ghost" onClick={() => commit(null)}>Clear the motion</Button>
       </div>

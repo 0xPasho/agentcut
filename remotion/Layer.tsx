@@ -16,9 +16,9 @@ import { animatedAt, staticState, type AnimatedState } from "../src/lib/keyframe
  * measured in. Nothing has to be converted, and a shot that moves on the timeline or
  * changes layer keeps its animation untouched.
  *
- * An item with no keyframes never subscribes to the frame at all: `Placed` renders the
- * same static markup the composition has always produced, so an unanimated project is
- * byte-identical to what it rendered before this existed.
+ * An item with no keyframes resolves to its static placement without looking at the frame
+ * at all, and `Placed` emits exactly the markup this composition has always produced, so
+ * an unanimated project renders byte-identically to what it did before this existed.
  */
 const Placed: React.FC<{ item: SequenceItem; sequence: VideoSequence; state: AnimatedState; children: React.ReactNode }> =
   ({ item, sequence, state, children }) => (
@@ -34,11 +34,15 @@ const Placed: React.FC<{ item: SequenceItem; sequence: VideoSequence; state: Ani
     </div>
   );
 
-const Animated: React.FC<{ item: SequenceItem; sequence: VideoSequence; children: React.ReactNode }> = ({ item, sequence, children }) => (
-  <Placed item={item} sequence={sequence} state={animatedAt(item, useCurrentFrame() / sequence.output.fps)}>{children}</Placed>
-);
-
-export const Layer: React.FC<{ item: SequenceItem; sequence: VideoSequence; children: React.ReactNode }> = ({ item, sequence, children }) =>
-  item.keyframes?.length
-    ? <Animated item={item} sequence={sequence}>{children}</Animated>
-    : <Placed item={item} sequence={sequence} state={staticState(item)}>{children}</Placed>;
+/**
+ * One component whichever it is, rather than one per case. Switching element type as a
+ * layer gains its first keyframe would unmount the whole shot underneath it, and the
+ * Player would reload the video and flash on the frame somebody just pinned. `animatedAt`
+ * returns the static placement immediately when there are no keyframes, and `children`
+ * is the same element object on every frame, so React re-renders nothing below this.
+ */
+export const Layer: React.FC<{ item: SequenceItem; sequence: VideoSequence; children: React.ReactNode }> = ({ item, sequence, children }) => {
+  const frame = useCurrentFrame();
+  return <Placed item={item} sequence={sequence}
+    state={item.keyframes?.length ? animatedAt(item, frame / sequence.output.fps) : staticState(item)}>{children}</Placed>;
+};

@@ -368,12 +368,16 @@ else must never fail because of a keyframe.
   choice: a trim is usually adjusted twice, and the second adjustment should find the
   work still there.
 - **A split gives each half the part of the move it still has**, with a keyframe on the
-  seam holding exactly the value the animation had reached, so cutting a shot in two
-  changes no rendered pixel. That is the repair `trim` already makes to crop keyframes at
-  a clip's new start. The seam keyframe carries the ease and the authorship of the one it
-  was cut out of; for `linear` and `hold` the two halves are exactly the original, and
-  for a curved ease the remaining travel is re-eased over what is left of it, which is
-  the same approximation the crop trim makes and is stated rather than hidden.
+  seam holding exactly the value the animation had reached there — the repair `trim`
+  already makes to crop keyframes at a clip's new start, and what stops a cut from making
+  the layer jump. With `linear` or `hold` either side, which is what every move authored
+  in the editor starts as, the two halves are the original frame for frame. With a curve
+  they are not: there is no member of the catalogue that means "the first 40% of an ease",
+  so each half re-eases the travel it still has and the middle of each half lands slightly
+  differently. That is the honest cost of the catalogue being small and named, and it is
+  cheaper than the alternative — sampling the curve into a polyline would be exact and
+  would throw the author's curve away. The seam keyframe carries the ease and the
+  authorship of the one it was cut out of.
 - **Replacing an item's footage leaves its motion alone.** `item.source` clears the
   transcript and the crop rectangles, which describe the footage being replaced; where
   the layer sits in the frame describes the layer.
@@ -403,14 +407,17 @@ operation.
 Motion verification: `pnpm test` covers the resolver and every ease curve, a single
 keyframe holding, an un-animated field keeping its static value, every refusal and its
 message, clearing, the `item.place` rule and the placement-undo it must not break, trim,
-split and source replacement, inversion, authorship, HTTP/agent-tool parity with
-rollback and both handoffs, MCP, the panel's own shortcuts including Ken Burns, and that
-an old EDL neither carries nor gains the field. `pnpm test:render` exports a real move
+split and source replacement, inversion — including undoing a split whose move reached
+past the seam — a shot the trim left keyframes hanging off still being editable,
+authorship, HTTP/agent-tool parity with rollback and both handoffs, MCP, the panel's own
+shortcuts including Ken Burns, and that an old EDL neither carries nor gains the field. `pnpm test:render` exports a real move
 and reads it out of the pixels — the layer on the left at the first frame and on the
 right at the last, the run of it along a scanline wider every time it is measured, the
 spot under the fading layer going from footage to layer, and the bed's level dipping
 through the middle of the video and coming back — then confirms the UI service, the
-agent's render tool and the CLI produce the same file frame for frame. A second render
+agent's render tool and the CLI produce the same file frame for frame. Another cuts a
+moving layer in two and reads the same seconds out of both exports, so "a split does not
+change the picture" is a measurement rather than a claim. A second render
 test covers a keyframed shot arriving on a dissolve: its own clock starts at the first
 frame of the overlap, so it has already travelled by the time the blend finishes.
 

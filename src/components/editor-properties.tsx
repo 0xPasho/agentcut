@@ -89,8 +89,11 @@ export function EditorProperties({ clip, edl, dispatch, onApplied, validationEdl
       {transition && <Fields schema={transitionSchema} value={transition} onChange={v => setTransition(v as Transition)} label="Transition" />}
     </div></details>}
     {motion && <details className="rounded-xl border border-border p-3" open={keyframes.length > 0}><summary className="cursor-pointer text-sm">Motion keyframes</summary><div className="space-y-3 pt-3">
-      <p className="text-xs text-muted-foreground">Every moment this layer is pinned at, exactly as an agent reads and writes them. Times run from this shot’s own first frame and may not pass {motion.seconds.toFixed(2)}s, each one later than the last. A field no keyframe names is not animated and keeps the fixed placement above.</p>
-      <Fields schema={motionSchema(motion.seed)} value={keyframes} onChange={v => setKeyframes(v as TransformKeyframe[])} label="Keyframe" />
+      <p className="text-xs text-muted-foreground">Every moment this layer is pinned at, exactly as an agent reads and writes them. Times run from this shot’s own first frame and may not pass {motion.seconds.toFixed(2)}s, each one later than the last. A field no keyframe names is not animated and keeps the fixed placement above — a keyframe added here pins all of them, where <strong className="font-medium text-foreground">Motion</strong> pins only what you change.</p>
+      {/* A new one lands after the last, holding what the layer is doing now, rather than on
+          top of the keyframe at zero that almost every animated layer already has. */}
+      <Fields schema={motionSchema({ ...motion.seed, t: keyframes.length ? Math.min(motion.seconds, Math.round((Math.max(...keyframes.map(key => key.t)) + 0.5) * 1000) / 1000) : 0 })}
+        value={keyframes} onChange={v => setKeyframes(v as TransformKeyframe[])} label="Keyframe" />
     </div></details>}
     {stale && <p role="alert" className="text-sm text-destructive">The clip changed while these fields were open. Close and reopen Properties to load the latest values. Your unsubmitted fields are still here.</p>}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

@@ -758,7 +758,7 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
                 onSelect(item.id, from / fps);
               }}>
                 <ContextMenuTrigger render={<div className={`group absolute top-2 h-12 rounded-md border ${primary ? "z-10 border-primary ring-1 ring-primary" : active ? "z-10 border-primary/70 ring-1 ring-primary/40" : "border-white/20"} ${audio ? "bg-emerald-950" : "bg-zinc-800"} ${moving ? "opacity-35" : ""}`} style={{ left: from / fps * scale, width: clipWidth }} />}>
-                <button type="button" draggable={false} aria-label={`Select ${item.clip.title}, ${layer === 0 ? "main track" : `track ${layer + 1}`}`} aria-pressed={active} aria-describedby={instructionsId} className="absolute inset-0 cursor-grab touch-none overflow-hidden rounded-md text-left focus-visible:outline-2 focus-visible:outline-ring active:cursor-grabbing" onPointerDown={event => begin(event, item.id, "move")} {...sharedPointer}
+                <button type="button" draggable={false} aria-label={`Select ${item.clip.title}, ${layer === 0 ? "main track" : `track ${layer + 1}`}${item.keyframes?.length ? `, ${item.keyframes.length} motion keyframes` : ""}`} aria-pressed={active} aria-describedby={instructionsId} className="absolute inset-0 cursor-grab touch-none overflow-hidden rounded-md text-left focus-visible:outline-2 focus-visible:outline-ring active:cursor-grabbing" onPointerDown={event => begin(event, item.id, "move")} {...sharedPointer}
                   onClick={event => {
                     if (!suppressClick.current) {
                       if (event.shiftKey || event.metaKey || event.ctrlKey) toggleSelection(item.id);
@@ -826,16 +826,22 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
                 onSet={transition => commit([{ type: "item.transition", sequenceId: sequence.id, itemId: entry.item.id, transition, before: current }],
                   transition ? `${describeTransition(transition)} between “${shotName(joint.previous)}” and “${shotName(entry.item)}”.` : "Transition removed.", true)} />;
             })}
-            {/* Every moment a layer on this track is pinned at. An agent's move is drawn here
-                the same as a hand-made one, so "what did it do" is answered by looking. */}
+            {/* Every moment a layer on this track is pinned at. An agent's move is drawn the
+                same as a hand-made one, so "what did it do" is answered by looking.
+
+                Deliberately not a control. A clip is dragged and trimmed by its whole body,
+                and a row of buttons with hit areas big enough to hit would punch holes in it
+                — the first keyframe is almost always at zero, exactly where the start trim
+                handle lives. Each of these is named, retimed and removed in the Motion panel,
+                with full-size controls and a button that seeks to it; here they are a picture.
+                The clip's own accessible name carries the count, so the motion is not a
+                visual-only fact. */}
             {layout.items.filter(entry => (entry.item.layer ?? 0) === layer).flatMap(entry => (entry.item.keyframes ?? []).map((key, index) => {
               const at = entry.from / fps + key.t;
               if (at > seconds) return null;
-              return <button key={`kf-${entry.item.id}-${index}`} type="button"
-                aria-label={`Keyframe ${index + 1} of ${entry.item.keyframes!.length} on ${shotName(entry.item)}, ${key.t.toFixed(2)} seconds in: ${keyframeSummary(key)}`}
+              return <span key={`kf-${entry.item.id}-${index}`} aria-hidden
                 title={`${key.t.toFixed(2)}s · ${keyframeSummary(key)} · ${describeAuthor(key.by)}`}
-                onClick={event => { event.stopPropagation(); onSelect(entry.item.id, at); }}
-                className={`absolute top-[46px] z-20 size-2.5 -translate-x-1/2 rotate-45 rounded-[2px] border border-background transition-colors duration-150 ease-out motion-reduce:transition-none after:absolute after:-inset-2.5 after:content-[''] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${isAgentAuthor(key.by) ? "bg-primary" : "bg-white"} hover:bg-primary`}
+                className={`pointer-events-none absolute top-[46px] z-20 size-2.5 -translate-x-1/2 rotate-45 rounded-[2px] border border-background ${isAgentAuthor(key.by) ? "bg-primary" : "bg-white"}`}
                 style={{ left: at * scale }} />;
             }))}
             {!sequence.items.length && layer === 0 && <span className="pointer-events-none absolute inset-2 flex items-center rounded-md border border-dashed border-white/20 px-3 text-xs text-muted-foreground">Drop videos here to start</span>}

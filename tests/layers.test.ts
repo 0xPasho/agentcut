@@ -296,6 +296,13 @@ test("splitting a moving layer changes no rendered value, and both halves carry 
   // A layer that was holding still does not acquire the field by being cut in two.
   const plain = applyOperations(fixture(), [{ type: "item.split", sequenceId: "main", itemId: "one", at: 1, newItemId: "tail" }]);
   for (const item of plain.sequences[0].items) assert.equal("keyframes" in item, false);
+  // A curved ease is exact at the seam and only there: the catalogue has no curve meaning
+  // "the first quarter of an ease", so each half re-eases the travel it still has.
+  const curved = applyOperations(fixture(), [keys("one", [{ t: 0, x: 0, ease: "ease" }, { t: 4, x: 100 }])] as never);
+  const halves = applyOperations(curved, [{ type: "item.split", sequenceId: "main", itemId: "one", at: 1, newItemId: "tail" }]).sequences[0].items;
+  assert.equal(animatedAt(halves[0], 1).x, animatedAt(curved.sequences[0].items[0], 1).x, "the seam itself holds, so the cut never makes it jump");
+  assert.notEqual(Math.round(animatedAt(halves[0], 0.5).x * 100), Math.round(animatedAt(curved.sequences[0].items[0], 0.5).x * 100),
+    "and the middle of a half is re-eased, which is the stated cost of a small named catalogue");
 });
 
 test("motion undoes through the same operations, refuses a stale form, and carries who placed it", async () => {
@@ -357,4 +364,51 @@ test("a saved timeline that holds still stays free of keyframes, and an old EDL 
   assert.equal(JSON.stringify(legacy).includes("keyframes"), false, "reading an old EDL does not write a migration into it");
   const edited = applyOperations(legacy, [{ type: "item.patch", sequenceId: "s", itemId: "a", patch: { title: "A again" } }]);
   assert.equal(JSON.stringify(edited).includes("keyframes"), false);
+});
+
+test("a shot the trim left keyframes hanging off is still an editable shot", async () => {
+  const { setKeyframe } = await import("../src/lib/editor/motion");
+  // A four-second shot with a move that runs to three seconds, trimmed down to one.
+  const animated = applyOperations(fixture(), [keys("one", [{ t: 0, x: 0 }, { t: 3, x: 90 }])] as never);
+  const trimmed = applyOperations(animated, [{ type: "item.patch", sequenceId: "main", itemId: "one", patch: { end: 1 } }]);
+  const stranded = itemOf(trimmed, "one").keyframes!;
+  assert.equal(stranded.length, 2, "the keyframe past the new end is kept");
+  // Everything the panel and the canvas do writes the whole list back, so every one of
+  // them would be refused if carrying a stranded keyframe were itself the offence.
+  const eased = applyOperations(trimmed, [keys("one", stranded.map((k, i) => i === 0 ? { ...k, ease: "ease" } : k))] as never);
+  assert.equal(itemOf(eased, "one").keyframes![0].ease, "ease", "an ease can still be changed");
+  applyOperations(trimmed, [keys("one", [stranded[1]])] as never);
+  applyOperations(trimmed, [keys("one", setKeyframe(itemOf(trimmed, "one"), 0.5, { x: 40 }))] as never);
+  applyOperations(trimmed, [keys("one", null)] as never);
+  // Authoring a *new* one out there is still refused, with the number in the message.
+  assert.throws(() => applyOperations(trimmed, [keys("one", [...stranded, { t: 3.5, x: 10 }])] as never), /at 3\.5s is past the end/);
+});
+
+test("undoing a split puts the whole move back, even when it reached past the seam", async () => {
+  const { invertOperations } = await import("../src/lib/editor/history");
+  const animated = applyOperations(fixture(), [keys("one", [{ t: 0, x: 0 }, { t: 3, x: 90 }])] as never);
+  const split = [{ type: "item.split", sequenceId: "main", itemId: "one", at: 1, newItemId: "tail" }] as never;
+  const cut = applyOperations(animated, split);
+  // The first half is now one second long and the restored list reaches three. Restoring
+  // the motion before the clip's length would measure it against the shot it no longer is.
+  const back = applyOperations(cut, invertOperations(animated, split));
+  assert.deepEqual(itemOf(back, "one").keyframes, itemOf(animated, "one").keyframes);
+  assert.deepEqual([back.sequences[0].items.length, back.sequences[0].items[0].clip.end], [2, 4]);
+});
+
+test("a retime that lands on the keyframe at the end steps back rather than off the shot", async () => {
+  const { retimeKeyframe, setKeyframe } = await import("../src/lib/editor/motion");
+  const list = [{ t: 1, x: 0, ease: "linear" as const, by: "" }, { t: 2, x: 10, ease: "linear" as const, by: "" }];
+  // "two" is two seconds long, so 2s is the last moment it has.
+  assert.deepEqual(retimeKeyframe(list, 0, 2, 2).map(k => k.t), [1.992, 2], "it steps back into the shot");
+  applyOperations(applyOperations(fixture(), [keys("two", list)] as never), [keys("two", retimeKeyframe(list, 0, 2, 2))] as never);
+  assert.deepEqual(retimeKeyframe(list, 0, 1.5, 2).map(k => k.t), [1.5, 2], "and leaves a free moment alone");
+  assert.deepEqual(retimeKeyframe(list, 1, 1, 2).map(k => k.t), [1, 1.008], "stepping forward when there is room");
+  // A drag pins the moment; it does not make the layer spring back by the end of the shot.
+  const item = { ...itemOf(fixture(), "one"), keyframes: [{ t: 0, x: 0, ease: "linear" as const, by: "" }, { t: 4, x: 50, ease: "linear" as const, by: "" }] };
+  const dragged = setKeyframe(item, 2, { y: 30 });
+  assert.deepEqual(dragged.map(k => k.y), [0, 30, undefined], "the moment before it holds where it was, and nothing after it pulls it back");
+  const { animatedAt } = await import("../src/lib/keyframes");
+  assert.equal(animatedAt({ ...item, keyframes: dragged }, 3).y, 30, "so it stays where it was put");
+  assert.equal(animatedAt({ ...item, keyframes: dragged }, 1).y, 15, "having travelled there from where it was");
 });
