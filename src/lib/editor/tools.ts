@@ -13,9 +13,16 @@ import { PlanApplyRequest } from "../plan/apply";
 import { DeriveRequest } from "./derive";
 import { EditRequest, EditorOperation } from "./operations";
 import { editProject, readEditor } from "./store";
+import { jobState, JOB_ACTIVE } from "../job-state";
+import { reapDeadJobs } from "../reaper";
 
 export const EditorToolCall = z.discriminatedUnion("tool", [
   z.object({ tool: z.literal("project.read") }),
+  // What is happening right now, for any interface that has to wait: the running
+  // job and everything logged since `since`. Read-only, and safe to poll.
+  z.object({ tool: z.literal("project.status"), since: z.number().int().nonnegative().default(0), limit: z.number().int().positive().max(500).default(50) }),
+  // The same escape hatch the panel's "Stop and unlock" button uses.
+  z.object({ tool: z.literal("project.unlock") }),
   z.object({ tool: z.literal("media.import"), file: z.string().min(1), expectedRevision: z.number().int().nonnegative(),
     /** Also place the imported video as a shot: on this sequence, at output seconds (null appends), on a layer. */
     place: z.object({ sequenceId: z.string(), at: z.number().nonnegative().nullable().optional(), layer: z.number().int().nonnegative().optional() }).optional() }),
@@ -74,6 +81,13 @@ export const EditorToolCall = z.discriminatedUnion("tool", [
   z.object({ tool: z.literal("glossary.save"), glossary: z.unknown(), level: RuleLevel.default("workspace") }),
   z.object({ tool: z.literal("preferences.get") }),
   z.object({ tool: z.literal("preferences.set"), text: z.string(), level: RuleLevel.default("workspace") }),
+  // The first-run interview. Workspace level, like the preferences it writes: an
+  // agent asks the questions in conversation, the web asks them full screen, and
+  // both save through these. Never a precondition for editing.
+  z.object({ tool: z.literal("onboarding.status") }),
+  z.object({ tool: z.literal("onboarding.answer"), answers: z.record(z.string(), z.string()) }),
+  z.object({ tool: z.literal("onboarding.run"), answers: z.record(z.string(), z.string()).default({}) }),
+  z.object({ tool: z.literal("onboarding.skip") }),
 ]);
 export const editorToolSchema = () => z.toJSONSchema(EditorToolCall);
 export const editorOperationSchema = () => z.toJSONSchema(EditorOperation);
@@ -107,12 +121,30 @@ export async function captureAsset(projectId: string, atSec: number, mediaId?: s
   return captureFrameAsset(projectId, { id: media?.id ?? "primary", file: from, durationSec: media?.durationSec ?? edl?.source?.durationSec }, atSec);
 }
 
+/**
+ * Where a tool reports what it is doing while it does it. Slow tools — a render, a
+ * transcription, an agent judging rules — call this as they go so the caller has
+ * something to show instead of a spinner.
+ */
+export type ToolActivity = (e: { kind: string; name?: string; text: string }) => void;
+
 /** The host binds projectId; agents cannot select another project through tool arguments. */
-export async function executeEditorTool(projectId: string, raw: unknown): Promise<unknown> {
-  if (!q.getProject(projectId)) throw new Error("Project not found");
+export async function executeEditorTool(projectId: string, raw: unknown, onActivity?: ToolActivity): Promise<unknown> {
   const call = EditorToolCall.parse(raw);
+  const report = (text: string, kind = "log") => onActivity?.({ kind, name: call.tool, text });
+  // The interview is about the owner, not about a project: a terminal agent must be
+  // able to run it before the first project exists. Everything else needs one.
+  if (!call.tool.startsWith("onboarding.") && !q.getProject(projectId)) throw new Error("Project not found");
   switch (call.tool) {
     case "project.read": return readEditor(projectId);
+    case "project.status": return projectStatus(projectId, call.since, call.limit);
+    case "project.unlock": {
+      const { reapDeadJobs, unlockProject } = await import("../reaper");
+      const reaped = reapDeadJobs(projectId);
+      const stopped = unlockProject(projectId);
+      if (stopped) report(`released the ${stopped.kind} job holding this project`, "tool");
+      return { reaped: reaped.map((j) => ({ id: j.id, kind: j.kind })), stopped: stopped ? { id: stopped.id, kind: stopped.kind } : null };
+    }
     case "media.import": case "media.upload": {
       const { importProjectMedia } = await import("./media");
       if (call.tool === "media.upload") return importProjectMedia(projectId, call.expectedRevision, { name: call.name, bytes: Buffer.from(call.base64, "base64") });
@@ -152,11 +184,13 @@ export async function executeEditorTool(projectId: string, raw: unknown): Promis
     }
     case "project.render": {
       const { renderProject } = await import("./render");
-      return renderProject(projectId, { only: call.only, expectedRevision: call.expectedRevision });
+      return renderProject(projectId, { only: call.only, expectedRevision: call.expectedRevision,
+        onProgress: (p) => report(p.stage === "bundling" ? "bundling composition" : `${p.stage === "done" ? "rendered" : "rendering"} ${p.title} (${p.index + 1}/${p.total})`, "stage") });
     }
     case "transcript.resync": {
       const { resyncTranscript } = await import("../transcribe/resync");
-      return resyncTranscript(projectId, { expectedRevision: call.expectedRevision, brief: call.brief });
+      return resyncTranscript(projectId, { expectedRevision: call.expectedRevision, brief: call.brief,
+        onLog: (text) => report(text), onEvent: (e) => { if (e.kind !== "log") report(e.text.slice(0, 2000), e.kind); } });
     }
     case "templates.list": {
       const { listTemplates } = await import("../templates/registry");
@@ -220,7 +254,7 @@ export async function executeEditorTool(projectId: string, raw: unknown): Promis
     case "rules.delete": { const { deleteRule } = await import("../rules/registry"); return deleteRule(call.id, call.level, projectId); }
     case "rules.evaluate": {
       const { evaluateRules } = await import("../rules/evaluate");
-      return evaluateRules(projectId, { sequenceId: call.sequenceId, clipId: call.clipId }, { stage: call.stage });
+      return evaluateRules(projectId, { sequenceId: call.sequenceId, clipId: call.clipId }, { stage: call.stage, onEvent: (e) => { if (e.kind !== "log") report(e.text.slice(0, 2000), e.kind); } });
     }
     case "rules.apply": {
       const { applyRules } = await import("../rules/apply");
@@ -233,7 +267,8 @@ export async function executeEditorTool(projectId: string, raw: unknown): Promis
     }
     case "plan.generate": {
       const { generateSequencePlan, generateProjectPlan } = await import("../plan/generate");
-      return call.scope === "project" ? generateProjectPlan(projectId) : generateSequencePlan(projectId, { sequenceId: call.sequenceId, clipId: call.clipId });
+      const watch = { onEvent: (e: { kind: string; text: string }) => { if (e.kind !== "log") report(e.text.slice(0, 2000), e.kind); } };
+      return call.scope === "project" ? generateProjectPlan(projectId, watch) : generateSequencePlan(projectId, { sequenceId: call.sequenceId, clipId: call.clipId }, watch);
     }
     case "plan.apply": {
       const { applyPlan, applyProjectPlan } = await import("../plan/apply");
@@ -242,7 +277,8 @@ export async function executeEditorTool(projectId: string, raw: unknown): Promis
     }
     case "media.transcribe": {
       const { transcribeProjectMedia } = await import("../transcribe/media");
-      return transcribeProjectMedia(projectId, { mediaIds: call.mediaIds, brief: call.brief, force: call.force });
+      return transcribeProjectMedia(projectId, { mediaIds: call.mediaIds, brief: call.brief, force: call.force,
+        onLog: (text) => report(text), onEvent: (e) => { if (e.kind !== "log") report(e.text.slice(0, 2000), e.kind); } });
     }
     case "project.batch": {
       // A job, not a call: it runs for minutes and reports through the project's events.
@@ -250,7 +286,7 @@ export async function executeEditorTool(projectId: string, raw: unknown): Promis
       return { job: startJob(projectId, "batch", { userBrief: call.brief, force: call.force }) };
     }
     case "observations.read": { const { readObservations } = await import("../observations"); return readObservations({ projectId: call.allProjects ? undefined : projectId, limit: call.limit }); }
-    case "observations.review": { const { reviewObservations } = await import("../observations"); return reviewObservations(projectId); }
+    case "observations.review": { const { reviewObservations } = await import("../observations"); return reviewObservations(projectId, { onEvent: (e) => { if (e.kind !== "log") report(e.text.slice(0, 2000), e.kind); } }); }
     case "packs.list": { const { listPacks } = await import("../packs"); return listPacks(); }
     case "packs.inspect": { const { inspectPack } = await import("../packs"); return inspectPack(call.source); }
     case "packs.import": { const { importPack } = await import("../packs"); return importPack(call.source, { replace: call.replace }); }
@@ -263,5 +299,41 @@ export async function executeEditorTool(projectId: string, raw: unknown): Promis
     case "glossary.save": { const { saveGlossary } = await import("../glossary"); return saveGlossary(call.glossary, call.level, projectId); }
     case "preferences.get": { const { readPreferences } = await import("../preferences"); return readPreferences(projectId); }
     case "preferences.set": { const { savePreferences } = await import("../preferences"); return savePreferences(call.text, call.level, projectId); }
+    case "onboarding.status": {
+      const { onboardingState, ONBOARDING_QUESTIONS } = await import("../onboarding");
+      const state = await onboardingState();
+      return { ...state, questions: ONBOARDING_QUESTIONS, next: ONBOARDING_QUESTIONS.find((q) => state.remaining.includes(q.id)) ?? null };
+    }
+    case "onboarding.answer": { const { saveOnboardingAnswers } = await import("../onboarding"); return saveOnboardingAnswers(call.answers); }
+    case "onboarding.run": { const { runOnboarding } = await import("../onboarding"); return runOnboarding(call.answers); }
+    case "onboarding.skip": { const { skipOnboarding } = await import("../onboarding"); return skipOnboarding(); }
   }
+}
+
+/**
+ * The project as a waiting caller needs it: what it is doing, how far along, and
+ * every line logged since the cursor they last saw. The same answer feeds the web
+ * panel's live feed and a terminal agent polling between its own turns.
+ */
+export function projectStatus(projectId: string, since = 0, limit = 50) {
+  // An agent polling between turns is the one interface that would otherwise wait
+  // forever on a job whose process is gone.
+  reapDeadJobs(projectId);
+  const project = q.getProject(projectId);
+  if (!project) throw new Error("Project not found");
+  const rows = q.eventsSince(projectId, since);
+  const activity = rows.slice(-limit).map((e) => ({ id: e.id, kind: e.kind, name: e.name, text: e.text, at: e.at }));
+  const job = jobState(q.latestJob(projectId));
+  let revision = project.revision;
+  try { revision = readEditor(projectId).revision; } catch { /* a project without an EDL still has a status */ }
+  return {
+    status: project.status,
+    error: project.error,
+    revision,
+    job,
+    working: JOB_ACTIVE(job),
+    activity,
+    /** Pass back as `since` to get only what is new. */
+    cursor: rows.length ? rows[rows.length - 1].id : since,
+  };
 }

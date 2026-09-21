@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
 import { q } from "@/lib/db";
+import { jobState } from "@/lib/job-state";
+import { reapDeadJobs } from "@/lib/reaper";
 
 export const runtime = "nodejs";
 export const maxDuration = 3600;
@@ -11,6 +13,9 @@ export const maxDuration = 3600;
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   let lastId = Number(req.nextUrl.searchParams.get("since") ?? 0);
+  // The tick runs twice a second; liveness does not change that fast.
+  const REAP_EVERY_MS = 5_000;
+  let lastReap = 0;
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
@@ -26,15 +31,19 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         try {
           for (const e of q.eventsSince(id, lastId)) {
             lastId = e.id;
-            send("log", { id: e.id, kind: e.kind, name: e.name, text: e.text, at: e.at });
+            send("log", { id: e.id, kind: e.kind, name: e.name, text: e.text, at: e.at, jobId: e.job_id });
           }
+          // This stream is what the editor believes about the project, so it has to be
+          // the thing that notices a job whose process died — otherwise a page left open
+          // through a crash shows "working" until somebody reloads it.
+          if (Date.now() - lastReap > REAP_EVERY_MS) { lastReap = Date.now(); reapDeadJobs(id); }
           const job = q.latestJob(id);
           const project = q.getProject(id);
           send("status", {
             revision: project?.revision ?? 0,
             status: project?.status ?? "unknown",
             error: project?.error ?? null,
-            job: job ? { id: job.id, kind: job.kind, status: job.status, stage: job.stage, progress: job.progress } : null,
+            job: jobState(job),
           });
         } catch {
           // a transient read during a write shouldn't kill the stream
