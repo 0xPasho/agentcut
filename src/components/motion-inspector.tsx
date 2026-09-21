@@ -9,7 +9,6 @@ import { kenBurns, keyframeSummary, pinPlacement, pinVolume, removeKeyframe, ret
 import { describeAuthor, isAgentAuthor } from "@/lib/editor/authorship";
 import { usePlayheadSelector, usePlayheadStore } from "@/lib/editor/playhead";
 import { Button } from "./ui/button";
-import { Card } from "./ui/card";
 import { Input } from "./ui/input";
 
 /** What each ease is called where a person chooses one. */
@@ -49,8 +48,9 @@ export function MotionInspector({ sequence, item, dispatch, onSeek }: {
     dispatch([{ type: "item.keyframes", sequenceId: sequence.id, itemId: item.id, keyframes: next?.length ? next : null, before: item.keyframes ?? null }]);
   const outside = "Move the playhead into this shot to pin a moment on it.";
 
-  return <Card className="shrink-0 gap-3 p-4">
-    <h2 className="text-sm font-medium">Motion</h2>
+  // No heading of its own: the section this opens out of is already called Motion, and a
+  // second one under it would be a label for nothing.
+  return <div className="flex flex-col gap-3">
     <p className="text-xs leading-relaxed text-muted-foreground">
       Where this layer sits, how big it is and how loud it is, over its own {seconds(span)}. Times are counted from this shot’s first frame, so moving it along the timeline leaves the motion alone.
     </p>
@@ -96,7 +96,7 @@ export function MotionInspector({ sequence, item, dispatch, onSeek }: {
       </div>
       <p className="text-[11px] leading-relaxed text-muted-foreground">Drag or resize the layer on the frame to change the moment the playhead is on.</p>
     </>}
-  </Card>;
+  </div>;
 }
 
 /**

@@ -1,5 +1,5 @@
 import type { SequenceItem, TransformKeyframe } from "../edl";
-import { ANIMATED_FIELDS, FIELD_LABELS, animatedFields, fieldAt, itemSeconds, roundTime, staticState, type AnimatedField } from "../keyframes";
+import { ANIMATED_FIELDS, FIELD_LABELS, animatedFields, fieldAt, staticState, type AnimatedField } from "../keyframes";
 
 /**
  * Editing a layer's motion, as operations on one list of keyframes.
@@ -18,6 +18,15 @@ export const PLACEMENT_FIELDS = ["x", "y", "width", "height", "rotation", "opaci
 const SAME_MOMENT = 0.008;
 
 const round = (value: number) => Math.round(value * 1000) / 1000;
+/**
+ * A moment a person authored, to the millisecond.
+ *
+ * Frame-exact would be `frame / fps`, which at 30fps is 2.4666666… — a number this panel
+ * would then have to show them. A thousandth of a second is a thirtieth of a frame, and
+ * the value is interpolated continuously rather than sampled on a grid, so rounding it
+ * costs nothing anybody can see and buys a time a person can read and retype.
+ */
+const roundMoment = (value: number) => Math.round(value * 1000) / 1000;
 
 /** What each keyframe says, for a list a person reads. */
 export const keyframeSummary = (key: TransformKeyframe) =>
@@ -39,7 +48,7 @@ export function placementAt(item: SequenceItem, t: number): Record<AnimatedField
  * and a drag meant to move something would quietly move it for the whole shot.
  */
 export function setKeyframe(item: SequenceItem, t: number, values: Partial<Record<AnimatedField, number>>, by = ""): TransformKeyframe[] {
-  const at = roundTime(Math.max(0, t));
+  const at = roundMoment(Math.max(0, t));
   const existing = item.keyframes ?? [];
   const fresh = (Object.keys(values) as AnimatedField[]).filter((field) => !animatedFields(existing).has(field));
   const held = placementAt(item, 0);
@@ -61,11 +70,11 @@ export const pinVolume = (item: SequenceItem, t: number, by = "") =>
 
 /** A keyframe moved to another moment, kept in order and never on top of its neighbour. */
 export function retimeKeyframe(keyframes: TransformKeyframe[], index: number, t: number): TransformKeyframe[] {
-  const moved = { ...keyframes[index], t: roundTime(Math.max(0, t)) };
+  const moved = { ...keyframes[index], t: roundMoment(Math.max(0, t)) };
   const rest = keyframes.filter((_, n) => n !== index);
   // Two keyframes at one moment is the one ordering a reader cannot resolve, so a retime
   // that lands on another one nudges past it rather than being refused mid-drag.
-  while (rest.some((key) => Math.abs(key.t - moved.t) < SAME_MOMENT)) moved.t = roundTime(moved.t + SAME_MOMENT);
+  while (rest.some((key) => Math.abs(key.t - moved.t) < SAME_MOMENT)) moved.t = roundMoment(moved.t + SAME_MOMENT);
   return [...rest, moved].sort((a, b) => a.t - b.t);
 }
 
@@ -73,7 +82,7 @@ export function retimeKeyframe(keyframes: TransformKeyframe[], index: number, t:
 export const removeKeyframe = (keyframes: TransformKeyframe[], index: number) => keyframes.filter((_, n) => n !== index);
 
 /** How much bigger a Ken Burns move ends than it starts. Slow enough to read as drift. */
-export const KEN_BURNS_SCALE = 1.14;
+const KEN_BURNS_SCALE = 1.14;
 /** How much of that growth is spent travelling rather than centring, so it moves as it grows. */
 const KEN_BURNS_DRIFT = 0.35;
 
@@ -91,12 +100,9 @@ export function kenBurns(item: SequenceItem, seconds: number, by = ""): Transfor
   const grownX = width - base.width, grownY = height - base.height;
   return [
     { t: 0, x: round(base.x), y: round(base.y), width: round(base.width), height: round(base.height), ease: "linear", by },
-    { t: roundTime(Math.max(0.1, seconds)), width, height, ease: "linear", by,
+    { t: roundMoment(Math.max(0.1, seconds)), width, height, ease: "linear", by,
       // Half the growth centres the frame; the rest of it is the travel.
       x: round(base.x - grownX / 2 - grownX * KEN_BURNS_DRIFT),
       y: round(base.y - grownY / 2 + grownY * KEN_BURNS_DRIFT) },
   ];
 }
-
-/** The whole shot, for a move that is meant to take it. */
-export const motionSpan = (item: SequenceItem, fps: number) => itemSeconds(item, fps);
