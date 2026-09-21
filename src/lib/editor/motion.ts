@@ -127,7 +127,7 @@ export const PLAYHEAD_OUTSIDE_SHOT = "Move the playhead into this shot to pin a 
  * that animates nothing is exactly what `validateKeyframes` refuses; `null` back means
  * the layer holds still again.
  */
-export function clearField(keyframes: TransformKeyframe[] | undefined, field: AnimatedField): TransformKeyframe[] | null {
+export function clearField(keyframes: TransformKeyframe[] | null | undefined, field: AnimatedField): TransformKeyframe[] | null {
   const stripped = (keyframes ?? [])
     .map(({ [field]: _gone, ...rest }) => rest as TransformKeyframe)
     .filter((key) => ANIMATED_FIELDS.some((each) => key[each] !== undefined));
