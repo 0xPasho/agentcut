@@ -3,9 +3,7 @@ import path from "node:path";
 import { run, which } from "./bin";
 import { ffmpegBinDir } from "./ffmpegDir";
 
-export function isUrl(s: string) {
-  return /^https?:\/\//i.test(s);
-}
+export { isUrl } from "./urls";
 
 const CONTAINERS = /^source\.(mp4|mkv|webm|mov)$/i;
 /** Per-stream downloads yt-dlp leaves behind when a merge fails, e.g. source.f399.mp4 */

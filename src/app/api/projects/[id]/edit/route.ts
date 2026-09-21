@@ -2,7 +2,8 @@ import { startJob } from "@/lib/jobs";
 import { z } from "zod";
 export const runtime = "nodejs";
 export const maxDuration = 3600;
-const Context = z.object({ sequenceId: z.string().optional(), selection: z.array(z.string()).optional(), playhead: z.number().nonnegative().optional(), range: z.tuple([z.number(), z.number()]).optional() }).strict();
+const Attachment = z.object({ id: z.string().min(1), name: z.string(), kind: z.enum(["image", "audio", "video"]) });
+const Context = z.object({ sequenceId: z.string().optional(), selection: z.array(z.string()).optional(), playhead: z.number().nonnegative().optional(), range: z.tuple([z.number(), z.number()]).optional(), attachments: z.array(Attachment).max(20).optional() }).strict();
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {

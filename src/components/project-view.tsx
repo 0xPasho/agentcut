@@ -13,6 +13,7 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { AgentPicker } from "@/components/agent-picker";
 import { AgentLog } from "@/components/agent-log";
 import { Glass, ScrollEdge } from "@/components/ui/glass";
 import { CaptionControls } from "@/components/caption-controls";
@@ -24,7 +25,8 @@ import { EditorStatus } from "./editor-status";
 import { AgentEditor } from "./agent-editor";
 import { Clip } from "@/lib/edl";
 import { emptySequencePlan } from "@/lib/plan/schema";
-import { api, assetUrl, clipUrl, sourceUrl, thumbUrl, type LogEvent, type ProjectDetail } from "@/lib/client";
+import { api, assetUrl, clipUrl, sourceUrl, thumbUrl, type ProjectDetail } from "@/lib/client";
+import { useProjectStream } from "@/lib/use-project-stream";
 import { fmt } from "@/lib/transcript";
 import { sequenceFrames } from "@/lib/sequences";
 import type { CaptionStyle, Edit } from "@/lib/edl";
@@ -34,7 +36,6 @@ const BUSY = new Set(["download", "probe", "transcribe", "signals", "agent", "re
 export function ProjectView({ initial }: { initial: ProjectDetail }) {
   const router = useRouter();
   const [project, setProject] = useState(initial);
-  const [events, setEvents] = useState<LogEvent[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(initial.edl?.clips[0]?.id ?? null);
   const [clipCount, setClipCount] = useState(6);
   const [brief, setBrief] = useState("");
@@ -70,33 +71,17 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
     }
   }, [initial.id]);
 
+  // One stream for the whole page: this panel and the agent's own progress panel read
+  // the same lines, in the same order, from the same connection.
+  const { events, status, error: streamError, revision, job } = useProjectStream(initial.id);
   useEffect(() => {
-    const es = new EventSource(`/api/projects/${initial.id}/events`);
-    let lastStatus = initial.status;
-    let lastRevision = initial.revision;
-
-    es.addEventListener("log", (e) => {
-      const data = JSON.parse((e as MessageEvent).data) as LogEvent;
-      setEvents((prev) => (prev.some((p) => p.id === data.id) ? prev : [...prev, data].slice(-400)));
-    });
-
-    es.addEventListener("status", (e) => {
-      const data = JSON.parse((e as MessageEvent).data) as {
-        status: string;
-        revision: number;
-        error: string | null;
-        job: ProjectDetail["job"];
-      };
-      setProject((p) => ({ ...p, status: data.status, error: data.error, job: data.job }));
-      if (data.revision !== lastRevision) { lastRevision = data.revision; void refresh(); }
-      if (data.status !== lastStatus) {
-        lastStatus = data.status;
-        if (data.status === "ready" || data.status === "error") void refresh();
-      }
-    });
-
-    return () => es.close();
-  }, [initial.id, initial.status, refresh]);
+    if (status === null) return;
+    setProject((p) => (p.status === status && p.error === streamError && p.job === job ? p : { ...p, status, error: streamError, job }));
+  }, [status, streamError, job]);
+  // A new revision, or a run that just ended, means the clips and renders on screen
+  // are stale — fetch the project itself rather than patching it from the stream.
+  useEffect(() => { if (revision) void refresh(); }, [revision, refresh]);
+  useEffect(() => { if (status === "ready" || status === "error") void refresh(); }, [status, refresh]);
 
   const run = async (fn: () => Promise<unknown>) => {
     setError(null);
@@ -206,6 +191,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                     Analyze with agent
                   </Button>
                 </div>
+                <AgentPicker projectId={initial.id} locked={busy} lockedReason="the analysis is running" />
                 <div className="flex flex-col gap-2">
                   <Label className="text-xs text-muted-foreground">Direction (optional)</Label>
                   <Textarea aria-label="Direction (optional)"
