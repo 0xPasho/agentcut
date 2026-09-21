@@ -113,3 +113,34 @@ test("transcribing imported media puts words on its shots and a missing recognis
   if (results[0].error) assert.match(results[0].error, /whisper|not found|ENOENT|failed/i);
   else assert.equal(results[0].items, 1);
 });
+
+test("a batch reuses the transcript an import already produced, and still skips a source with nothing on its audio track", async () => {
+  const transcribe = await import("../src/lib/transcribe/index");
+  const { Transcript } = await import("../src/lib/transcript");
+  const engine = await import("../src/lib/transcribe/whispercpp");
+  let calls = 0;
+  transcribe.setDefaultRecogniser(async () => { calls += 1; return Transcript.parse({ engine: engine.engineId(), segments: [], words: [{ t: 0, d: 0.4, w: "hola" }] }); });
+  try {
+    const quiet = path.join(workspace, "quiet.mp4");
+    assert.equal(spawnSync(FFMPEG, ["-y", "-f", "lavfi", "-i", "color=black:size=320x180:rate=15:duration=4",
+      "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono:d=4", "-pix_fmt", "yuv420p", "-shortest", quiet], { encoding: "utf8" }).status, 0);
+
+    const { id } = await mediaService.createVideoProject("Set", [{ file: sources[0] }, { file: quiet }], { layout: "separate" });
+    const [spoken, silent] = store.readEditor(id).edl.media.map((m) => m.id);
+    // What an import would have done, done by hand here so the order is deterministic.
+    const words = await import("../src/lib/transcribe/media");
+    await words.transcribeProjectMedia(id, { mediaIds: [spoken], by: "import" });
+    assert.equal(calls, 1);
+
+    const logs: string[] = [];
+    await batch.runBatch(id, { runner: planner(), onLog: (k, t) => logs.push(`${k}: ${t}`) });
+
+    assert.equal(calls, 1, "the batch reads the cache the import wrote, it does not recognise twice");
+    const after = store.readEditor(id).edl;
+    assert.equal(after.media[0].transcription?.status, "done");
+    assert.equal(after.media[1].transcription?.status, "skipped");
+    assert.match(after.media[1].transcription!.reason, /silent|no audio track/);
+    assert.ok(logs.some((l) => /not transcribed/.test(l)), logs.join("\n"));
+    void silent;
+  } finally { transcribe.setDefaultRecogniser(undefined); }
+});

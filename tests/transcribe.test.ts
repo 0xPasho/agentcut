@@ -327,3 +327,278 @@ test("a word saved starting before its clip no longer freezes the whole project"
   }), /nonnegative/);
   void operations;
 });
+
+/**
+ * Importing a source starts its own transcription, off the project lock, with a
+ * record on the media saying where it stands. These cover the skip rules, the
+ * failure and its retry, the cache, the glossary reaching the recogniser, and the
+ * two interfaces reading one state.
+ */
+import { spawnSync } from "node:child_process";
+import { FFMPEG } from "../src/lib/bin";
+import type { Recogniser } from "../src/lib/transcribe/index";
+
+let mediaService: typeof import("../src/lib/editor/media");
+let auto: typeof import("../src/lib/transcribe/auto");
+let mediaTranscribe: typeof import("../src/lib/transcribe/media");
+let settings: typeof import("../src/lib/transcribe/settings");
+let transcribeIndex: typeof import("../src/lib/transcribe/index");
+let tools: typeof import("../src/lib/editor/tools");
+/** Seconds of sound, silence, or no audio stream at all. */
+let speaking: string, silent: string, mute: string;
+
+/** What the recogniser was asked, and what it answered. No model, no download. */
+function fakeRecogniser() {
+  const prompts: Array<string | undefined> = [];
+  let calls = 0;
+  const recognise: Recogniser = async (_wav, o) => {
+    calls += 1;
+    prompts.push(o.prompt);
+    return Transcript.parse({
+      engine: engine.engineId(), language: "en",
+      segments: [{ start: 0, end: 2, text: "hola mundo" }],
+      words: [word("hola", 0.2, 0.4), word("mundo", 0.8, 0.4)],
+    });
+  };
+  return { recognise, prompts, get calls() { return calls; } };
+}
+
+const settle = async (id: string) => {
+  for (let i = 0; i < 400; i++) {
+    if (!auto.backgroundTranscription(id)) return;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  throw new Error("the background transcription never finished");
+};
+const mediaState = (id: string) => mediaTranscribe.transcriptionState(id).media;
+
+/** Built once, on the first test that needs footage: the workspace exists by then. */
+let fixtures: Promise<void> | null = null;
+const ready = () => (fixtures ??= (async () => {
+  [mediaService, auto, mediaTranscribe, settings, transcribeIndex, tools] = await Promise.all([
+    import("../src/lib/editor/media"), import("../src/lib/transcribe/auto"), import("../src/lib/transcribe/media"),
+    import("../src/lib/transcribe/settings"), import("../src/lib/transcribe/index"), import("../src/lib/editor/tools"),
+  ]);
+  const make = (name: string, args: string[]) => {
+    const file = path.join(workspace, name);
+    const result = spawnSync(FFMPEG, ["-y", ...args, "-pix_fmt", "yuv420p", "-shortest", file], { encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    return file;
+  };
+  speaking = make("speaking.mp4", ["-f", "lavfi", "-i", "color=navy:size=160x90:rate=10:duration=3", "-f", "lavfi", "-i", "sine=frequency=300:duration=3"]);
+  silent = make("silent.mp4", ["-f", "lavfi", "-i", "color=maroon:size=160x90:rate=10:duration=3", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono:d=3"]);
+  mute = make("mute.mp4", ["-f", "lavfi", "-i", "color=teal:size=160x90:rate=10:duration=3"]);
+})());
+after(() => transcribeIndex?.setDefaultRecogniser(undefined));
+
+test("a newly imported source transcribes itself, and its words land on the shot it was placed as", async () => {
+  await ready();
+  const fake = fakeRecogniser();
+  transcribeIndex.setDefaultRecogniser(fake.recognise);
+  process.env.AGENTCUT_TRANSCRIBE_ON_IMPORT = "audio";
+  const { id } = await mediaService.createVideoProject("Imports", [{ file: speaking }]);
+  // The record exists the moment the media does: a source is never quietly wordless.
+  const queued = store.readEditor(id).edl.media[0];
+  assert.ok(["queued", "done"].includes(queued.transcription!.status), queued.transcription!.status);
+  assert.equal(queued.transcription!.by, "import");
+
+  await settle(id);
+
+  const after = store.readEditor(id).edl;
+  assert.equal(after.media[0].transcription!.status, "done");
+  assert.equal(after.media[0].transcription!.words, 2);
+  assert.equal(after.media[0].transcription!.engine, engine.engineId());
+  assert.deepEqual(after.sequences[0].items[0].clip.words.map((w) => w.w), ["hola", "mundo"], "the shot cut from it has the words");
+  assert.equal(fake.calls, 1);
+  delete process.env.AGENTCUT_TRANSCRIBE_ON_IMPORT;
+});
+
+test("a source with no audio track, and one with only silence, are skipped with the reason rather than recognised", async () => {
+  await ready();
+  const fake = fakeRecogniser();
+  transcribeIndex.setDefaultRecogniser(fake.recognise);
+  process.env.AGENTCUT_TRANSCRIBE_ON_IMPORT = "audio";
+  const { id } = await mediaService.createVideoProject("Broll", [{ file: mute }, { file: silent }]);
+  await settle(id);
+  const [noTrack, quiet] = store.readEditor(id).edl.media;
+  assert.equal(noTrack.transcription!.status, "skipped");
+  assert.match(noTrack.transcription!.reason, /no audio track/);
+  assert.equal(quiet.transcription!.status, "skipped");
+  assert.match(quiet.transcription!.reason, /silent/);
+  assert.equal(fake.calls, 0, "forty silent b-roll clips are not forty recogniser runs");
+  delete process.env.AGENTCUT_TRANSCRIBE_ON_IMPORT;
+});
+
+test("the switch is honoured at every level, and a per-import no is recorded as a skip that can still be undone", async () => {
+  await ready();
+  const fake = fakeRecogniser();
+  transcribeIndex.setDefaultRecogniser(fake.recognise);
+  process.env.AGENTCUT_TRANSCRIBE_ON_IMPORT = "audio";
+  // Explicitly not this one.
+  const { id } = await mediaService.createVideoProject("Opt out", [{ file: speaking }], { transcribe: false });
+  await settle(id);
+  const skipped = store.readEditor(id).edl.media[0];
+  assert.equal(skipped.transcription!.status, "skipped");
+  assert.match(skipped.transcription!.reason, /not requested/);
+  assert.equal(fake.calls, 0);
+
+  // The same source, asked for by name afterwards: nothing about the skip is final.
+  auto.startMediaTranscription(id, { mediaIds: [skipped.id], by: "" });
+  await settle(id);
+  assert.equal(store.readEditor(id).edl.media[0].transcription!.status, "done");
+  assert.equal(fake.calls, 1);
+  delete process.env.AGENTCUT_TRANSCRIBE_ON_IMPORT;
+});
+
+test("the workspace setting decides, a project overrides it, and the environment beats both", async () => {
+  await ready();
+  settings.saveTranscribeMode(null); settings.saveTranscribeMode(null, "proj");
+  delete process.env.AGENTCUT_TRANSCRIBE_ON_IMPORT;
+  // Without the env, the default is on-when-there-is-sound.
+  const saved = process.env.NODE_TEST_CONTEXT; delete process.env.NODE_TEST_CONTEXT;
+  assert.deepEqual(settings.resolveTranscribeMode(), { mode: "audio", scope: "default" });
+  settings.saveTranscribeMode("off");
+  assert.equal(settings.resolveTranscribeMode().mode, "off");
+  settings.saveTranscribeMode("always", "proj");
+  assert.deepEqual(settings.resolveTranscribeMode("proj"), { mode: "always", scope: "project" });
+  process.env.AGENTCUT_TRANSCRIBE_ON_IMPORT = "off";
+  assert.deepEqual(settings.resolveTranscribeMode("proj"), { mode: "off", scope: "env" });
+  delete process.env.AGENTCUT_TRANSCRIBE_ON_IMPORT;
+  settings.saveTranscribeMode(null); settings.saveTranscribeMode(null, "proj");
+  // A test run never starts a model download as a side effect of importing footage.
+  process.env.NODE_TEST_CONTEXT = saved ?? "child-v8";
+  assert.equal(settings.resolveTranscribeMode().mode, "off");
+});
+
+test("a failure keeps its reason on the source, and a retry clears it", async () => {
+  await ready();
+  const fake = fakeRecogniser();
+  transcribeIndex.setDefaultRecogniser(fake.recognise);
+  process.env.AGENTCUT_TRANSCRIBE_ON_IMPORT = "off";
+  const { id } = await mediaService.createVideoProject("Broken", [{ file: speaking }]);
+  const mediaId = store.readEditor(id).edl.media[0].id;
+  // The copy in the workspace goes missing: ffmpeg cannot extract audio from it.
+  const file = store.readEditor(id).edl.media[0].file;
+  const kept = await fs.readFile(file);
+  await fs.rm(file);
+
+  await mediaTranscribe.transcribeProjectMedia(id, { mediaIds: [mediaId] });
+  const failed = store.readEditor(id).edl.media[0].transcription!;
+  assert.equal(failed.status, "failed");
+  assert.ok(failed.reason.length, "the reason travels with the failure, like plan.reasons.error");
+  assert.equal(mediaState(id)[0].status, "failed");
+
+  await fs.writeFile(file, kept);
+  auto.startMediaTranscription(id, { mediaIds: [mediaId] });
+  await settle(id);
+  assert.equal(store.readEditor(id).edl.media[0].transcription!.status, "done");
+  delete process.env.AGENTCUT_TRANSCRIBE_ON_IMPORT;
+});
+
+test("a transcript already on disk is reused, and a truncated one is recognised again instead of throwing", async () => {
+  await ready();
+  const fake = fakeRecogniser();
+  transcribeIndex.setDefaultRecogniser(fake.recognise);
+  process.env.AGENTCUT_TRANSCRIBE_ON_IMPORT = "off";
+  const { id } = await mediaService.createVideoProject("Cache", [{ file: speaking }]);
+  const mediaId = store.readEditor(id).edl.media[0].id;
+
+  await mediaTranscribe.transcribeProjectMedia(id, { mediaIds: [mediaId] });
+  assert.equal(fake.calls, 1);
+  await mediaTranscribe.transcribeProjectMedia(id, { mediaIds: [mediaId] });
+  assert.equal(fake.calls, 1, "the second run reads the cache under transcripts/<mediaId>/");
+
+  // What a process killed mid-write used to leave behind.
+  const cached = path.join(mediaTranscribe.mediaTranscriptDir(id, mediaId), "transcript.json");
+  await fs.writeFile(cached, (await fs.readFile(cached, "utf8")).slice(0, 40));
+  const result = await mediaTranscribe.transcribeProjectMedia(id, { mediaIds: [mediaId] });
+  assert.equal(result.results[0].status, "done");
+  assert.equal(fake.calls, 2, "half a transcript is no transcript");
+  delete process.env.AGENTCUT_TRANSCRIBE_ON_IMPORT;
+});
+
+test("the glossary still reaches the recogniser on the import path", async () => {
+  await ready();
+  const fake = fakeRecogniser();
+  transcribeIndex.setDefaultRecogniser(fake.recognise);
+  process.env.AGENTCUT_TRANSCRIBE_ON_IMPORT = "off";
+  const { id } = await mediaService.createVideoProject("Names", [{ file: speaking }]);
+  const { saveGlossary } = await import("../src/lib/glossary");
+  await saveGlossary({ terms: [{ term: "Remotion", aliases: ["remoshun"], note: "the renderer" }] }, "project", id);
+
+  auto.startMediaTranscription(id, { mediaIds: [store.readEditor(id).edl.media[0].id] });
+  await settle(id);
+  assert.match(fake.prompts.at(-1) ?? "", /Remotion/);
+  delete process.env.AGENTCUT_TRANSCRIBE_ON_IMPORT;
+});
+
+test("both interfaces read one state, and the agent is told a transcript is still coming", async () => {
+  await ready();
+  const fake = fakeRecogniser();
+  transcribeIndex.setDefaultRecogniser(fake.recognise);
+  process.env.AGENTCUT_TRANSCRIBE_ON_IMPORT = "off";
+  const { id } = await mediaService.createVideoProject("Parity", [{ file: speaking }, { file: mute }]);
+  const [spoken, silentOne] = store.readEditor(id).edl.media.map((m) => m.id);
+  mediaTranscribe.markQueued(id, [spoken], "import");
+  mediaTranscribe.markSkipped(id, silentOne, "this file has no audio track");
+
+  // The panel and the agent ask the same tool and get the same answer.
+  const report = await tools.executeEditorTool(id, { tool: "media.transcription" }) as
+    { media: Array<{ id: string; status: string; reason: string }>; settings: { effective: { mode: string } } };
+  assert.deepEqual(report.media.map((m) => [m.id, m.status]), [[spoken, "queued"], [silentOne, "skipped"]]);
+  assert.equal(report.settings.effective.mode, "off");
+  assert.deepEqual(report.media, mediaState(id).map((m) => ({ ...m })));
+  // A run must not read empty words as "nothing is said in this video".
+  const note = mediaTranscribe.transcriptionNote(id);
+  assert.match(note, /Still being transcribed/);
+  assert.match(note, /do not conclude/);
+
+  // And the switch is writable from either side, through the same tool.
+  await tools.executeEditorTool(id, { tool: "media.transcription.set", mode: "always", level: "project" });
+  assert.equal(settings.resolveTranscribeMode(id).mode, "off", "the environment still wins");
+  assert.equal(settings.storedTranscribeMode(id), "always");
+  settings.saveTranscribeMode(null, id);
+
+  await tools.executeEditorTool(id, { tool: "media.transcribe", mediaIds: [spoken], background: true });
+  await settle(id);
+  assert.equal(store.readEditor(id).edl.media[0].transcription!.status, "done");
+  delete process.env.AGENTCUT_TRANSCRIBE_ON_IMPORT;
+});
+
+test("a second import joins the run already going instead of starting a second recogniser", async () => {
+  await ready();
+  const fake = fakeRecogniser();
+  transcribeIndex.setDefaultRecogniser(fake.recognise);
+  process.env.AGENTCUT_TRANSCRIBE_ON_IMPORT = "off";
+  const { id } = await mediaService.createVideoProject("Two", [{ file: speaking }]);
+  const first = store.readEditor(id).edl.media[0].id;
+  const started = auto.startMediaTranscription(id, { mediaIds: [first] });
+  assert.equal(started.started, true);
+  const second = auto.startMediaTranscription(id, { mediaIds: [first] });
+  assert.equal(second.started, false, "one drain per project");
+  assert.equal(second.job?.id, started.job?.id);
+  await settle(id);
+  assert.equal(fake.calls, 1);
+  delete process.env.AGENTCUT_TRANSCRIBE_ON_IMPORT;
+});
+
+test("an old EDL neither carries the record nor gains one by being read", async () => {
+  await ready();
+  const { Edl } = await import("../src/lib/edl");
+  const id = "legacy-media";
+  const source = path.join(workspace, "legacy.mp4");
+  const edl = Edl.parse({
+    projectId: id, source: { file: source, width: 640, height: 360, fps: 30, durationSec: 60 },
+    media: [{ id: "m1", name: "Old", file: source, width: 640, height: 360, fps: 30, durationSec: 60 }],
+    clips: [], sequences: [],
+  });
+  assert.equal(edl.media[0].transcription, undefined);
+  database.q.insertProject({ id, name: id, source_path: source, created_at: Date.now() });
+  database.db.prepare("INSERT INTO projects (id, name, source_path, created_at, edl, revision) VALUES (?, ?, ?, ?, ?, 0) ON CONFLICT(id) DO UPDATE SET edl = excluded.edl, revision = 0")
+    .run(id, id, source, Date.now(), JSON.stringify(edl));
+  const read = store.readEditor(id);
+  assert.equal(read.revision, 0, "opening it persists nothing");
+  assert.equal(read.edl.media[0].transcription, undefined);
+  // It reads as "nobody has listened to this yet", not as a video with no speech.
+  assert.equal(mediaState(id)[0].status, "none");
+});

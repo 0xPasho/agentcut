@@ -180,3 +180,72 @@ test("startJob clears a dead owner and takes the lock", () => {
   assert.equal(job.boot_id, reaper.BOOT_ID);
   assert.equal(database.q.activeJob(id)?.id, job.id);
 });
+
+/**
+ * Automatic transcription is unfinished work that deliberately does not hold the
+ * project. These pin the two halves of that: the lock stays open while it runs,
+ * and the reaper still heals it — without handing back a project somebody else
+ * is holding right now.
+ */
+const background = (projectId: string, over: Partial<import("../src/lib/db").JobRow> = {}) =>
+  insertJob(projectId, { kind: "transcribe-media", status: "background", stage: "transcribing 1/3", ...over });
+
+test("a source being transcribed does not lock the project, so the editing carries on", async () => {
+  const id = project("ready");
+  const words = background(id, { pid: process.pid, boot_id: reaper.BOOT_ID });
+  reaper.claim(words.id, id);
+
+  assert.equal(database.q.activeJob(id), undefined, "the lock never closed");
+  // The whole point: a render, an agent turn or a human save is not refused.
+  const render = jobs.startJob(id, "render");
+  assert.equal(database.q.activeJob(id)?.id, render.id);
+  assert.equal(database.q.getJob(words.id)?.status, "background", "and the transcription is untouched by it");
+  // It is still unfinished work the reaper can see.
+  assert.ok(database.q.unfinishedJobs(id).some((j) => j.id === words.id));
+  assert.equal(database.q.backgroundJobs(id)[0]?.id, words.id);
+  reaper.release(words.id);
+  reaper.unlockProject(id);
+});
+
+test("a transcription whose process died is reaped without disturbing the job that holds the project", () => {
+  const id = project("agent");
+  const live = insertJob(id, { kind: "edit", pid: process.pid, boot_id: reaper.BOOT_ID });
+  reaper.claim(live.id, id);
+  const dead = background(id);
+
+  const reaped = reaper.reapDeadJobs(id);
+
+  assert.deepEqual(reaped.map((j) => j.id), [dead.id]);
+  assert.equal(database.q.getJob(dead.id)?.status, "error");
+  // The live edit still holds the project, and its status was not cleared underneath it.
+  assert.equal(database.q.activeJob(id)?.id, live.id);
+  assert.equal(database.q.getProject(id)?.status, "agent");
+  reaper.release(live.id);
+});
+
+test("stopping a project also stops the recogniser working on its footage", () => {
+  const id = project("ready");
+  const words = background(id, { pid: process.pid, boot_id: reaper.BOOT_ID });
+  reaper.claim(words.id, id);
+
+  const stopped = reaper.unlockProject(id);
+
+  assert.equal(stopped?.id, words.id, "with no lock job, the background run is what was stopped");
+  assert.equal(database.q.getJob(words.id)?.status, "canceled");
+  // The drain checks this between sources, so the queue stops without writing.
+  assert.equal(reaper.ownsJob(words.id), false);
+});
+
+test("background transcription is not what an interface means by 'what is this project doing'", async () => {
+  const id = project("ready");
+  const words = background(id, { pid: process.pid, boot_id: reaper.BOOT_ID });
+  reaper.claim(words.id, id);
+  const { projectStatus } = await import("../src/lib/editor/tools");
+
+  const status = projectStatus(id);
+  assert.notEqual(status.job?.id, words.id, "the panel does not paint the editor busy over it");
+  assert.equal(status.working, false);
+  // It is reported where it belongs instead: next to the sources it is about.
+  assert.ok(status.transcription);
+  reaper.release(words.id);
+});
