@@ -33,7 +33,12 @@ const stampItem = <T extends { clip: { edits?: WithBy[] }; transition?: WithBy |
 
 /** An agent's project.edit request, with its authorship on every edit it creates. Existing marks are kept. */
 export function stampAuthor(request: unknown, author: string): unknown {
-  if (!request || typeof request !== "object" || (request as { tool?: string }).tool !== "project.edit") return request;
+  if (!request || typeof request !== "object") return request;
+  // Words are not an `Edit` and carry no `by` of their own, so a transcription's
+  // mark lives on the record this run writes onto the source. The host sets it, so
+  // a run cannot claim the work was somebody else's.
+  if ((request as { tool?: string }).tool === "media.transcribe") return { ...request, by: author };
+  if ((request as { tool?: string }).tool !== "project.edit") return request;
   const { operations, ...rest } = request as { operations?: EditorOperation[] };
   if (!Array.isArray(operations)) return request;
   return {

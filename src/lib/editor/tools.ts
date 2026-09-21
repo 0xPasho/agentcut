@@ -14,6 +14,7 @@ import { DeriveRequest } from "./derive";
 import { EditRequest, EditorOperation } from "./operations";
 import { editProject, readEditor } from "./store";
 import { jobState, JOB_ACTIVE } from "../job-state";
+import { transcriptionState } from "../transcribe/media";
 import { reapDeadJobs } from "../reaper";
 
 /** What a found sound is for. A sting and a bed are the same search with different ranking. */
@@ -28,8 +29,10 @@ export const EditorToolCall = z.discriminatedUnion("tool", [
   z.object({ tool: z.literal("project.unlock") }),
   z.object({ tool: z.literal("media.import"), file: z.string().min(1), expectedRevision: z.number().int().nonnegative(),
     /** Also place the imported video as a shot: on this sequence, at output seconds (null appends), on a layer. */
-    place: z.object({ sequenceId: z.string(), at: z.number().nonnegative().nullable().optional(), layer: z.number().int().nonnegative().optional() }).optional() }),
-  z.object({ tool: z.literal("media.upload"), name: z.string().min(1), base64: z.string().min(1), expectedRevision: z.number().int().nonnegative() }),
+    place: z.object({ sequenceId: z.string(), at: z.number().nonnegative().nullable().optional(), layer: z.number().int().nonnegative().optional() }).optional(),
+    /** Recognise this source's speech, or not. Omitted follows the project's setting. */
+    transcribe: z.boolean().optional() }),
+  z.object({ tool: z.literal("media.upload"), name: z.string().min(1), base64: z.string().min(1), expectedRevision: z.number().int().nonnegative(), transcribe: z.boolean().optional() }),
   z.object({ tool: z.literal("project.edit"), ...EditRequest.shape }),
   z.object({ tool: z.literal("assets.browseLocal"), folder: z.string().optional(), offset: z.number().int().nonnegative().default(0), limit: z.number().int().positive().max(5000).default(100) }),
   z.object({ tool: z.literal("assets.importLocal"), file: z.string().min(1) }),
@@ -70,7 +73,16 @@ export const EditorToolCall = z.discriminatedUnion("tool", [
   z.object({ tool: z.literal("plan.read") }),
   z.object({ tool: z.literal("plan.generate"), scope: z.enum(["sequence", "project"]).default("sequence"), sequenceId: z.string().optional(), clipId: z.string().optional() }),
   z.object({ tool: z.literal("plan.apply"), ...PlanApplyRequest.shape, all: z.boolean().default(false), expectedRevision: z.number().int().nonnegative() }),
-  z.object({ tool: z.literal("media.transcribe"), mediaIds: z.array(z.string()).optional(), brief: z.string().optional(), force: z.boolean().optional() }),
+  // Recognise imported media. `background: true` queues it and returns at once —
+  // the same call the retry in the asset panel makes; without it the call blocks
+  // until the words are written, which is what an agent that needs them wants.
+  // `force` ignores both the cached transcript and the skip rules.
+  z.object({ tool: z.literal("media.transcribe"), mediaIds: z.array(z.string()).optional(), brief: z.string().optional(), force: z.boolean().optional(),
+    background: z.boolean().default(false), by: z.string().optional() }),
+  // Where every source's words stand, and the setting that decides whether a newly
+  // imported one recognises itself. Read-only; `media.transcription.set` writes.
+  z.object({ tool: z.literal("media.transcription") }),
+  z.object({ tool: z.literal("media.transcription.set"), mode: z.enum(["audio", "always", "off"]).nullable(), level: RuleLevel.default("workspace") }),
   z.object({ tool: z.literal("project.batch"), brief: z.string().optional(), force: z.boolean().optional() }),
   z.object({ tool: z.literal("observations.read"), limit: z.number().int().positive().max(500).default(100), allProjects: z.boolean().default(true) }),
   z.object({ tool: z.literal("observations.review") }),
@@ -95,6 +107,16 @@ export const EditorToolCall = z.discriminatedUnion("tool", [
   z.object({ tool: z.literal("onboarding.answer"), answers: z.record(z.string(), z.string()) }),
   z.object({ tool: z.literal("onboarding.run"), answers: z.record(z.string(), z.string()).default({}) }),
   z.object({ tool: z.literal("onboarding.skip") }),
+  z.object({ tool: z.literal("onboarding.reopen") }),
+  // Workspace configuration: which harness and model does which kind of work, and
+  // the keys for the optional online providers. Both are settings the owner changes
+  // on the settings page, so both are tools — the page is not allowed a private
+  // path to them. A key is write-only through `providerkeys.set`: neither the page
+  // nor an agent can read one back, which is why showing them the same thing is parity.
+  z.object({ tool: z.literal("agents.status") }),
+  z.object({ tool: z.literal("agents.select"), scope: z.enum(["workspace", "project", "task"]).default("workspace"), task: z.string().optional(), provider: z.string(), model: z.string().default("") }),
+  z.object({ tool: z.literal("providerkeys.list") }),
+  z.object({ tool: z.literal("providerkeys.set"), id: z.string().min(1), value: z.string() }),
 ]);
 export const editorToolSchema = () => z.toJSONSchema(EditorToolCall);
 export const editorOperationSchema = () => z.toJSONSchema(EditorOperation);
@@ -135,13 +157,20 @@ export async function captureAsset(projectId: string, atSec: number, mediaId?: s
  */
 export type ToolActivity = (e: { kind: string; name?: string; text: string }) => void;
 
+/**
+ * Tools about the owner rather than about a project. A terminal agent must be able
+ * to run the interview, read which harnesses this machine has or save a key before
+ * the first project exists, so these skip the project check.
+ */
+const WORKSPACE_TOOLS = ["onboarding.", "agents.", "providerkeys."];
+
 /** The host binds projectId; agents cannot select another project through tool arguments. */
 export async function executeEditorTool(projectId: string, raw: unknown, onActivity?: ToolActivity): Promise<unknown> {
   const call = EditorToolCall.parse(raw);
   const report = (text: string, kind = "log") => onActivity?.({ kind, name: call.tool, text });
   // The interview is about the owner, not about a project: a terminal agent must be
   // able to run it before the first project exists. Everything else needs one.
-  if (!call.tool.startsWith("onboarding.") && !q.getProject(projectId)) throw new Error("Project not found");
+  if (!WORKSPACE_TOOLS.some((prefix) => call.tool.startsWith(prefix)) && !q.getProject(projectId)) throw new Error("Project not found");
   switch (call.tool) {
     case "project.read": return readEditor(projectId);
     case "project.status": return projectStatus(projectId, call.since, call.limit);
@@ -154,10 +183,10 @@ export async function executeEditorTool(projectId: string, raw: unknown, onActiv
     }
     case "media.import": case "media.upload": {
       const { importProjectMedia } = await import("./media");
-      if (call.tool === "media.upload") return importProjectMedia(projectId, call.expectedRevision, { name: call.name, bytes: Buffer.from(call.base64, "base64") });
+      if (call.tool === "media.upload") return importProjectMedia(projectId, call.expectedRevision, { name: call.name, bytes: Buffer.from(call.base64, "base64") }, undefined, { transcribe: call.transcribe });
       // `file` may be a library video's asset id rather than a path.
       const asset = q.getAsset(call.file);
-      return importProjectMedia(projectId, call.expectedRevision, asset?.kind === "video" ? { assetId: asset.id } : { file: call.file }, call.place);
+      return importProjectMedia(projectId, call.expectedRevision, asset?.kind === "video" ? { assetId: asset.id } : { file: call.file }, call.place, { transcribe: call.transcribe });
     }
     case "project.edit": return editProject(projectId, { expectedRevision: call.expectedRevision, operations: call.operations }, { actor: "agent" });
     case "assets.browseLocal": {
@@ -269,7 +298,10 @@ export async function executeEditorTool(projectId: string, raw: unknown, onActiv
     case "rules.delete": { const { deleteRule } = await import("../rules/registry"); return deleteRule(call.id, call.level, projectId); }
     case "rules.evaluate": {
       const { evaluateRules } = await import("../rules/evaluate");
-      return evaluateRules(projectId, { sequenceId: call.sequenceId, clipId: call.clipId }, { stage: call.stage, onEvent: (e) => { if (e.kind !== "log") report(e.text.slice(0, 2000), e.kind); } });
+      // Judging rules is an agent run that is not a job, so it has to apply the
+      // owner's harness and its task model here; `startJob` cannot do it for us.
+      const { effectiveSelection } = await import("../agent/selection");
+      return evaluateRules(projectId, { sequenceId: call.sequenceId, clipId: call.clipId }, { stage: call.stage, ...effectiveSelection(projectId, {}, "judging"), onEvent: (e) => { if (e.kind !== "log") report(e.text.slice(0, 2000), e.kind); } });
     }
     case "rules.apply": {
       const { applyRules } = await import("../rules/apply");
@@ -282,7 +314,8 @@ export async function executeEditorTool(projectId: string, raw: unknown, onActiv
     }
     case "plan.generate": {
       const { generateSequencePlan, generateProjectPlan } = await import("../plan/generate");
-      const watch = { onEvent: (e: { kind: string; text: string }) => { if (e.kind !== "log") report(e.text.slice(0, 2000), e.kind); } };
+      const { effectiveSelection } = await import("../agent/selection");
+      const watch = { ...effectiveSelection(projectId, {}, "planning"), onEvent: (e: { kind: string; text: string }) => { if (e.kind !== "log") report(e.text.slice(0, 2000), e.kind); } };
       return call.scope === "project" ? generateProjectPlan(projectId, watch) : generateSequencePlan(projectId, { sequenceId: call.sequenceId, clipId: call.clipId }, watch);
     }
     case "plan.apply": {
@@ -291,9 +324,27 @@ export async function executeEditorTool(projectId: string, raw: unknown, onActiv
       return all ? applyProjectPlan(projectId, expectedRevision, { slots: request.slots, providers: request.providers }) : applyPlan(projectId, request, expectedRevision);
     }
     case "media.transcribe": {
+      if (call.background) {
+        // Queue it and come straight back. With no ids this resumes whatever is
+        // still waiting — what a project picks up again after a crash.
+        const { startMediaTranscription } = await import("../transcribe/auto");
+        const started = startMediaTranscription(projectId, { mediaIds: call.mediaIds, force: call.force, brief: call.brief, by: call.by ?? "" });
+        if (started.queued.length) report(`transcribing ${started.queued.length} source${started.queued.length === 1 ? "" : "s"} in the background`, "tool");
+        return started;
+      }
       const { transcribeProjectMedia } = await import("../transcribe/media");
       return transcribeProjectMedia(projectId, { mediaIds: call.mediaIds, brief: call.brief, force: call.force,
+        gate: call.force ? "always" : "audio", by: call.by ?? "",
         onLog: (text) => report(text), onEvent: (e) => { if (e.kind !== "log") report(e.text.slice(0, 2000), e.kind); } });
+    }
+    case "media.transcription": {
+      const { transcribeSettings } = await import("../transcribe/settings");
+      return { ...transcriptionState(projectId), settings: transcribeSettings(projectId) };
+    }
+    case "media.transcription.set": {
+      const { saveTranscribeMode, transcribeSettings } = await import("../transcribe/settings");
+      saveTranscribeMode(call.mode, call.level === "project" ? projectId : undefined);
+      return transcribeSettings(projectId);
     }
     case "project.batch": {
       // A job, not a call: it runs for minutes and reports through the project's events.
@@ -301,7 +352,11 @@ export async function executeEditorTool(projectId: string, raw: unknown, onActiv
       return { job: startJob(projectId, "batch", { userBrief: call.brief, force: call.force }) };
     }
     case "observations.read": { const { readObservations } = await import("../observations"); return readObservations({ projectId: call.allProjects ? undefined : projectId, limit: call.limit }); }
-    case "observations.review": { const { reviewObservations } = await import("../observations"); return reviewObservations(projectId, { onEvent: (e) => { if (e.kind !== "log") report(e.text.slice(0, 2000), e.kind); } }); }
+    case "observations.review": {
+      const { reviewObservations } = await import("../observations");
+      const { effectiveSelection } = await import("../agent/selection");
+      return reviewObservations(projectId, { ...effectiveSelection(projectId, {}, "observations"), onEvent: (e) => { if (e.kind !== "log") report(e.text.slice(0, 2000), e.kind); } });
+    }
     case "packs.list": { const { listPacks } = await import("../packs"); return listPacks(); }
     case "packs.inspect": { const { inspectPack } = await import("../packs"); return inspectPack(call.source); }
     case "packs.import": { const { importPack } = await import("../packs"); return importPack(call.source, { replace: call.replace }); }
@@ -320,8 +375,29 @@ export async function executeEditorTool(projectId: string, raw: unknown, onActiv
       return { ...state, questions: ONBOARDING_QUESTIONS, next: ONBOARDING_QUESTIONS.find((q) => state.remaining.includes(q.id)) ?? null };
     }
     case "onboarding.answer": { const { saveOnboardingAnswers } = await import("../onboarding"); return saveOnboardingAnswers(call.answers); }
-    case "onboarding.run": { const { runOnboarding } = await import("../onboarding"); return runOnboarding(call.answers); }
+    case "onboarding.run": {
+      const { runOnboarding } = await import("../onboarding");
+      const { effectiveSelection } = await import("../agent/selection");
+      return runOnboarding(call.answers, effectiveSelection(undefined, {}, "observations"));
+    }
     case "onboarding.skip": { const { skipOnboarding } = await import("../onboarding"); return skipOnboarding(); }
+    case "onboarding.reopen": { const { reopenOnboarding } = await import("../onboarding"); return reopenOnboarding(); }
+    case "agents.status": {
+      const { detectHarnesses } = await import("../agent/detect");
+      const { selectionOverview } = await import("../agent/selection");
+      const known = q.getProject(projectId) ? projectId : undefined;
+      return { harnesses: await detectHarnesses(), ...selectionOverview(known) };
+    }
+    case "agents.select": {
+      const { applySelection, selectionOverview } = await import("../agent/selection");
+      applySelection({ scope: call.scope, task: call.task, projectId, provider: call.provider, model: call.model });
+      return selectionOverview(q.getProject(projectId) ? projectId : undefined);
+    }
+    // Write-only on purpose: `providerkeys.list` answers whether a key is set and
+    // where it came from, never what it is. Nothing here may put a key in a reply,
+    // an event line or a run directory.
+    case "providerkeys.list": { const { providerKeys } = await import("../secrets"); return providerKeys(); }
+    case "providerkeys.set": { const { setProviderKey } = await import("../secrets"); return setProviderKey(call.id, call.value); }
   }
 }
 
@@ -330,6 +406,15 @@ export async function executeEditorTool(projectId: string, raw: unknown, onActiv
  * every line logged since the cursor they last saw. The same answer feeds the web
  * panel's live feed and a terminal agent polling between its own turns.
  */
+/** Never throws: a project with no EDL yet simply has no sources to report on. */
+function transcriptionSummary(projectId: string) {
+  try {
+    // Synchronous on purpose: projectStatus is a plain read every surface polls.
+    const state = transcriptionState(projectId);
+    return { mode: state.mode.mode, media: state.media, pending: state.media.filter((m) => m.status === "running" || m.status === "queued").length };
+  } catch { return { mode: "audio", media: [], pending: 0 }; }
+}
+
 export function projectStatus(projectId: string, since = 0, limit = 50) {
   // An agent polling between turns is the one interface that would otherwise wait
   // forever on a job whose process is gone.
@@ -347,6 +432,13 @@ export function projectStatus(projectId: string, since = 0, limit = 50) {
     revision,
     job,
     working: JOB_ACTIVE(job),
+    /**
+     * Where each source's words stand, alongside the job. It is here rather than
+     * only in the EDL because this is what a waiting interface polls, and "the
+     * transcript is still coming" is exactly the thing neither a person nor an
+     * agent should have to infer from an empty `words` array.
+     */
+    transcription: transcriptionSummary(projectId),
     activity,
     /** Pass back as `since` to get only what is new. */
     cursor: rows.length ? rows[rows.length - 1].id : since,

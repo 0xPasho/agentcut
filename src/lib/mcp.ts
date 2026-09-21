@@ -67,7 +67,9 @@ const DESCRIPTIONS: Record<string, string> = {
   "quickactions.list": "Quick actions installed packs contribute.",
   "observations.read": "What the owner has corrected: the observation bank, newest last.",
   "observations.review": "Have an agent propose rules, glossary entries and preferences from the observation bank. Nothing is saved.",
-  "media.transcribe": "Transcribe imported media and put the words on every shot cut from it.",
+  "media.transcribe": "Transcribe imported media and put the words on every shot cut from it. background:true queues it and returns at once; force ignores both the cached transcript and the skip rules.",
+  "media.transcription": "Where every source's words stand — done, still running, waiting, failed with its reason, or skipped with its reason — and the setting that decides whether a newly imported source transcribes itself.",
+  "media.transcription.set": "Whether newly imported sources transcribe themselves: audio (only when the file has sound), always, or off. mode:null inherits.",
   "project.batch": "Start the batch: transcribe, plan and edit every pending video under the shared plan. Returns a job.",
   "glossary.get": "Names and how they are spelled.",
   "glossary.save": "Write the glossary at a level.",
@@ -76,7 +78,12 @@ const DESCRIPTIONS: Record<string, string> = {
   "onboarding.status": "Whether the owner has done the setup interview, the answers so far, and the next question to ask. Ask them one at a time in conversation; never block work on them.",
   "onboarding.answer": "Save answers to setup questions as they are given, without finishing.",
   "onboarding.run": "Finish the interview: turn the answers into the owner's preferences and glossary.",
-  "onboarding.skip": "The owner does not want to answer. Stop asking; the interview stays available in the Library.",
+  "onboarding.skip": "The owner does not want to answer. Stop asking; the interview stays available in settings.",
+  "onboarding.reopen": "Put the interview back in front of the owner, with the answers they already gave.",
+  "agents.status": "Which agent CLIs this machine has, which models each offers, and which harness and model runs each kind of work.",
+  "agents.select": "Choose the harness and model for the workspace, for this project, or for one kind of work (clipping, planning, editing, judging, observations). An empty provider clears the choice so it inherits again.",
+  "providerkeys.list": "Which optional provider keys are set and whether the value came from settings or the environment. Never returns a key.",
+  "providerkeys.set": "Save or clear a provider key. Write-only: nothing can read it back. An empty value clears it.",
 };
 
 export const mcpToolName = (tool: string) => `agentcut_${tool.replace(/\./g, "_")}`;

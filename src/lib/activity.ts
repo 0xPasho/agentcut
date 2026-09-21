@@ -48,6 +48,7 @@ const SUBJECT: Record<string, string[]> = {
   "rules.evaluate": ["sequenceId", "clipId"],
   "plan.generate": ["scope"],
   "media.transcribe": ["mediaIds"],
+  "media.transcription.set": ["mode"],
   "project.batch": ["brief"],
   "packs.inspect": ["source"],
   "packs.import": ["source"],
@@ -75,6 +76,8 @@ const VERB: Record<string, string> = {
   "project.render": "rendering",
   "transcript.resync": "re-recognising the audio",
   "media.transcribe": "transcribing media",
+  "media.transcription": "checking which sources have words",
+  "media.transcription.set": "changing when new sources are transcribed",
   "project.batch": "starting the batch",
 };
 

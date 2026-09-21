@@ -9,8 +9,13 @@ import { Input } from "./ui/input";
 import { Card } from "./ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { ImageSearch } from "./image-search";
-import { AssetViewer, type ViewerAsset } from "./asset-viewer";
+import { AssetViewer, type TranscriptionState, type ViewerAsset } from "./asset-viewer";
 import { setActiveDrag, writeDrag, type DragKind } from "@/lib/editor/dnd";
+
+/** What `media.transcription` answers. The agent reads the same shape. */
+type TranscriptionReport = { media: Array<TranscriptionState & { id: string; name: string }>; settings: { effective: { mode: string; scope: string } } };
+const wordsFor = (report: TranscriptionReport | null, mediaId: string): TranscriptionState | undefined =>
+  report?.media.find(m => m.id === mediaId);
 
 export function MediaBrowser({ projectId, edl, beforeImport, afterImport, onBusy, onPlace, onPreview, onVideo, onLibraryVideo, onVideoLayer, onRemoveVideo, onReplace, replace, videoAction = "Add to video", canPlace = true, children }: {
   projectId: string; edl: Edl; beforeImport: () => Promise<boolean>; afterImport: () => Promise<void>;
@@ -26,12 +31,35 @@ export function MediaBrowser({ projectId, edl, beforeImport, afterImport, onBusy
   const [assets, setAssets] = useState<AssetSummary[]>([]);
   const [folder, setFolder] = useState(""); const [listing, setListing] = useState<FolderListing | null>(null);
   const [pending, setPending] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
+  const [words, setWords] = useState<TranscriptionReport | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const refresh = async () => {
     const results = await Promise.all(["image", "audio", "video"].map(kind => api.editorTool<AssetSummary[]>(projectId, { tool: "assets.list", kind })));
     setAssets(results.flat());
   };
   useEffect(() => { void refresh().catch(e => setError(e.message)); }, [projectId, tab]);
+  /**
+   * Where each source's words stand. Read through the same tool the agent calls, so
+   * the two interfaces cannot drift, and polled only while something is actually
+   * running — a project whose sources are all done costs one request.
+   */
+  const readWords = async () => setWords(await api.editorTool<TranscriptionReport>(projectId, { tool: "media.transcription" }));
+  const busyWords = !!words?.media.some(m => m.status === "running" || m.status === "queued");
+  useEffect(() => {
+    let live = true;
+    void readWords().catch(() => {});
+    if (!busyWords) return () => { live = false; };
+    // The words themselves arrive through the editor's own revision polling; this
+    // only follows which source is being listened to.
+    const timer = setInterval(() => { if (live) void readWords().catch(() => {}); }, 3000);
+    return () => { live = false; clearInterval(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, busyWords, edl.media.length, edl.media.map(m => m.transcription?.status ?? "").join()]);
+  const transcribe = (mediaId: string, force: boolean) => run(async () => {
+    await api.editorTool(projectId, { tool: "media.transcribe", mediaIds: [mediaId], background: true, force });
+    await readWords();
+  }, false);
+  const setMode = (mode: string) => run(async () => { await api.editorTool(projectId, { tool: "media.transcription.set", mode, level: "workspace" }); await readWords(); }, false);
   /**
    * An import rewrites the project underneath the editor, so it holds the rest of the editor
    * still until it lands. Only an import: reading a folder or the asset list changes nothing,
@@ -81,7 +109,7 @@ export function MediaBrowser({ projectId, edl, beforeImport, afterImport, onBusy
   const match = (name: string) => name.toLowerCase().includes(filter.toLowerCase());
   const visible = assets.filter(a => match(a.name) && (tab === "library" ? a.scope === "library" : a.project_id === projectId || a.in_project || used.has(a.id)));
   const collection:ViewerAsset[] = [
-    ...(tab==='project'?sources.filter(m=>match(m.name)).map(m=>({key:`video:${m.id}`,id:m.id,name:m.name,kind:'video' as const,url:edl.media.some(source=>source.id===m.id)?`/api/projects/${projectId}/media/${m.id}`:`/api/projects/${projectId}/source`,duration:m.durationSec,width:m.width,height:m.height,used:edl.sequences.some(s=>s.items.some(i=>i.mediaId===m.id)) || (edl.source?.file===m.file&&!!edl.clips.length),removable:edl.media.some(source=>source.id===m.id)})):[]),
+    ...(tab==='project'?sources.filter(m=>match(m.name)).map(m=>({key:`video:${m.id}`,id:m.id,name:m.name,kind:'video' as const,transcription:wordsFor(words,m.id),url:edl.media.some(source=>source.id===m.id)?`/api/projects/${projectId}/media/${m.id}`:`/api/projects/${projectId}/source`,duration:m.durationSec,width:m.width,height:m.height,used:edl.sequences.some(s=>s.items.some(i=>i.mediaId===m.id)) || (edl.source?.file===m.file&&!!edl.clips.length),removable:edl.media.some(source=>source.id===m.id)})):[]),
     ...visible.filter(a=>a.kind==='image'||a.kind==='audio'||a.kind==='video').map(a=>({key:`asset:${a.id}`,id:a.id,name:a.name,kind:a.kind as 'image'|'audio'|'video',url:assetFileUrl(a.id),duration:a.duration_sec,width:a.width,height:a.height,license:a.license,attribution:a.attribution,used:used.has(a.id),vector:/\.svg$/i.test(a.path ?? ''),library:a.kind==='video'})),
   ].filter(a=>kind==='all'||a.kind===kind);
   const place=(asset:ViewerAsset,mode?:'music'|'sfx')=>{
@@ -90,14 +118,17 @@ export function MediaBrowser({ projectId, edl, beforeImport, afterImport, onBusy
     else {const original=assets.find(a=>a.id===asset.id);if(original)onPlace(original,mode);}
     setNotice("");
   };
-  const viewer=<AssetViewer assets={collection} selectedKey={selectedKey} onSelect={key=>{setSelectedKey(key);onPreview?.();}} onPlace={place} onOverlay={onVideoLayer?a=>{onVideoLayer(a.id);setNotice("");}:undefined} onRemove={onRemoveVideo?a=>onRemoveVideo(a.id):undefined} onReplace={onReplace?a=>{onReplace(a.id,a.kind);setNotice("");}:undefined} replace={replace} disabled={!canPlace||pending} videoAction={videoAction} emptyMessage={filter||kind!=='all'?'No matching assets. Try another filter.':tab==='project'?'Import media or browse your folders to start building your video.':'Reusable images and audio live here. Import files or explore online images.'} />;
+  const viewer=<AssetViewer assets={collection} selectedKey={selectedKey} onSelect={key=>{setSelectedKey(key);onPreview?.();}} onPlace={place} onOverlay={onVideoLayer?a=>{onVideoLayer(a.id);setNotice("");}:undefined} onRemove={onRemoveVideo?a=>onRemoveVideo(a.id):undefined} onReplace={onReplace?a=>{onReplace(a.id,a.kind);setNotice("");}:undefined} onTranscribe={(a,force)=>void transcribe(a.id,force)} replace={replace} disabled={!canPlace||pending} videoAction={videoAction} emptyMessage={filter||kind!=='all'?'No matching assets. Try another filter.':tab==='project'?'Import media or browse your folders to start building your video.':'Reusable images and audio live here. Import files or explore online images.'} />;
   return <Card className="min-w-0 gap-4 rounded-3xl border-white/12 bg-card/95 p-3 shadow-[inset_0_1px_0_rgb(255_255_255/0.06)]" aria-busy={pending}>
     <div className="flex items-center justify-between gap-2"><h2 className="text-sm font-semibold">Assets</h2><div className="flex gap-1"><Button variant="ghost" size="icon-sm" aria-label="Refresh assets" disabled={pending} onClick={() => run(refresh, false)}><RefreshCw /></Button><Button variant="outline" size="sm" disabled={pending} onClick={() => input.current?.click()}><Upload />Import</Button></div></div>
     <input ref={input} type="file" multiple accept="video/*,image/*,audio/*" className="hidden" onChange={e => { const files = Array.from(e.target.files ?? []); e.target.value = ""; if (files.length) void upload(files); }} />
     <Tabs value={tab} onValueChange={v => {setTab(String(v));setKind("all");}}>
       <TabsList className="grid h-auto w-full grid-cols-4"><TabsTrigger value="project" className="px-1 text-xs">Project</TabsTrigger><TabsTrigger value="library" className="px-1 text-xs">Library</TabsTrigger><TabsTrigger value="folders" className="px-1 text-xs">Folders</TabsTrigger><TabsTrigger value="online" className="px-1 text-xs">Online</TabsTrigger></TabsList>
       {(tab === "project" || tab === "library") && <div className="my-4 space-y-3"><Input aria-label="Filter assets" placeholder="Search your media…" value={filter} onChange={e => setFilter(e.target.value)} /><div aria-label="Asset type" className="flex flex-wrap gap-1">{[['all','All'],['video','Video'],['image','Images'],['audio','Audio']].filter(([value])=>tab==='project'||value!=='video').map(([value,label])=><Button key={value} variant={kind===value?'secondary':'ghost'} size="xs" aria-pressed={kind===value} onClick={()=>setKind(value)}>{label}</Button>)}</div></div>}
-      <TabsContent value="project" className="space-y-3">{viewer}{children}</TabsContent>
+      <TabsContent value="project" className="space-y-3">{viewer}{words&&<section aria-label="Transcription" className="space-y-2 rounded-2xl border border-white/10 bg-black/20 p-3">
+        <p className="text-[11px] text-muted-foreground">{busyWords?`Listening to ${words.media.filter(m=>m.status==='running'||m.status==='queued').length} of ${words.media.length} sources. You can keep editing.`:'Imported videos are transcribed so captions, silence cuts and the agent can read what is said.'}</p>
+        <div aria-label="Transcribe new sources" className="flex flex-wrap gap-1">{[['audio','When they have sound'],['always','Always'],['off','Never']].map(([value,label])=><Button key={value} variant={words.settings.effective.mode===value?'secondary':'ghost'} size="xs" aria-pressed={words.settings.effective.mode===value} disabled={pending} onClick={()=>setMode(value)}>{label}</Button>)}</div>
+      </section>}{children}</TabsContent>
       <TabsContent value="library" className="space-y-3">{viewer}</TabsContent>
       <TabsContent value="folders" className="space-y-3 pt-3">
         <p className="text-xs leading-relaxed text-muted-foreground">Browse a folder on this computer. Drag a file onto the timeline to import it where you drop it, or use the add button to import it into the project. Imported files are copied into your workspace.</p>

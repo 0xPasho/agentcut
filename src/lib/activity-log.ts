@@ -12,7 +12,7 @@ import { executeEditorTool, type ToolActivity } from "./editor/tools";
  */
 
 /** Reading something is not activity: polling for status would otherwise fill the feed. */
-export const QUIET_TOOL = /\.(read|list|get|schema|status|looks|preview|providers|browseLocal)$/;
+export const QUIET_TOOL = /\.(read|list|get|schema|status|looks|preview|providers|browseLocal|transcription)$/;
 
 export type ToolSource = "web" | "mcp" | "cli";
 
