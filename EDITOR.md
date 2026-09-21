@@ -197,6 +197,40 @@ agent can open an image to see it, and is told each asset id so it can place the
 in the timeline. No second upload path, and the turn keeps its attachments, so the thread
 still shows the picture next to what was asked.
 
+### What the agent can see
+
+A turn's run directory gets `frames/`, `transcript.txt` and `signals.json` for the open
+sequence. The frames are stills of the **finished video**, not of the footage: they come
+out of the same `SequenceComposition` the Player previews and the export writes
+(`src/lib/editor/frames.ts`), so captions, titles, images, crops, layer placement and the
+blend part-way through a transition are all in the picture. 360 on the short side, every
+2s, capped at 32 frames — past that the cadence widens, because an agent that has seen
+the first minute of a four-minute video and thinks it has seen the video is exactly the
+confident-wrong judgement this exists to prevent. Files are named `frame-<output
+seconds>.jpg`, as they always were.
+
+Rendering costs seconds and a person is waiting, so it is cached on a hash of what the
+composition actually reads — this sequence, the media it points at, the sampling — rather
+than on the saved revision. A turn that changed nothing renders nothing; a turn that
+edited a *different* video in the same project moves the revision but keeps these frames.
+The whole sampling is bounded by a 40s wall clock: whatever rendered is kept, reported as
+partial, and the next turn renders only the frames still owed.
+
+Five things fall back to the old source frames — switched off
+(`AGENTCUT_OUTPUT_FRAMES=0`), a sequence with no shots, a sampler already running
+elsewhere, a machine still fetching Remotion's browser, and a render that fails. In every
+one of them `frames.json` records `kind: "source"`, why, and what such frames cannot show,
+and the prompt says the same in words. That honesty is the feature: an agent that thinks
+it is looking at the output while looking at the footage will confidently approve captions
+that are not there.
+
+It takes **no job row**. The sampling happens inside the edit job that already holds the
+project, so a row of its own would either deadlock against the turn that needs it or need
+the `background` status automatic transcription uses for work that outlives its caller —
+and this outlives nothing. It takes a pid-named file lock (`claimPidLock`, shared with
+exports) and never waits on it: if an export or another turn is already rendering, this
+turn reads the footage instead of queueing a person behind a render.
+
 ### MCP
 
 `agentcut mcp` serves the same tools over stdio as an MCP server: one MCP tool per editor

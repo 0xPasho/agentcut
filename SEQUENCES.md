@@ -112,6 +112,16 @@ UI jobs, `project.render`, and CLI rendering resolve the same saved revision. `o
 accepts sequence IDs as well as legacy clip IDs. Downloads are revision-specific.
 Empty sequences can be saved but cannot be exported.
 
+There is a third consumer of that composition besides the Player and the export: the
+editing agent. Before a turn, the open sequence is sampled to low-resolution stills
+(`src/lib/editor/frames.ts`) so the agent judges the video a viewer would see rather
+than the raw footage. `openRenderServe` in `src/lib/render.ts` is the one place that
+decides how a source, a piece of media and an asset become URLs, and both the export and
+the sampler go through it — a second answer to that question would be a second renderer,
+and the two would drift into showing different videos. See
+[EDITOR.md](./EDITOR.md#what-the-agent-can-see) for the cadence, the cache and the
+fallbacks.
+
 ## Newly imported sources transcribe themselves
 
 Words used to arrive only from the clipping pipeline or a hand-called

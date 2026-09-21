@@ -111,12 +111,26 @@ uses, and everything the agent decides is inspectable and editable in the UI.
 - **M5 (agentic editor: context, frames, authorship, observations): implemented 2026-09-17.** Messages carry
   the open sequence, selection and playhead; "Ask the agent about this" in the clip context menu; every edit an
   agent creates is stamped `agent:<messageId>` (`src/lib/editor/authorship.ts`) and shown as such on the
-  timeline and in the inspector ("why is this here"). The editing agent gets `frames/` (source frames at shot
-  starts, ≤24), `transcript.txt` with times and `signals.json` per source (cached). The observation bank
+  timeline and in the inspector ("why is this here"). The editing agent gets `frames/`, `transcript.txt` with
+  times and `signals.json` per source (cached). The observation bank
   (`src/lib/observations.ts`) records a person's changes to generated work and caption fixes from the HTTP
   editor only; every agent reads it as soft context; "Review my preferences" asks an agent for proposals
-  that are saved only on acceptance. Quick actions are four preset messages. Rendered-output frames
-  (decision 29) were not done: source frames are the fallback the decision allowed.
+  that are saved only on acceptance. Quick actions are four preset messages.
+- **Decision 29 (the agent sees rendered output, not the footage): implemented 2026-09-21.** `frames/` now
+  holds stills of the *finished* video, rendered through the same `SequenceComposition` the preview and the
+  export use (`src/lib/editor/frames.ts`): 360 on the short side — 640×360 landscape, 360×640 vertical, since
+  "360p" alone does not say which — every 2s, up to 32 frames, past which the cadence widens so a long video
+  is covered coarsely rather than truncated. Captions, titles, images, crops, layer placement and the blend
+  part-way through a transition are in the picture. Measured on this machine: 5.3s for a 17s video and 5.4s
+  for a 233s one, dominated by a ~3s cold bundle; 0ms on a revision that changed nothing, ~1s once the
+  renderer is warm. Cached on a hash of the picture — this sequence, its media, the sampling — rather than on
+  the saved revision, so editing a *different* video in the project does not throw these away. Bounded by a
+  40s wall clock: what rendered is kept, reported as partial, and the next turn renders only what is owed.
+  Switched off, empty, already being sampled elsewhere, no browser yet, or a failed render all fall back to
+  the old source frames, and `frames.json` plus the prompt say which of the two the agent is holding and what
+  they cannot show. Not done: the clipping/selection agent and the batch flow still use source frames
+  (`src/lib/pipeline/`); they choose *which* footage to use, where the output does not exist yet, so the
+  decision does not obviously apply to them.
 - **M6 (templates strength + onboarding): implemented 2026-09-17.** `extends`, `captionLook` (five looks),
   `brand` kit (also on glossary subjects), `intro`/`outro` image bookends on the main track, `variants` per
   aspect, `sequence.derive` for one editable sequence per aspect, schematic SVG previews. Onboarding is a
