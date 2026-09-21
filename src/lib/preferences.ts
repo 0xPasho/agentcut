@@ -23,11 +23,28 @@ export async function readPreferences(projectId?: string): Promise<Preferences> 
   return { workspace: workspace.trim(), project: project.trim() };
 }
 
+/**
+ * Preferences are written from three places now — the settings page, the interview
+ * and an agent tool — and two of them can land at the same moment: an agent saving a
+ * proposal while the owner saves a hand edit. Same reasoning as the interview's state
+ * file (decision 62): writes queue in order and land by rename, so a reader never
+ * sees half a file and the later write wins whole rather than interleaved. This is
+ * the one writer of preferences.md; nothing else may open it for writing.
+ */
+let writes: Promise<unknown> = Promise.resolve();
+
 export async function savePreferences(text: string, level: "workspace" | "project" = "workspace", projectId?: string): Promise<{ text: string }> {
   const file = preferencesFile(level, projectId);
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(file, text.trim() ? text.trim() + "\n" : "");
-  return { text: text.trim() };
+  const body = text.trim();
+  const next = writes.then(async () => {
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    const temporary = `${file}.${process.pid}.tmp`;
+    await fs.writeFile(temporary, body ? body + "\n" : "");
+    await fs.rename(temporary, file);
+  });
+  writes = next.catch(() => { /* a failed write must not block the next one */ });
+  await next;
+  return { text: body };
 }
 
 const MAX_CHARS = 6000;

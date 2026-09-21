@@ -6,6 +6,10 @@ import { WORKSPACE } from "./config";
 import { resolveProvider, type AgentEvent, type AgentProvider } from "./agent";
 import { readPreferences, savePreferences } from "./preferences";
 import { readGlossaryLevel, saveGlossary, GlossaryTerm } from "./glossary";
+// The markers and the two functions that respect them live apart from this module so
+// the settings editor can use exactly the same split in the browser.
+import { mergeOnboardingPreferences } from "./preferences-section";
+export { mergeOnboardingPreferences, splitOnboardingPreferences } from "./preferences-section";
 
 /**
  * First run: a few questions about who is editing — not about products, not about
@@ -19,7 +23,7 @@ import { readGlossaryLevel, saveGlossary, GlossaryTerm } from "./glossary";
  *
  * Nothing here is a gate. The first question is the one worth insisting on — with
  * no answer to it there is nothing to write — and every step can be skipped. A skip
- * is a decision, not a deletion: the interview stays reachable from the Library and
+ * is a decision, not a deletion: the interview stays reachable from settings and
  * from the agent for as long as it has not been done.
  */
 export const ONBOARDING_QUESTIONS = [
@@ -138,7 +142,7 @@ export async function skipOnboarding(): Promise<OnboardingState> {
   return onboardingState();
 }
 
-/** "Not now" on the home reminder. The Library entry and the agent still offer it. */
+/** "Not now" on the home reminder. The settings entry and the agent still offer it. */
 export async function dismissOnboardingReminder(): Promise<OnboardingState> {
   await writeStored({ reminder: false });
   return onboardingState();
@@ -148,24 +152,6 @@ export async function dismissOnboardingReminder(): Promise<OnboardingState> {
 export async function reopenOnboarding(): Promise<OnboardingState> {
   await writeStored({ status: "pending", done: false, skipped: false, reminder: true });
   return onboardingState();
-}
-
-const SECTION_START = "<!-- agentcut:onboarding -->";
-const SECTION_END = "<!-- /agentcut:onboarding -->";
-
-/**
- * Preferences written by the interview live in a marked section, so running it
- * again replaces them instead of appending a second copy. Anything the owner wrote
- * by hand is outside the markers and is never touched.
- */
-export function mergeOnboardingPreferences(existing: string, generated: string): string {
-  const block = `${SECTION_START}\n${generated.trim()}\n${SECTION_END}`;
-  const start = existing.indexOf(SECTION_START);
-  const end = existing.indexOf(SECTION_END);
-  if (start !== -1 && end > start) {
-    return (existing.slice(0, start) + block + existing.slice(end + SECTION_END.length)).trim();
-  }
-  return [existing.trim(), block].filter(Boolean).join("\n\n");
 }
 
 const Output = z.object({ preferences: z.string().min(1), glossary: z.array(GlossaryTerm).default([]) });
