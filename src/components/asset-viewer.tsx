@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Film, ImageIcon, Music, Play, Plus, Replace, Trash2, Layers, Maximize2, Check, X, Captions, CircleAlert, Loader2, CircleSlash } from "lucide-react";
+import { Film, ImageIcon, Music, Play, Plus, Replace, Trash2, Layers, Maximize2, Check, X, Captions, CircleAlert, Clock, Loader2, CircleSlash } from "lucide-react";
 import { Popover } from "@base-ui/react/popover";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter, DialogClose } from "./ui/dialog";
@@ -20,19 +20,29 @@ export type ViewerAsset = { key:string; id:string; name:string; kind:"video"|"im
  */
 export type TranscriptionState={status:"none"|"queued"|"running"|"done"|"failed"|"skipped";reason?:string;words?:number};
 export const TRANSCRIPTION_LABEL:Record<TranscriptionState["status"],string>={none:"Not transcribed",queued:"Waiting to transcribe",running:"Transcribing…",done:"Transcribed",failed:"Transcription failed",skipped:"Not transcribed"};
-function transcriptionSentence(state:TranscriptionState){
+/** One state, in one sentence, wherever it is read out: a tile, a caption, a live region. */
+export function transcriptionSentence(state:TranscriptionState){
   const label=TRANSCRIPTION_LABEL[state.status];
   if(state.status==='done')return `${label} · ${state.words??0} words`;
   return state.reason?`${label} — ${state.reason}`:label;
 }
+/** One mark per state. Waiting is a clock, not a spinner that has nothing to spin about yet. */
+const TRANSCRIPTION_ICON:Record<TranscriptionState["status"],typeof Captions>={none:Captions,queued:Clock,running:Loader2,done:Captions,failed:CircleAlert,skipped:CircleSlash};
 function TranscriptionMark({state}:{state:TranscriptionState}) {
   if(state.status==='none')return null;
   const sentence=transcriptionSentence(state);
-  const Icon=state.status==='running'?Loader2:state.status==='failed'?CircleAlert:state.status==='skipped'?CircleSlash:state.status==='queued'?Loader2:Captions;
+  const Icon=TRANSCRIPTION_ICON[state.status];
   return <span title={sentence} className={`absolute top-1.5 right-1.5 rounded-full bg-black/75 p-1 ${state.status==='failed'?'text-destructive':state.status==='done'?'text-primary':'text-white/70'}`}>
     <Icon aria-hidden className={`size-3 ${state.status==='running'?'motion-safe:animate-spin':''}`} /><span className="sr-only">{sentence}</span>
   </span>;
 }
+/**
+ * The tile's whole name. Its own `aria-label` wins over everything inside it, so the
+ * marks in the corner — used here, being listened to, failed — have to be said in it
+ * or they are said to nobody.
+ */
+const tileLabel=(asset:ViewerAsset)=>[`Select asset ${asset.name}`,asset.used?"used in this edit":"",
+  asset.transcription&&asset.transcription.status!=="none"?transcriptionSentence(asset.transcription).toLowerCase():""].filter(Boolean).join(", ");
 const durationLabel=(seconds?:number|null)=>seconds==null?null:`${Math.floor(seconds/60)}:${Math.floor(seconds%60).toString().padStart(2,"0")}`;
 
 function VideoThumbnail({url}:{url:string}) {
@@ -70,12 +80,15 @@ export function AssetViewer({assets,selectedKey,onSelect,onPlace,onOverlay,onRem
   // to is transcribed, a failed one is retried, a finished one is done again.
   const transcribeAction=(asset:ViewerAsset)=>{
     const status=asset.transcription!.status;
-    if(status==='running'||status==='queued')return <Button size="sm" variant="outline" disabled onClick={()=>{}}><Loader2 className="motion-safe:animate-spin" />{TRANSCRIPTION_LABEL[status]}</Button>;
+    if(status==='running'||status==='queued'){
+      const Icon=TRANSCRIPTION_ICON[status];
+      return <Button size="sm" variant="outline" disabled><Icon aria-hidden className={status==='running'?"motion-safe:animate-spin":undefined} />{TRANSCRIPTION_LABEL[status]}</Button>;
+    }
     const label=status==='failed'?'Retry transcription':status==='done'?'Transcribe again':'Transcribe';
     return <Button size="sm" variant="outline" disabled={disabled} onClick={()=>onTranscribe!(asset,status!=='none')}><Captions />{label}</Button>;
   };
   const metadata=(asset:ViewerAsset)=><div className="space-y-1"><p className="break-words text-sm font-medium">{asset.name}</p><p className="text-[11px] text-muted-foreground">{[asset.kind==='video'?'Video':asset.kind==='image'?'Image':'Audio',asset.width&&asset.height?`${asset.width} × ${asset.height}`:null,durationLabel(asset.duration)].filter(Boolean).join(' · ')}</p>{asset.transcription&&<p className={`break-words text-[11px] ${asset.transcription.status==='failed'?'text-destructive':'text-muted-foreground'}`}>{transcriptionSentence(asset.transcription)}</p>}{asset.attribution&&<p className="break-words text-[11px] text-muted-foreground">{asset.attribution}</p>}{asset.license&&<p className="text-[11px] text-muted-foreground">{asset.license}</p>}</div>;
-  const grid=(large=false)=><div className={`grid gap-2 ${large?'grid-cols-1 min-[420px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4':'grid-cols-2'}`}>{assets.map(asset=>{const card=<button key={asset.key} type="button" draggable={!disabled} onDragStart={e=>{const payload:DragPayload={kind:asset.kind,...(asset.kind==='video'&&!asset.library?{mediaId:asset.id}:{assetId:asset.id}),name:asset.name,durationSec:asset.duration??null};writeDrag(e.dataTransfer,payload);setActiveDrag(payload);}} onDragEnd={()=>setActiveDrag(null)} aria-label={`Select asset ${asset.name}`} aria-pressed={asset.key===selectedKey} onClick={()=>onSelect(asset.key)} className={`group relative min-w-0 cursor-grab active:cursor-grabbing ${large?"overflow-hidden rounded-lg border p-0":"rounded-2xl border p-1.5"} text-left transition-[border-color,background-color] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${asset.key===selectedKey?'border-primary/65 bg-primary/8':'border-transparent hover:border-white/15 hover:bg-white/5'}`}><Thumbnail asset={asset}/><span className={large?"absolute inset-x-0 bottom-0 flex min-w-0 items-center gap-2 bg-gradient-to-t from-black/95 via-black/65 to-transparent px-3 pb-3 pt-9 text-white":"mt-2 flex min-w-0 items-center gap-1.5 px-0.5"}>{asset.kind==='video'?<Film aria-hidden className="size-3 shrink-0 text-muted-foreground" />:asset.kind==='image'?<ImageIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />:<Music aria-hidden className="size-3 shrink-0 text-muted-foreground" />}<span className={large?"truncate text-sm":"truncate text-[11px]"} title={asset.name}>{asset.name}</span></span></button>;
+  const grid=(large=false)=><div className={`grid gap-2 ${large?'grid-cols-1 min-[420px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4':'grid-cols-2'}`}>{assets.map(asset=>{const card=<button key={asset.key} type="button" draggable={!disabled} onDragStart={e=>{const payload:DragPayload={kind:asset.kind,...(asset.kind==='video'&&!asset.library?{mediaId:asset.id}:{assetId:asset.id}),name:asset.name,durationSec:asset.duration??null};writeDrag(e.dataTransfer,payload);setActiveDrag(payload);}} onDragEnd={()=>setActiveDrag(null)} aria-label={tileLabel(asset)} aria-pressed={asset.key===selectedKey} onClick={()=>onSelect(asset.key)} className={`group relative min-w-0 cursor-grab active:cursor-grabbing ${large?"overflow-hidden rounded-lg border p-0":"rounded-2xl border p-1.5"} text-left transition-[border-color,background-color] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${asset.key===selectedKey?'border-primary/65 bg-primary/8':'border-transparent hover:border-white/15 hover:bg-white/5'}`}><Thumbnail asset={asset}/><span className={large?"absolute inset-x-0 bottom-0 flex min-w-0 items-center gap-2 bg-gradient-to-t from-black/95 via-black/65 to-transparent px-3 pb-3 pt-9 text-white":"mt-2 flex min-w-0 items-center gap-1.5 px-0.5"}>{asset.kind==='video'?<Film aria-hidden className="size-3 shrink-0 text-muted-foreground" />:asset.kind==='image'?<ImageIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />:<Music aria-hidden className="size-3 shrink-0 text-muted-foreground" />}<span className={large?"truncate text-sm":"truncate text-[11px]"} title={asset.name}>{asset.name}</span></span></button>;
     return large ? <Popover.Root key={asset.key} open={previewKey===asset.key} onOpenChange={open=>setPreviewKey(open?asset.key:null)}>
       <Popover.Trigger render={card} />
       <Popover.Portal><Popover.Positioner side="top" sideOffset={10} collisionAvoidance={{side:"shift",align:"shift"}} collisionPadding={12} className="z-[60] max-w-[calc(100vw-1.5rem)]">

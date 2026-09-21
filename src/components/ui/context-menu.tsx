@@ -3,6 +3,7 @@
 import * as React from "react"
 import { ContextMenu as ContextMenuPrimitive } from "@base-ui/react/context-menu"
 import { Menu as MenuPrimitive } from "@base-ui/react/menu"
+import { Check } from "lucide-react"
 import { cn } from "cn"
 
 const ContextMenu = ContextMenuPrimitive.Root
@@ -78,4 +79,30 @@ function MenuContent({ className, children, side = "bottom", align = "start", ..
   )
 }
 
-export { Menu, MenuTrigger, MenuContent }
+/**
+ * A set of choices where exactly one is current — a transition's kind, its length.
+ *
+ * The platform's own radio semantics rather than a colour: `aria-checked` says which
+ * one is on, and the indicator says it again in ink for everyone who is not listening.
+ */
+const MenuRadioGroup = MenuPrimitive.RadioGroup
+
+function MenuRadioItem({ className, children, ...props }: MenuPrimitive.RadioItem.Props) {
+  return (
+    <MenuPrimitive.RadioItem
+      data-slot="context-menu-radio-item"
+      className={cn(
+        "relative flex w-full cursor-default items-center gap-2 rounded-xl py-2 pr-2.5 pl-8 text-sm outline-hidden select-none data-highlighted:bg-white/12 data-highlighted:text-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        className,
+      )}
+      {...props}
+    >
+      <MenuPrimitive.RadioItemIndicator className="absolute left-2.5 flex items-center justify-center text-primary">
+        <Check className="size-3.5" />
+      </MenuPrimitive.RadioItemIndicator>
+      <span className="flex flex-1 items-center gap-2 whitespace-nowrap">{children}</span>
+    </MenuPrimitive.RadioItem>
+  )
+}
+
+export { Menu, MenuTrigger, MenuContent, MenuRadioGroup, MenuRadioItem }

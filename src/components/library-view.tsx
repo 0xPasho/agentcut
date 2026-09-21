@@ -80,7 +80,7 @@ export function LibraryView() {
         </div>
       )}
       <Glass shape="capsule" thickness="thick" className="sticky top-4 z-20 flex items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-4">
-        <Button aria-label="Back to projects" variant="ghost" size="icon" render={<Link href="/" />}>
+        <Button aria-label="Back to projects" variant="ghost" size="icon" nativeButton={false} render={<Link href="/" />}>
           <ArrowLeft className="size-4" />
         </Button>
         <h1 className="flex-1 text-sm font-medium">Library</h1>

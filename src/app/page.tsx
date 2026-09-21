@@ -31,7 +31,9 @@ export default async function Home() {
       >
         <AgentcutIcon className="size-7 shrink-0" />
         <h1 className="text-xl font-bold tracking-[-0.04em]">agentcut</h1>
-        <Badge variant="secondary" className="font-mono text-xs">
+        {/* Two entries now sit to the right of it; at 320px the row no longer fits with
+            the badge in it, and "local" is the one thing here that is decoration. */}
+        <Badge variant="secondary" className="hidden font-mono text-xs sm:inline-flex">
           local
         </Badge>
         <Button variant="ghost" size="sm" className="ml-auto" nativeButton={false} render={<Link href="/library" />}>

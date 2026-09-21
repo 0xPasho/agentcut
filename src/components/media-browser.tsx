@@ -9,7 +9,7 @@ import { Input } from "./ui/input";
 import { Card } from "./ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { ImageSearch } from "./image-search";
-import { AssetViewer, type TranscriptionState, type ViewerAsset } from "./asset-viewer";
+import { AssetViewer, transcriptionSentence, type TranscriptionState, type ViewerAsset } from "./asset-viewer";
 import { setActiveDrag, writeDrag, type DragKind } from "@/lib/editor/dnd";
 
 /** What `media.transcription` answers. The agent reads the same shape. */
@@ -32,6 +32,9 @@ export function MediaBrowser({ projectId, edl, beforeImport, afterImport, onBusy
   const [folder, setFolder] = useState(""); const [listing, setListing] = useState<FolderListing | null>(null);
   const [pending, setPending] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
   const [words, setWords] = useState<TranscriptionReport | null>(null);
+  /** What every source's words were doing last time this was read, and what to say when one lands. */
+  const heard = useRef(new Map<string, string>());
+  const [announcement, setAnnouncement] = useState("");
   const input = useRef<HTMLInputElement>(null);
   const refresh = async () => {
     const results = await Promise.all(["image", "audio", "video"].map(kind => api.editorTool<AssetSummary[]>(projectId, { tool: "assets.list", kind })));
@@ -43,7 +46,17 @@ export function MediaBrowser({ projectId, edl, beforeImport, afterImport, onBusy
    * the two interfaces cannot drift, and polled only while something is actually
    * running — a project whose sources are all done costs one request.
    */
-  const readWords = async () => setWords(await api.editorTool<TranscriptionReport>(projectId, { tool: "media.transcription" }));
+  const readWords = async () => {
+    const next = await api.editorTool<TranscriptionReport>(projectId, { tool: "media.transcription" });
+    // A source finishes on its own, minutes after it was dropped in and while somebody
+    // is looking at something else. Whatever crossed from "being listened to" into a
+    // settled answer since the last read is the news, and it is the only thing said.
+    const landed = next.media.filter(m => (m.status === "done" || m.status === "failed")
+      && ["running", "queued"].includes(heard.current.get(m.id) ?? ""));
+    heard.current = new Map(next.media.map(m => [m.id, m.status]));
+    if (landed.length) setAnnouncement(landed.map(m => `${m.name}: ${transcriptionSentence(m)}`).join(". "));
+    setWords(next);
+  };
   const busyWords = !!words?.media.some(m => m.status === "running" || m.status === "queued");
   useEffect(() => {
     let live = true;
@@ -124,10 +137,12 @@ export function MediaBrowser({ projectId, edl, beforeImport, afterImport, onBusy
     <input ref={input} type="file" multiple accept="video/*,image/*,audio/*" className="hidden" onChange={e => { const files = Array.from(e.target.files ?? []); e.target.value = ""; if (files.length) void upload(files); }} />
     <Tabs value={tab} onValueChange={v => {setTab(String(v));setKind("all");}}>
       <TabsList className="grid h-auto w-full grid-cols-4"><TabsTrigger value="project" className="px-1 text-xs">Project</TabsTrigger><TabsTrigger value="library" className="px-1 text-xs">Library</TabsTrigger><TabsTrigger value="folders" className="px-1 text-xs">Folders</TabsTrigger><TabsTrigger value="online" className="px-1 text-xs">Online</TabsTrigger></TabsList>
-      {(tab === "project" || tab === "library") && <div className="my-4 space-y-3"><Input aria-label="Filter assets" placeholder="Search your media…" value={filter} onChange={e => setFilter(e.target.value)} /><div aria-label="Asset type" className="flex flex-wrap gap-1">{[['all','All'],['video','Video'],['image','Images'],['audio','Audio']].filter(([value])=>tab==='project'||value!=='video').map(([value,label])=><Button key={value} variant={kind===value?'secondary':'ghost'} size="xs" aria-pressed={kind===value} onClick={()=>setKind(value)}>{label}</Button>)}</div></div>}
+      {(tab === "project" || tab === "library") && <div className="my-4 space-y-3"><Input aria-label="Filter assets" placeholder="Search your media…" value={filter} onChange={e => setFilter(e.target.value)} /><div role="group" aria-label="Asset type" className="flex flex-wrap gap-1">{[['all','All'],['video','Video'],['image','Images'],['audio','Audio']].filter(([value])=>tab==='project'||value!=='video').map(([value,label])=><Button key={value} variant={kind===value?'secondary':'ghost'} size="xs" aria-pressed={kind===value} onClick={()=>setKind(value)}>{label}</Button>)}</div></div>}
       <TabsContent value="project" className="space-y-3">{viewer}{words&&<section aria-label="Transcription" className="space-y-2 rounded-2xl border border-white/10 bg-black/20 p-3">
         <p className="text-[11px] text-muted-foreground">{busyWords?`Listening to ${words.media.filter(m=>m.status==='running'||m.status==='queued').length} of ${words.media.length} sources. You can keep editing.`:'Imported videos are transcribed so captions, silence cuts and the agent can read what is said.'}</p>
-        <div aria-label="Transcribe new sources" className="flex flex-wrap gap-1">{[['audio','When they have sound'],['always','Always'],['off','Never']].map(([value,label])=><Button key={value} variant={words.settings.effective.mode===value?'secondary':'ghost'} size="xs" aria-pressed={words.settings.effective.mode===value} disabled={pending} onClick={()=>setMode(value)}>{label}</Button>)}</div>
+        {/* A stable region, empty until a source lands, so the same news announces twice. */}
+        <p role="status" className="sr-only">{announcement}</p>
+        <div role="group" aria-label="Transcribe new sources" className="flex flex-wrap gap-1">{[['audio','When they have sound'],['always','Always'],['off','Never']].map(([value,label])=><Button key={value} variant={words.settings.effective.mode===value?'secondary':'ghost'} size="xs" aria-pressed={words.settings.effective.mode===value} disabled={pending} onClick={()=>setMode(value)}>{label}</Button>)}</div>
       </section>}{children}</TabsContent>
       <TabsContent value="library" className="space-y-3">{viewer}</TabsContent>
       <TabsContent value="folders" className="space-y-3 pt-3">

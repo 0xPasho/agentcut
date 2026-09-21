@@ -17,7 +17,7 @@ import { DEFAULT_TRANSITION_SEC, TRANSITION_DURATIONS, TRANSITION_KINDS, TRANSIT
 import { buildTimeMap, srcToOut, type TimeMap } from "@/lib/timeline";
 import { Button } from "./ui/button";
 import { describeAuthor, isAgentAuthor } from "@/lib/editor/authorship";
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel, ContextMenuSeparator, ContextMenuTrigger, Menu, MenuContent, MenuTrigger } from "./ui/context-menu";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel, ContextMenuSeparator, ContextMenuTrigger, Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "./ui/context-menu";
 
 const LABEL_WIDTH = 76;
 /* Everything below follows the playhead. They are separate components, and small ones,
@@ -71,8 +71,11 @@ function TransitionJointControl({ left, width, current, title, previousTitle, ma
   return <>
     {current && width > 0 && <span aria-hidden className="pointer-events-none absolute top-2 z-20 h-12 rounded-[4px] bg-primary/20 ring-1 ring-inset ring-primary/60" style={{ left, width }} />}
     <Menu>
+      {/* 16px of ink, because the seam it marks is a line; 32×24 of target, because a
+          control has to be hittable. The extra reaches up into the gap above the track,
+          where nothing else is, rather than down over the trim handle beside it. */}
       <MenuTrigger render={<button type="button" title={label} aria-label={label}
-        className={`absolute top-0 z-30 flex size-4 -translate-x-1/2 items-center justify-center rounded-md border transition-[opacity,color,background-color,border-color] duration-150 ease-out motion-reduce:transition-none after:absolute after:-inset-x-2 after:-top-1.5 after:bottom-0 after:content-[''] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring ${current
+        className={`absolute top-0 z-30 flex size-4 -translate-x-1/2 items-center justify-center rounded-md border transition-[opacity,color,background-color,border-color] duration-150 ease-out motion-reduce:transition-none after:absolute after:-inset-x-2 after:-top-2 after:bottom-0 after:content-[''] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring ${current
           ? "border-primary/70 bg-primary text-primary-foreground"
           : "border-white/25 bg-zinc-900 text-muted-foreground opacity-0 hover:border-white/60 hover:text-foreground focus-visible:opacity-100 group-hover/track:opacity-100 aria-expanded:opacity-100"}`}
         style={{ left: left + width / 2 }} />}>
@@ -80,13 +83,18 @@ function TransitionJointControl({ left, width, current, title, previousTitle, ma
       </MenuTrigger>
       <MenuContent>
         <ContextMenuLabel>{current ? describeTransition(current) : "No transition"} · {between}</ContextMenuLabel>
-        {TRANSITION_KINDS.map(kind => <ContextMenuItem key={kind} onClick={() => set({ kind })}>
-          <Blend className={current?.kind === kind ? "text-primary" : "text-muted-foreground"} />{TRANSITION_LABELS[kind]}
-        </ContextMenuItem>)}
+        {/* Which kind and which length are on now is said by the platform, not by a colour. */}
+        <MenuRadioGroup value={current?.kind ?? ""} onValueChange={value => set({ kind: value as Transition["kind"] })}>
+          {TRANSITION_KINDS.map(kind => <MenuRadioItem key={kind} value={kind}>
+            <Blend className="text-muted-foreground" />{TRANSITION_LABELS[kind]}
+          </MenuRadioItem>)}
+        </MenuRadioGroup>
         <ContextMenuSeparator />
-        {TRANSITION_DURATIONS.map(value => <ContextMenuItem key={value} disabled={value > maxSeconds + 1e-6} onClick={() => set({ durationSec: value })}>
-          <Timer className={current && Math.abs(held - value) < 1e-6 ? "text-primary" : "text-muted-foreground"} />{value}s
-        </ContextMenuItem>)}
+        <MenuRadioGroup value={current ? TRANSITION_DURATIONS.find(value => Math.abs(held - value) < 1e-6) ?? null : null} onValueChange={value => set({ durationSec: Number(value) })}>
+          {TRANSITION_DURATIONS.map(value => <MenuRadioItem key={value} value={value} disabled={value > maxSeconds + 1e-6}>
+            <Timer className="text-muted-foreground" />{value}s
+          </MenuRadioItem>)}
+        </MenuRadioGroup>
         <ContextMenuSeparator />
         <ContextMenuItem disabled={!current} onClick={() => onSet(null)}><Trash2 />No transition</ContextMenuItem>
       </MenuContent>

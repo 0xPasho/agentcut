@@ -88,7 +88,10 @@ export function PreferencesSettings() {
 
           {parts.generated && (
             <>
-              <pre className="max-h-64 overflow-auto rounded-xl bg-foreground/[0.04] p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">{parts.generated}</pre>
+              {/* It scrolls, so it is focusable: a region a mouse can scroll and a keyboard
+                  cannot is a region a keyboard user cannot read to the end. */}
+              <pre tabIndex={0} role="region" aria-label="Preferences written by the setup interview"
+                className="max-h-64 overflow-auto rounded-xl bg-foreground/[0.04] p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">{parts.generated}</pre>
               <div className="flex flex-wrap items-center gap-3">
                 <Button
                   size="sm" variant="ghost" disabled={pending === "preferences"}
@@ -177,7 +180,7 @@ function Review({ observations, glossary, preferences, pending, onError, onAccep
 
       {!!observations.length && (
         <details className="text-xs">
-          <summary className="cursor-pointer text-muted-foreground">Recent corrections</summary>
+          <summary className="inline-flex min-h-6 cursor-pointer items-center rounded-md text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">Recent corrections</summary>
           <ul className="mt-2 space-y-1 text-muted-foreground">{observations.slice(-15).reverse().map((o) => <li key={o.id}>{o.text}</li>)}</ul>
         </details>
       )}

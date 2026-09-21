@@ -30,7 +30,7 @@ export function SettingsOverview() {
             <li key={section.id}>
               <Link
                 href={section.href}
-                className="group flex items-center gap-3 rounded-2xl bg-card px-4 py-3.5 ring-1 ring-foreground/10 transition-[box-shadow,background-color] hover:bg-foreground/[0.04] hover:ring-foreground/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                className="group flex items-center gap-3 rounded-2xl bg-card px-4 py-3.5 ring-1 ring-foreground/10 transition-[box-shadow,background-color] motion-reduce:transition-none hover:bg-foreground/[0.04] hover:ring-foreground/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
               >
                 <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-xl bg-foreground/5 text-muted-foreground group-hover:text-primary">
                   <Icon className="size-4.5" />
