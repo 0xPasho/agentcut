@@ -46,3 +46,55 @@ export const AgentcutMarkLarge = mark((id) => (
     <rect width="100" height="100" fill="currentColor" mask={`url(#${id})`} />
   </>
 ));
+
+/**
+ * The app icon itself — the graphite tile with the glyph floating on it in frosted
+ * glass. Fixed colour on purpose: it is a made object, not a tintable glyph, so it
+ * ignores `currentColor` and the theme. Use it where the product introduces itself
+ * — the header, a splash, an about box — and `AgentcutMark` everywhere else.
+ *
+ * It does not break the never-glass-on-glass rule inside a `<Glass>` bar: the tile
+ * is opaque, so it sits on the material rather than stacking another sheet of it.
+ */
+export function AgentcutIcon({ className = "size-7", ...props }: MarkProps) {
+  const id = `i${useId().replace(/:/g, "")}`;
+  return (
+    <svg viewBox="0 0 100 100" fill="none" aria-hidden focusable="false" className={className} {...props}>
+      <defs>
+    <clipPath id={`${id}sq`}><rect width="100" height="100" rx="22.5"/></clipPath>
+    <linearGradient id={`${id}tile`} x1="0" y1="0" x2="0" y2="100" gradientUnits="userSpaceOnUse">
+      <stop stopColor="#2b2b30"/><stop offset="1" stopColor="#0e0e10"/></linearGradient>
+    <radialGradient id={`${id}tl`} cx="26" cy="12" r="78" gradientUnits="userSpaceOnUse">
+      <stop stopColor="#fff" stopOpacity=".22"/><stop offset="1" stopColor="#fff" stopOpacity="0"/></radialGradient>
+    <linearGradient id={`${id}rim`} x1="0" y1="0" x2="0" y2="100" gradientUnits="userSpaceOnUse">
+      <stop stopColor="#fff" stopOpacity=".5"/><stop offset=".5" stopColor="#fff" stopOpacity=".06"/>
+      <stop offset="1" stopColor="#fff" stopOpacity=".22"/></linearGradient>
+    <linearGradient id={`${id}gl`} x1="20" y1="8" x2="78" y2="94" gradientUnits="userSpaceOnUse">
+      <stop stopColor="#ffffff"/><stop offset=".58" stopColor="#eceef4"/>
+      <stop offset="1" stopColor="#c2c6d2"/></linearGradient>
+    <linearGradient id={`${id}sheen`} x1="0" y1="0" x2="0" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stopColor="#fff" stopOpacity=".55"/><stop offset="1" stopColor="#fff" stopOpacity="0"/></linearGradient>
+    <mask id={`${id}shape`}><g fill="#fff"><g transform="translate(50 51) scale(0.94) translate(-50 -50)"><g transform="rotate(0 50 50)"><circle cx="32.5" cy="70" r="22"/><circle cx="67.5" cy="70" r="22"/><path d="M17 13C33.82 20.08 48.32 30.41 60.5 44L36 55C29.67 41 23.33 27 17 13Z"/><g transform="translate(100 0) scale(-1 1)"><path d="M17 13C33.82 20.08 48.32 30.41 60.5 44L36 55C29.67 41 23.33 27 17 13Z"/></g></g></g></g><g fill="#000"><g transform="translate(50 51) scale(0.94) translate(-50 -50)"><g transform="rotate(0 50 50)"><ellipse cx="32.5" cy="68.8" rx="8.6" ry="10.4"/><ellipse cx="67.5" cy="68.8" rx="8.6" ry="10.4"/><circle cx="50" cy="49.5" r="4"/></g></g></g></mask>
+    <mask id={`${id}inv`}><rect width="100" height="100" fill="#fff"/><g fill="#000"><g transform="translate(50 51) scale(0.94) translate(-50 -50)"><g transform="rotate(0 50 50)"><circle cx="32.5" cy="70" r="22"/><circle cx="67.5" cy="70" r="22"/><path d="M17 13C33.82 20.08 48.32 30.41 60.5 44L36 55C29.67 41 23.33 27 17 13Z"/><g transform="translate(100 0) scale(-1 1)"><path d="M17 13C33.82 20.08 48.32 30.41 60.5 44L36 55C29.67 41 23.33 27 17 13Z"/></g></g></g></g><g fill="#fff"><g transform="translate(50 51) scale(0.94) translate(-50 -50)"><g transform="rotate(0 50 50)"><ellipse cx="32.5" cy="68.8" rx="8.6" ry="10.4"/><ellipse cx="67.5" cy="68.8" rx="8.6" ry="10.4"/><circle cx="50" cy="49.5" r="4"/></g></g></g></mask>
+    <filter id={`${id}soft`} x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="2.4"/></filter>
+    <filter id={`${id}tight`} x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="1.7"/></filter>
+    <filter id={`${id}cast`} x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="3"/></filter>
+  </defs>
+  <g clipPath={`url(#${id}sq)`}>
+    <rect width="100" height="100" fill={`url(#${id}tile)`}/><rect width="100" height="100" fill={`url(#${id}tl)`}/>
+    <g opacity="0.5" filter={`url(#${id}cast)`} transform="translate(0 3)">
+      <g mask={`url(#${id}shape)`}><rect width="100" height="100" fill="#000"/></g></g>
+    <g mask={`url(#${id}shape)`}>
+      <rect width="100" height="100" fill={`url(#${id}gl)`}/>
+      <g transform="translate(1.4 2.2)" filter={`url(#${id}soft)`} opacity="0.3">
+        <rect width="100" height="100" fill="#000" mask={`url(#${id}inv)`}/></g>
+      <g transform="translate(-1.2 -1.8)" filter={`url(#${id}tight)`} opacity=".95">
+        <rect width="100" height="100" fill="#fff" mask={`url(#${id}inv)`}/></g>
+      <rect width="100" height="100" fill={`url(#${id}sheen)`} opacity="0.3"/>
+    </g>
+    <g fill="#2b2b30" opacity=".9"><g transform="translate(50 51) scale(0.94) translate(-50 -50)"></g></g>
+    <rect x=".6" y=".6" width="98.8" height="98.8" rx="22" fill="none" stroke={`url(#${id}rim)`} strokeWidth="1.2"/>
+  </g>
+    </svg>
+  );
+}

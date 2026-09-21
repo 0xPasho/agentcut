@@ -11,16 +11,22 @@ That double reading is load-bearing and fragile. Two things hold it up:
 - **The pivot dot stays.** Without it the blades don't read as crossing, and the
   cat comes back. It is the smallest element and the least removable.
 
-## Two drawings
+## Three components
 
 | | |
 |---|---|
-| **`AgentcutMark`** | Thicker blades, shorter reach, no tilt. Every use inside the UI, where nothing renders above 32px. |
+| **`AgentcutIcon`** | The app icon itself — graphite tile, glyph in frosted glass. Where the product introduces itself: the header, a splash, an about box. |
+| **`AgentcutMark`** | The glyph alone, in `currentColor`. Thicker blades, shorter reach, no tilt. Everywhere else in the UI. |
 | **`AgentcutMarkLarge`** | The full drawing: sharper tips, a 4° tilt, a glint in each eye. Wants 48px or more. |
 
-The split is measured, not stylistic. Below about 32px the full drawing's tips fall
-under a pixel and evaporate, and the mark reads as two dots. If you catch yourself
-scaling `AgentcutMarkLarge` down to fit a toolbar, reach for the other one.
+The split between the two marks is measured, not stylistic. Below about 32px the
+full drawing's tips fall under a pixel and evaporate, and the mark reads as two
+dots. If you catch yourself scaling `AgentcutMarkLarge` down to fit a toolbar,
+reach for the other one.
+
+`AgentcutIcon` is a made object, so it ignores `currentColor` and the theme — and it
+does not break the never-glass-on-glass rule inside a `<Glass>` bar, because the tile
+is opaque: it sits on the material rather than stacking another sheet of it.
 
 ## Colour
 
@@ -50,7 +56,7 @@ the geometry in that file, and commit what it writes.
 
 | Path | What it is |
 |---|---|
-| `src/components/agentcut-mark.tsx` | The two React marks. Generated — edit the script, not this file. |
+| `src/components/agentcut-mark.tsx` | The three React components. Generated — edit the script, not this file. |
 | `public/brand/mark.svg` | Flat mark, `currentColor`, for anything outside React. |
 | `public/brand/mark-compact.svg` | The same at UI sizes. |
 | `public/brand/icon.svg` | The app icon, full material. |
@@ -62,6 +68,14 @@ the geometry in that file, and commit what it writes.
 Not to be confused with `src/components/brand-marks.tsx`, which holds the *harness*
 marks — Claude, Codex, Cursor — one monochrome path each. This file is the product's
 own mark; that one is other people's.
+
+## The lockup
+
+In the header the icon runs at 28px (`size-7`) next to the name at `text-xl
+font-bold tracking-[-0.04em]`. The tight tracking is what makes "agentcut" read as
+a wordmark rather than as a heading that happens to say the product's name — at
+Figtree's default spacing the word goes slack and loses to the `local` chip beside
+it.
 
 ## Regenerating
 

@@ -94,42 +94,42 @@ const GRAFITO = {
   glint: "#2b2b30", shadow: 0.5, innerDark: 0.3, sheen: 0.3,
 };
 
-const icon3d = (p, t = GRAFITO) => {
+const icon3d = (p, t = GRAFITO, q = "") => {
   const body = fit(p, mass(p)), cut = fit(p, holes(p)), spark = fit(p, glints(p));
   return svg(`<defs>
-    <clipPath id="sq"><rect width="100" height="100" rx="22.5"/></clipPath>
-    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="100" gradientUnits="userSpaceOnUse">
+    <clipPath id="${q}sq"><rect width="100" height="100" rx="22.5"/></clipPath>
+    <linearGradient id="${q}tile" x1="0" y1="0" x2="0" y2="100" gradientUnits="userSpaceOnUse">
       <stop stop-color="${t.tile0}"/><stop offset="1" stop-color="${t.tile1}"/></linearGradient>
-    <radialGradient id="tl" cx="26" cy="12" r="78" gradientUnits="userSpaceOnUse">
+    <radialGradient id="${q}tl" cx="26" cy="12" r="78" gradientUnits="userSpaceOnUse">
       <stop stop-color="#fff" stop-opacity=".22"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
-    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="100" gradientUnits="userSpaceOnUse">
+    <linearGradient id="${q}rim" x1="0" y1="0" x2="0" y2="100" gradientUnits="userSpaceOnUse">
       <stop stop-color="#fff" stop-opacity=".5"/><stop offset=".5" stop-color="#fff" stop-opacity=".06"/>
       <stop offset="1" stop-color="#fff" stop-opacity=".22"/></linearGradient>
-    <linearGradient id="gl" x1="20" y1="8" x2="78" y2="94" gradientUnits="userSpaceOnUse">
+    <linearGradient id="${q}gl" x1="20" y1="8" x2="78" y2="94" gradientUnits="userSpaceOnUse">
       <stop stop-color="${t.glyph0}"/><stop offset=".58" stop-color="${t.glyph1}"/>
       <stop offset="1" stop-color="${t.glyph2}"/></linearGradient>
-    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="56" gradientUnits="userSpaceOnUse">
+    <linearGradient id="${q}sheen" x1="0" y1="0" x2="0" y2="56" gradientUnits="userSpaceOnUse">
       <stop stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
-    <mask id="shape"><g fill="#fff">${body}</g><g fill="#000">${cut}</g></mask>
-    <mask id="inv"><rect width="100" height="100" fill="#fff"/><g fill="#000">${body}</g><g fill="#fff">${cut}</g></mask>
-    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="2.4"/></filter>
-    <filter id="tight" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="1.7"/></filter>
-    <filter id="cast" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="3"/></filter>
+    <mask id="${q}shape"><g fill="#fff">${body}</g><g fill="#000">${cut}</g></mask>
+    <mask id="${q}inv"><rect width="100" height="100" fill="#fff"/><g fill="#000">${body}</g><g fill="#fff">${cut}</g></mask>
+    <filter id="${q}soft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="2.4"/></filter>
+    <filter id="${q}tight" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="1.7"/></filter>
+    <filter id="${q}cast" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="3"/></filter>
   </defs>
-  <g clip-path="url(#sq)">
-    <rect width="100" height="100" fill="url(#tile)"/><rect width="100" height="100" fill="url(#tl)"/>
-    <g opacity="${t.shadow}" filter="url(#cast)" transform="translate(0 3)">
-      <g mask="url(#shape)"><rect width="100" height="100" fill="#000"/></g></g>
-    <g mask="url(#shape)">
-      <rect width="100" height="100" fill="url(#gl)"/>
-      <g transform="translate(1.4 2.2)" filter="url(#soft)" opacity="${t.innerDark}">
-        <rect width="100" height="100" fill="#000" mask="url(#inv)"/></g>
-      <g transform="translate(-1.2 -1.8)" filter="url(#tight)" opacity=".95">
-        <rect width="100" height="100" fill="#fff" mask="url(#inv)"/></g>
-      <rect width="100" height="100" fill="url(#sheen)" opacity="${t.sheen}"/>
+  <g clip-path="url(#${q}sq)">
+    <rect width="100" height="100" fill="url(#${q}tile)"/><rect width="100" height="100" fill="url(#${q}tl)"/>
+    <g opacity="${t.shadow}" filter="url(#${q}cast)" transform="translate(0 3)">
+      <g mask="url(#${q}shape)"><rect width="100" height="100" fill="#000"/></g></g>
+    <g mask="url(#${q}shape)">
+      <rect width="100" height="100" fill="url(#${q}gl)"/>
+      <g transform="translate(1.4 2.2)" filter="url(#${q}soft)" opacity="${t.innerDark}">
+        <rect width="100" height="100" fill="#000" mask="url(#${q}inv)"/></g>
+      <g transform="translate(-1.2 -1.8)" filter="url(#${q}tight)" opacity=".95">
+        <rect width="100" height="100" fill="#fff" mask="url(#${q}inv)"/></g>
+      <rect width="100" height="100" fill="url(#${q}sheen)" opacity="${t.sheen}"/>
     </g>
     <g fill="${t.glint}" opacity=".9">${spark}</g>
-    <rect x=".6" y=".6" width="98.8" height="98.8" rx="22" fill="none" stroke="url(#rim)" stroke-width="1.2"/>
+    <rect x=".6" y=".6" width="98.8" height="98.8" rx="22" fill="none" stroke="url(#${q}rim)" stroke-width="1.2"/>
   </g>`);
 };
 
@@ -151,6 +151,27 @@ const flatJsx = (p) => `    <mask id={id} maskUnits="userSpaceOnUse" x="0" y="0"
       <g fill="#fff">${fit(p, glints(p))}</g>` : ""}
     </mask>
     <rect width="100" height="100" fill="currentColor" mask={\`url(#\${id})\`} />`;
+
+/** SVG spellings React doesn't take. Everything else it accepts verbatim. */
+const JSX_ATTRS = {
+  "stop-color": "stopColor", "stop-opacity": "stopOpacity", "clip-path": "clipPath",
+  "stroke-width": "strokeWidth", "fill-rule": "fillRule", "clip-rule": "clipRule",
+  "fill-opacity": "fillOpacity",
+};
+
+/** Turns the generated markup into JSX, binding every id to the component's `id`. */
+const toJsx = (markup) => {
+  let out = markup;
+  for (const [svg, jsx] of Object.entries(JSX_ATTRS)) out = out.split(`${svg}="`).join(`${jsx}="`);
+  return out
+    .replace(/id="@@([a-z]+)"/g, (_, k) => `id={\`\${id}${k}\`}`)
+    .replace(/([a-zA-Z-]+)="url\(#@@([a-z]+)\)"/g, (_, attr, k) => `${attr}={\`url(#\${id}${k})\`}`);
+};
+
+/** The icon as a component body: the app icon itself, not a tintable glyph. */
+const iconJsx = () => toJsx(
+  icon3d(GEOM.compact, GRAFITO, "@@")
+    .replace(/^<svg[^>]*>/, "").replace(/<\/svg>\s*$/, "").trim());
 
 const component = () => `import { useId, type ReactNode, type SVGProps } from "react";
 
@@ -191,6 +212,24 @@ export const AgentcutMarkLarge = mark((id) => (
 ${flatJsx(GEOM.full)}
   </>
 ));
+
+/**
+ * The app icon itself — the graphite tile with the glyph floating on it in frosted
+ * glass. Fixed colour on purpose: it is a made object, not a tintable glyph, so it
+ * ignores \`currentColor\` and the theme. Use it where the product introduces itself
+ * — the header, a splash, an about box — and \`AgentcutMark\` everywhere else.
+ *
+ * It does not break the never-glass-on-glass rule inside a \`<Glass>\` bar: the tile
+ * is opaque, so it sits on the material rather than stacking another sheet of it.
+ */
+export function AgentcutIcon({ className = "size-7", ...props }: MarkProps) {
+  const id = \`i\${useId().replace(/:/g, "")}\`;
+  return (
+    <svg viewBox="0 0 100 100" fill="none" aria-hidden focusable="false" className={className} {...props}>
+      ${iconJsx()}
+    </svg>
+  );
+}
 `;
 
 /* ─── Rasterising ───────────────────────────────────────────────────────────
