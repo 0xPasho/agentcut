@@ -1,3 +1,4 @@
+import { providerKey } from "../secrets";
 import type { ImageHit, ImageProvider } from "./types";
 
 const UA = "agentcut/0.1 (local clip tool)";
@@ -19,7 +20,7 @@ type PexelsPhoto = {
 export const pexels: ImageProvider = {
   id: "pexels",
   async search(query, limit) {
-    const key = process.env.AGENTCUT_PEXELS_KEY;
+    const key = providerKey("pexels");
     if (!key) return [];
     const res = await fetch(
       `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${Math.min(30, limit * 2)}`,
@@ -50,7 +51,7 @@ type UnsplashPhoto = {
 export const unsplash: ImageProvider = {
   id: "unsplash",
   async search(query, limit) {
-    const key = process.env.AGENTCUT_UNSPLASH_KEY;
+    const key = providerKey("unsplash");
     if (!key) return [];
     const res = await fetch(
       `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=${Math.min(30, limit * 2)}`,
@@ -89,8 +90,8 @@ type CseItem = {
 export const googleImages: ImageProvider = {
   id: "google",
   async search(query, limit) {
-    const key = process.env.AGENTCUT_GOOGLE_CSE_KEY;
-    const cx = process.env.AGENTCUT_GOOGLE_CSE_CX;
+    const key = providerKey("google");
+    const cx = providerKey("googleCx");
     if (!key || !cx) return [];
     const rights = process.env.AGENTCUT_GOOGLE_CSE_RIGHTS ?? "cc_publicdomain|cc_attribute|cc_sharealike";
     const res = await fetch(
@@ -117,8 +118,8 @@ export const googleImages: ImageProvider = {
 /** Which optional providers this machine is actually configured for. */
 export function configuredKeyedProviders(): string[] {
   return [
-    process.env.AGENTCUT_PEXELS_KEY ? "pexels" : null,
-    process.env.AGENTCUT_UNSPLASH_KEY ? "unsplash" : null,
-    process.env.AGENTCUT_GOOGLE_CSE_KEY && process.env.AGENTCUT_GOOGLE_CSE_CX ? "google" : null,
+    providerKey("pexels") ? "pexels" : null,
+    providerKey("unsplash") ? "unsplash" : null,
+    providerKey("google") && providerKey("googleCx") ? "google" : null,
   ].filter((id): id is string => id !== null);
 }

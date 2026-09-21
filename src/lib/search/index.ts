@@ -30,9 +30,9 @@ export function listProviders(): ProviderInfo[] {
     { id: "brand", label: "Brand logos", kind: "logo", configured: true, note: "Official marks for ~3,400 companies and products (Simple Icons, CC0). Answers only when the query names a brand." },
     { id: "commons", label: "Wikimedia Commons", kind: "photo", configured: true, note: "Free-licence photographs and diagrams of named things. No key." },
     { id: "openverse", label: "Openverse", kind: "photo", configured: true, note: "Creative Commons image aggregator. No key." },
-    { id: "pexels", label: "Pexels", kind: "photo", configured: keyed.has("pexels"), note: "Stock photography. Set AGENTCUT_PEXELS_KEY." },
-    { id: "unsplash", label: "Unsplash", kind: "photo", configured: keyed.has("unsplash"), note: "Stock photography. Set AGENTCUT_UNSPLASH_KEY." },
-    { id: "google", label: "Google Images", kind: "web", configured: keyed.has("google"), note: "Google Programmable Search. Set AGENTCUT_GOOGLE_CSE_KEY and AGENTCUT_GOOGLE_CSE_CX. Results carry no verified licence." },
+    { id: "pexels", label: "Pexels", kind: "photo", configured: keyed.has("pexels"), note: "Stock photography. Add a key in settings, or set AGENTCUT_PEXELS_KEY." },
+    { id: "unsplash", label: "Unsplash", kind: "photo", configured: keyed.has("unsplash"), note: "Stock photography. Add a key in settings, or set AGENTCUT_UNSPLASH_KEY." },
+    { id: "google", label: "Google Images", kind: "web", configured: keyed.has("google"), note: "Google Programmable Search. Add a key and an engine id in settings, or set AGENTCUT_GOOGLE_CSE_KEY and AGENTCUT_GOOGLE_CSE_CX. Results carry no verified licence." },
   ];
 }
 
