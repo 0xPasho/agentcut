@@ -29,6 +29,15 @@ for domain changes and `src/lib/editor/store.ts` for persistence. Do not write p
 EDLs through `q.setProject`, exported JSON files, or a separate provider-specific path.
 Run `pnpm test` for editing changes and `pnpm test:render` when rendering/state resolution changes.
 
+## Interface work
+
+`.claude/skills/` carries the UI skills this project designs against: `better-ui`
+(polish, motion, icons, surfaces), plus `better-colors`, `better-layout`,
+`better-typography`, `better-writing`, `better-accessibility` and `interface-review`.
+Read the relevant one before building or reviewing UI, rather than inventing a house
+style per screen. Harness marks live in `src/components/brand-marks.tsx`: one
+`currentColor` SVG per provider, states from CSS, never a second asset.
+
 ## General editing and clipping
 
 Use one shared visual editor for both flows. General editing starts with an empty
