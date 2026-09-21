@@ -6,7 +6,7 @@ import { enableTailwind } from "@remotion/tailwind-v4";
 import { serveDir } from "./fileServer";
 import { sequenceFrames } from "./sequences";
 import { WORKSPACE, ROOT } from "./config";
-import type { Edl, Clip } from "./edl";
+import type { Edl, Clip, VideoSequence } from "./edl";
 import { creditsFor } from "./assets";
 import { serverAssetUrls } from "./assetUrls";
 import { buildTimeMap, clipFrames } from "./timeline";
@@ -25,7 +25,7 @@ export type RenderProgress = {
 
 let cachedBundle: Promise<string> | null = null;
 
-async function getBundle() {
+export async function getBundle() {
   if (cachedBundle) return cachedBundle;
   cachedBundle = bundle({
     entryPoint: ENTRY,
@@ -38,15 +38,26 @@ async function getBundle() {
   return cachedBundle;
 }
 
-export async function renderClips(
-  edl: Edl,
-  dir: string,
-  opts: { onProgress?: (p: RenderProgress) => void; only?: string[]; concurrency?: number } = {},
-) {
-  const outDir = path.join(dir, "clips");
-  await fs.mkdir(outDir, { recursive: true });
+/**
+ * The bundle, the loopback file server and every URL a composition of this EDL
+ * needs, opened once.
+ *
+ * Exports are not the only thing that renders this project: the editing agent
+ * samples the finished video into stills before a turn. Both go through here, so
+ * there is exactly one place that decides how a source, a piece of media and an
+ * asset become URLs — a second answer to that question is a second renderer, and
+ * the two would drift into showing different videos.
+ */
+export type RenderServe = {
+  serveUrl: string;
+  /** Props for the `VideoSequence` composition — the same object the export passes. */
+  sequenceProps: (sequence: VideoSequence) => Record<string, unknown>;
+  /** Props for the legacy single-source `Clip` composition. */
+  clipProps: (clip: Clip) => Record<string, unknown>;
+  close: () => Promise<void>;
+};
 
-  opts.onProgress?.({ clipId: "", title: "", index: 0, total: 0, progress: 0, stage: "bundling" });
+export async function openRenderServe(edl: Edl, dir: string): Promise<RenderServe> {
   // Serve the whole workspace: the source and the project's assets/ directory are
   // both under it, and a source picked from elsewhere in the workspace still resolves.
   const [serveUrl, files] = await Promise.all([getBundle(), serveDir(WORKSPACE, {
@@ -63,6 +74,29 @@ export async function renderClips(
   const sourceUrl = edl.source ? `${files.url}/__primary_source` : "";
   const assetBase = `${files.url}/${rel(path.join(dir, "assets"))}/`;
   const assetUrls = serverAssetUrls(edl, edl.projectId, files.url);
+  const mediaUrls = Object.fromEntries((edl.media ?? []).map(m => [m.id, `${files.url}/__media/${m.id}`]));
+  return {
+    serveUrl,
+    sequenceProps: (sequence) => ({ sequence, media: edl.media, mediaUrls, assetBase, assetUrls }),
+    clipProps: (clip) => ({
+      clip, sourceUrl, assetBase, assetUrls,
+      sourceWidth: edl.source!.width, sourceHeight: edl.source!.height,
+    }),
+    close: () => files.close(),
+  };
+}
+
+export async function renderClips(
+  edl: Edl,
+  dir: string,
+  opts: { onProgress?: (p: RenderProgress) => void; only?: string[]; concurrency?: number } = {},
+) {
+  const outDir = path.join(dir, "clips");
+  await fs.mkdir(outDir, { recursive: true });
+
+  opts.onProgress?.({ clipId: "", title: "", index: 0, total: 0, progress: 0, stage: "bundling" });
+  const serve = await openRenderServe(edl, dir);
+  const { serveUrl } = serve;
 
   try {
   const all = [...edl.clips, ...(edl.sequences ?? [])];
@@ -74,18 +108,7 @@ export async function renderClips(
     if (sequence && !sequence.items.length) throw new Error(`Add a scene to “${sequence.title}” before exporting`);
     if (!sequence && !edl.source) throw new Error(`“${clip.title}” is cut from a source video this project does not have`);
     const output = sequence?.output ?? edl.output;
-    const inputProps = sequence ? {
-      sequence, media: edl.media,
-      mediaUrls: Object.fromEntries(edl.media.map(m => [m.id, `${files.url}/__media/${m.id}`])),
-      assetBase, assetUrls,
-    } : {
-      clip,
-      sourceUrl,
-      assetBase,
-      assetUrls,
-      sourceWidth: edl.source!.width,
-      sourceHeight: edl.source!.height,
-    };
+    const inputProps = sequence ? serve.sequenceProps(sequence) : serve.clipProps(clip as Clip);
 
     const composition = await selectComposition({ serveUrl, id: sequence ? "VideoSequence" : "Clip", inputProps });
     const outputLocation = path.join(outDir, `${clip.id}-${slug(clip.title)}.mp4`);
@@ -128,7 +151,7 @@ export async function renderClips(
   await writeCredits(edl, outDir);
   return outputs;
   } finally {
-    await files.close();
+    await serve.close();
   }
 }
 

@@ -9,8 +9,13 @@ import { processAlive } from "../reaper";
  * The lock file names its owner, so a render killed mid-flight does not lock the
  * project's exports out forever — the next render sees the pid is gone and takes over.
  * Used to require deleting render.lock by hand after checking `ps`.
+ *
+ * It never waits: a caller that cannot have the lock is told so immediately and
+ * decides for itself. An export says so out loud; the agent's frame sampler quietly
+ * shows source frames instead, because a turn that blocked on somebody else's render
+ * is the one thing worse than a turn that saw less.
  */
-async function claimRenderLock(lockPath: string) {
+export async function claimPidLock(lockPath: string, busy: string) {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const lock = await fs.open(lockPath, "wx");
@@ -22,8 +27,10 @@ async function claimRenderLock(lockPath: string) {
       await fs.unlink(lockPath).catch(() => {}); // abandoned, or written before owners were recorded
     }
   }
-  throw new Error("This project already has a render in progress.");
+  throw new Error(busy);
 }
+
+const claimRenderLock = (lockPath: string) => claimPidLock(lockPath, "This project already has a render in progress.");
 
 export async function renderProject(projectId: string, options: { only?: string[]; expectedRevision?: number; onProgress?: (p: RenderProgress) => void } = {}) {
   const dir = projectDir(projectId);
