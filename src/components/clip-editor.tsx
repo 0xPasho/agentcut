@@ -54,6 +54,8 @@ function sourceSecondsAt(clip: Clip, outputSec: number) {
 }
 // Display-only fallback for an empty timeline. Never saved as source footage.
 const EMPTY = ClipSchema.parse({ id: "empty", title: "Empty canvas", start: 0, end: 5, captions: { preset: "none" } });
+/** Narrower than this and the measurement is a half-laid-out column, not a preview. */
+const MIN_PREVIEW_PX = 80;
 const NEW_EDIT: Record<string, (t: number) => Edit> = {
   silence: t => ({ type: "silence", t, d: 0.4, by: "" }),
   punch: t => ({ type: "punch", t, d: 1.2, scale: 1.12, by: "" }),
@@ -109,7 +111,11 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
     const el=previewArea.current;if(!el)return;
     const observer=new ResizeObserver(([entry])=>{
       const width=Math.min(entry.contentRect.width,entry.contentRect.height*output.width/output.height);
-      setPreviewSize({width,height:width*output.height/output.width});
+      // The frame is sized from this number, so the observed box never resizes because of it and
+      // the observer never fires again. A reading taken before the column has laid out is therefore
+      // permanent, and it leaves a frame too small to see — which is a blank middle of the editor.
+      // Anything degenerate keeps the CSS box, which already fits the frame to the space it has.
+      setPreviewSize(width>=MIN_PREVIEW_PX?{width,height:width*output.height/output.width}:{width:0,height:0});
     });
     observer.observe(el);return()=>observer.disconnect();
   },[output.width,output.height]);
