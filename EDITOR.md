@@ -68,6 +68,10 @@ and must reconsider its requested changes. It must not blindly replay a stale fu
 `src/lib/editor/tools.ts` exposes project-scoped tools used by the UI and agent transport:
 
 - `project.read`, `project.edit`, `project.render`
+- `project.status` (what the project is doing now: status, the running job with its stage and
+  progress, and every activity line since a cursor — read-only and safe to poll)
+- `project.unlock` (release a project whose job is stuck; same escape hatch as the panel's
+  **Stop and unlock**)
 - `transcript.resync` (re-recognise the source and refresh every clip's words)
 - `assets.list` (library plus project assets), `assets.capture` (source seconds)
 - `assets.search`, `assets.adopt` (select a returned provider/ID for a query)
@@ -108,12 +112,57 @@ directory, trimmed from the oldest) and the editor's context (`context.json`: op
 sequence, selected items, playhead), so "shorter, like the last one" and "move this" mean
 something. The agent's reply is recorded as a turn; a failed run leaves a turn saying so.
 
+### Progress
+
+An edit takes minutes, so no interface is left with a spinner. Every run reports what it
+is doing line by line — the tool it is calling and on what, the stage, how it went — and
+all of it lands in one place, the project's `events` table:
+
+- `src/lib/activity.ts` turns a tool call into a line a person can read (`project.edit ·
+  3 changes · item.patch ×2, item.place`), announced **before** the call runs.
+- `src/lib/activity-log.ts` runs an editor tool and writes that line to the project's feed,
+  whoever started it: the UI (`via: "web"`), a terminal agent (`"mcp"`), the CLI (`"cli"`).
+  Reads and status polls stay out of the feed so it does not fill with someone's polling.
+- The web streams it over SSE (`/api/projects/[id]/events`). `useProjectStream` keeps one
+  connection per project, so the agent panel and the project page show the same trail.
+  The panel is a chat: `src/lib/thread.ts` interleaves the conversation with the feed by
+  time (splitting on job id, and on a gap over three minutes), so each turn shows what
+  was asked, the steps that answered it and the reply. Steps collapse to one line —
+  `12 steps · 1:48` — and open into `AgentLog`, which follows the newest line only while
+  the reader is at the bottom. Any line too long for the panel opens in place.
+- A terminal agent gets the same lines as MCP `notifications/progress` while its call runs
+  (when it passes a `progressToken`), as the `activity` trail returned by
+  `agentcut_message_send`, and by polling `agentcut_project_status` with the `cursor` it
+  was last given.
+- `agentcut edit PROJECT ask` prints them to stderr as they happen; stdout stays the result.
+
+### The chat
+
+`src/components/chat.tsx` is the chat itself — thread, composer, dropped files, harness
+picker — and knows nothing about projects. A `ChatController` (`src/lib/use-chat.ts`) is
+the only difference between surfaces:
+
+- `useProjectChat` is the panel in the editor: the project's shared thread, its live
+  feed, and edits that run against the open sequence.
+- `useStartChat` is `/chat`, the empty window. The first message decides what to make:
+  a link clips it (`/api/projects` then analyse), dropped footage is imported into a new
+  project, and words alone create an empty canvas — all through the endpoints the home
+  page cards already use. Then the message is sent as the project's first turn and the
+  browser lands in the editor with the conversation already going.
+
+Dropped, pasted or picked files are uploaded as ordinary library assets and ride along in
+`context.attachments`. A run copies them into `attachments/` in its run directory, so the
+agent can open an image to see it, and is told each asset id so it can place the same file
+in the timeline. No second upload path, and the turn keeps its attachments, so the thread
+still shows the picture next to what was asked.
+
 ### MCP
 
 `agentcut mcp` serves the same tools over stdio as an MCP server: one MCP tool per editor
 tool, generated from the same schema (`agentcut_project_edit`, `agentcut_plan_apply`, …)
 with a `projectId` argument, plus `agentcut_projects_list`, `agentcut_message_record` (log
-what you did into the thread) and `agentcut_message_send` (ask the host's editing agent).
+what you did into the thread) and `agentcut_message_send` (ask the host's editing agent,
+which returns its reply and the trail of what it did).
 Revision conflicts come back as tool errors carrying the current revision, like HTTP.
 
 `transcript.resync` is the "Re-sync captions" button in the UI. It is not a second
@@ -195,11 +244,39 @@ UI render jobs, `project.render`, and `scripts/render.ts <projectId>` call
 `renderProject`, which captures the current database revision and uses the common
 Remotion composition. A per-project file lock prevents overlapping exports. The output
 manifest records each clip's revision; stale outputs are not offered as current downloads.
-If a process crashes while rendering, remove its `render.lock` only after verifying that
-the process is no longer running.
+The lock file records the pid that holds it, so a render killed mid-flight is taken over
+by the next one instead of blocking exports until somebody deletes `render.lock` by hand.
 
 `scripts/render.ts path/to/edl.json` remains an explicit standalone snapshot render.
 It does not represent the latest state of a project in the database.
+
+## Jobs and the project lock
+
+A project runs one job at a time — analyze, edit, batch, transcribe or render — and the
+`jobs` row with status `running` is the lock. The row is written by whichever process is
+executing: the web server, or the MCP server in the owner's terminal.
+
+A process can die without writing the ending, and the row would then hold the lock
+forever. `src/lib/reaper.ts` decides liveness from facts, not elapsed time: the row
+records the owner's pid and a per-run boot id, and every process is local, so
+`kill(pid, 0)` answers whether the owner still exists. A heartbeat every 15s is only a
+backstop for a recycled pid. Dead owners are reaped whenever a project is read or a job
+starts, so a stuck project heals as soon as anybody opens it.
+
+Rejected, and why:
+
+- *Clear every running row when the server boots* — MCP runs in its own process and can
+  start jobs, so a web-server restart would cut a live terminal-agent batch out from
+  under itself.
+- *A timeout alone* — wrong in both directions: it unlocks minutes after a crash, and it
+  would kill a healthy long render that simply had nothing to report.
+
+`POST /api/projects/:id/unlock`, the panel's **Stop and unlock** button and the
+`project.unlock` tool are the same escape hatch for a job that is alive but stuck,
+e.g. a model call that never returns. It abandons the run rather than cancelling it:
+nothing interrupts the work, and the abandoned run's result is discarded if it ever
+lands. Real cooperative cancellation needs an `AbortSignal` threaded through
+conversation, render and transcribe, and is **not implemented**.
 
 ## Verification and maintenance
 
