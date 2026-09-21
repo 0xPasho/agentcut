@@ -153,10 +153,18 @@ test("canvas magnetism catches the frame's edges and centre, and lets go outside
   assert.deepEqual(snapAxis(396, 200, 1000, 8), { delta: 4, guide: 500 });
   assert.deepEqual(snapAxis(803, 200, 1000, 8), { delta: -3, guide: 1000 });
   assert.equal(snapAxis(300, 200, 1000, 8), null);
-  // The nearest target wins when two are in reach, and a box as wide as the frame has one answer.
-  assert.deepEqual(snapAxis(3, 996, 1000, 8), { delta: -1, guide: 500 });
   assert.equal(snapAxis(5, 200, 1000, 0), null);
   assert.equal(snapAxis(Number.NaN, 200, 1000, 8), null);
+  // A catch never claims the whole travel: a box with almost nowhere to go keeps every place it
+  // could be. 996 of 1000 leaves 4 to move in, so the catches hold only the lines themselves.
+  assert.deepEqual(snapAxis(2, 996, 1000, 8), { delta: 0, guide: 500 });
+  assert.equal(snapAxis(3, 996, 1000, 8), null);
+  // And a box the size of its frame, which has nowhere to go at all, is never pulled anywhere.
+  assert.equal(snapAxis(6, 1000, 1000, 8), null);
+  // The reach follows the frame, so the same gesture on a preview drawn small is the same nudge:
+  // on a 120-wide frame it is a couple of pixels, not the eight a full-size preview can afford.
+  assert.deepEqual(snapAxis(41, 40, 120, 8), { delta: -1, guide: 60 });
+  assert.equal(snapAxis(44, 40, 120, 8), null);
 });
 
 test("a placement knows when it would hide a clip already on that track", () => {

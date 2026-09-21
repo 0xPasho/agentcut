@@ -60,18 +60,36 @@ export function snapSpan(at: number, duration: number, targets: SnapPoint[], tol
   return start < 0 ? { at: 0, guide: null } : { at: start, guide: tail.guide! };
 }
 
+/** How far a catch reaches as a share of the axis, so the pull feels the same however big the preview is drawn. */
+const CATCH_REACH = .012;
+/** Under this many pixels a catch is not felt at all, so a small preview keeps a reach it can express. */
+const CATCH_FLOOR = 2;
+/** Together, the catches on an axis may claim at most this share of the travel there is. */
+const CATCH_SHARE = 1 / 3;
+
 /**
  * The same magnetism for the canvas: pull one axis of a moving box onto the frame's leading
  * edge, its centre, or its trailing edge. Distances are in the frame's own pixels, and the
  * guide is where a line should be drawn to show what it caught.
+ *
+ * A catch is a suggestion, never a track. Its reach is measured against the frame rather than
+ * the screen — a fixed pixel count is a nudge on a full-size preview and a cage on a thumbnail
+ * — and the three catches on an axis together never claim more than a third of the travel the
+ * box has. Whatever the sizes, every position between the lines stays reachable: a box nearly
+ * as wide as its frame can still sit slightly off centre, and one exactly as wide, which has
+ * nowhere to go, is left alone entirely.
  */
 export function snapAxis(start: number, size: number, extent: number, tolerance: number): { delta: number; guide: number } | null {
   if (!(tolerance > 0) || !Number.isFinite(start) || !Number.isFinite(size) || !(extent > 0)) return null;
-  const candidates = [{ at: 0, guide: 0 }, { at: (extent - size) / 2, guide: extent / 2 }, { at: extent - size, guide: extent }];
+  const room = Math.max(0, extent - size);
+  // Six, because three catches each pull from both sides.
+  const reach = Math.min(tolerance, Math.max(CATCH_FLOOR, extent * CATCH_REACH), room * CATCH_SHARE / 6);
+  if (!(reach > 0)) return null;
+  const candidates = [{ at: 0, guide: 0 }, { at: room / 2, guide: extent / 2 }, { at: room, guide: extent }];
   let best: { delta: number; guide: number } | null = null;
   for (const candidate of candidates) {
     const delta = candidate.at - start;
-    if (Math.abs(delta) <= tolerance && (!best || Math.abs(delta) < Math.abs(best.delta))) best = { delta, guide: candidate.guide };
+    if (Math.abs(delta) <= reach && (!best || Math.abs(delta) < Math.abs(best.delta))) best = { delta, guide: candidate.guide };
   }
   return best;
 }

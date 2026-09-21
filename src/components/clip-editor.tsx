@@ -496,6 +496,26 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
 
   if(!sequence && activeSequenceId) return <main className="p-8"><h1 className="mb-4 text-xl font-medium">This video is no longer available</h1><Button render={<Link href={`/p/${projectId}`} />}>Back to project</Button></main>;
   /**
+   * The frame is the editor, so a press on the picture has to be able to start one. Handles
+   * only exist for a layer that is both picked and on screen at the playhead; without them a
+   * press landed on the rendered text and selected it, which reads as an editor that has
+   * stopped working. So a press with nothing to grab picks the topmost layer showing at the
+   * playhead and leaves the handles under the pointer, ready for the next one. A press that
+   * already has something to grab is left alone: the handles, the quick actions and every
+   * other control below answer it themselves.
+   */
+  const pickOnCanvas = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || !allocation) return;
+    if ((event.target as HTMLElement).closest("button,a,input,[role=button]")) return;
+    const at = playhead.get() * output.fps;
+    const showing = (entry: { item: SequenceItem; from: number; duration: number }) => at >= entry.from && at < entry.from + entry.duration && !entry.item.hidden;
+    const held = canvasSelected && item ? allocation.items.find(entry => entry.item.id === item.id) : undefined;
+    if (held && showing(held)) return;
+    const top = allocation.items.filter(showing).sort((a, b) => (a.item.layer ?? 0) - (b.item.layer ?? 0)).at(-1);
+    if (!top) return;
+    setActiveItemId(top.item.id); setCanvasSelected(true); resetSelection();
+  };
+  /**
    * Media dropped on the frame lands where it was dropped: the same operations as a
    * timeline drop, with the frame position carried into the item's transform or the
    * image overlay's own coordinates. Audio ignores the spot and joins at the playhead.
@@ -591,14 +611,14 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
       <Button size="sm" disabled={rendering||assetBusy||!hasContent} onClick={render}>{rendering ? <Loader2 className="motion-safe:animate-spin" /> : <Wand2 />}{rendering ? "Rendering…" : "Render"}</Button>
     </Glass>
     <Button className="mx-4 mt-3 self-start xl:hidden" variant="outline" size="sm" aria-expanded={assetPanelOpen} onClick={()=>setAssetPanelOpen(!assetPanelOpen)}><FolderOpen />{assetPanelOpen ? "Hide assets" : "Browse assets"}</Button>
-    <fieldset disabled={assetBusy} className="flex min-h-0 min-w-0 flex-1 flex-col gap-5 px-4 pt-4 pb-5 lg:flex-row">
+    <fieldset disabled={assetBusy} aria-busy={assetBusy} className={`flex min-h-0 min-w-0 flex-1 flex-col gap-5 px-4 pt-4 pb-5 lg:flex-row ${assetBusy ? "cursor-progress" : ""}`}>
       <aside aria-label="Asset browser" {...libraryDropHandlers} className={`${assetPanelOpen ? "block" : "hidden xl:block"} w-full min-w-0 shrink-0 rounded-3xl lg:w-[320px] lg:overflow-y-auto lg:pr-1 ${libraryDrag ? "outline-2 outline-dashed outline-offset-2 outline-primary" : ""}`}>
         <MediaBrowser projectId={projectId} edl={savedEdl} beforeImport={save} afterImport={editor.reload} onBusy={setAssetBusy} onPreview={()=>player.current?.pause()} canPlace={!!sequence} onVideo={id=>{const name=appendVideo(id);if(name)notify(`${name} added to the end.`);}} onLibraryVideo={id=>void placeLibraryVideo(id).catch(error=>setActionError((error as Error).message))} onVideoLayer={id=>{const name=appendVideo(id,true);if(name)notify(`${name} added over the playhead.`);}} videoAction="Add to timeline" onPlace={(asset,mode)=>{const name=placeAsset(asset,mode);if(name)notify(`${name} added at the playhead.`);}} onRemoveVideo={mediaId=>{const name=edl.media.find(m=>m.id===mediaId)?.name ?? "That source";if(dispatched([{type:"media.remove",mediaId}]))notify(`${name} removed from the project.`);}}
           replace={replaceable} onReplace={(id,kind)=>{if(!item)return;if(kind==="video")replaceMedia(item.id,id);else void replaceAsset(item.id,id,0);}} />
       </aside>
       <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
         <div ref={previewArea} className="flex h-[55dvh] min-h-64 items-center justify-center overflow-hidden lg:h-auto lg:min-h-0 lg:flex-1">
-          {!sequence?.items.length ? <div {...frameDropHandlers} className={`flex h-full w-full flex-col items-center justify-center gap-4 rounded-2xl border border-dashed p-6 text-center transition-colors ${canvasDrop ? "border-primary bg-primary/10" : "border-white/15 bg-black/30"}`}><Square aria-hidden className="size-9 text-muted-foreground" /><h2 className="text-xl font-medium">Your empty canvas</h2><p className="max-w-sm text-sm leading-relaxed text-muted-foreground">{canvasDrop ? "Drop it here to start your video." : "Drag files or assets straight in, or start with a title, image, or audio. Everything is editable here."}</p><div className="flex flex-wrap justify-center gap-2"><Button variant="outline" onClick={()=>setAssetPanelOpen(true)}><FolderOpen />Browse assets</Button><Button onClick={()=>sequence ? addCanvas() : newSequence()}><Plus />{sequence ? "Add a blank scene" : "Create a video"}</Button></div></div> : <div {...frameDropHandlers} className="relative shrink-0" style={previewSize.width ? previewSize : {aspectRatio:`${output.width} / ${output.height}`,height:"100%",maxWidth:"100%"}}>
+          {!sequence?.items.length ? <div {...frameDropHandlers} className={`flex h-full w-full flex-col items-center justify-center gap-4 rounded-2xl border border-dashed p-6 text-center transition-colors ${canvasDrop ? "border-primary bg-primary/10" : "border-white/15 bg-black/30"}`}><Square aria-hidden className="size-9 text-muted-foreground" /><h2 className="text-xl font-medium">Your empty canvas</h2><p className="max-w-sm text-sm leading-relaxed text-muted-foreground">{canvasDrop ? "Drop it here to start your video." : "Drag files or assets straight in, or start with a title, image, or audio. Everything is editable here."}</p><div className="flex flex-wrap justify-center gap-2"><Button variant="outline" onClick={()=>setAssetPanelOpen(true)}><FolderOpen />Browse assets</Button><Button onClick={()=>sequence ? addCanvas() : newSequence()}><Plus />{sequence ? "Add a blank scene" : "Create a video"}</Button></div></div> : <div {...frameDropHandlers} onPointerDown={pickOnCanvas} className="relative shrink-0 select-none" style={previewSize.width ? previewSize : {aspectRatio:`${output.width} / ${output.height}`,height:"100%",maxWidth:"100%"}}>
             {canvasDrop && <div aria-hidden className="pointer-events-none absolute inset-0 z-20 rounded-2xl border-2 border-dashed border-primary/80 bg-black/35">
               <CanvasGrid />
               <span className="absolute size-16 -translate-x-1/2 -translate-y-1/2 rounded-xl border-2 border-primary bg-primary/20" style={{left:`${canvasDrop.x*100}%`,top:`${canvasDrop.y*100}%`}} />
