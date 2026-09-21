@@ -51,7 +51,14 @@ export async function applyPlan(projectId: string, raw: unknown, expectedRevisio
     if (!best) throw new Error("No template to apply this plan with.");
     templateId = best.templateId; templateFrom = "suggested";
   }
-  const overrides = mergeOverrides(mergeOverrides({ ...project.overrides }, local?.overrides ?? {}), resolved.overrides);
+  // A project about a subject inherits that subject's brand kit (decision 48), and it
+  // sits under everything else in the stack: a kit is a default for how the subject
+  // looks, not a decision about this video, so any override still wins over it.
+  const subject = project.subject.trim().toLowerCase();
+  const kit = subject
+    ? (await (await import("../glossary")).readGlossary(projectId)).terms.find((t) => t.term.toLowerCase() === subject)?.brand
+    : undefined;
+  const overrides = mergeOverrides(mergeOverrides(mergeOverrides(kit ? { brand: kit } : {}, project.overrides), local?.overrides ?? {}), resolved.overrides);
   const ruleIds = resolved.rules.map((r) => r.id);
   const author = `template:${templateId}/plan${ruleIds.length ? `/rule:${ruleIds.join(",")}` : ""}`;
 
