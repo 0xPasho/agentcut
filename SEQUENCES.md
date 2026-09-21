@@ -80,6 +80,7 @@ engine. UI and agent boundaries use the same validation.
 | `item.split` | Split at seconds relative to the item's source start, before silence cuts |
 | `item.detachAudio` | Lift a shot's sound onto its own track, muting the picture it came from |
 | `item.source` | Replace an item's footage in place, keeping its slot, overlays and placement |
+| `item.transition` | Set or clear how a shot arrives over the one before it on its track |
 
 `media.import` and `media.upload` are project tools accepting an `expectedRevision`.
 Both use the same probing/copying service as visual imports. Path imports read a local
@@ -109,6 +110,95 @@ file aliases during export.
 UI jobs, `project.render`, and CLI rendering resolve the same saved revision. `only`
 accepts sequence IDs as well as legacy clip IDs. Downloads are revision-specific.
 Empty sequences can be saved but cannot be exported.
+
+## Transitions between shots
+
+A shot can arrive *over* the one before it on its own track instead of after it.
+`transition` on the **incoming** shot says how: `kind` is `dissolve`, `dip`, `wipe` or
+`slide`, `durationSec` is how long the two shots play at once, `color` is what a dip
+passes through, and `direction` is the side a wipe or a slide arrives from. Absent is a
+hard cut, which is what every existing project has and what every new shot gets.
+
+It lives on the incoming shot rather than in an entity of its own because which two
+shots meet is already decided by the track, the array order and `at`. A separate record
+holding two item ids would state that a second time and go stale on every move, split
+and removal; a field on the item travels with the shot for free, and `item.remove`
+needs no clean-up pass behind it.
+
+**The overlap comes out of the programme, not out of the footage.** The incoming shot
+starts `durationSec` earlier and the video gets shorter by exactly that much. The
+alternative — consuming source handles so the programme keeps its length — was
+rejected. It would have to rewrite `clip.start`/`clip.end`, which rebases transcript
+words, edits and crop keyframes through the same trim path a hand trim uses: setting a
+transition would quietly move a shot's captions, and removing it could not put them
+back. It is also impossible for two of the things this editor edits — a shot already
+trimmed to the end of its source has no handles, and a canvas scene has no footage at
+all. Nothing is trimmed here, so a transition is exactly as reversible as it looks.
+
+Audio follows the picture. During an overlap both shots are already sounding, and two
+takes at once is louder than either, so each end of a joint gets an equal-power ramp
+(`crossfadeGain` in `src/lib/sequences.ts`): the incoming shot rises as a sine, the
+outgoing falls as a cosine of the same progress, and the joint holds its loudness
+rather than dipping in the middle the way a linear pair does. A template's transition
+sting (`sound.transitions`) is a separate sound on its own layer and is untouched by
+this; the two are meant to compose.
+
+`sequenceFrames()` allocates the overlap, so the timeline, the Remotion Player and the
+export agree on which frames are the blend and on how long the video is.
+`SequenceComposition` wraps each shot in `Transition`, which is frame-driven only: a
+CSS transition or animation is timed by the browser and would land differently on an
+export that renders frames out of order. A dip's colour plate sits inside the incoming
+shot, so it covers the track underneath and leaves the tracks above alone — a corner
+mark or a hook holds straight through the joint.
+
+### What is refused, and what is clamped
+
+`item.transition` validates against the two shots it joins and refuses, with the number
+in the message: a transition on the first shot of a track, one longer than the pair can
+spare (each shot keeps at least one frame of its own, and two transitions touching the
+same shot may not overlap each other), one shorter than a single frame, and one on a
+shot pinned to an `at` that leaves it no overlap to blend across.
+
+After that the geometry is **clamped, not refused**. Removing the shot before a
+transition, or shortening either neighbour, leaves the author's transition on the item
+and resolves it to whatever the joint can still afford, which may be nothing. The
+alternative would let an ordinary removal fail because something else on the track held
+a transition — a worse answer than a joint quietly going back to a cut, and one that
+would make transitions a hazard to every other edit.
+
+Splitting a shot leaves the opening blend on the first half; the second half meets the
+first on a hard cut. A transition carries `by` like any other edit, so one a template,
+a rule or an agent turn placed reads in "why is this here".
+
+Templates do not place transitions yet. A template decides captions, dead-air cuts,
+punch-ins, a hook and pictures from the transcript; the joints between main-track shots
+are not something it authored, and giving it a say over them is its own decision rather
+than a side effect of this one. The six deliberately silent older built-ins, and every
+other template, still produce exactly the video they produced before.
+
+### Using them
+
+In the editor, a marker sits on the seam between two shots on a track. With nothing set
+it appears while the track is under the pointer or the keyboard; once a transition is
+there it stays lit and the overlap it costs is drawn across both blocks, so the time it
+takes is visible rather than implied. Its menu holds the four kinds, three lengths and
+letting go of it, with anything the joint cannot afford disabled rather than offered and
+then refused. Exact values live in **All item properties**, whose Transition section is
+generated from the same schema the agent reads.
+
+Agents use `item.transition` through `project.edit`, over the file tool transport, HTTP
+and MCP, with the same validation and the same messages. Undo inverts it like any other
+operation, through the shared engine and the ordinary revision protocol.
+
+Transition verification: `pnpm test` covers the frame allocation, every refusal and its
+message, clamping when a neighbour is removed or shortened, splitting, inversion,
+authorship, the equal-power ramp, HTTP/agent-tool parity with rollback, MCP, and that an
+old EDL neither carries nor gains the field. `pnpm test:render` exports a real dissolve
+and reads it frame by frame — the first shot alone, both shots at once inside the joint
+with neither at full, the second shot alone after it — confirms a dip holds its colour
+across the middle of the joint while a mark on the track above does not darken, measures
+the outgoing shot's sound ramping down across the overlap, and checks that the
+UI service, the agent's render tool and the CLI export the same video frame for frame.
 
 ## Run from any folder
 
@@ -144,8 +234,9 @@ item and `hidden` hides its visuals. Source-free layers have a transparent backg
 so titles, images, and audio can span cuts without covering the footage underneath.
 The final uncovered background is black.
 
-Transitions, keyframed layer transforms, and automatic transcription of newly
-imported sources are not implemented. Existing source-crop keyframes remain supported.
+Consecutive shots on a track can be joined by a transition; see below. Keyframed
+layer transforms and automatic transcription of newly imported sources are not
+implemented. Existing source-crop keyframes remain supported.
 Per-item captions can be authored through properties or carried in from generated clips.
 The existing manual conflict resolution, transcript-extension, and crashed-render-lock
 limitations documented in [EDITOR.md](./EDITOR.md) still apply.

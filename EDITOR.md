@@ -20,6 +20,7 @@ trim behavior, and UI adapter. Both interfaces use these operations:
 | `item.place` | Patch item timing, layer, transform, volume, mute, and visibility |
 | `item.source` | Replace an item's footage in place, keeping its slot and overlays |
 | `item.detachAudio` | Lift a shot's own sound onto its own hidden track and mute the picture |
+| `item.transition` | How a shot arrives over the one before it on its track; `null` is a hard cut |
 | `clip.add` | Add a clip with a unique ID |
 | `clip.remove` | Remove the identified clip |
 | `clip.patch` | Change only supplied clip fields; caption fields merge individually |
@@ -30,6 +31,15 @@ trim behavior, and UI adapter. Both interfaces use these operations:
 
 All seven edit types are supported: silence, punch, emphasis, text, image, sound effect,
 and music.
+
+`item.transition` is the joint between two shots on one track. It is the only operation
+that writes the incoming shot's `transition`, and it validates against the pair it joins:
+a first shot has nothing to arrive over, and a joint refuses a blend longer than the two
+shots can spare. Past that, geometry is clamped by `sequenceFrames` rather than refused,
+so removing or shortening a neighbour can never fail because of a transition somewhere
+else on the track. The overlap shortens the video; no footage is trimmed, so the inverse
+operation restores the timing exactly. See [SEQUENCES.md](./SEQUENCES.md#transitions-between-shots)
+for the model, the edges and why the overlap is not taken out of source handles.
 
 `item.detachAudio` is how a shot's sound becomes editable on its own. It adds a second item
 over the same media with `hidden: true`, carrying the shot's silence cuts — and therefore its

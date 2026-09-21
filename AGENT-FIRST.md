@@ -72,6 +72,7 @@ uses, and everything the agent decides is inspectable and editable in the UI.
 | 60 | **One question per step, exactly one of them required.** The first ("what do you make, and who is it for") gates only the finish button, never the exit: skip is on every step and on Esc. | A full screen showing five boxes is the old card, larger. One required answer is what stops an empty interview from writing nothing, and one is as far as insisting may go. | All five at once; nothing required; all required. |
 | 61 | **The interview is an editor tool (`onboarding.status/answer/run/skip`), so all three interfaces share it.** The web asks it full screen, the chat panel asks it a question at a time above the composer, and any terminal agent asks it over MCP. Answers, state and the preferences section are the same for all; the host agent is told it may ask one question after doing the work, and never before. | Same requirement as editing: two interfaces to one thing, not two implementations. It also means an interview started in either place can be finished in the other. | A web-only interview with the agent pointing at it; a second set of agent-side questions. |
 | 62 | **What the interview writes lives in a marked section of `preferences.md`**, and its state file is written through a queue and an atomic rename. | Reruns appended a second copy of everything, and concurrent saves from two interfaces tore the state file, which read back as a fresh workspace and lost both the answers and the skip. | Appending on rerun; replacing the whole file and losing hand-written lines. |
+| 63 | **Renderer transitions are an item property, not a template section (2026-09-21).** A shot carries how it arrives over the one before it on its track; the overlap comes out of the video's length, never out of either shot's footage. Templates are not given a say over the joints yet. | Reversibility: nothing is trimmed, so removing a transition puts the timing back exactly — which consuming source handles could not, and which a canvas scene has no handles for anyway. A template today authors captions, cuts, punch-ins, a hook and pictures from the transcript; the cuts between main-track shots are not its work, and claiming them is its own decision. | Transitions as their own entity holding two item ids (goes stale on every move, split and removal); consuming handles to keep the programme length; shipping a template `transitions` section in the same pass. |
 
 ## Future, noted so the plan leaves room
 
@@ -146,8 +147,8 @@ uses, and everything the agent decides is inspectable and editable in the UI.
   by ffmpeg here and cached; `assets.searchAudio` / `assets.adoptAudio` find free-licence sound the way
   pictures are found, with eight synthesised starter sounds installed locally for offline use; templates
   carry a sound design (`sound.transitions`, `sound.opener`, a `query` on any sound source) with
-  `sound.mode: "off"` to refuse all of it. Transitions between shots are stings, not renderer transitions,
-  which is what Phase 2 deferred.
+  `sound.mode: "off"` to refuse all of it. Transitions between shots were stings, not renderer transitions,
+  which is what Phase 2 deferred — see the next entry for the renderer half.
 - **A template repertoire that ships with sound: implemented 2026-09-21.** Five more built-ins
   — `fast-cuts`, `quote-card`, `how-to-steps`, `news-brief`, `music-montage` — each with its own
   sound design, and `music-montage` is the first template that needs no transcript at all. A
@@ -165,6 +166,19 @@ uses, and everything the agent decides is inspectable and editable in the UI.
   several of them is something you say rather than a control. Templates can be chosen several
   at a time (**Multi**): `plan.templates` is a shortlist each video chooses from, shown as
   chips in the plan panel and honoured by `templates.suggest`.
+- **Renderer transitions between shots: implemented 2026-09-21.** Phase 2 item 5 deferred these
+  twice, and what shipped instead was a sting on every cut. The picture now blends too: a shot
+  carries a `transition` saying how it arrives over the one before it on its own track — a cross
+  dissolve, a dip through a colour, a wipe or a slide — written by the shared `item.transition`
+  operation and composed in `SequenceComposition`, so the timeline, the Player and the export
+  allocate the same frames. The overlap comes out of the video's length rather than out of either
+  shot's footage, which is what makes it exactly reversible, and the sound crossfades with the
+  picture because two takes at once is louder than either. A marker on the seam places, changes
+  and removes it; the properties panel carries the exact values from the same schema the agent
+  reads; every transition carries `by`, so a template's, a rule's or an agent turn's shows up in
+  "why is this here". Not done, deliberately: the **template** half of item 5 — a template still
+  decides captions, cuts, punch-ins, a hook and pictures, and says nothing about the joints
+  between shots. See decision 63 and [SEQUENCES.md](./SEQUENCES.md#transitions-between-shots).
 - **Phase 3: not started** (registry, caption translation, publishing, non-footage sources).
 
 ## Phases
@@ -193,7 +207,9 @@ Milestones, in order: M1 rules + glossary + preferences → M2 plan + panel → 
 2. Pack format: `pack.json` + `templates/` + `rules/` + `glossary` + `assets/`. `pack.import` (path or URL), `pack.export`, origin recorded, untrusted display before install.
 3. HTTP asset/pack provider in `src/lib/search`.
 4. Quick actions as saved prompts inside packs.
-5. Template transitions and SFX on punches.
+5. Template transitions and SFX on punches. *SFX on punches done (`rhythm.punch.sfx`). Renderer
+   transitions between shots done 2026-09-21 as the item-level `item.transition`; a template
+   section that places them is still open — see decision 63.*
 6. Proposal mode: large agent changes shown as a diff to accept or reject.
 
 **Phase 3 — registry, translation, publishing, non-footage sources**
