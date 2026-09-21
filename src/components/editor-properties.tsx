@@ -23,6 +23,11 @@ const motionSchema = (seed: Record<string, number>): Schema => ({
 });
 const names: Record<string, string> = { ease: "Travel to the next keyframe", by: "Placed by", t: "Start time (seconds)", d: "Duration (seconds)", x: "Left (pixels)", y: "Top / vertical position", w: "Width (pixels)", h: "Height (pixels)", start: "Source start (seconds)", end: "Source end (seconds)", crop: "Crop keyframes", layout: "Framing", topPct: "Top region (%)", src: "Asset ID or project filename", words: "Transcript words", w_word: "Word", p: "Recogniser confidence (0–1)", syncOffsetMs: "Caption sync (ms, + is later)", output: "Output", fontSizePct: "Font size (%)", maxWordsPerLine: "Words per line", positionY: "Caption position", gain: "Audio gain", duck: "Lower music during speech", loop: "Loop audio", durationSec: "Overlap (seconds)", kind: "Kind", direction: "Arrives from", color: "Colour" };
 const labelFor = (key: string) => names[key] ?? key.replace(/([A-Z])/g, " $1").replace(/^./, c => c.toUpperCase());
+/**
+ * A motion keyframe's geometry is a percentage of the OUTPUT frame; `crop`'s is source
+ * pixels. The two share field names, so a keyframe says which one it means.
+ */
+const MOTION_NAMES: Record<string, string> = { t: "Moment (seconds)", x: "Left (% of frame)", y: "Top (% of frame)", width: "Width (%)", height: "Height (%)", rotation: "Rotation (degrees)", opacity: "Opacity (0–1)", volume: "Volume (0–2)" };
 function seed(s: Schema): unknown {
   if (s.default !== undefined) return structuredClone(s.default);
   if (s.const !== undefined) return s.const;
@@ -46,7 +51,7 @@ export function Fields({ schema, value, onChange, label }: { schema: Schema; val
       </select></div><Fields schema={branches[active]} value={value} onChange={onChange} label={label} /></div>;
   }
   if (schema.const !== undefined) return null;
-  if (schema.type === "object") return <fieldset className="min-w-0 space-y-3 rounded-xl border border-border p-3"><legend className="px-1 text-sm font-medium">{label}</legend>{Object.entries(schema.properties ?? {}).filter(([k]) => k !== "id").map(([key,s]) => <Fields key={key} schema={s} label={key === "w" && schema.properties?.d ? "Word" : key === "y" && schema.properties?.h ? "Top (pixels)" : labelFor(key)} value={(value as Record<string, unknown>)?.[key]} onChange={v => onChange({ ...(value as object), [key]: v })} />)}</fieldset>;
+  if (schema.type === "object") return <fieldset className="min-w-0 space-y-3 rounded-xl border border-border p-3"><legend className="px-1 text-sm font-medium">{label}</legend>{Object.entries(schema.properties ?? {}).filter(([k]) => k !== "id").map(([key,s]) => <Fields key={key} schema={s} label={schema.properties?.ease ? MOTION_NAMES[key] ?? labelFor(key) : key === "w" && schema.properties?.d ? "Word" : key === "y" && schema.properties?.h ? "Top (pixels)" : labelFor(key)} value={(value as Record<string, unknown>)?.[key]} onChange={v => onChange({ ...(value as object), [key]: v })} />)}</fieldset>;
   if (schema.type === "array") {
     const values = (value ?? []) as unknown[];
     return <fieldset className="min-w-0 space-y-3 rounded-xl border border-border p-3"><legend className="px-1 text-sm font-medium">{label}</legend>
