@@ -16,7 +16,7 @@ const FRAME = "mx-auto w-full overflow-hidden rounded-3xl bg-black ring-1 ring-f
  * A 9:16 preview filling a 340px rail is 600px tall — taller than the panel beside
  * it and taller than most windows. Cap the tall ones by height and centre them.
  */
-const MAX_HEIGHT = 420;
+const MAX_HEIGHT = 460;
 function frameStyle(output: { width: number; height: number }): React.CSSProperties {
   return {
     width: "100%",

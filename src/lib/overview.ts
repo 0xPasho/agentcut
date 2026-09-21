@@ -40,7 +40,7 @@ export function projectVideos(edl: Edl): ProjectVideo[] {
       durationSec: sequenceFrames(sequence).duration / sequence.output.fps,
       shots: sequence.items.length,
       status: sequence.plan.status,
-      score: null,
+      score: sequence.plan.score,
       tags: sequence.plan.tags,
       summary: sequence.plan.summary,
       error: sequence.plan.reasons.error ?? null,
@@ -73,4 +73,29 @@ export function projectVideos(edl: Edl): ProjectVideo[] {
     if (a.sourceStart === null || b.sourceStart === null) return Number(a.sourceStart === null) - Number(b.sourceStart === null);
     return a.sourceStart - b.sourceStart;
   });
+}
+
+/** How the list is ordered. Score first: with forty candidates, ranking is the point. */
+export type VideoSort = "score" | "order" | "duration";
+
+export const SORTS: Array<{ value: VideoSort; label: string }> = [
+  { value: "score", label: "Best first" },
+  { value: "order", label: "Order in the video" },
+  { value: "duration", label: "Longest first" },
+];
+
+export function sortVideos(videos: ProjectVideo[], sort: VideoSort): ProjectVideo[] {
+  if (sort === "order") return videos;
+  const by = sort === "score"
+    // An unscored video was never a proposal, so it has no place in a ranking by
+    // score. It sorts last rather than sorting as a zero it did not earn.
+    ? (v: ProjectVideo) => (v.score === null ? -1 : v.score)
+    : (v: ProjectVideo) => v.durationSec;
+  return videos.toSorted((a, b) => by(b) - by(a));
+}
+
+export function statusCounts(videos: ProjectVideo[]): Record<SequenceStatus | "all", number> {
+  const counts = { all: videos.length, pending: 0, edited: 0, approved: 0, rendered: 0 };
+  for (const v of videos) counts[v.status] += 1;
+  return counts;
 }

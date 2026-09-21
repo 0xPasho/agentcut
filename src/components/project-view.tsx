@@ -27,8 +27,8 @@ import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { AgentPicker } from "@/components/agent-picker";
-import { Glass } from "@/components/ui/glass";
-import { VideoCard } from "@/components/video-card";
+import { Glass, ScrollEdge } from "@/components/ui/glass";
+import { ClipList, STATUS, StatusDot } from "@/components/clip-list";
 import { VideoPreview } from "@/components/video-preview";
 import { useEditor } from "@/lib/editor/use-editor";
 import { EditorStatus } from "./editor-status";
@@ -38,21 +38,28 @@ import { emptySequencePlan, type SequenceStatus } from "@/lib/plan/schema";
 import { api, assetUrl, clipUrl, type ProjectDetail } from "@/lib/client";
 import { useProjectStream } from "@/lib/use-project-stream";
 import { count, runtime } from "@/lib/format";
-import { projectVideos, type ProjectVideo } from "@/lib/overview";
+import { projectVideos, SORTS, sortVideos, statusCounts, type ProjectVideo, type VideoSort } from "@/lib/overview";
 import type { Edit } from "@/lib/edl";
 
 const BUSY = new Set(["download", "probe", "transcribe", "signals", "agent", "rendering", "bundling"]);
 const STATUSES: SequenceStatus[] = ["pending", "edited", "approved", "rendered"];
+const FILTERS: Array<{ value: SequenceStatus | "all"; label: string }> = [
+  { value: "all", label: "All" },
+  ...STATUSES.map((value) => ({ value, label: STATUS[value].label })),
+];
 
 export function ProjectView({ initial }: { initial: ProjectDetail }) {
   const router = useRouter();
   const statusId = useId();
+  const sortId = useId();
   const [project, setProject] = useState(initial);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [clipCount, setClipCount] = useState(6);
   const [brief, setBrief] = useState("");
   const [finding, setFinding] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [sort, setSort] = useState<VideoSort>("score");
+  const [filter, setFilter] = useState<SequenceStatus | "all">("all");
   const editor = useEditor(initial.id, initial.edl ? { edl: initial.edl, revision: initial.revision } : null);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,9 +71,14 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
   // into `sequences` under its own id on the first edit, so rendering the two
   // collections separately is what makes an edited project report "0 clips".
   const videos = useMemo(() => (edl ? projectVideos(edl) : []), [edl]);
+  const counts = useMemo(() => statusCounts(videos), [videos]);
+  const shown = useMemo(
+    () => sortVideos(filter === "all" ? videos : videos.filter((v) => v.status === filter), sort),
+    [videos, filter, sort],
+  );
   const selected = useMemo(
-    () => videos.find((v) => v.id === selectedId) ?? videos[0] ?? null,
-    [videos, selectedId],
+    () => videos.find((v) => v.id === selectedId) ?? shown[0] ?? null,
+    [videos, shown, selectedId],
   );
 
   const assetUrls = useMemo(() => {
@@ -128,6 +140,13 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
         ? { type: "sequence.remove", sequenceId: video.id }
         : { type: "clip.remove", clipId: video.id },
     ]);
+  };
+
+  /** One click to move a candidate out of triage, the commonest action at forty of them. */
+  const approve = (video: ProjectVideo) => {
+    if (!video.sequence) return;
+    const status = video.status === "approved" || video.status === "rendered" ? "pending" : "approved";
+    editor.dispatch([{ type: "sequence.plan.patch", sequenceId: video.id, patch: { status } }]);
   };
 
   const newVideo = () =>
@@ -267,23 +286,68 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
           </div>
 
           {videos.length ? (
-            <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-              {videos.map((video) => (
-                <VideoCard
-                  key={video.id}
-                  video={video}
-                  projectId={initial.id}
-                  revision={revision}
-                  aspect={aspectOf(video, edl.output)}
-                  selected={video.id === selected?.id}
-                  rendered={project.rendered.includes(video.id)}
-                  href={editHref(initial.id, video)}
-                  onSelect={() => setSelectedId(video.id)}
-                  onOpen={openEditor(video)}
-                  onDelete={() => remove(video)}
-                />
-              ))}
-            </ul>
+            <>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <div role="group" aria-label="Filter by status" className="flex flex-wrap items-center gap-1">
+                  {FILTERS.map(({ value, label }) => (
+                    <Button
+                      key={value}
+                      size="xs"
+                      variant={filter === value ? "secondary" : "ghost"}
+                      aria-pressed={filter === value}
+                      disabled={value !== "all" && counts[value] === 0}
+                      onClick={() => setFilter(value)}
+                      className="font-normal"
+                    >
+                      {value !== "all" && <StatusDot status={value} />}
+                      {label}
+                      <span className="text-muted-foreground tabular-nums">{counts[value]}</span>
+                    </Button>
+                  ))}
+                </div>
+                <div className="ms-auto flex items-center gap-2">
+                  <Label id={sortId} className="text-xs text-muted-foreground">Sort</Label>
+                  <Select value={sort} onValueChange={(v) => setSort(v as VideoSort)}>
+                    <SelectTrigger aria-labelledby={sortId} size="sm" className="w-44">
+                      <SelectValue>{(v) => SORTS.find((s) => s.value === v)?.label}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SORTS.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* The pane scrolls, not the page: at forty candidates a page that grows
+                  with the list pushes the preview, the agent and every action below
+                  five screens of rows. */}
+              <div className="relative">
+                <div className="-mx-2 overflow-y-auto px-2 lg:max-h-[calc(100dvh-19rem)] lg:min-h-80">
+                  {shown.length ? (
+                    <ClipList
+                      videos={shown}
+                      projectId={initial.id}
+                      revision={revision}
+                      selectedId={selected?.id ?? null}
+                      rendered={project.rendered}
+                      handlers={{
+                        onSelect: setSelectedId,
+                        onOpen: openEditor,
+                        onApprove: approve,
+                        onDelete: remove,
+                        href: (video) => editHref(initial.id, video),
+                      }}
+                    />
+                  ) : (
+                    <p className="px-2 py-8 text-center text-sm text-muted-foreground">
+                      No {STATUS[filter as SequenceStatus]?.label.toLowerCase()} videos.{" "}
+                      <button type="button" className="underline underline-offset-4" onClick={() => setFilter("all")}>Show all</button>
+                    </p>
+                  )}
+                </div>
+                <ScrollEdge edge="bottom" className="hidden h-10 rounded-b-3xl lg:block" />
+              </div>
+            </>
           ) : (
             <Card className="items-center gap-2 p-10 text-center">
               <Film aria-hidden className="size-7 text-muted-foreground" />
@@ -404,10 +468,6 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
 const editHref = (projectId: string, video: ProjectVideo) =>
   video.kind === "sequence" ? `/p/${projectId}/edit?sequence=${video.id}` : `/p/${projectId}/c/${video.id}`;
 
-const aspectOf = (video: ProjectVideo, fallback: { width: number; height: number }) => {
-  const o = video.sequence?.output ?? fallback;
-  return `${o.width} / ${o.height}`;
-};
 
 function MenuItem({
   children,

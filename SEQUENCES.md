@@ -53,7 +53,9 @@ In the editor:
 - Change each video's dimensions and frame rate in **Video settings**.
 - Use **Edit with agent** to continue the same saved edit, or **Render** to render.
 - Generated clips open in this same layered editor. The first saved edit promotes the
-  clip in place, keeping its ID, title, output settings, source selection, and edits.
+  clip in place, keeping its ID, title, output settings, source selection, edits and the
+  agent's score — at forty candidates the ranking is how you choose what to watch, and
+  losing it on the first edit loses it exactly when the work starts.
   Adding footage extends that edit; it does not create an independent copy. Project
   information screens link each saved video individually.
 

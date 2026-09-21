@@ -37,6 +37,14 @@ export const SequencePlan = z.object({
   /** Rules judged to hold for this video. */
   rules: z.array(z.string()).default([]),
   tags: z.array(z.string()).default([]),
+  /**
+   * How strongly the agent rated the moment this video was cut from, 0–100.
+   * `null` for a video that was never a proposal — a blank canvas or a hand-made cut.
+   * A generated clip carries its score across `clip.promote`: at forty candidates the
+   * ranking is how you decide what to watch, and losing it on the first edit means
+   * losing it exactly when you start working.
+   */
+  score: z.number().min(0).max(100).nullable().default(null),
   /** One line of what this video says, read by the series section to avoid saying it twice. */
   summary: z.string().default(""),
   beats: z.array(Beat).default([]),
