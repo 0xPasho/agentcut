@@ -226,7 +226,9 @@ uses, and everything the agent decides is inspectable and editable in the UI.
   the timeline draws a diamond per keyframe, and a still gets a slow push without anybody typing a
   number — Ken Burns falls out of this rather than being built beside it. Every keyframe carries
   `by`, so an agent's move reads in "why is this here" like any other edit. Not done, deliberately:
-  templates place no motion, and there is no curve editor — the five named eases are the catalogue.
+  templates place no motion, and there is no curve editor — the five named eases are the catalogue,
+  which costs one thing worth stating, that splitting a shot through a *curved* segment re-eases each
+  half rather than reproducing it, since no name in the catalogue means "the first 40% of an ease".
   See [SEQUENCES.md](./SEQUENCES.md#keyframed-layer-transforms).
 - **Phase 3: not started** (registry, caption translation, publishing, non-footage sources).
 
