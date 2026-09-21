@@ -169,7 +169,9 @@ test("a derived sequence is a full editable copy in another aspect, recentred, l
 
 test("onboarding turns answers into preferences and glossary entries, once, and can be skipped instead", async () => {
   const state = await onboarding.onboardingState();
-  assert.deepEqual(state, { done: false, hasPreferences: false });
+  assert.equal(state.status, "pending");
+  assert.equal(state.done, false);
+  assert.equal(state.hasPreferences, false);
   await assert.rejects(onboarding.runOnboarding({ who: "  " }, { runner: { id: "t", label: "t", available: async () => true, run: async () => ({ provider: "t", text: "", events: [], durationMs: 1 }) } }), /Answer at least one/);
   let answers: unknown = null;
   const runner: AgentProvider = { id: "test", label: "Test", available: async () => true, run: async (o) => {
@@ -183,12 +185,18 @@ test("onboarding turns answers into preferences and glossary entries, once, and 
   assert.equal(result.glossary[0].term, "Deska");
   const { readGlossary } = await import("../src/lib/glossary");
   assert.ok((await readGlossary()).terms.some((t) => t.term === "Deska"));
-  assert.deepEqual(await onboarding.onboardingState(), { done: true, hasPreferences: true });
+  const finished = await onboarding.onboardingState();
+  assert.equal(finished.status, "done");
+  assert.equal(finished.hasPreferences, true);
   // Without any agent the answers are kept verbatim rather than lost.
   const { savePreferences } = await import("../src/lib/preferences");
   await savePreferences("", "workspace");
   const broken: AgentProvider = { ...runner, run: async () => { throw new Error("no CLI"); } };
   await assert.rejects(onboarding.runOnboarding({ who: "x" }, { runner: broken }));
+  // A skip ends the asking without pretending the interview was answered: it stays
+  // reachable, which is what lets the Library and the agent offer it again.
   await onboarding.skipOnboarding();
-  assert.equal((await onboarding.onboardingState()).done, true);
+  const skipped = await onboarding.onboardingState();
+  assert.equal(skipped.status, "skipped");
+  assert.equal(skipped.done, false);
 });

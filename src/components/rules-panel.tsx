@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useId, useState } from "react";
-import { Loader2, Plus, Trash2, Wand2 } from "lucide-react";
+import Link from "next/link";
+import { Loader2, Plus, Sparkles, Trash2, Wand2 } from "lucide-react";
 import { api } from "@/lib/client";
 import type { Rule, RuleRecord, RuleLevel } from "@/lib/rules/schema";
 import type { RuleEvaluation } from "@/lib/rules/evaluate";
@@ -89,6 +90,7 @@ export function RulesPanel({ projectId, sequenceId, beforeApply, afterApply }: {
           onSave={(glossary, level) => run("glossary", () => write({ tool: "glossary.save", glossary, level }, { action: "glossary.save", glossary }))} />
       </TabsContent>
       <TabsContent value="preferences" className="space-y-4 pt-4">
+        {!projectId && <InterviewEntry hasPreferences={!!data.preferences.workspace} />}
         <PreferencesEditor label={projectId ? "In general (every project)" : "How you like your videos"} text={data.preferences.workspace} pending={pending === "prefs:workspace"}
           onSave={(text) => run("prefs:workspace", () => write({ tool: "preferences.set", text, level: "workspace" }, { action: "preferences.set", text }))} />
         {projectId && <PreferencesEditor label="For this project" text={data.preferences.project} pending={pending === "prefs:project"}
@@ -286,6 +288,26 @@ function GlossaryEditor({ glossary, canProject, pending, onSave }: {
       </div>
       {canProject && <p className="text-xs text-muted-foreground">Shown merged: the project's entries win over the workspace's on the same term. Saving writes the whole list at the chosen level.</p>}
     </form>
+  );
+}
+
+/**
+ * The interview, kept where preferences live. It is not a first-run banner that
+ * disappears once dismissed: whoever skipped it, or answered it a year ago, opens
+ * it from here. Running it again replaces the section it wrote, not the lines the
+ * owner typed themselves.
+ */
+function InterviewEntry({ hasPreferences }: { hasPreferences: boolean }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border p-3">
+      <Sparkles className="size-4 text-primary" aria-hidden />
+      <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+        {hasPreferences
+          ? "Answer the setup questions again to rewrite these from scratch. Lines you wrote yourself are kept."
+          : "Five questions about what you make. The answers become the preferences above."}
+      </p>
+      <Button size="sm" variant="outline" render={<Link href="/welcome" />}>{hasPreferences ? "Redo the interview" : "Tell the agent who you are"}</Button>
+    </div>
   );
 }
 

@@ -67,6 +67,11 @@ uses, and everything the agent decides is inspectable and editable in the UI.
 | 55 | **An observation is a change to something an agent, rule or template placed, or a text correction in captions.** Work created from scratch is not a correction. | Logging every operation is noise. | Log everything. |
 | 56 | **OpenCode drives projects through MCP in phase 1;** a host-launched adapter comes in phase 2. | MCP covers the terminal case without a new adapter. | Adapter first. |
 | 57 | **Phase 1 ships as milestones, each usable alone:** M1 rules + glossary + preferences; M2 two-level plan + panel; M3 conversation + MCP + SSE; M4 raw-video batch with status and approval; M5 editor context + frames + observation bank; M6 strong templates + onboarding. | Phase 1 is too big to land at once. | Big-bang phase. |
+| 58 | **The interview is its own full-screen route (`/welcome`), not a card on the home page.** First run redirects there once, from `/` only; skipping or finishing lands back home for good, and no other page ever redirects. | Setting up and making a video are two jobs. Sharing one page made both look optional and neither look finished, and a card that disappears cannot be returned to. A route can be left, linked and reopened. | A modal over the home page; a blocking gate before the editor. |
+| 59 | **A skip is reversible and is not "done".** State is `pending | skipped | done`: skipping stops the asking and keeps the answers, the Library always carries an entry to the interview, and the home reminder is one dismissible line. Only skipping, finishing or reopening moves the status — an answer saved later never puts it back in the way. | Easy to skip is only safe if it is easy to come back; otherwise everyone skips once and the agent guesses forever. Conflating skip with done made the interview unreachable. | A permanent silent skip; nagging until answered. |
+| 60 | **One question per step, exactly one of them required.** The first ("what do you make, and who is it for") gates only the finish button, never the exit: skip is on every step and on Esc. | A full screen showing five boxes is the old card, larger. One required answer is what stops an empty interview from writing nothing, and one is as far as insisting may go. | All five at once; nothing required; all required. |
+| 61 | **The interview is an editor tool (`onboarding.status/answer/run/skip`), so all three interfaces share it.** The web asks it full screen, the chat panel asks it a question at a time above the composer, and any terminal agent asks it over MCP. Answers, state and the preferences section are the same for all; the host agent is told it may ask one question after doing the work, and never before. | Same requirement as editing: two interfaces to one thing, not two implementations. It also means an interview started in either place can be finished in the other. | A web-only interview with the agent pointing at it; a second set of agent-side questions. |
+| 62 | **What the interview writes lives in a marked section of `preferences.md`**, and its state file is written through a queue and an atomic rename. | Reruns appended a second copy of everything, and concurrent saves from two interfaces tore the state file, which read back as a fresh workspace and lost both the answers and the skip. | Appending on rerun; replacing the whole file and losing hand-written lines. |
 
 ## Future, noted so the plan leaves room
 
@@ -115,7 +120,10 @@ uses, and everything the agent decides is inspectable and editable in the UI.
   aspect, `sequence.derive` for one editable sequence per aspect, schematic SVG previews. Onboarding is a
   five-question card on the home page about who is editing; an agent turns the answers into preferences and
   glossary entries; skippable once. Not done: rendered thumbnails (schematic instead), transitions and SFX
-  (phase 2 as decided).
+  (phase 2 as decided). **Superseded 2026-09-20** by decisions 58-62: the card became the full-screen
+  `/welcome` route, the skip became reversible, and the interview became a shared tool the agent asks
+  through too (`src/lib/onboarding.ts`, `src/components/welcome.tsx`, `src/components/onboarding-chat.tsx`,
+  `tests/onboarding.test.ts`).
 - **Phase 1 complete.**
 - **Phase 2 implemented 2026-09-17:** video in the library (`workspace/library/video`, uploads, drop-in,
   `media.import` by asset id with `place`, library videos placed from the browser or by drag); template

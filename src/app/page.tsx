@@ -1,19 +1,24 @@
 import Link from "next/link";
-import { Clapperboard, Library, Trash2 } from "lucide-react";
+import { redirect } from "next/navigation";
+import { Clapperboard, Library, MessageCircle, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { q } from "@/lib/db";
 import { NewProject } from "@/components/new-project";
 import { Badge } from "@/components/ui/badge";
 import { ProjectRow } from "@/components/project-row";
 import { Glass } from "@/components/ui/glass";
-import { Onboarding } from "@/components/onboarding";
-import { onboardingState, ONBOARDING_QUESTIONS } from "@/lib/onboarding";
+import { OnboardingReminder } from "@/components/onboarding-reminder";
+import { onboardingState } from "@/lib/onboarding";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const projects = q.listProjects();
   const onboarding = await onboardingState();
+
+  // First run goes to the interview, once. Skipping or finishing it lands back
+  // here for good; a deep link to any other page is never redirected.
+  if (onboarding.status === "pending" && !onboarding.hasPreferences) redirect("/welcome");
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-8 px-4 sm:px-6 pt-4 pb-14">
@@ -28,13 +33,17 @@ export default async function Home() {
         <Badge variant="secondary" className="font-mono text-xs">
           local
         </Badge>
-        <Button variant="ghost" size="sm" className="ml-auto" render={<Link href="/library" />}>
+        <Button variant="secondary" size="sm" nativeButton={false} className="ml-auto" render={<Link href="/chat" />}>
+          <MessageCircle className="size-4" />
+          New chat
+        </Button>
+        <Button variant="ghost" size="sm" render={<Link href="/library" />}>
           <Library className="size-4" />
           Library
         </Button>
       </Glass>
 
-      {!onboarding.done && !onboarding.hasPreferences && <Onboarding questions={ONBOARDING_QUESTIONS} />}
+      {!onboarding.hasPreferences && onboarding.reminder && <OnboardingReminder />}
       <NewProject />
 
       {projects.length > 0 ? (
