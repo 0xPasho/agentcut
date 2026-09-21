@@ -12,6 +12,7 @@ let database: typeof import("../src/lib/db");
 let tools: typeof import("../src/lib/editor/tools");
 let conversation: typeof import("../src/lib/editor/conversation");
 let mcp: typeof import("../src/lib/mcp");
+import { sequenceFrames } from "../src/lib/sequences";
 
 before(async () => {
   workspace = await fs.mkdtemp(path.join(os.tmpdir(), "agentcut-conversation-"));
@@ -159,4 +160,25 @@ test("an agent turn's changes are recorded and can be taken back as one edit, un
   assert.match(thread.at(-1)!.text, /Undid the agent's changes/);
   await assert.rejects(conversation.undoMessage("undo", reply.id), /already been undone/);
   await assert.rejects(conversation.undoMessage("undo", 999999), /Message not found/);
+});
+
+test("a terminal agent sets a transition over MCP, with the same contract and the same refusal as the UI", async () => {
+  const id = "mcp-joint";
+  database.q.insertProject({ id, name: id, source_path: "", created_at: Date.now() });
+  const shot = (name: string) => ({ id: name, mediaId: null, clip: { id: name, title: name, start: 0, end: 2, crop: [], layout: { type: "crop" }, captions: {}, words: [], edits: [], hook: "", reason: "", score: 50, tags: [] } });
+  const start = store.publishClips(id, { version: 1, projectId: id, source: null, output: { width: 640, height: 360, fps: 10 }, clips: [], media: [],
+    sequences: [{ id: "s", title: "Two shots", output: { width: 640, height: 360, fps: 10 }, items: [shot("a"), shot("b")], plan: {} }], plan: {} } as never);
+  const edit = mcp.listMcpTools().find((t) => t.name === "agentcut_project_edit")!;
+  assert.ok(JSON.stringify(edit.inputSchema).includes("item.transition"), "the joint is part of the published tool contract, not a private operation");
+  const call = (operations: unknown[], expectedRevision: number) => mcp.handleMcpRequest({ jsonrpc: "2.0", id: 11, method: "tools/call",
+    params: { name: "agentcut_project_edit", arguments: { projectId: id, expectedRevision, operations } } }, "1.0") as Promise<{ content: Array<{ text: string }>; isError?: boolean }>;
+  const set = await call([{ type: "item.transition", sequenceId: "s", itemId: "b", transition: { kind: "slide", durationSec: 0.5, direction: "up" } }], start.revision);
+  assert.ok(!set.isError, set.content?.[0]?.text);
+  const saved = store.readEditor(id).edl.sequences[0];
+  assert.equal(saved.items[1].transition!.kind, "slide");
+  assert.equal(sequenceFrames(saved).duration, 35, "the programme is shorter by exactly what the joint takes");
+  // The first shot on a track has nothing to arrive over, through this transport too.
+  const refused = await call([{ type: "item.transition", sequenceId: "s", itemId: "a", transition: { kind: "dissolve", durationSec: 0.5 } }], store.readEditor(id).revision);
+  assert.equal(refused.isError, true);
+  assert.match(refused.content[0].text, /first shot on its track/);
 });
