@@ -6,7 +6,7 @@ import { Transition } from "@/lib/edl";
 import type { Edit, MediaSource, VideoSequence } from "@/lib/edl";
 import type { EditorOperation } from "@/lib/editor/operations";
 import { buildTimelineGroupMove, buildTimelineMove, buildTimelineTrim, timelineCollides } from "@/lib/editor/timeline-interactions";
-import { snapSpan, snapTargets, snapTime, type SnapPoint } from "@/lib/editor/snapping";
+import { snapDraggedSpan, snapSpan, snapTargets, snapTime, type SnapPoint } from "@/lib/editor/snapping";
 import { usePlayhead, usePlayheadSelector, usePlayheadStore } from "@/lib/editor/playhead";
 import { cachedMediaPeaks, cachedPeaks, loadMediaPeaks, loadPeaks, thinPeaks } from "@/lib/editor/waveform";
 import { cachedFrames, loadFrames } from "@/lib/editor/filmstrip";
@@ -368,8 +368,6 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
     lastPreview.current = now;
     onSeek(Math.max(0, seconds));
   };
-  const pullSpan = (at: number, duration: number, event: { metaKey?: boolean; ctrlKey?: boolean }, excludeId?: string) =>
-    magnet(event) ? snapSpan(at, duration, targets(excludeId), tolerance) : { at, guide: null };
   const layerAt = (clientY: number, fallback: number) => {
     const rows = viewport.current?.querySelectorAll<HTMLElement>("[data-timeline-layer]");
     for (const row of rows ?? []) {
@@ -485,7 +483,7 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
     const delta = roundFrame((event.clientX - d.x + (viewport.current?.scrollLeft ?? 0) - d.scrollLeft) / scale);
     if (d.kind === "move") {
       const layer = layerAt(event.clientY, d.layer);
-      const pull = pullSpan(Math.max(0, roundFrame(d.at + delta)), d.duration, event, d.id);
+      const pull = snapDraggedSpan(d.at, delta, d.duration, targets(d.id), magnet(event) ? tolerance : 0);
       const target = layer === 0 && event.altKey && group.current.length < 2
         ? { ...insertion(d.id, positionAt(event.clientX)), guide: null }
         : { at: Math.max(0, roundFrame(pull.at)), index: undefined, guide: pull.guide };
@@ -749,6 +747,12 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
               const audio = detached || (!item.mediaId && item.clip.edits.length > 0 && item.clip.edits.every(edit => edit.type === "music" || edit.type === "sfx"));
               const active = selection.has(item.id), primary = selectedId === item.id;
               const clipWidth = Math.max(40, duration / fps * scale);
+              // Both trim grips are cut out of the clip's own body, so a fixed width ate the
+              // short ones: twelve pixels each on a forty-pixel clip, twenty-four each once
+              // the clip passed sixty-four, left barely a sliver in the middle — and trying
+              // to move a short clip trimmed it instead. A grip is a fifth of the clip it
+              // belongs to, so more than half of any clip is always somewhere to grab it by.
+              const grip = Math.max(8, Math.min(24, clipWidth * .2));
               const moving = ghost?.id === item.id && ghost.kind !== "effect";
               return <ContextMenu key={item.id} onOpenChange={open => {
                 if (!open) return;
@@ -791,7 +795,7 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
                   <span className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/65 via-black/10 to-black/25" />
                   <span className="pointer-events-none relative flex items-center gap-1 px-3 py-1 text-[11px] font-medium text-white">{audio && <Music2 aria-hidden className="size-3 shrink-0" />}<span className="truncate">{shotName(item)}</span>{item.hidden && <EyeOff aria-label="Visuals hidden" className="size-3 shrink-0" />}{item.muted && <VolumeX aria-label="Audio muted" className="size-3 shrink-0" />}</span>
                 </button>
-                {(["start", "end"] as const).map(edge => <button key={edge} type="button" aria-label={`Trim ${edge} of ${item.clip.title}`} title={`Drag to trim ${edge}; arrow keys adjust one frame`} className={`absolute inset-y-0 z-20 w-3 cursor-ew-resize touch-none rounded-sm bg-primary/80 text-primary-foreground focus-visible:outline-2 focus-visible:outline-ring ${primary ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"} ${edge === "start" ? "left-0" : "right-0"} ${clipWidth >= 64 ? `after:absolute after:inset-y-0 after:w-6 after:content-[''] ${edge === "start" ? "after:left-0" : "after:right-0"}` : ""}`} onPointerDown={event => begin(event, item.id, edge)} {...sharedPointer} onClick={event => event.stopPropagation()} onKeyDown={event => {
+                {(["start", "end"] as const).map(edge => <button key={edge} type="button" aria-label={`Trim ${edge} of ${item.clip.title}`} title={`Drag to trim ${edge}; arrow keys adjust one frame`} style={{ width: grip }} className={`absolute inset-y-0 z-20 cursor-ew-resize touch-none rounded-sm bg-primary/80 text-primary-foreground focus-visible:outline-2 focus-visible:outline-ring ${primary ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"} ${edge === "start" ? "left-0" : "right-0"}`} onPointerDown={event => begin(event, item.id, edge)} {...sharedPointer} onClick={event => event.stopPropagation()} onKeyDown={event => {
                   if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
                   event.preventDefault();
                   try { commit(buildTimelineTrim(sequence, item.id, edge, (event.key === "ArrowLeft" ? -1 : 1) * (event.shiftKey ? 1 : 1 / fps), media), "Clip trimmed."); } catch (error) { setNotice(error instanceof Error ? error.message : NO_MORE_FOOTAGE); }

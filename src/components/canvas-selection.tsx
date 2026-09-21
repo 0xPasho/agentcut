@@ -11,8 +11,8 @@ import { usePlayhead } from "@/lib/editor/playhead";
 
 type Transform = typeof DEFAULT_ITEM_TRANSFORM;
 const SNAP_PX = 8;
-/** The player's own controls live along the bottom edge; handles stay clear of them. */
-const CONTROLS_PX = 44;
+/** Enough of the resize handle stays inside the frame to be grabbed at any size. */
+const HANDLE_PX = 16;
 export type CanvasPreview = { id: string; transform?: Transform; clip?: Clip; keyframes?: TransformKeyframe[] } | null;
 type Inner = { key: string; target: OverlayTarget; box: Box };
 const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
@@ -191,16 +191,15 @@ export function CanvasSelection({item,sequence,dispatch,onPreview,selectedEdit=n
     },
   });
   if(!active)return null;
-  const floor=(area.current?.clientHeight??Infinity)-CONTROLS_PX;
   return <div ref={area} className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl">
     {dragging && <CanvasGrid />}
     {guides.x!==null && <span aria-hidden className="pointer-events-none absolute inset-y-0 z-10 w-px bg-primary/90 shadow-[0_0_6px_rgba(255,218,42,.6)]" style={{left:guides.x}} />}
     {guides.y!==null && <span aria-hidden className="pointer-events-none absolute inset-x-0 z-10 h-px bg-primary/90 shadow-[0_0_6px_rgba(255,218,42,.6)]" style={{top:guides.y}} />}
     {bounds && <div style={{position:"absolute",...bounds}} className="z-10 border border-primary">
-      <button type="button" aria-label={`Move ${item.clip.title} on canvas`} title="Drag to move; it snaps to the frame's edges and centre. Hold Command or Control to pass them by. Arrow keys move 1%; Shift moves 5%." style={{bottom:Math.max(0,bounds.top+bounds.height-floor)}} className="pointer-events-auto absolute inset-0 touch-none cursor-move bg-transparent focus-visible:outline-2 focus-visible:outline-ring"
+      <button type="button" aria-label={`Move ${item.clip.title} on canvas`} title="Drag to move; it snaps to the frame's edges and centre. Hold Command or Control to pass them by. Arrow keys move 1%; Shift moves 5%." className="pointer-events-auto absolute inset-0 touch-none cursor-move bg-transparent focus-visible:outline-2 focus-visible:outline-ring"
         onKeyDown={e=>{const d=ARROWS[e.key];if(!d)return;e.preventDefault();const step=e.shiftKey?5:1;commit({...transform,x:transform.x+d[0]*step,y:transform.y+d[1]*step});}}
         onPointerDown={e=>begin(e,false)} {...events} />
-      <button type="button" aria-label={`Resize ${item.clip.title} on canvas`} title="Drag to resize; hold Shift to keep its proportions. Arrow keys adjust width and height." style={{left:Math.max(0,Math.min(bounds.width-8,(area.current?.clientWidth??0)-bounds.left-16)),top:Math.max(0,Math.min(bounds.height-8,(area.current?.clientHeight??0)-bounds.top-60))}} className="pointer-events-auto absolute size-4 touch-none cursor-nwse-resize rounded-full border-2 border-background bg-primary focus-visible:outline-2 focus-visible:outline-ring"
+      <button type="button" aria-label={`Resize ${item.clip.title} on canvas`} title="Drag to resize; hold Shift to keep its proportions. Arrow keys adjust width and height." style={{left:Math.max(0,Math.min(bounds.width-8,(area.current?.clientWidth??0)-bounds.left-HANDLE_PX)),top:Math.max(0,Math.min(bounds.height-8,(area.current?.clientHeight??0)-bounds.top-HANDLE_PX))}} className="pointer-events-auto absolute size-4 touch-none cursor-nwse-resize rounded-full border-2 border-background bg-primary focus-visible:outline-2 focus-visible:outline-ring"
         onKeyDown={e=>{const d=ARROWS[e.key];if(!d)return;e.preventDefault();commit({...transform,width:Math.max(.1,transform.width+d[0]),height:Math.max(.1,transform.height+d[1])});}}
         onPointerDown={e=>begin(e,true)} {...events} />
     </div>}
@@ -208,11 +207,10 @@ export function CanvasSelection({item,sequence,dispatch,onPreview,selectedEdit=n
     {inner.map(handle=>{
       const label=overlayLabel(item.clip,handle.target);
       const picked=handle.target.kind==="edit"&&handle.target.index===selectedEdit;
-      const height=Math.max(8,Math.min(handle.box.height,floor-handle.box.top));
       return <button key={handle.key} type="button" aria-label={`Move ${label} on canvas`} aria-pressed={picked}
         title={handle.target.kind==="captions"?"Drag to move the captions up or down. Arrow keys move 1%; Shift moves 5%.":"Drag to move; it snaps to the frame's edges and centre. Hold Command or Control to pass them by. Click to edit it. Arrow keys move 1%; Shift moves 5%."}
-        style={{position:"absolute",left:handle.box.left,top:handle.box.top,width:handle.box.width,height}}
-        className={`pointer-events-auto z-20 touch-none rounded-md bg-transparent outline-1 outline-dashed focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring ${picked?"outline-primary":"outline-white/45 hover:outline-primary/80"} ${handle.target.kind==="captions"?"cursor-ns-resize":"cursor-move"}`}
+        style={{position:"absolute",left:handle.box.left,top:handle.box.top,width:handle.box.width,height:Math.max(8,handle.box.height)}}
+        className={`pointer-events-auto z-20 touch-none rounded-md bg-transparent outline-1 outline-dashed focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring ${picked?"outline-primary":"outline-white/25 hover:outline-primary/80"} ${handle.target.kind==="captions"?"cursor-ns-resize":"cursor-move"}`}
         {...innerEvents(handle)} />;
     })}
   </div>;

@@ -42,9 +42,10 @@ In the editor:
 - Place titles, images, and audio on independent canvas layers, including music spanning cuts.
 - Use **Captions** and **Add** for common shot edits. Source-frame
   capture uses the selected shot’s media, through the same `assets.capture` tool.
-- Select a clip and its controls appear over the frame: hook, colours, mute, separate audio,
-  split, duplicate, remove. Nothing selected means an empty column — the plan, templates,
-  rules and format live behind **Video** in the header.
+- Select a clip and its controls appear in the bar under the frame: hook, colours, mute,
+  separate audio, split, duplicate, remove. The picture itself carries nothing but the
+  layer's own handles, so every part of it can be dragged. Nothing selected means an empty
+  column — the plan, templates, rules and format live behind **Video** in the header.
 - Separate a shot’s audio to move, trim or level it on its own track. Every clip backed by
   footage draws that footage’s waveform.
 - Find sounds online from the editor: free-licence search, downloaded into the project with

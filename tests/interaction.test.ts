@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { emptySequencePlan } from "../src/lib/plan/schema";
 import assert from "node:assert/strict";
 import { Clip, DEFAULT_ITEM_TRANSFORM, Edl, type Edit } from "../src/lib/edl";
-import { snapAxis, snapSpan, snapTargets, snapTime } from "../src/lib/editor/snapping";
+import { snapAxis, snapDraggedSpan, snapSpan, snapTargets, snapTime } from "../src/lib/editor/snapping";
 import { classifyFile, dropDuration, parseDrag } from "../src/lib/editor/dnd";
 import { applyOperations } from "../src/lib/editor/operations";
 import { invertOperations } from "../src/lib/editor/history";
@@ -37,6 +37,25 @@ test("snapping prefers the playhead, respects tolerance and pulls a span by its 
   // A long span near the origin catches the origin by its head rather than being pushed
   // before it to satisfy its tail.
   assert.deepEqual(snapSpan(0.05, 30, snapTargets(fixture().sequences[0]), 0.3), { at: 0, guide: { at: 0, kind: "origin" } });
+});
+
+test("a drag that only changes track keeps the time the clip already had", () => {
+  const sequence = fixture().sequences[0];
+  const targets = snapTargets(sequence, { excludeId: "overlay", playheadSec: 5.5 });
+  const tolerance = 0.6;
+  // The overlay sits at 9, within reach of the cut at 7 and of its own neighbour. A drag
+  // straight down moves no distance along the timeline, so it lands exactly where it was.
+  assert.deepEqual(snapDraggedSpan(9, 0, 2, targets, tolerance), { at: 9, guide: null });
+  assert.deepEqual(snapDraggedSpan(9, 0.4, 2, targets, tolerance), { at: 9, guide: null });
+  // Pulled past the magnet's reach it snaps normally again, by whichever edge is closest.
+  assert.deepEqual(snapDraggedSpan(9, -1.6, 2, targets, tolerance), { at: 7, guide: { at: 7, kind: "edge" } });
+  assert.deepEqual(snapDraggedSpan(9, -3.2, 2, targets, tolerance), { at: 5.5, guide: { at: 5.5, kind: "playhead" } });
+  // The hold is measured on the travel, never on the landing: a drag long enough to bury the
+  // clip before the origin still lands on it rather than being held where it started.
+  assert.deepEqual(snapDraggedSpan(0.4, -12, 2, targets, tolerance), { at: 0, guide: { at: 0, kind: "origin" } });
+  // With the magnet off, the drag is exactly as long as the pointer made it, floored at zero.
+  assert.deepEqual(snapDraggedSpan(9, 0.4, 2, targets, 0), { at: 9.4, guide: null });
+  assert.deepEqual(snapDraggedSpan(0.4, -12, 2, targets, 0), { at: 0, guide: null });
 });
 
 test("the drag vocabulary classifies desktop files and survives hostile payloads", () => {

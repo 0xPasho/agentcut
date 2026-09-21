@@ -60,6 +60,21 @@ export function snapSpan(at: number, duration: number, targets: SnapPoint[], tol
   return start < 0 ? { at: 0, guide: null } : { at: start, guide: tail.guide! };
 }
 
+/**
+ * Where a span being dragged along the timeline lands.
+ *
+ * The magnet holds a clip where it already is until the drag pulls it further than the magnet
+ * reaches — the same distance it snaps to other edges from. Without that, a drag straight down
+ * onto the next track jumped the clip onto whatever edge happened to be within reach, so a
+ * change of track silently became a change of time. The hold is measured on the travel, not on
+ * where the clip would land, so a long drag towards the origin still lands on it.
+ */
+export function snapDraggedSpan(from: number, delta: number, duration: number, targets: SnapPoint[], tolerance: number): SnapResult {
+  if (!(tolerance > 0)) return { at: Math.max(0, from + delta), guide: null };
+  if (Math.abs(delta) <= tolerance) return { at: from, guide: null };
+  return snapSpan(Math.max(0, from + delta), duration, targets, tolerance);
+}
+
 /** How far a catch reaches as a share of the axis, so the pull feels the same however big the preview is drawn. */
 const CATCH_REACH = .012;
 /** Under this many pixels a catch is not felt at all, so a small preview keeps a reach it can express. */

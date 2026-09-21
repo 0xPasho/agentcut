@@ -4,13 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Player, type PlayerRef } from "@remotion/player";
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, Copy, Download, FolderOpen, ImagePlus, Loader2, MousePointerClick, Music2, Plus, Redo2, Scissors, Settings2, Square, Undo2, Wand2 } from "lucide-react";
+import { ArrowLeft, Check, ChevronLeft, ChevronRight, Download, FolderOpen, ImagePlus, Loader2, MousePointerClick, Music2, Plus, Redo2, Scissors, Settings2, Square, Undo2, Wand2 } from "lucide-react";
 import { promoteClipToSequence } from "@/lib/editor/editable-timeline";
 import { shotName } from "@/lib/editor/canvas";
 import { LayerInspector } from "./layer-inspector";
 import { MotionInspector } from "./motion-inspector";
 import { CanvasGrid, CanvasSelection, type CanvasPreview } from "./canvas-selection";
-import { QuickActions, DEFAULT_PALETTE } from "./quick-actions";
+import { ClipToolbar, DEFAULT_PALETTE, TOOLBAR_ROW } from "./clip-toolbar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Menu, MenuContent, MenuTrigger, ContextMenuItem } from "./ui/context-menu";
 import { SequenceComposition } from "@/../remotion/SequenceComposition";
@@ -643,16 +643,22 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
             </div>}
             {previewProps ? <Player ref={player} component={SequenceComposition} inputProps={previewProps} durationInFrames={allocation!.duration} fps={output.fps} compositionWidth={output.width} compositionHeight={output.height} spaceKeyToPlayOrPause={false} clickToPlay={false} acknowledgeRemotionLicense className="overflow-hidden rounded-2xl border border-border bg-black" style={{width:"100%",height:"100%"}} /> : null}
             {canvasSelected && !playing && item && sequence && (item.mediaId || clip.edits.some(e=>e.type==="text"||e.type==="image") || (clip.words.length>0&&clip.captions.preset!=="none")) && <CanvasSelection key={item.id} item={item} sequence={sequence} dispatch={dispatch} onPreview={setCanvasPreview} selectedEdit={selected} onSelectEdit={index=>{setSelected(index);setTab("edit");}} onSelectCaptions={()=>setTab("captions")} />}
-            {/* The controls that belong on the picture. They exist only while a clip is
-                selected, which is what keeps the rest of the screen quiet. */}
-            {canvasSelected && !playing && item && sequence && <QuickActions key={`quick-${item.id}`} item={item} clip={clip} palette={palette} canSplit={hasContent}
+          </div>}
+        </div>
+        {/* The selected clip's controls, under the frame rather than over it: the picture is
+            what the layers are dragged on, and a bar floating there covered a third of it —
+            including the captions and any overlay sitting low in the shot. The row keeps its
+            height with nothing selected, so picking a clip never resizes the preview. */}
+        {!!sequence?.items.length && <div className={TOOLBAR_ROW}>
+          {canvasSelected && item && sequence
+            ? <ClipToolbar key={`toolbar-${item.id}`} item={item} clip={clip} palette={palette} canSplit={hasContent}
               canDetach={!!item.mediaId && !item.muted && !item.hidden}
               onChange={update}
               onMute={muted=>dispatch([{type:"item.place",sequenceId:sequence.id,itemId:item.id,patch:{muted},before:{muted:item.muted??false}}])}
               onSplit={()=>splitAtPlayhead()} onDuplicate={()=>duplicateSelected()} onDetachAudio={()=>detachAudio()}
-              onRemove={()=>{if(dispatched([{type:"item.remove",sequenceId:sequence.id,itemId:item.id}])){setActiveItemId("");notify(`${clip.title} removed from the timeline.`,"change");}}} />}
-          </div>}
-        </div>
+              onRemove={()=>{if(dispatched([{type:"item.remove",sequenceId:sequence.id,itemId:item.id}])){setActiveItemId("");notify(`${clip.title} removed from the timeline.`,"change");}}} />
+            : <p className="px-2 text-xs text-muted-foreground">Pick a clip on the frame or the timeline to edit it.</p>}
+        </div>}
         <Card className="min-h-0 max-h-[45dvh] min-w-0 shrink-0 overflow-hidden py-3"><CardContent className="flex min-h-0 flex-col gap-3 overflow-hidden px-4">
           {sequence && <SequenceTimeline projectId={projectId} sequence={sequence} selectedId={item?.id} dispatch={dispatch} onSeek={seek} playing={playing} onPlayToggle={()=>{if(playing)player.current?.pause();else player.current?.play();}} onBlank={()=>addCanvas()} media={edl.media} mediaUrls={mediaUrls} assetUrls={assetUrls} selectedEdit={selected} onSelectEdit={index=>{setSelected(index);setTab("edit");}} onDropMedia={(id,at,layer)=>appendVideo(id,layer>0,{at,layer})} onDropAsset={(id,at,layer)=>void dropAsset(id,at,layer)} onDropFiles={(files,at,layer)=>dropFiles(files,{at,layer})} onDropLocalFile={(file,kind,at,layer)=>dropLocalFile(file,kind,{at,layer})} onDropSearchHit={(hit,at,layer)=>dropSearchHit(hit,{at,layer})} onReplaceMedia={replaceMedia} onReplaceAsset={(itemId,assetId,editIndex)=>void replaceAsset(itemId,assetId,editIndex)} onSplit={splitAtPlayhead} onDuplicate={duplicateSelected} onDetachAudio={detachAudio} onAskAgent={id=>{const target=sequence?.items.find(i=>i.id===id);setActiveItemId(id);setCanvasSelected(true);setAgentPrefill({text:`About "${target?.clip.title??"this clip"}": `,nonce:Date.now()});}} onNotify={notify} onSelect={(id,t)=>{setActiveItemId(id);setCanvasSelected(true);player.current?.pause();seek(t);resetSelection();}} />}
           <div className="flex flex-wrap items-center gap-2"><Button size="xs" variant="outline" disabled={!sequence} onClick={()=>addEdit("text")}><Plus />Title</Button>
@@ -660,15 +666,16 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
             {/* Music and sound effects live with the selected shot; without a selection this
                 opens them on the first one rather than refusing. */}
             <Button size="xs" variant="outline" disabled={!hasContent} title="Music and sound effects for this shot" onClick={()=>{if(!picked&&item)setActiveItemId(item.id);setTab("overlays");}}><Music2 />Sound</Button>
-            <Button size="xs" variant="outline" disabled={!hasContent} title="Split the selected clip at the playhead (S)" onClick={()=>splitAtPlayhead()}><Scissors />Split</Button>
-            <Button size="xs" variant="outline" disabled={!hasContent} title="Duplicate the selected clip (D)" onClick={()=>duplicateSelected()}><Copy />Duplicate</Button>{hasContent&&<details className="text-xs"><summary className="cursor-pointer rounded-full px-3 py-2 text-muted-foreground">Clip effects</summary><div className="flex flex-wrap gap-2 py-2">{["silence","punch","emphasis"].map(kind=><Button key={kind} size="xs" variant="outline" onClick={()=>addEdit(kind)}><Plus />{kind}</Button>)}</div></details>}</div>
+            {/* Split and duplicate act on the selection, so they live with the selection, in
+                the bar under the frame. This row is what a video can be given, not what the
+                picked clip can be told; the same button twice reads as two different ones. */}{hasContent&&<details className="text-xs"><summary className="cursor-pointer rounded-full px-3 py-2 text-muted-foreground">Clip effects</summary><div className="flex flex-wrap gap-2 py-2">{["silence","punch","emphasis"].map(kind=><Button key={kind} size="xs" variant="outline" onClick={()=>addEdit(kind)}><Plus />{kind}</Button>)}</div></details>}</div>
         </CardContent></Card>
       </section>
       <aside aria-label="Editing properties" className="flex w-full min-h-0 shrink-0 flex-col gap-3 lg:w-[340px] lg:overflow-y-auto lg:pr-1">
         <Card className="shrink-0 p-4"><EditorStatus editor={editor} />{actionError&&<p role="alert" className="text-sm text-destructive">{actionError}</p>}<AgentEditor projectId={projectId} beforeRun={save} afterUndo={editor.reload} prefill={agentPrefill} selection={item?{id:item.id,title:clip.title}:null} context={()=>({ sequenceId: sequence ? activeSequenceId : undefined, selection: item ? [item.id] : [], playhead: playhead.get() })} />
           {picked&&<><Button variant="outline" aria-expanded={propertiesOpen} onClick={()=>setPropertiesOpen(!propertiesOpen)}>{propertiesOpen?"Close properties":"All item properties"}</Button>{propertiesOpen&&<EditorProperties key={clip.id} clip={clip} edl={inspectEdl} validationEdl={edl} joint={joint} motion={motion} mapOperations={mapOperations} dispatch={dispatch} onApplied={()=>setPropertiesOpen(false)} />}</>}
         </Card>
-        {!picked&&<p className="shrink-0 rounded-2xl border border-dashed border-white/15 p-4 text-xs leading-relaxed text-muted-foreground"><MousePointerClick aria-hidden className="mb-2 size-4" /><br />Pick a clip on the frame or the timeline and its controls appear here. The video as a whole — plan, templates, rules, format — is under <strong className="font-medium text-foreground">Video</strong> at the top.</p>}
+        {!picked&&<p className="shrink-0 rounded-2xl border border-dashed border-white/15 p-4 text-xs leading-relaxed text-muted-foreground"><MousePointerClick aria-hidden className="mb-2 size-4" /><br />Nothing picked. A clip&apos;s properties appear here, and its everyday controls in the bar under the frame. The video as a whole — plan, templates, rules, format — is under <strong className="font-medium text-foreground">Video</strong> at the top.</p>}
         {picked&&<>
           {sequence&&item&&<details className="shrink-0 rounded-2xl border border-border bg-card p-4"><summary className="cursor-pointer text-sm font-medium">Position & audio</summary><div className="mt-3"><LayerInspector key={`placement-${item.id}`} sequence={sequence} item={item} dispatch={dispatch} /></div></details>}
           {sequence&&item&&<details className="shrink-0 rounded-2xl border border-border bg-card p-4" open={!!item.keyframes?.length}><summary className="cursor-pointer text-sm font-medium">Motion{item.keyframes?.length?` · ${item.keyframes.length}`:""}</summary><div className="mt-3"><MotionInspector key={`motion-${item.id}`} sequence={sequence} item={item} dispatch={dispatch} onSeek={seek} /></div></details>}
