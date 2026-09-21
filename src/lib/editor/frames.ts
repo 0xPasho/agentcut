@@ -237,7 +237,7 @@ async function sample(projectId: string, edl: Edl, sequence: VideoSequence, p: P
     await lock.close();
     await fs.unlink(path.join(root, "sampling.lock")).catch(() => {});
   }
-  if (!have.length) throw new NoOutputFrames(`the renderer finished no frames within ${Math.round(budgetMs() / 1000)}s`);
+  if (!have.length) throw new NoOutputFrames(`the renderer finished no frames within ${(budgetMs() / 1000).toFixed(1)}s`);
   await prune(root, dir);
   return describe(false);
 }
@@ -250,8 +250,15 @@ async function sample(projectId: string, edl: Edl, sequence: VideoSequence, p: P
  * on the same picture renders only what is still owed. A slow machine converges instead
  * of paying the same doomed cost every turn.
  */
+/**
+ * Below this there is no point starting: opening a bundle and a browser costs seconds,
+ * and Remotion refuses a per-frame timeout under seven of them anyway. Less than this
+ * left means the budget is already spent, and saying so beats failing on arithmetic.
+ */
+const FLOOR_MS = 8_000;
+
 async function renderInto(edl: Edl, sequence: VideoSequence, p: Plan, dir: string, frames: number[], remainingMs: number) {
-  if (remainingMs <= 0) return;
+  if (remainingMs < FLOOR_MS) return;
   const { selectComposition, renderFrames, makeCancelSignal } = await import("@remotion/renderer");
   const serve = await openRenderServe(edl, projectOf(edl));
   const inputProps = serve.sequenceProps(sequence);
@@ -269,7 +276,7 @@ async function renderInto(edl: Edl, sequence: VideoSequence, p: Plan, dir: strin
     await fs.mkdir(scratch, { recursive: true });
     const composition = await selectComposition({
       serveUrl: serve.serveUrl, id: "VideoSequence", inputProps,
-      logLevel: "error", timeoutInMilliseconds: Math.max(1000, remainingMs),
+      logLevel: "error", timeoutInMilliseconds: remainingMs,
     });
     try {
       await renderFrames({
@@ -295,8 +302,10 @@ async function renderInto(edl: Edl, sequence: VideoSequence, p: Plan, dir: strin
         concurrency: Math.max(1, Math.min(4, os.cpus().length - 1)),
         muted: true,
         logLevel: "error",
-        // One frame may never take longer than the whole sampling is allowed to.
-        timeoutInMilliseconds: Math.max(1000, remainingMs),
+        // One frame may never take longer than the whole sampling is allowed to. The
+        // cancel timer is the real cap; this only stops a single stuck frame sitting on
+        // Remotion's own half-minute default while the budget drains around it.
+        timeoutInMilliseconds: remainingMs,
         cancelSignal,
         onStart: () => {},
         onFrameUpdate: () => {},
