@@ -13,7 +13,7 @@ import { PromptComposer, type PromptComposerHandle } from "./prompt-composer";
  * panel in the editor and the empty window that starts a project are this same
  * component with a different controller.
  */
-export function Chat({ controller, prefill, header, suggestions, threadClassName, composerLabel, autoFocus, threadHidden }: {
+export function Chat({ controller, prefill, header, suggestions, tools, below, threadClassName, composerLabel, autoFocus, threadHidden }: {
   controller: ChatController;
   /** Text to start the next message with, e.g. from "Ask the agent about this". A new nonce applies it again. */
   prefill?: { text: string; nonce: number } | null;
@@ -21,6 +21,10 @@ export function Chat({ controller, prefill, header, suggestions, threadClassName
   header?: ReactNode;
   /** Chips offered while the box is empty, the way a chat offers openers. */
   suggestions?: Array<{ label: string; text: string; title?: string }>;
+  /** Controls on the composer's own row: a template picker, a shape. */
+  tools?: ReactNode;
+  /** Anything under the composer — the gallery of shapes on the home screen. */
+  below?: ReactNode;
   threadClassName?: string;
   composerLabel?: string;
   autoFocus?: boolean;
@@ -91,7 +95,11 @@ export function Chat({ controller, prefill, header, suggestions, threadClassName
             </button>
           ))}
         </> : null}
-        footer={controller.error ? <p role="alert" className="text-xs text-destructive">{controller.error}</p> : null}
+        tools={tools}
+        footer={<>
+          {controller.error ? <p role="alert" className="text-xs text-destructive">{controller.error}</p> : null}
+          {below}
+        </>}
       />
     </div>
   );

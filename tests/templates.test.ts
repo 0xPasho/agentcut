@@ -1464,3 +1464,16 @@ test("a built-in template arrives with its sound working, offline, without namin
   assert.equal(database.q.getAsset(punches[0].src)?.name, "Whoosh");
   assert.ok(database.q.getAsset(punches[0].src)?.license === null, "a synthesised sound carries no licence to credit");
 });
+
+test("the home screen can list templates before a project exists", async () => {
+  // The project-scoped tool cannot answer this: on the home screen there is no project
+  // yet, and the template is chosen before there is one.
+  const { GET } = await import("../src/app/api/templates/route");
+  const response = await GET();
+  assert.equal(response.status, 200);
+  const { templates } = await response.json() as { templates: Array<{ id: string; name: string; description: string; builtin: boolean }> };
+  const registry = await tools.executeEditorTool((await mediaService.createVideoProject("Listing")).id, { tool: "templates.list" }) as Array<{ id: string }>;
+  assert.deepEqual(templates.map(t => t.id).sort(), registry.map(t => t.id).sort(), "the same registry, seen without a project");
+  assert.ok(templates.every(t => t.name && t.description), "a picker needs a name and a line about it");
+  assert.ok(templates.some(t => t.id === "fast-cuts" && t.builtin));
+});

@@ -12,7 +12,7 @@ pnpm dev --hostname 127.0.0.1
 
 ## Build a video from scratch
 
-1. Choose **Edit**, drop your videos in and name your project. You can start with an empty canvas.
+1. Drop your videos into the box on the home screen, pick a shape, and send. You can start with an empty canvas.
 2. Import videos or browse your local folders. The asset browser also exposes project
    media, reusable library assets, and online image sources.
 3. Select an asset to preview it. Add it to the timeline, overlay it, or drag it onto a track.

@@ -1,6 +1,6 @@
 "use client";
 import { forwardRef, useImperativeHandle, useRef, useState, type ReactNode } from "react";
-import { Loader2, Paperclip, SendHorizontal, X } from "lucide-react";
+import { ArrowUp, Loader2, Plus, X } from "lucide-react";
 import { cn } from "cn";
 import { assetFileUrl, type Attachment } from "@/lib/client";
 import { AgentPicker } from "./agent-picker";
@@ -38,6 +38,8 @@ export const PromptComposer = forwardRef<PromptComposerHandle, {
   lockedReason?: string;
   /** Quick actions, template chips — anything that fills the box. */
   actions?: ReactNode;
+  /** Controls that belong on the same row as attach and send — a template picker, a shape. */
+  tools?: ReactNode;
   /** Status lines, errors, job progress: rendered under the controls. */
   footer?: ReactNode;
   /**
@@ -65,6 +67,7 @@ export const PromptComposer = forwardRef<PromptComposerHandle, {
   locked,
   lockedReason,
   actions,
+  tools,
   footer,
   attachments = [],
   onFiles,
@@ -141,22 +144,24 @@ export const PromptComposer = forwardRef<PromptComposerHandle, {
 
       {actions ? <div className="flex flex-wrap gap-1.5">{actions}</div> : null}
 
+      {/* Left to right: what you are bringing, what it should look like, who runs it, go. */}
       <div className="flex flex-wrap items-center gap-2">
         {onFiles ? <>
-          <Button type="button" size="icon" variant="ghost" aria-label="Attach a file" title="Attach an image, sound or video" onClick={() => picker.current?.click()}><Paperclip /></Button>
+          <Button type="button" size="icon" variant="outline" aria-label="Attach a file" title="Attach an image, sound or video" onClick={() => picker.current?.click()}><Plus /></Button>
           <input ref={picker} type="file" accept={accept} multiple className="hidden" onChange={(e) => { take(e.target.files); e.target.value = ""; }} />
         </> : null}
-        <Button variant="outline" type="submit" disabled={busy}>
-          {busy ? <Loader2 className="motion-safe:animate-spin" /> : <SendHorizontal />}
-          {busy ? busyLabel : sendLabel}
-        </Button>
-        <span className="text-xs text-muted-foreground">⌘↩ to send</span>
+        {tools}
+        <span className="hidden text-xs text-muted-foreground sm:inline">⌘↩ to send</span>
         <AgentPicker
           projectId={projectId}
           locked={locked ?? busy}
           {...(lockedReason ? { lockedReason } : {})}
           className="ml-auto"
         />
+        <Button type="submit" disabled={busy} aria-label={busy ? busyLabel : sendLabel}>
+          {busy ? <Loader2 className="motion-safe:animate-spin" /> : <ArrowUp />}
+          <span className="sr-only sm:not-sr-only">{busy ? busyLabel : sendLabel}</span>
+        </Button>
       </div>
 
       {footer}

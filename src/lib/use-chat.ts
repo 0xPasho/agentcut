@@ -204,8 +204,14 @@ export const nameFromMessage = (text: string) => {
  * here — this window's whole job is to turn what somebody said into a project that
  * already knows what they want.
  */
-export function useStartChat(): ChatController {
+/** What the home screen decided before a word was typed: the shape, and the look. */
+export type StartOptions = { aspect?: string; templateId?: string };
+
+export function useStartChat(start: () => StartOptions = () => ({})): ChatController {
   const router = useRouter();
+  // Read at send time, not at render time: the shape can change while the box is open.
+  const options = useRef(start);
+  options.current = start;
   const [messages, setMessages] = useState<Message[]>([]);
   const [status, setStatus] = useState("");
   const [working, setWorking] = useState(false);
@@ -221,9 +227,19 @@ export function useStartChat(): ChatController {
     setMessages([{ id: Date.now(), role: "user", source: "web", text, sequenceId: null, context: attachments.length ? { attachments } : null, jobId: null, at: Date.now(), changes: null }]);
     try {
       const { link, videos, kind } = readStart(text, attachments);
+      const { aspect, templateId } = options.current();
+      // The chosen template is the project's, from before its first edit: it is an
+      // ordinary plan field, so the agent reads it and the editor shows it.
+      const chooseTemplate = async (projectId: string) => {
+        if (!templateId) return;
+        const current = await api.getProject(projectId);
+        await api.editorTool(projectId, { tool: "project.edit", expectedRevision: current.revision,
+          operations: [{ type: "plan.patch", patch: { template: templateId } }] });
+      };
       if (kind === "link") {
         setStatus("Fetching the video…");
         const project = await api.createProject(link!);
+        await chooseTemplate(project.id);
         setStatus("Finding clips…");
         await api.analyze(project.id, { userBrief: text });
         router.push(`/p/${project.id}`);
@@ -233,15 +249,20 @@ export function useStartChat(): ChatController {
       setStatus("Creating your project…");
       const created = await fetch("/api/projects/assemble", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: nameFromMessage(text) }),
+        body: JSON.stringify({ name: nameFromMessage(text), ...(aspect ? { aspect } : {}) }),
       }).then(async (r) => { const data = await r.json(); if (!r.ok) throw new Error(data.error); return data as { id: string }; });
+      await chooseTemplate(created.id);
 
       // Dropped footage is imported before the first turn runs, so "cut this down"
-      // means something the moment the agent reads the project.
+      // means something the moment the agent reads the project — and it is placed on the
+      // timeline in the order it was dropped, so the project opens with a video in it
+      // rather than with media nobody put anywhere.
       for (const video of videos) {
         setStatus(`Importing ${video.name}…`);
         const current = await api.getProject(created.id);
-        await api.editorTool(created.id, { tool: "media.import", file: video.id, expectedRevision: current.revision });
+        const sequenceId = current.edl?.sequences[0]?.id;
+        await api.editorTool(created.id, { tool: "media.import", file: video.id, expectedRevision: current.revision,
+          ...(sequenceId ? { place: { sequenceId, at: null, layer: 0 } } : {}) });
       }
 
       setStatus("Starting the agent…");

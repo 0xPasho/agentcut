@@ -165,6 +165,19 @@ test("the assemble endpoint accepts a name alone, a file list, or neither validl
   assert.equal(assembled.media.length, 1);
   assert.equal(assembled.source?.file, assembled.media[0].file, "supplied footage still becomes the primary source");
   assert.equal((await assemble({ name: "Bad", files: [7] })).status, 400);
+
+  // The shape chosen on the home screen is the video's, not the footage's: someone who
+  // picked "vertical" and then dropped a landscape clip in meant the vertical.
+  const vertical = await assemble({ name: "Vertical", aspect: "9:16", files: [source] });
+  assert.equal(vertical.status, 200);
+  const shaped = store.readEditor((await vertical.json()).id).edl;
+  assert.deepEqual(shaped.output, { width: 1080, height: 1920, fps: 30 });
+  assert.deepEqual(shaped.sequences[0].output, { width: 1080, height: 1920, fps: 30 });
+  assert.notDeepEqual(shaped.media[0].width, 1080, "the source itself is untouched");
+  // An unknown shape is ignored rather than refused: it is a preference, not a command.
+  const odd = await assemble({ name: "Odd", aspect: "banana" });
+  assert.equal(odd.status, 200);
+  assert.deepEqual(store.readEditor((await odd.json()).id).edl.output, { width: 1920, height: 1080, fps: 30 });
 });
 
 test("canvas segments are ordinary shots without a source, through HTTP and tools alike", async () => {

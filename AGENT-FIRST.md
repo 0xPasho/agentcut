@@ -155,6 +155,14 @@ uses, and everything the agent decides is inspectable and editable in the UI.
   asset id, which cannot be written into a shipped document because ids are per machine; the
   six older templates were deliberately left silent so an update never makes an existing video
   start making noise.
+- **Two ways in, one composer: implemented 2026-09-21.** The home screen is a box and a tab.
+  The box takes the sentence, the dropped videos and the pasted link, and carries its own
+  decisions on one row: attach, the **template** the project is made in (`GET /api/templates`,
+  written into `plan.template` before the first turn), the agent and model, and send. Under it,
+  a collapsible gallery of shapes — blank, 9:16, 4:5, 1:1, 16:9 — which the assemble endpoint
+  honours over the shape of the first source. The second tab is clipping a long video. The
+  separate "Edit" card is gone: dropped videos are imported *and placed*, and what to do with
+  several of them is something you say rather than a control.
 - **Phase 3: not started** (registry, caption translation, publishing, non-footage sources).
 
 ## Phases

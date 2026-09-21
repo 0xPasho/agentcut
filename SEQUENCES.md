@@ -2,15 +2,17 @@
 
 The application now supports two starting flows into the same local workspace:
 
-The home screen offers three, as tabs:
+The home screen offers two, as tabs:
 
-- **Edit:** drag videos in and start editing them. Footage is optional — with nothing dropped
-  this is an empty canvas. Several files are either one video made of them or one video each,
-  which is asked rather than guessed. No agent, transcription service, or hosted account is
-  required for manual assembly.
-- **Clips:** analyze a long source video and produce independently editable highlights.
-- **Chat:** say what you want. The sentence creates the project and opens in the editor with
-  that conversation already going.
+- **Make something:** one box. Say what you want, drop videos into it, or paste a link;
+  beside it you choose the shape (blank, 9:16, 4:5, 1:1, 16:9), the template it is made in,
+  and which agent runs it. Dropped videos are imported and placed in the order they were
+  dropped, so the project opens with footage on the timeline. What to do with several of
+  them — one video, or one each — is a sentence, not a form. Nothing here is required:
+  send an empty shape and you get an empty canvas in the same editor.
+- **Clip a long video:** analyze a long source and produce independently editable highlights.
+
+Neither needs an agent to edit afterwards, and neither needs a hosted account.
 
 A project can hold source media and multiple sequences. Each sequence is one output
 video, with its own name, dimensions, frame rate, and layered timeline items. An item
@@ -19,7 +21,7 @@ in/out, crop/split framing, transcript words, caption styling, and all supported
 
 ## Use the visual editor
 
-Choose **Edit** on the home screen, name the project, and choose **Open editor**.
+Choose **Make something** on the home screen, pick a shape, and send.
 No footage is required. Optionally select starting videos (or enter local paths);
 they appear on the initial timeline in the selected order. Files are copied into the project's local `media/` folder, so moving
 the originals does not break the project. Invalid media rejects the import.

@@ -67,6 +67,12 @@ export async function importProjectMedia(projectId: string, expectedRevision: nu
 export async function createVideoProject(name: string, inputs: MediaInput[] = [], options: {
   /** `together`: one timeline with every input in a row. `separate`: one video per input, for a batch. */
   layout?: "together" | "separate";
+  /**
+   * The shape the author asked for. Without it a project takes the shape of its first
+   * source, which is right when footage is what started it and wrong when someone chose
+   * "vertical" on an empty canvas and then dropped a landscape clip in.
+   */
+  output?: { width: number; height: number; fps: number };
 } = {}) {
   const id = randomUUID().slice(0, 10);
   let inserted = false;
@@ -76,12 +82,12 @@ export async function createVideoProject(name: string, inputs: MediaInput[] = []
     const first = media[0] ?? null;
     q.insertProject({ id, name: name.trim() || "Untitled project", source_path: first?.file ?? "", created_at: Date.now() });
     inserted = true;
-    const output = first ? { width: first.width, height: first.height, fps: first.fps } : { width: 1920, height: 1080, fps: 30 };
+    const output = options.output ?? (first ? { width: first.width, height: first.height, fps: first.fps } : { width: 1920, height: 1080, fps: 30 });
     const item = (m: MediaSource) => { const itemId = `i_${randomUUID().slice(0, 8)}`; return {
       id: itemId, mediaId: m.id, clip: Clip.parse({ id: itemId, title: m.name, start: 0, end: m.durationSec, captions: { preset: "none" } }),
     }; };
     const sequences = options.layout === "separate" && media.length
-      ? media.map(m => ({ id: `s_${randomUUID().slice(0, 8)}`, title: m.name.replace(/\.[^.]+$/, ""), output: { width: m.width, height: m.height, fps: m.fps }, items: [item(m)] }))
+      ? media.map(m => ({ id: `s_${randomUUID().slice(0, 8)}`, title: m.name.replace(/\.[^.]+$/, ""), output: options.output ?? { width: m.width, height: m.height, fps: m.fps }, items: [item(m)] }))
       : [{ id: `s_${randomUUID().slice(0, 8)}`, title: "Main video", output, items: media.map(item) }];
     publishClips(id, Edl.parse({ projectId: id, source: first, output, media, clips: [], sequences }));
     q.setProject(id, { status: "ready" });

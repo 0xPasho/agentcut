@@ -30,7 +30,7 @@ For pnpm installation details, see the official
 2. Obtain this repository and open its root directory in a terminal.
 3. Run `pnpm install --frozen-lockfile`.
 4. Run `pnpm dev --hostname 127.0.0.1`.
-5. Open `http://localhost:3000` and choose **Edit**, **Clips** or **Chat**.
+5. Open `http://localhost:3000` and either say what you want or choose **Clip a long video**.
 
 There is no separate database server or migration command required for a new
 workspace. The app initializes its local SQLite database and workspace directories.
