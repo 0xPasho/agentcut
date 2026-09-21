@@ -81,6 +81,10 @@ function invertOne(edl: Edl, op: EditorOperation): EditorOperation[] {
       const media = edl.media.find(m => m.id === op.mediaId);
       return media ? [{ type: "media.add", media }] : [];
     }
+    case "media.transcription": {
+      const media = edl.media.find(m => m.id === op.mediaId);
+      return media ? [{ type: "media.transcription", mediaId: op.mediaId, transcription: media.transcription ?? null }] : [];
+    }
     case "sequence.add": return [{ type: "sequence.remove", sequenceId: op.sequence.id }];
     case "sequence.remove": {
       const sequence = edl.sequences.find(s => s.id === op.sequenceId);

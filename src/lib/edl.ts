@@ -220,11 +220,33 @@ export const Clip = z.object({
 });
 export type Clip = z.infer<typeof Clip>;
 
+/**
+ * Where a source's own words stand. Durable facts only: whether a transcript exists,
+ * which recogniser made it, and why there is none. "Running" is deliberately absent —
+ * that is a live job (`src/lib/transcribe/auto.ts`), and a status nobody is beating
+ * would read as running forever after a crash. Absent means never considered, which
+ * is what every EDL written before this parses as.
+ */
+export const MediaTranscription = z.object({
+  status: z.enum(["queued", "done", "failed", "skipped"]),
+  /** Why it was skipped, or how it failed — the sentence both interfaces show. */
+  reason: z.string().default(""),
+  /** Which recogniser settings produced the words, so a better one re-runs them. */
+  engine: z.string().default(""),
+  words: z.number().int().nonnegative().default(0),
+  /** When this was last decided, epoch ms. */
+  at: z.number().nonnegative().default(0),
+  /** Who asked: "" a person, "import" the automatic pass, "agent:<id>" a turn. */
+  by: z.string().default(""),
+});
+export type MediaTranscription = z.infer<typeof MediaTranscription>;
+
 /** Imported source media. Files live in the local project workspace. */
 export const MediaSource = z.object({
   id: z.string().regex(/^[a-zA-Z0-9_-]+$/), name: z.string().min(1), file: z.string().min(1),
   width: z.number().int().positive(), height: z.number().int().positive(),
   fps: z.number().positive(), durationSec: z.number().positive(),
+  transcription: MediaTranscription.optional(),
 });
 export type MediaSource = z.infer<typeof MediaSource>;
 /**
@@ -275,6 +297,51 @@ export const Transition = z.object({
   by: EditAuthor,
 });
 export type Transition = z.infer<typeof Transition>;
+
+/**
+ * How a value travels from one keyframe to the next.
+ *
+ * Small and named on purpose: a pack is data and may never ship code, so the only
+ * curves that exist are the ones spelled here. `linear` is the default because it is
+ * what the crop keyframes next door already do and what a drift across a still wants;
+ * `ease` is the one to reach for when something arrives or leaves, where a linear ramp
+ * starts and stops dead and reads as a jump — the same reason the punch-in eases.
+ * `hold` does not travel at all: the value stays put until the next keyframe.
+ */
+export const Ease = z.enum(["linear", "ease", "in", "out", "hold"]);
+export type Ease = z.infer<typeof Ease>;
+
+/**
+ * One sampled moment of a layer's transform, `t` seconds into the item's OWN time.
+ *
+ * Zero is the item's first frame on the programme, not a source timecode and not a
+ * time on the sequence. That is what lets a move, a change of layer and a change of
+ * `at` leave an animation alone, for the same reason a transition lives on the shot
+ * it opens rather than in a record naming two shots.
+ *
+ * Every animatable field is optional, and an absent one is simply not animated: it
+ * keeps the item's static `transform` (or `volume`). So a title that only fades says
+ * `opacity` and nothing else, and changing its size afterwards still works. A field
+ * named by exactly one keyframe holds that value for the whole item, the way a single
+ * crop keyframe does.
+ */
+export const TransformKeyframe = z.object({
+  /** Seconds from the item's first frame, in the item's own output time. */
+  t: z.number().nonnegative(),
+  x: z.number().optional(),
+  y: z.number().optional(),
+  width: z.number().positive().optional(),
+  height: z.number().positive().optional(),
+  rotation: z.number().optional(),
+  opacity: z.number().min(0).max(1).optional(),
+  /** The item's own gain, 0..2, multiplying everything it sounds — a bed ducking under a line. */
+  volume: z.number().min(0).max(2).optional(),
+  /** How this keyframe's values travel towards the next one. */
+  ease: Ease.default("linear"),
+  by: EditAuthor,
+});
+export type TransformKeyframe = z.infer<typeof TransformKeyframe>;
+
 export const SequenceItem = z.object({
   id: z.string().regex(/^[a-zA-Z0-9_-]+$/), mediaId: z.string().nullable().default(null), clip: Clip,
   /**
@@ -282,6 +349,13 @@ export const SequenceItem = z.object({
    * than defaulted so saving an old timeline does not write `null` into every shot.
    */
   transition: Transition.nullable().optional(),
+  /**
+   * The layer's transform over the item's own time. Absent — which is every project
+   * that existed before this — is the static `transform`, rendered exactly as it was.
+   * Optional rather than defaulted so saving an old timeline does not write an empty
+   * array into every shot.
+   */
+  keyframes: z.array(TransformKeyframe).optional(),
   ...ItemPlacement.shape,
 });
 export type SequenceItem = z.infer<typeof SequenceItem>;

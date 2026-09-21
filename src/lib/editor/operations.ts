@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { CaptionStyle, Clip, Edl, Edit, type CropKeyframe, MediaSource, VideoSequence, SequenceItem, ItemPlacement, ItemTransform, Transition, DEFAULT_ITEM_TRANSFORM } from "../edl";
+import { CaptionStyle, Clip, Edl, Edit, type CropKeyframe, MediaSource, MediaTranscription, VideoSequence, SequenceItem, ItemPlacement, ItemTransform, Transition, DEFAULT_ITEM_TRANSFORM } from "../edl";
 import { promoteClipToSequence } from "./editable-timeline";
 import { sequenceFrames, transitionJoint } from "../sequences";
-import { buildTimeMap } from "../timeline";
+import { buildTimeMap, clipFrames } from "../timeline";
 import { ProjectPlan, SequencePlan } from "../plan/schema";
 
 /** Zod .partial() still applies nested defaults. Patch schemas MUST leave omitted fields absent. */
@@ -25,6 +25,10 @@ export const EditorOperation = z.discriminatedUnion("type", [
   z.object({ type: z.literal("item.place"), sequenceId: z.string(), itemId: z.string(), patch: ItemPlacementPatch, before: ItemPlacementPatch.optional() }).strict(),
   z.object({ type: z.literal("media.add"), media: MediaSource }).strict(),
   z.object({ type: z.literal("media.remove"), mediaId: z.string() }).strict(),
+  // Where a source's words stand. Deliberately not a general media patch: source
+  // identity and metadata stay immutable, and this is the one field about a media
+  // that an edit may write.
+  z.object({ type: z.literal("media.transcription"), mediaId: z.string(), transcription: MediaTranscription.nullable() }).strict(),
   z.object({ type: z.literal("sequence.add"), sequence: VideoSequence }).strict(),
   z.object({ type: z.literal("sequence.remove"), sequenceId: z.string() }).strict(),
   z.object({ type: z.literal("sequence.patch"), sequenceId: z.string(), title: z.string().min(1).optional(), output: VideoSequence.shape.output.optional() }).strict(),
@@ -187,6 +191,13 @@ export function applyOperations(input: Edl, raw: unknown): Edl {
   for (const op of operations) {
     if (op.type === "clip.promote") { next = promoteClipToSequence(next, op.clipId); continue; }
     if (op.type === "media.add") { next.media.push(op.media); continue; }
+    if (op.type === "media.transcription") {
+      const media = next.media.find(m => m.id === op.mediaId);
+      if (!media) throw new Error("Media not found");
+      if (op.transcription) media.transcription = MediaTranscription.parse(op.transcription);
+      else delete media.transcription;
+      continue;
+    }
     if (op.type === "media.remove") {
       if (next.sequences.some(s => s.items.some(i => i.mediaId === op.mediaId))) throw new Error("Remove this media from sequences before removing it from the project");
       next.media = next.media.filter(m => m.id !== op.mediaId); continue;
@@ -340,7 +351,7 @@ export function applyOperations(input: Edl, raw: unknown): Edl {
         if (split >= item.clip.end) throw new Error("Split must be inside the item, in seconds from its source start");
         const first = trim(item.clip, item.clip.start, split);
         const from = sequenceFrames(sequence).items[index].from;
-        const firstFrames = Math.max(1, Math.round(buildTimeMap(first).duration * sequence.output.fps));
+        const firstFrames = clipFrames(buildTimeMap(first), sequence.output.fps);
         // The opening blend belongs to the joint before the shot, which only the first
         // half still has. The second half meets the first on a hard cut.
         const { transition: _opening, ...halved } = item; void _opening;
