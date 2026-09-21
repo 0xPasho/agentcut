@@ -1,8 +1,10 @@
 "use client";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
-import { DEFAULT_ITEM_TRANSFORM, type Clip, type SequenceItem, type VideoSequence } from "@/lib/edl";
+import { DEFAULT_ITEM_TRANSFORM, type Clip, type SequenceItem, type TransformKeyframe, type VideoSequence } from "@/lib/edl";
 import { sequenceFrames } from "@/lib/sequences";
+import { animatedAt } from "@/lib/keyframes";
 import type { EditorOperation } from "@/lib/editor/operations";
+import { PLACEMENT_FIELDS, setKeyframe } from "@/lib/editor/motion";
 import { snapAxis } from "@/lib/editor/snapping";
 import { moveOverlay, overlayLabel, type Box, type OverlayTarget } from "@/lib/editor/canvas";
 import { usePlayhead } from "@/lib/editor/playhead";
@@ -11,7 +13,7 @@ type Transform = typeof DEFAULT_ITEM_TRANSFORM;
 const SNAP_PX = 8;
 /** The player's own controls live along the bottom edge; handles stay clear of them. */
 const CONTROLS_PX = 44;
-export type CanvasPreview = { id: string; transform?: Transform; clip?: Clip } | null;
+export type CanvasPreview = { id: string; transform?: Transform; clip?: Clip; keyframes?: TransformKeyframe[] } | null;
 type Inner = { key: string; target: OverlayTarget; box: Box };
 const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 const sameBox = (a: Box, b: Box) => (Object.keys(a) as (keyof Box)[]).every(key => Math.abs(a[key] - b[key]) < .1);
@@ -41,9 +43,16 @@ export function CanvasSelection({item,sequence,dispatch,onPreview,selectedEdit=n
   const [dragging,setDragging]=useState(false);
   const drag=useRef<{x:number;y:number;transform:Transform;resize:boolean;rect:DOMRect;bounds:typeof bounds}|null>(null);
   const innerDrag=useRef<{x:number;y:number;target:OverlayTarget;box:Box;frame:Box;clip:Clip;moved:boolean}|null>(null);
-  const transform={...DEFAULT_ITEM_TRANSFORM,...item.transform};
   const entry=sequenceFrames(sequence).items.find(i=>i.item.id===item.id)!;
-  const active=currentSec>=entry.from/sequence.output.fps && currentSec<(entry.from+entry.duration)/sequence.output.fps && !item.hidden;
+  const fps=sequence.output.fps;
+  /** Where the playhead is inside this shot, on a frame: the time a keyframe is written in. */
+  const localSec=Math.max(0,Math.round((currentSec-entry.from/fps)*fps)/fps);
+  // The handles have to sit where the layer actually is, which on a moving layer is
+  // wherever its keyframes have got to by now — not the fixed transform underneath them.
+  const resolved=animatedAt(item,localSec);
+  const transform:Transform={x:resolved.x,y:resolved.y,width:resolved.width,height:resolved.height,rotation:resolved.rotation,opacity:resolved.opacity};
+  const animated=!!item.keyframes?.length;
+  const active=currentSec>=entry.from/fps && currentSec<(entry.from+entry.duration)/fps && !item.hidden;
   const titleOnly=item.mediaId===null && item.clip.edits.length===1 && item.clip.edits[0].type==="text";
   useEffect(()=>{
     if(!active)return;
@@ -82,7 +91,22 @@ export function CanvasSelection({item,sequence,dispatch,onPreview,selectedEdit=n
     window.addEventListener("keydown",key);window.addEventListener("blur",settle);
     return()=>{window.removeEventListener("keydown",key);window.removeEventListener("blur",settle);onPreview(null);};
   },[onPreview]);
-  const commit=(next:Transform,before=transform)=>dispatch([{type:"item.place",sequenceId:sequence.id,itemId:item.id,patch:{transform:Object.fromEntries(Object.entries(next).map(([key,value])=>[key,Math.round(value*1000)/1000]))},before:{transform:before}}]);
+  const round=(value:number)=>Math.round(value*1000)/1000;
+  /**
+   * What a drag would write. On a layer that already moves it pins this moment instead of
+   * the fixed transform underneath the motion — writing that would be an edit nobody could
+   * ever see, and the operation refuses it for exactly that reason.
+   */
+  const draftOf=(next:Transform,before:Transform):CanvasPreview=>{
+    if(!animated)return {id:item.id,transform:next};
+    const changed=Object.fromEntries(PLACEMENT_FIELDS.filter(field=>round(next[field])!==round(before[field])).map(field=>[field,next[field]]));
+    return Object.keys(changed).length?{id:item.id,keyframes:setKeyframe(item,localSec,changed)}:{id:item.id};
+  };
+  const commit=(next:Transform,before=transform)=>{
+    const draft=draftOf(next,before);
+    if(draft?.keyframes)return dispatch([{type:"item.keyframes",sequenceId:sequence.id,itemId:item.id,keyframes:draft.keyframes,before:item.keyframes??null}]);
+    if(draft?.transform)dispatch([{type:"item.place",sequenceId:sequence.id,itemId:item.id,patch:{transform:Object.fromEntries(Object.entries(draft.transform).map(([key,value])=>[key,round(value)]))},before:{transform:before}}]);
+  };
   const commitClip=(next:Clip,before:Clip)=>{
     if(next.edits!==before.edits)dispatch([{type:"item.patch",sequenceId:sequence.id,itemId:item.id,patch:{edits:next.edits},before:{edits:before.edits}}]);
     else dispatch([{type:"item.patch",sequenceId:sequence.id,itemId:item.id,patch:{captions:{positionY:next.captions.positionY}},before:{captions:before.captions}}]);
@@ -123,7 +147,7 @@ export function CanvasSelection({item,sequence,dispatch,onPreview,selectedEdit=n
   };
   const events={
     onClick:(event:React.MouseEvent<HTMLButtonElement>)=>{event.preventDefault();event.stopPropagation();},
-    onPointerMove:(event:PointerEvent<HTMLButtonElement>)=>{const next=nextAt(event);if(next)onPreview({id:item.id,transform:next});},
+    onPointerMove:(event:PointerEvent<HTMLButtonElement>)=>{const next=nextAt(event);if(next&&drag.current)onPreview(draftOf(next,drag.current.transform));},
     onPointerUp:(event:PointerEvent<HTMLButtonElement>)=>{event.preventDefault();event.stopPropagation();const next=nextAt(event),d=drag.current;if(next&&d)commit(next,d.transform);settle();},
     onPointerCancel:settle,
   };

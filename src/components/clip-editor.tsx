@@ -7,6 +7,7 @@ import { Player, type PlayerRef } from "@remotion/player";
 import { ArrowLeft, Check, ChevronLeft, ChevronRight, Copy, Download, FolderOpen, ImagePlus, Loader2, MousePointerClick, Music2, Plus, Redo2, Scissors, Settings2, Square, Undo2, Wand2 } from "lucide-react";
 import { promoteClipToSequence } from "@/lib/editor/editable-timeline";
 import { LayerInspector } from "./layer-inspector";
+import { MotionInspector } from "./motion-inspector";
 import { CanvasGrid, CanvasSelection, type CanvasPreview } from "./canvas-selection";
 import { QuickActions, DEFAULT_PALETTE } from "./quick-actions";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
@@ -45,6 +46,7 @@ import { adoptSearchHit, importFiles, importLocalFile, importedDuration, type Im
 import { api, assetUrl, clipUrl, type AssetSummary } from "@/lib/client";
 import { buildTimeMap, srcToOut } from "@/lib/timeline";
 import { sequenceFrames, transitionJoints } from "@/lib/sequences";
+import { itemSeconds, staticState } from "@/lib/keyframes";
 import { fmt } from "@/lib/transcript";
 import { Clip as ClipSchema, type Clip, type Edit, type Edl, type SequenceItem } from "@/lib/edl";
 import { emptySequencePlan } from "@/lib/plan/schema";
@@ -144,6 +146,12 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
     if (!found) return null;
     const room = Math.min(found.maxFrames, found.overlapFrames ?? found.maxFrames);
     return { sequenceId: sequence.id, itemId: item.id, previousTitle: found.previous.clip.title, maxSeconds: room / sequence.output.fps, current: item.transition ?? null };
+  }, [sequence, item]);
+  /** The layer's motion, and what a keyframe added by hand should start out as. */
+  const motion = useMemo(() => {
+    if (!sequence || !item) return null;
+    return { sequenceId: sequence.id, itemId: item.id, seconds: itemSeconds(item, sequence.output.fps),
+      current: item.keyframes ?? null, seed: staticState(item) as unknown as Record<string, number> };
   }, [sequence, item]);
   const itemOffset = (allocation?.items.find(i => i.item.id === item?.id)?.from ?? 0) / output.fps;
   /** The playhead inside the selected clip, in that clip's own output seconds. */
@@ -499,7 +507,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
     return chosen.length ? [...new Set([...chosen, ...DEFAULT_PALETTE])].slice(0, 8) : DEFAULT_PALETTE;
   }, [templateOptions, sequence?.plan.template, edl.plan.template]);
   // A fresh object here re-renders the whole composition on every unrelated editor render.
-  const previewProps = useMemo(() => !sequence ? null : ({sequence:canvasPreview ? {...sequence,items:sequence.items.map(i=>i.id===canvasPreview.id?{...i,...(canvasPreview.transform?{transform:canvasPreview.transform}:{}),...(canvasPreview.clip?{clip:canvasPreview.clip}:{})}:i)} : sequence,media:edl.media,mediaUrls,assetUrls,assetBase:`/api/projects/${projectId}/asset/`}), [sequence, canvasPreview, edl.media, mediaUrls, assetUrls, projectId]);
+  const previewProps = useMemo(() => !sequence ? null : ({sequence:canvasPreview ? {...sequence,items:sequence.items.map(i=>i.id===canvasPreview.id?{...i,...(canvasPreview.transform?{transform:canvasPreview.transform}:{}),...(canvasPreview.keyframes?{keyframes:canvasPreview.keyframes}:{}),...(canvasPreview.clip?{clip:canvasPreview.clip}:{})}:i)} : sequence,media:edl.media,mediaUrls,assetUrls,assetBase:`/api/projects/${projectId}/asset/`}), [sequence, canvasPreview, edl.media, mediaUrls, assetUrls, projectId]);
 
 
   if(!sequence && activeSequenceId) return <main className="p-8"><h1 className="mb-4 text-xl font-medium">This video is no longer available</h1><Button render={<Link href={`/p/${projectId}`} />}>Back to project</Button></main>;
@@ -657,11 +665,12 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
       </section>
       <aside aria-label="Editing properties" className="flex w-full min-h-0 shrink-0 flex-col gap-3 lg:w-[340px] lg:overflow-y-auto lg:pr-1">
         <Card className="shrink-0 p-4"><EditorStatus editor={editor} />{actionError&&<p role="alert" className="text-sm text-destructive">{actionError}</p>}<AgentEditor projectId={projectId} beforeRun={save} afterUndo={editor.reload} prefill={agentPrefill} selection={item?{id:item.id,title:clip.title}:null} context={()=>({ sequenceId: sequence ? activeSequenceId : undefined, selection: item ? [item.id] : [], playhead: playhead.get() })} />
-          {picked&&<><Button variant="outline" aria-expanded={propertiesOpen} onClick={()=>setPropertiesOpen(!propertiesOpen)}>{propertiesOpen?"Close properties":"All item properties"}</Button>{propertiesOpen&&<EditorProperties key={clip.id} clip={clip} edl={inspectEdl} validationEdl={edl} joint={joint} mapOperations={mapOperations} dispatch={dispatch} onApplied={()=>setPropertiesOpen(false)} />}</>}
+          {picked&&<><Button variant="outline" aria-expanded={propertiesOpen} onClick={()=>setPropertiesOpen(!propertiesOpen)}>{propertiesOpen?"Close properties":"All item properties"}</Button>{propertiesOpen&&<EditorProperties key={clip.id} clip={clip} edl={inspectEdl} validationEdl={edl} joint={joint} motion={motion} mapOperations={mapOperations} dispatch={dispatch} onApplied={()=>setPropertiesOpen(false)} />}</>}
         </Card>
         {!picked&&<p className="shrink-0 rounded-2xl border border-dashed border-white/15 p-4 text-xs leading-relaxed text-muted-foreground"><MousePointerClick aria-hidden className="mb-2 size-4" /><br />Pick a clip on the frame or the timeline and its controls appear here. The video as a whole — plan, templates, rules, format — is under <strong className="font-medium text-foreground">Video</strong> at the top.</p>}
         {picked&&<>
           {sequence&&item&&<details className="shrink-0 rounded-2xl border border-border bg-card p-4"><summary className="cursor-pointer text-sm font-medium">Position & audio</summary><div className="mt-3"><LayerInspector key={`placement-${item.id}`} sequence={sequence} item={item} dispatch={dispatch} /></div></details>}
+          {sequence&&item&&<details className="shrink-0 rounded-2xl border border-border bg-card p-4" open={!!item.keyframes?.length}><summary className="cursor-pointer text-sm font-medium">Motion{item.keyframes?.length?` · ${item.keyframes.length}`:""}</summary><div className="mt-3"><MotionInspector key={`motion-${item.id}`} sequence={sequence} item={item} dispatch={dispatch} onSeek={seek} /></div></details>}
           {sequence&&item&&<details className="shrink-0 rounded-2xl border border-border bg-card p-4"><summary className="cursor-pointer text-sm font-medium">Trim & split</summary><div className="mt-3"><SceneBounds key={item.id} clip={clip} sourceDuration={source?.durationSec} onChange={(start,end)=>{
             const duration=end-start;
             const fullCanvasEdit=!source && clip.edits.length===1 && clip.edits[0].t===0 && Math.abs(clip.edits[0].d-(clip.end-clip.start))<.01;

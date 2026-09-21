@@ -12,6 +12,7 @@ import { cachedMediaPeaks, cachedPeaks, loadMediaPeaks, loadPeaks, thinPeaks } f
 import { cachedFrames, loadFrames } from "@/lib/editor/filmstrip";
 import { activeDrag, classifyFile, dropDuration, hasFileDrag, hasMediaDrag, readDrag, type DragKind, type DragPayload } from "@/lib/editor/dnd";
 import { sequenceFrames, transitionJoints } from "@/lib/sequences";
+import { keyframeSummary } from "@/lib/editor/motion";
 import { DEFAULT_TRANSITION_SEC, TRANSITION_DURATIONS, TRANSITION_KINDS, TRANSITION_LABELS, describeTransition } from "@/lib/editor/transitions";
 import { buildTimeMap, srcToOut, type TimeMap } from "@/lib/timeline";
 import { Button } from "./ui/button";
@@ -825,6 +826,18 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
                 onSet={transition => commit([{ type: "item.transition", sequenceId: sequence.id, itemId: entry.item.id, transition, before: current }],
                   transition ? `${describeTransition(transition)} between “${shotName(joint.previous)}” and “${shotName(entry.item)}”.` : "Transition removed.", true)} />;
             })}
+            {/* Every moment a layer on this track is pinned at. An agent's move is drawn here
+                the same as a hand-made one, so "what did it do" is answered by looking. */}
+            {layout.items.filter(entry => (entry.item.layer ?? 0) === layer).flatMap(entry => (entry.item.keyframes ?? []).map((key, index) => {
+              const at = entry.from / fps + key.t;
+              if (at > seconds) return null;
+              return <button key={`kf-${entry.item.id}-${index}`} type="button"
+                aria-label={`Keyframe ${index + 1} of ${entry.item.keyframes!.length} on ${shotName(entry.item)}, ${key.t.toFixed(2)} seconds in: ${keyframeSummary(key)}`}
+                title={`${key.t.toFixed(2)}s · ${keyframeSummary(key)} · ${describeAuthor(key.by)}`}
+                onClick={event => { event.stopPropagation(); onSelect(entry.item.id, at); }}
+                className={`absolute top-[46px] z-20 size-2.5 -translate-x-1/2 rotate-45 rounded-[2px] border border-background transition-colors after:absolute after:-inset-2.5 after:content-[''] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${isAgentAuthor(key.by) ? "bg-primary" : "bg-white"} hover:bg-primary`}
+                style={{ left: at * scale }} />;
+            }))}
             {!sequence.items.length && layer === 0 && <span className="pointer-events-none absolute inset-2 flex items-center rounded-md border border-dashed border-white/20 px-3 text-xs text-muted-foreground">Drop videos here to start</span>}
             {ghost && ghost.layer === layer && ghost.kind !== "effect" && <div aria-hidden className={`pointer-events-none absolute top-1 z-30 h-14 rounded-md border-2 border-primary ${ghost.kind === "move" && ghost.index !== undefined ? "w-1 bg-primary" : ghostClash ? "" : "bg-primary/15"}`} style={{ left: ghost.at * scale, width: ghost.kind === "move" && ghost.index !== undefined ? 3 : Math.max(8, ghost.duration * scale), ...(ghostClash ? HATCH : {}) }}><span className="absolute left-1 top-0 whitespace-nowrap rounded bg-black/85 px-1 text-[10px] text-white">{ghost.kind === "move" ? (ghost.index !== undefined ? "Insert here" : ghostClash ? `Stacks · ${timeLabel(ghost.at)}` : timeLabel(ghost.at)) : `${ghost.duration.toFixed(1)}s`}</span></div>}
             {ghost?.kind === "move" && ghost.index === undefined && group.current.length > 1 && group.current.filter(entry => entry.id !== ghost.id && Math.max(0, entry.layer + (ghost.lift ?? 0)) === layer).map(entry => {
