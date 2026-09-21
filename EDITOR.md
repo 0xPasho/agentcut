@@ -28,6 +28,7 @@ trim behavior, and UI adapter. Both interfaces use these operations:
 | `edit.replace` | Replace an edit at its index in the expected revision |
 | `edit.remove` | Remove an edit at its index in the expected revision |
 | `output.patch` | Change only supplied output dimensions/frame rate |
+| `media.transcription` | Record where an imported source's own words stand |
 
 All seven edit types are supported: silence, punch, emphasis, text, image, sound effect,
 and music.
@@ -126,7 +127,11 @@ playhead marks, the ruler's slider value and the lit transcript word follow it.
   EDL (`edl.plan`, `sequence.plan`) and are edited with the `plan.patch` / `sequence.plan.patch` operations.
 
 - `conversation.read` (the project's thread, oldest first)
-- `media.transcribe` (imported media get their own transcript; words land on every shot cut from them)
+- `media.transcribe` (imported media get their own transcript; words land on every shot cut from them.
+  `background: true` queues it and returns at once — the same call the asset panel's retry makes;
+  `force` ignores both the cached transcript and the skip rules)
+- `media.transcription` (where every source's words stand, and whether a newly imported one recognises
+  itself), `media.transcription.set` (`audio`, `always` or `off`, workspace or project)
 - `project.batch` (starts the batch job: transcribe, plan and edit every pending video under the shared plan)
 - `observations.read` (what the owner has corrected), `observations.review` (an agent proposes rules, glossary
   and preferences from it; nothing is saved until accepted)
@@ -212,7 +217,17 @@ alone — the transcript belongs to the primary source.
 `src/lib/transcribe/` owns the words every caption, template and clip selection is built
 from. `ensureTranscript` is the single entry point: it reuses `transcript.json` only when
 it came from the current engine, so improving the recogniser re-runs old projects instead
-of silently keeping their worse words.
+of silently keeping their worse words. It writes through a temporary file and renames, so
+a process killed mid-write leaves either the previous transcript or none.
+
+Importing a source starts its own transcription, off the project lock, into the same
+`<project>/transcripts/<mediaId>/` cache the batch flow uses. Where each source stands is
+a record on the media in the EDL, written by `media.transcription` in the same batch as
+the words it produced, and both interfaces read and act on it through `media.transcribe`
+and `media.transcription`. `AGENTCUT_TRANSCRIBE_ON_IMPORT` (`audio`, `always`, `off`)
+overrides the stored setting; a test run is `off` unless it asks otherwise, and
+`setDefaultRecogniser` is the seam that lets the path be exercised without a model. See
+[SEQUENCES.md](./SEQUENCES.md#newly-imported-sources-transcribe-themselves).
 
 - `whispercpp.ts` runs whisper.cpp with `large-v3-turbo`, Silero VAD, and DTW token
   timestamps (which require flash attention off). It falls back to `small` if the model
@@ -306,6 +321,21 @@ Rejected, and why:
   under itself.
 - *A timeout alone* — wrong in both directions: it unlocks minutes after a crash, and it
   would kill a healthy long render that simply had nothing to report.
+
+One kind of work deliberately sits outside that lock. Automatic transcription of a
+newly imported source is a `transcribe-media` job whose row is written with status
+**`background`**: `q.activeJob` does not see it, so it never closes the lock and a
+person can keep editing the video they just imported while a render or an agent run
+starts; `q.unfinishedJobs` does see it, so the reaper heals it from pid liveness like
+everything else. It waits on nothing and nothing waits on it, which is what stops an
+agent that imports media inside its own edit run from deadlocking against the lock it
+already holds. Reaping one closes the row and logs the reason but does **not** hand the
+project back — it never took it, and doing so would clear the status of a job that is
+alive and holding it. "Stop and unlock" cancels it too, since the drain checks
+`ownsJob` between sources. Rejected: taking the lock (locks the person out of the
+footage they just added), and queueing behind it (still deadlocks the agent, and a long
+render starves the words). See `src/lib/transcribe/auto.ts` and
+[SEQUENCES.md](./SEQUENCES.md#newly-imported-sources-transcribe-themselves).
 
 `POST /api/projects/:id/unlock`, the panel's **Stop and unlock** button and the
 `project.unlock` tool are the same escape hatch for a job that is alive but stuck,

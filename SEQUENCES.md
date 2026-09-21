@@ -71,6 +71,7 @@ engine. UI and agent boundaries use the same validation.
 | `item.place` | Set start time, layer, transform, volume, mute, or visibility |
 | `media.add` | Register source metadata (normally emitted by the import service) |
 | `media.remove` | Remove unused media from the project; reject if still referenced |
+| `media.transcription` | Record where a source's own words stand; the one media field an edit may write |
 | `sequence.add` / `sequence.remove` | Create/delete an output timeline |
 | `sequence.patch` | Change the sequence name or output settings |
 | `item.add` | Insert a video or source-free canvas item at an index, or append it |
@@ -110,6 +111,79 @@ file aliases during export.
 UI jobs, `project.render`, and CLI rendering resolve the same saved revision. `only`
 accepts sequence IDs as well as legacy clip IDs. Downloads are revision-specific.
 Empty sequences can be saved but cannot be exported.
+
+## Newly imported sources transcribe themselves
+
+Words used to arrive only from the clipping pipeline or a hand-called
+`media.transcribe`, so a video dropped into a project had no transcript until
+somebody asked — and captions, the glossary, silence cuts, beats and every agent
+judgement that reads text were blind on exactly the footage just added.
+
+Every route in lands in `importProjectMedia` or `createVideoProject`
+(`src/lib/editor/media.ts`): the home composer's drop and pick, `media.import`,
+`media.upload`, a library video placed into a project, the batch flow, the CLI.
+Each writes a `transcription` record onto the media **in the same atomic batch that
+registers it**, so a source is never a video that merely happens to have no words.
+The record is `queued`, `done` (with the engine and the word count), `failed` or
+`skipped` — each with the sentence explaining it — and it carries `by`, the way an
+edit does. Words themselves have no `by` field, so the mark lives on this record.
+Absent means nobody has considered this source, which is what every EDL written
+before this parses as; reading one persists nothing.
+
+**It never takes the project lock.** A project runs one job at a time and the `jobs`
+row with status `running` is that lock. Transcription is a `transcribe-media` job
+written with status **`background`**: `q.activeJob` does not see it, so a person can
+keep editing the video they just imported and a render or an agent run can start;
+`q.unfinishedJobs` does see it, so `src/lib/reaper.ts` heals it from pid liveness
+like every other job. Nothing waits on it and it waits on nothing, so an agent that
+imports a source inside its own edit run cannot deadlock against the lock it holds.
+The reasoning and what was rejected are in `src/lib/transcribe/auto.ts` and
+[EDITOR.md](./EDITOR.md#jobs-and-the-project-lock).
+
+**Opt-out, and its default.** `media.transcription.set` stores `audio`, `always` or
+`off`, workspace-wide with a per-project override; `AGENTCUT_TRANSCRIBE_ON_IMPORT`
+beats both, and a test run is `off` unless it says otherwise. The default is
+**`audio`**: a source is recognised only when its audio track carries something. A
+file with no audio stream costs one probe, and a silent one costs one decode to
+measure its peak — a fraction of a recogniser run, which is what stops forty silent
+b-roll clips from becoming forty model runs. It is a gate on sound, not on speech:
+room tone counts as sound, and that is the honest limit of a test this cheap. On top
+of that, `media.import` / `media.upload` / the composer take a per-import
+`transcribe`, and the queue runs one source at a time, says which one it is on, and
+stops with the project's **Stop and unlock**.
+
+**Interrupted and resumed.** The transcript is written through a temporary file and
+renamed, so a killed process leaves either the previous transcript or none — never
+half of one; a truncated file from before this reads as absent rather than throwing.
+A killed process leaves its sources marked `queued`, which is exactly true, and the
+reaper closes the job row without touching the project's status (it never held it).
+The queue resumes on the next import, on **Transcribe** in the asset panel, or on
+`media.transcribe` with `background: true` and no ids. A second import joins the
+drain already running rather than starting a second recogniser, and two callers
+asking for the same source share one run.
+
+**Both interfaces, one state.** Each source's card in the asset browser carries its
+mark, its sentence and one button whose word is the state it is leaving — Transcribe,
+Retry transcription, Transcribe again — and the switch sits beside them. The agent
+reads the same record in `project.read`, the same summary from `media.transcription`
+and from `project.status`, and is told in words when a transcript is still coming so
+it cannot read empty words as "this video has no speech". Both call the same tools.
+
+Not done, deliberately: a shot placed from a source *after* its transcript landed
+does not back-fill its own words; `media.transcribe` does it instantly from the cache.
+
+Transcription verification: `pnpm test` covers the import writing the record and the
+words landing on the shot, the no-audio and silent skips with their reasons, the
+per-import and per-scope switch with the environment beating both, a failure keeping
+its reason and a retry clearing it, the cache being reused and a truncated one being
+recognised again, the glossary reaching the recogniser on this path, one state read by
+both interfaces, a second import joining the drain already running, an old EDL neither
+carrying nor gaining the field, and the batch flow reusing an import's transcript. The
+lock half is in the jobs tests: the lock stays open while a source is transcribed and a
+render still starts, a dead background job is reaped without disturbing the live job
+holding the project, **Stop and unlock** cancels the drain, and the panel does not paint
+the editor busy over it. The recogniser is injected (`setDefaultRecogniser`), so no test
+needs a model on the machine.
 
 ## Transitions between shots
 
@@ -235,8 +309,8 @@ so titles, images, and audio can span cuts without covering the footage undernea
 The final uncovered background is black.
 
 Consecutive shots on a track can be joined by a transition; see below. Keyframed
-layer transforms and automatic transcription of newly imported sources are not
-implemented. Existing source-crop keyframes remain supported.
+layer transforms are not implemented. Newly imported sources are transcribed
+automatically; see below. Existing source-crop keyframes remain supported.
 Per-item captions can be authored through properties or carried in from generated clips.
 The existing manual conflict resolution, transcript-extension, and crashed-render-lock
 limitations documented in [EDITOR.md](./EDITOR.md) still apply.

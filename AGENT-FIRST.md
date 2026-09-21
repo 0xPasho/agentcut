@@ -73,6 +73,7 @@ uses, and everything the agent decides is inspectable and editable in the UI.
 | 61 | **The interview is an editor tool (`onboarding.status/answer/run/skip`), so all three interfaces share it.** The web asks it full screen, the chat panel asks it a question at a time above the composer, and any terminal agent asks it over MCP. Answers, state and the preferences section are the same for all; the host agent is told it may ask one question after doing the work, and never before. | Same requirement as editing: two interfaces to one thing, not two implementations. It also means an interview started in either place can be finished in the other. | A web-only interview with the agent pointing at it; a second set of agent-side questions. |
 | 62 | **What the interview writes lives in a marked section of `preferences.md`**, and its state file is written through a queue and an atomic rename. | Reruns appended a second copy of everything, and concurrent saves from two interfaces tore the state file, which read back as a fresh workspace and lost both the answers and the skip. | Appending on rerun; replacing the whole file and losing hand-written lines. |
 | 63 | **Renderer transitions are an item property, not a template section (2026-09-21).** A shot carries how it arrives over the one before it on its track; the overlap comes out of the video's length, never out of either shot's footage. Templates are not given a say over the joints yet. | Reversibility: nothing is trimmed, so removing a transition puts the timing back exactly — which consuming source handles could not, and which a canvas scene has no handles for anyway. A template today authors captions, cuts, punch-ins, a hook and pictures from the transcript; the cuts between main-track shots are not its work, and claiming them is its own decision. | Transitions as their own entity holding two item ids (goes stale on every move, split and removal); consuming handles to keep the programme length; shipping a template `transitions` section in the same pass. |
+| 64 | **A newly imported source transcribes itself, and that run never holds the project lock (2026-09-21).** It is a `transcribe-media` job written with status `background`, which `q.activeJob` does not see and `q.unfinishedJobs` does; where each source stands is a record on the media in the EDL (`media.transcription`), written by the shared `media.transcription` operation. Default: on for any file with sound on its audio track, off for one with none. | Captions, the glossary, silence cuts, beats and every agent judgement read words, so a freshly imported video was blind exactly where the work was about to start. Holding the lock would refuse every edit on the footage that was just added, and an agent importing media inside its own edit run would deadlock against a lock it already holds. "Running" is not a stored status because a crashed process would leave one saying running forever; the live half is a job row the existing reaper already heals from pid liveness. | Taking the lock like analyze/render/edit; queueing behind the lock (still deadlocks the agent, and a long render starves the words); no job row at all (invisible to the other interface and to the reaper); transcribing everything on import (forty silent b-roll clips, forty model runs). |
 
 ## Future, noted so the plan leaves room
 
@@ -179,6 +180,22 @@ uses, and everything the agent decides is inspectable and editable in the UI.
   "why is this here". Not done, deliberately: the **template** half of item 5 — a template still
   decides captions, cuts, punch-ins, a hook and pictures, and says nothing about the joints
   between shots. See decision 63 and [SEQUENCES.md](./SEQUENCES.md#transitions-between-shots).
+- **Imported sources transcribe themselves: implemented 2026-09-21.** Words used to arrive only
+  through the clipping pipeline or a hand-called `media.transcribe`, so a video dropped into a
+  project had none until somebody asked. Now every route in — the home composer, `media.import`,
+  `media.upload`, a library video placed into a project, the batch flow, the CLI — goes through
+  `importProjectMedia` / `createVideoProject`, which write a `transcription` record onto the media
+  in the same atomic batch that registers it and hand it to a background job. That job runs off
+  the project lock (decision 64), one source at a time on this machine, reusing the same
+  `<project>/transcripts/<mediaId>/` cache the batch flow already used. The default skips a file
+  with no audio track or with silence on it, for the cost of one decode; **When they have sound /
+  Always / Never** sits next to the sources in the asset panel and is workspace-wide with a project
+  override, `media.import` takes a per-import `transcribe`, and `AGENTCUT_TRANSCRIBE_ON_IMPORT`
+  overrides both. Each source carries its state and its reason in both interfaces — the asset card
+  and `media.transcription` — and a failure is retried from either. An editing run is told in
+  words that a transcript is still coming, so it cannot read empty words as "nothing is said here".
+  Not done, deliberately: a shot placed from a source *after* its transcript landed does not
+  back-fill its words on its own; `media.transcribe` does it instantly from the cache.
 - **Phase 3: not started** (registry, caption translation, publishing, non-footage sources).
 
 ## Phases
