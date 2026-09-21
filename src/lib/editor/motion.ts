@@ -1,4 +1,4 @@
-import type { SequenceItem, TransformKeyframe } from "../edl";
+import type { Ease, SequenceItem, TransformKeyframe } from "../edl";
 import { ANIMATED_FIELDS, FIELD_LABELS, animatedFields, fieldAt, staticState, type AnimatedField } from "../keyframes";
 
 /**
@@ -27,6 +27,19 @@ const round = (value: number) => Math.round(value * 1000) / 1000;
  * costs nothing anybody can see and buys a time a person can read and retype.
  */
 const roundMoment = (value: number) => Math.round(value * 1000) / 1000;
+
+/**
+ * What each ease is called wherever a person chooses one — the Motion panel and the
+ * schema-generated properties both read this, the way both read `TRANSITION_LABELS`
+ * next door, so one curve is never "Steady" in one panel and "linear" in the other.
+ */
+export const EASE_LABELS: Record<Ease, string> = {
+  linear: "Steady",
+  ease: "Eased at both ends",
+  in: "Slow to start",
+  out: "Slow to finish",
+  hold: "Hold, then jump",
+};
 
 /** What each keyframe says, for a list a person reads. */
 export const keyframeSummary = (key: TransformKeyframe) =>
@@ -101,6 +114,25 @@ export function retimeKeyframe(keyframes: TransformKeyframe[], index: number, t:
 
 /** One moment unpinned. An empty result is a layer that holds still again. */
 export const removeKeyframe = (keyframes: TransformKeyframe[], index: number) => keyframes.filter((_, n) => n !== index);
+
+/** Said wherever a moment has to be pinned and the playhead is somewhere else. */
+export const PLAYHEAD_OUTSIDE_SHOT = "Move the playhead into this shot to pin a moment on it.";
+
+/**
+ * One field no longer animated, the rest of the move untouched.
+ *
+ * This is the way out of the refusal `item.place` makes: a field the keyframes decide
+ * cannot also take a fixed value, so either the moment is pinned or the animation on
+ * that one field goes. Keyframes left naming nothing are dropped, because a keyframe
+ * that animates nothing is exactly what `validateKeyframes` refuses; `null` back means
+ * the layer holds still again.
+ */
+export function clearField(keyframes: TransformKeyframe[] | undefined, field: AnimatedField): TransformKeyframe[] | null {
+  const stripped = (keyframes ?? [])
+    .map(({ [field]: _gone, ...rest }) => rest as TransformKeyframe)
+    .filter((key) => ANIMATED_FIELDS.some((each) => key[each] !== undefined));
+  return stripped.length ? stripped : null;
+}
 
 /** How much bigger a Ken Burns move ends than it starts. Slow enough to read as drift. */
 const KEN_BURNS_SCALE = 1.14;

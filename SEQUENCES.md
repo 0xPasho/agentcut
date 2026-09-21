@@ -388,7 +388,7 @@ Every keyframe carries `by`, so one a template, a rule or an agent turn placed r
 ### Using them
 
 Select a layer and **Motion** sits beside **Position & audio**. With nothing on it, it
-offers the slow push and **Pin it here** — everything the layer is now, pinned where the
+offers the slow push and **Pin the placement here** — everything the layer is now, pinned where the
 playhead is. Once there is something to travel between, dragging or resizing the layer on
 the frame pins *that moment* rather than writing the fixed value underneath the motion,
 and the handles sit where the layer actually is rather than where the static transform
@@ -397,8 +397,16 @@ travels, and retimes, re-eases and removes them; the timeline draws a diamond pe
 keyframe on the block, lit when the agent placed it. Exact values live in **All item
 properties**, whose Motion section is generated from the same `TransformKeyframe` schema
 the agent reads, seeded with what the layer is doing now. The placement panel marks the
-fields the motion decides and says where to change them, so the refusal is never the
-first anyone hears of it.
+fields the motion decides, so the refusal is never the first anyone hears of it, and
+offers the only two answers that are true of an animated field: pin the number just typed
+at the playhead, or stop animating that one field. Both are ordinary `item.keyframes`
+edits — `setKeyframe` and `clearField` in `src/lib/editor/motion.ts` — so a way out of a
+refusal is not a way around the operation.
+
+A keyframe's `by` is read out rather than typed in, in **All item properties** as
+everywhere else: it is what "why is this here" answers, and the system writes it. The
+same is true of a transition's. An agent still sets both; only the panel stops offering
+a text box over the answer.
 
 Agents use `item.keyframes` through `project.edit`, over the file tool transport, HTTP
 and MCP, with the same validation and the same messages. Undo inverts it like any other

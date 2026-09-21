@@ -5,16 +5,12 @@ import { Ease, type SequenceItem, type TransformKeyframe, type VideoSequence } f
 import type { EditorOperation } from "@/lib/editor/operations";
 import { sequenceFrames } from "@/lib/sequences";
 import { itemSeconds } from "@/lib/keyframes";
-import { kenBurns, keyframeSummary, pinPlacement, pinVolume, removeKeyframe, retimeKeyframe } from "@/lib/editor/motion";
+import { EASE_LABELS, PLAYHEAD_OUTSIDE_SHOT, kenBurns, keyframeSummary, pinPlacement, pinVolume, removeKeyframe, retimeKeyframe } from "@/lib/editor/motion";
 import { describeAuthor, isAgentAuthor } from "@/lib/editor/authorship";
 import { usePlayheadSelector, usePlayheadStore } from "@/lib/editor/playhead";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 
-/** What each ease is called where a person chooses one. */
-const EASE_LABELS: Record<string, string> = {
-  linear: "Steady", ease: "Eased at both ends", in: "Slow to start", out: "Slow to finish", hold: "Hold, then jump",
-};
 const seconds = (value: number) => `${value.toFixed(2)}s`;
 
 /**
@@ -49,7 +45,9 @@ export function MotionInspector({ sequence, item, dispatch, onSeek }: {
   const here = () => localAt(playhead.get());
   const commit = (next: TransformKeyframe[] | null) =>
     dispatch([{ type: "item.keyframes", sequenceId: sequence.id, itemId: item.id, keyframes: next?.length ? next : null, before: item.keyframes ?? null }]);
-  const outside = "Move the playhead into this shot to pin a moment on it.";
+  // A disabled button hides its own tooltip and drops out of the tab order, so the one
+  // thing that would unblock it has to be said beside the buttons, not on them.
+  const outside = !inside && <p className="text-[11px] leading-relaxed text-muted-foreground">{PLAYHEAD_OUTSIDE_SHOT}</p>;
 
   // No heading of its own: the section this opens out of is already called Motion, and a
   // second one under it would be a label for nothing.
@@ -61,9 +59,10 @@ export function MotionInspector({ sequence, item, dispatch, onSeek }: {
       <p className="text-xs text-muted-foreground">This layer holds still for the whole shot. Add a slow push, or pin where it is now and move it somewhere else later in the shot.</p>
       <div className="flex flex-wrap gap-2">
         <Button size="sm" onClick={() => commit(kenBurns(item, span))}><ZoomIn />Add a slow push</Button>
-        <Button size="sm" variant="outline" disabled={!inside} title={inside ? undefined : outside}
-          onClick={() => { const at = here(); if (at !== null) commit(pinPlacement(item, at)); }}><Diamond />Pin it here</Button>
+        <Button size="sm" variant="outline" disabled={!inside}
+          onClick={() => { const at = here(); if (at !== null) commit(pinPlacement(item, at)); }}><Diamond />Pin the placement here</Button>
       </div>
+      {outside}
     </> : <>
       <ul className="flex flex-col gap-2">
         {keyframes.map((key, index) => <li key={index}
@@ -80,7 +79,7 @@ export function MotionInspector({ sequence, item, dispatch, onSeek }: {
           <div className="mt-2 grid grid-cols-2 gap-2">
             <TimeField label="Moment (seconds)" value={key.t} max={span}
               onCommit={t => { if (t !== key.t) commit(retimeKeyframe(keyframes, index, t, span)); }} />
-            <label className="flex flex-col gap-1 text-xs">Travel to the next
+            <label className="flex flex-col gap-1 text-xs">Travel to the next keyframe
               <select className="h-8 rounded-xl border border-border bg-background px-2 text-sm focus-visible:outline-2 focus-visible:outline-ring"
                 value={key.ease} disabled={index === keyframes.length - 1}
                 onChange={event => commit(keyframes.map((each, n) => n === index ? { ...each, ease: Ease.parse(event.target.value) } : each))}>
@@ -91,12 +90,13 @@ export function MotionInspector({ sequence, item, dispatch, onSeek }: {
         </li>)}
       </ul>
       <div className="flex flex-wrap gap-2">
-        <Button size="xs" variant="outline" disabled={!inside} title={inside ? undefined : outside}
+        <Button size="xs" variant="outline" disabled={!inside}
           onClick={() => { const at = here(); if (at !== null) commit(pinPlacement(item, at)); }}><Diamond />Pin the placement here</Button>
-        <Button size="xs" variant="outline" disabled={!inside} title={inside ? undefined : outside}
+        <Button size="xs" variant="outline" disabled={!inside}
           onClick={() => { const at = here(); if (at !== null) commit(pinVolume(item, at)); }}><Volume2 />Pin the volume here</Button>
         <Button size="xs" variant="ghost" onClick={() => commit(null)}>Clear the motion</Button>
       </div>
+      {outside}
       <p className="text-[11px] leading-relaxed text-muted-foreground">Drag or resize the layer on the frame to change the moment the playhead is on.</p>
     </>}
   </div>;

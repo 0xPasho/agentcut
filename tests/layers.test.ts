@@ -265,6 +265,25 @@ test("a fixed value for a field the keyframes animate is refused, but restoring 
   applyOperations(animated, [place("two", { volume: 1 })]);
 });
 
+test("the way out of that refusal is an ordinary keyframe list, not a way around the operation", async () => {
+  const { clearField, setKeyframe } = await import("../src/lib/editor/motion");
+  const { animatedAt, animatedFields } = await import("../src/lib/keyframes");
+  const animated = applyOperations(fixture(), [keys("one", [{ t: 0, x: 0, opacity: 1 }, { t: 2, x: 30, opacity: 0 }])] as never);
+  const item = itemOf(animated, "one");
+  // The first answer the placement panel offers: the number just typed, pinned at the
+  // playhead, where it is a value somebody can actually see.
+  const pinned = applyOperations(animated, [keys("one", setKeyframe(item, 1, { opacity: 0.4 }))] as never);
+  assert.equal(animatedAt(itemOf(pinned, "one"), 1).opacity, 0.4);
+  // The second: that one field stops moving, and the rest of the move is untouched.
+  const stopped = applyOperations(animated, [keys("one", clearField(item.keyframes, "opacity"))] as never);
+  assert.deepEqual([...animatedFields(itemOf(stopped, "one").keyframes)], ["x"]);
+  assert.equal(animatedAt(itemOf(stopped, "one"), 1).x, 15, "the travel it still has is the travel it had");
+  // And the field it stopped animating takes a fixed value again, which is the whole point.
+  assert.equal(itemOf(applyOperations(stopped, [place("one", { transform: { opacity: 0.4 } })]), "one").transform!.opacity, 0.4);
+  // The last field going leaves a layer that holds still, not a list of empty moments.
+  assert.equal(clearField(clearField(item.keyframes, "opacity"), "x"), null);
+});
+
 test("a trim moves the footage under a move, not the move; what falls off the end is kept", async () => {
   const { animatedAt } = await import("../src/lib/keyframes");
   const animated = applyOperations(fixture(), [keys("one", [{ t: 0, opacity: 0 }, { t: 2, opacity: 1 }])] as never);

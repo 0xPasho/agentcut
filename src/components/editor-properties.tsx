@@ -3,7 +3,9 @@ import { useId, useState } from "react";
 import { z } from "zod";
 import { Clip, Edl, Transition, TransformKeyframe } from "@/lib/edl";
 import { applyOperations, patchFromClip, type EditorOperation } from "@/lib/editor/operations";
-import { DEFAULT_TRANSITION_SEC } from "@/lib/editor/transitions";
+import { DEFAULT_TRANSITION_SEC, TRANSITION_LABELS } from "@/lib/editor/transitions";
+import { EASE_LABELS } from "@/lib/editor/motion";
+import { describeAuthor } from "@/lib/editor/authorship";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 
@@ -21,13 +23,19 @@ const motionSchema = (seed: Record<string, number>): Schema => ({
   items: { ...keyframeSchema, properties: Object.fromEntries(Object.entries(keyframeSchema.properties ?? {})
     .map(([key, field]) => [key, key in seed ? { ...field, default: seed[key] } : field])) },
 });
-const names: Record<string, string> = { ease: "Travel to the next keyframe", by: "Placed by", t: "Start time (seconds)", d: "Duration (seconds)", x: "Left (pixels)", y: "Top / vertical position", w: "Width (pixels)", h: "Height (pixels)", start: "Source start (seconds)", end: "Source end (seconds)", crop: "Crop keyframes", layout: "Framing", topPct: "Top region (%)", src: "Asset ID or project filename", words: "Transcript words", w_word: "Word", p: "Recogniser confidence (0–1)", syncOffsetMs: "Caption sync (ms, + is later)", output: "Output", fontSizePct: "Font size (%)", maxWordsPerLine: "Words per line", positionY: "Caption position", gain: "Audio gain", duck: "Lower music during speech", loop: "Loop audio", durationSec: "Overlap (seconds)", kind: "Kind", direction: "Arrives from", color: "Colour" };
+const names: Record<string, string> = { ease: "Travel to the next keyframe", t: "Start time (seconds)", d: "Duration (seconds)", x: "Left (pixels)", y: "Top / vertical position", w: "Width (pixels)", h: "Height (pixels)", start: "Source start (seconds)", end: "Source end (seconds)", crop: "Crop keyframes", layout: "Framing", topPct: "Top region (%)", src: "Asset ID or project filename", words: "Transcript words", w_word: "Word", p: "Recogniser confidence (0–1)", syncOffsetMs: "Caption sync (ms, + is later)", output: "Output", fontSizePct: "Font size (%)", maxWordsPerLine: "Words per line", positionY: "Caption position", gain: "Audio gain", duck: "Lower music during speech", loop: "Loop audio", durationSec: "Overlap (seconds)", kind: "Kind", direction: "Arrives from", color: "Colour" };
 const labelFor = (key: string) => names[key] ?? key.replace(/([A-Z])/g, " $1").replace(/^./, c => c.toUpperCase());
 /**
  * A motion keyframe's geometry is a percentage of the OUTPUT frame; `crop`'s is source
  * pixels. The two share field names, so a keyframe says which one it means.
  */
 const MOTION_NAMES: Record<string, string> = { t: "Moment (seconds)", x: "Left (% of frame)", y: "Top (% of frame)", width: "Width (%)", height: "Height (%)", rotation: "Rotation (degrees)", opacity: "Opacity (0–1)", volume: "Volume (0–2)" };
+/**
+ * What each choice in an enumerated field is called. The schema's own values are what
+ * the agent writes; these are what a person reads, and they are the same words the
+ * Motion panel and the timeline's seam menu use rather than a second vocabulary.
+ */
+const OPTION_LABELS: Record<string, string> = { ...EASE_LABELS, ...TRANSITION_LABELS, left: "The left", right: "The right", up: "Above", down: "Below" };
 function seed(s: Schema): unknown {
   if (s.default !== undefined) return structuredClone(s.default);
   if (s.const !== undefined) return s.const;
@@ -39,8 +47,18 @@ function seed(s: Schema): unknown {
   if (s.type === "boolean") return false;
   return "";
 }
-export function Fields({ schema, value, onChange, label }: { schema: Schema; value: unknown; onChange: (v: unknown) => void; label: string }) {
+export function Fields({ schema, value, onChange, label, field }: { schema: Schema; value: unknown; onChange: (v: unknown) => void; label: string; field?: string }) {
   const id = useId();
+  /**
+   * Who put this here, read out rather than typed in.
+   *
+   * `by` is the mark the system writes — a template id, a rule, the turn of the
+   * conversation that asked for it — and it is what "why is this here" answers on the
+   * timeline and in the inspector. A text box invites somebody to overwrite the answer.
+   * The value is untouched and still travels with the edit, so an agent sets it exactly
+   * as before; only this panel stops pretending it is a field.
+   */
+  if (field === "by") return <p className="text-xs text-muted-foreground" title={String(value ?? "") || undefined}>{describeAuthor(String(value ?? ""))}</p>;
   const branches = schema.anyOf ?? schema.oneOf;
   if (branches) {
     const item = value as Record<string, unknown>;
@@ -51,7 +69,7 @@ export function Fields({ schema, value, onChange, label }: { schema: Schema; val
       </select></div><Fields schema={branches[active]} value={value} onChange={onChange} label={label} /></div>;
   }
   if (schema.const !== undefined) return null;
-  if (schema.type === "object") return <fieldset className="min-w-0 space-y-3 rounded-xl border border-border p-3"><legend className="px-1 text-sm font-medium">{label}</legend>{Object.entries(schema.properties ?? {}).filter(([k]) => k !== "id").map(([key,s]) => <Fields key={key} schema={s} label={schema.properties?.ease ? MOTION_NAMES[key] ?? labelFor(key) : key === "w" && schema.properties?.d ? "Word" : key === "y" && schema.properties?.h ? "Top (pixels)" : labelFor(key)} value={(value as Record<string, unknown>)?.[key]} onChange={v => onChange({ ...(value as object), [key]: v })} />)}</fieldset>;
+  if (schema.type === "object") return <fieldset className="min-w-0 space-y-3 rounded-xl border border-border p-3"><legend className="px-1 text-sm font-medium">{label}</legend>{Object.entries(schema.properties ?? {}).filter(([k]) => k !== "id").map(([key,s]) => <Fields key={key} field={key} schema={s} label={schema.properties?.ease ? MOTION_NAMES[key] ?? labelFor(key) : key === "w" && schema.properties?.d ? "Word" : key === "y" && schema.properties?.h ? "Top (pixels)" : labelFor(key)} value={(value as Record<string, unknown>)?.[key]} onChange={v => onChange({ ...(value as object), [key]: v })} />)}</fieldset>;
   if (schema.type === "array") {
     const values = (value ?? []) as unknown[];
     return <fieldset className="min-w-0 space-y-3 rounded-xl border border-border p-3"><legend className="px-1 text-sm font-medium">{label}</legend>
@@ -59,7 +77,7 @@ export function Fields({ schema, value, onChange, label }: { schema: Schema; val
       <Button size="sm" variant="outline" onClick={() => onChange([...values, seed(schema.items!)])}>Add {label.toLowerCase()}</Button>
     </fieldset>;
   }
-  if (schema.enum) return <div className="flex flex-col gap-1"><label htmlFor={id} className="text-xs">{label}</label><select id={id} className="h-9 rounded-xl border border-border bg-background px-2 text-sm focus-visible:outline-2 focus-visible:outline-ring" value={String(value)} onChange={e => onChange(e.target.value)}>{schema.enum.map(v => <option key={String(v)}>{String(v)}</option>)}</select></div>;
+  if (schema.enum) return <div className="flex flex-col gap-1"><label htmlFor={id} className="text-xs">{label}</label><select id={id} className="h-9 rounded-xl border border-border bg-background px-2 text-sm focus-visible:outline-2 focus-visible:outline-ring" value={String(value)} onChange={e => onChange(e.target.value)}>{schema.enum.map(v => <option key={String(v)} value={String(v)}>{OPTION_LABELS[String(v)] ?? String(v)}</option>)}</select></div>;
   if (schema.type === "boolean") return <label className="flex min-h-9 items-center gap-2 text-sm"><input type="checkbox" checked={!!value} onChange={e => onChange(e.target.checked)} />{label}</label>;
   const numeric = schema.type === "number" || schema.type === "integer";
   return <div className="space-y-1"><label htmlFor={id} className="text-xs">{label}</label><Input id={id} type={numeric ? "number" : "text"} step={schema.type === "integer" ? 1 : "any"} min={schema.minimum} max={schema.maximum} value={value === undefined ? "" : String(value)} onChange={e => onChange(numeric ? (e.target.value === "" ? "" : Number(e.target.value)) : e.target.value)} /></div>;
@@ -95,7 +113,9 @@ export function EditorProperties({ clip, edl, dispatch, onApplied, validationEdl
       <Fields schema={motionSchema({ ...motion.seed, t: keyframes.length ? Math.min(motion.seconds, Math.round((Math.max(...keyframes.map(key => key.t)) + 0.5) * 1000) / 1000) : 0 })}
         value={keyframes} onChange={v => setKeyframes(v as TransformKeyframe[])} label="Keyframe" />
     </div></details>}
-    {stale && <p role="alert" className="text-sm text-destructive">The clip changed while these fields were open. Close and reopen Properties to load the latest values. Your unsubmitted fields are still here.</p>}
+    {/* Not an alert: nothing is wrong yet, and nothing has been lost. The same notice in
+        the same words as Position & audio's, which is the other staged form in this panel. */}
+    {stale && <p role="status" className="text-sm text-destructive">The clip changed while these fields were open. Your unsaved fields are kept — close and reopen Properties to load the latest values.</p>}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     <Button disabled={stale} onClick={() => {
       try {
