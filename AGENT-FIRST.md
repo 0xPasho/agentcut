@@ -198,3 +198,20 @@ Milestones, in order: M1 rules + glossary + preferences → M2 plan + panel → 
 
 **Phase 3 — registry, translation, publishing, non-footage sources**
 Registry adapter for packs; caption translation; publish flows for videos; image-or-idea as a source. Designed when each is needed.
+
+## Wanted, not yet decided in detail (noted 2026-09-21)
+
+- **A settings home (`/settings`).** Rules, glossary, `preferences.md`, subjects, model per
+  task and provider keys are user-level configuration (decision 36), and today rules and
+  packs are two sections stacked under `/library`, which is where media lives. Mostly a
+  move plus the editors that were never built (glossary, preferences by hand, subjects,
+  model per task). Project- and sequence-level rules stay in the editor, where their
+  subject is.
+- **One marketplace, for packs, as a client of a static index.** Decisions 6 and 8 already
+  shape it: any static host serves a pack, so v1 is an `index.json` (name, author,
+  description, version, hash, URL), a search, the existing untrusted preview and install.
+  No server, no accounts, no publishing yet — that is still the registry of phase 3.
+- **No separate template marketplace.** A template alone does not travel (decision 6): one
+  that ends on an outro is useless without the asset. Templates are found through a filter
+  inside the pack marketplace — packs that carry only templates. A second store is a second
+  format to keep alive.
