@@ -135,13 +135,18 @@ function invertOne(edl: Edl, op: EditorOperation): EditorOperation[] {
     case "item.reorder": case "item.move": return restoreOrder(op.sequenceId, sequence.items);
     case "item.edit.add": return [{ type: "item.patch", sequenceId: op.sequenceId, itemId: op.itemId, patch: { edits: item.clip.edits } }];
     case "item.transition": return [{ type: "item.transition", sequenceId: op.sequenceId, itemId: op.itemId, transition: item.transition ?? null }];
+    case "item.keyframes": return [{ type: "item.keyframes", sequenceId: op.sequenceId, itemId: op.itemId, keyframes: item.keyframes ?? null }];
     case "item.patch": {
       const keys = Object.keys(op.patch) as (keyof typeof item.clip)[];
       const restored = keys.some(key => key === "start" || key === "end") ? [...new Set([...keys, ...TIMED])] : keys;
       return [{ type: "item.patch", sequenceId: op.sequenceId, itemId: op.itemId, patch: pick(item.clip, restored) }];
     }
+    // A split halves the motion as well as the footage, so undoing it has to put the
+    // whole list back — before the placement, which refuses a fixed value for a field
+    // the keyframes still on the item animate.
     case "item.split": return [
       { type: "item.remove", sequenceId: op.sequenceId, itemId: op.newItemId },
+      { type: "item.keyframes", sequenceId: op.sequenceId, itemId: op.itemId, keyframes: item.keyframes ?? null },
       { type: "item.patch", sequenceId: op.sequenceId, itemId: op.itemId, patch: pick(item.clip, TIMED) },
       { type: "item.place", sequenceId: op.sequenceId, itemId: op.itemId, patch: pick(placementOf(item), PLACEMENT) },
     ];

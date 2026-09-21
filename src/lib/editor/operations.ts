@@ -1,7 +1,8 @@
 import { z } from "zod";
-import { CaptionStyle, Clip, Edl, Edit, type CropKeyframe, MediaSource, MediaTranscription, VideoSequence, SequenceItem, ItemPlacement, ItemTransform, Transition, DEFAULT_ITEM_TRANSFORM } from "../edl";
+import { CaptionStyle, Clip, Edl, Edit, type CropKeyframe, MediaSource, MediaTranscription, VideoSequence, SequenceItem, ItemPlacement, ItemTransform, Transition, TransformKeyframe, DEFAULT_ITEM_TRANSFORM } from "../edl";
 import { promoteClipToSequence } from "./editable-timeline";
 import { sequenceFrames, transitionJoint } from "../sequences";
+import { ANIMATED_FIELDS, FIELD_LABELS, animatedFields, itemSeconds, splitKeyframes } from "../keyframes";
 import { buildTimeMap, clipFrames } from "../timeline";
 import { ProjectPlan, SequencePlan } from "../plan/schema";
 
@@ -41,6 +42,11 @@ export const EditorOperation = z.discriminatedUnion("type", [
   // The joint between this shot and the one before it on its track. `null` is a hard cut.
   // `before` is the same stale-form protection the staged panels use; `null` asserts there is none.
   z.object({ type: z.literal("item.transition"), sequenceId: z.string(), itemId: z.string(), transition: Transition.nullable(), before: Transition.nullable().optional() }).strict(),
+  // The layer's transform over its own time. The whole list is set at once, the way
+  // `crop` already is through `item.patch`: a keyframe is not addressed by an index that
+  // a retime would invalidate, and one write is one undo. `null` (or an empty list) is a
+  // layer that holds still, which is what every project that existed before this is.
+  z.object({ type: z.literal("item.keyframes"), sequenceId: z.string(), itemId: z.string(), keyframes: z.array(TransformKeyframe).nullable(), before: z.array(TransformKeyframe).nullable().optional() }).strict(),
   z.object({ type: z.literal("item.split"), sequenceId: z.string(), itemId: z.string(), at: z.number().positive(), newItemId: z.string().regex(/^[a-zA-Z0-9_-]+$/) }).strict(),
   z.object({ type: z.literal("item.detachAudio"), sequenceId: z.string(), itemId: z.string(), newItemId: z.string().regex(/^[a-zA-Z0-9_-]+$/), layer: z.number().int().nonnegative().optional() }).strict(),
   z.object({ type: z.literal("item.source"), sequenceId: z.string(), itemId: z.string(), mediaId: z.string().nullable(), start: z.number().nonnegative().optional(), end: z.number().positive().optional(), title: z.string().min(1).optional(), before: z.object({ mediaId: z.string().nullable() }).strict().optional() }).strict(),
@@ -88,6 +94,24 @@ function validateClip(clip: Clip, bounds: ClipBounds) {
   if (clip.crop.some((k, i) => k.t < 0 || (i > 0 && k.t <= clip.crop[i - 1].t))) throw new Error("Crop keyframes must have increasing, nonnegative times");
 }
 
+/**
+ * What a list of motion keyframes has to be, wherever it arrives from — `item.keyframes`,
+ * an `item.add` carrying one, a whole `sequence.add`. Structure only: whether a keyframe
+ * still falls inside the shot is a question about the shot, so it is asked by the
+ * operation that writes one (and deliberately not here, or a trim would freeze the
+ * project it shortened).
+ */
+function validateKeyframes(keyframes: TransformKeyframe[] | undefined, title: string) {
+  if (!keyframes) return;
+  for (const [index, key] of keyframes.entries()) {
+    if (!ANIMATED_FIELDS.some(field => key[field] !== undefined))
+      throw new Error(`The keyframe at ${key.t}s on “${title}” names nothing to animate. Give it a position, a size, a rotation, an opacity or a volume.`);
+    const previous = keyframes[index - 1];
+    if (previous && key.t <= previous.t)
+      throw new Error(`Motion keyframes on “${title}” must run in order, each later than the one before it: ${key.t}s is listed after ${previous.t}s.`);
+  }
+}
+
 function validateOutput(output: { width: number; height: number; fps: number }) {
   positive(output.width, "Output width"); positive(output.height, "Output height"); positive(output.fps, "Output frame rate");
   if (!Number.isInteger(output.width) || !Number.isInteger(output.height)) throw new Error("Output dimensions must be integers");
@@ -126,6 +150,7 @@ export function validateEdl(input: unknown): Edl {
       itemIds.add(item.id);
       const source = item.mediaId === null ? null : edl.media.find(m => m.id === item.mediaId);
       if (item.mediaId !== null && !source) throw new Error("Timeline item references missing media");
+      validateKeyframes(item.keyframes, item.clip.title);
       validateClip(item.clip, source
         ? { width: source.width, height: source.height, durationSec: source.durationSec }
         : { width: sequence.output.width, height: sequence.output.height, durationSec: null });
@@ -252,9 +277,34 @@ export function applyOperations(input: Edl, raw: unknown): Edl {
             }
           } else if (current[key] !== op.before[key]) throw new Error(`The item's ${key} changed. Review the latest values before applying this edit.`);
         }
+        // A field the keyframes decide cannot also be decided by a fixed value. Refused
+        // rather than silently stored, because the edit would appear to do nothing: the
+        // static transform is only what an un-animated field keeps. Only a *change* is
+        // refused, so restoring a placement it already has — which is what undoing a
+        // reorder does for every item on the track — still goes through untouched.
+        const animated = animatedFields(item.keyframes);
+        const fixed = { ...current.transform, volume: current.volume };
+        for (const field of ANIMATED_FIELDS) {
+          const wanted = field === "volume" ? op.patch.volume : op.patch.transform?.[field];
+          if (wanted === undefined || !animated.has(field) || wanted === fixed[field]) continue;
+          throw new Error(`“${item.clip.title}” animates its ${FIELD_LABELS[field]}, so a fixed value would never be seen. Move its keyframes instead, or clear the motion first.`);
+        }
         const { transform, ...placement } = op.patch;
         Object.assign(item, placement);
         if (transform) item.transform = { ...current.transform, ...transform };
+      }
+      if (op.type === "item.keyframes") {
+        if (op.before !== undefined && JSON.stringify(item.keyframes ?? null) !== JSON.stringify(op.before))
+          throw new Error("The shot's motion changed. Review the latest keyframes before applying this edit.");
+        // One representation of "holds still": the field is absent. An empty list would
+        // otherwise be a second one, and would put the field on every old EDL that saved.
+        if (!op.keyframes?.length) { delete item.keyframes; continue; }
+        validateKeyframes(op.keyframes, item.clip.title);
+        const seconds = itemSeconds(item, sequence.output.fps);
+        const past = op.keyframes.find(key => key.t > seconds + 1e-6);
+        if (past) throw new Error(`A keyframe at ${past.t}s is past the end of “${item.clip.title}”, which runs for ${seconds.toFixed(2)}s.`);
+        item.keyframes = op.keyframes;
+        continue;
       }
       if (op.type === "item.transition") {
         if (op.before !== undefined && JSON.stringify(item.transition ?? null) !== JSON.stringify(op.before))
@@ -361,9 +411,18 @@ export function applyOperations(input: Edl, raw: unknown): Edl {
         // The opening blend belongs to the joint before the shot, which only the first
         // half still has. The second half meets the first on a hard cut.
         const { transition: _opening, ...halved } = item; void _opening;
+        // The seam is a moment in the item's own output time, which is the time base the
+        // keyframes are written in. Both halves gain one there holding exactly the value
+        // the motion had reached, so cutting a shot in two changes no rendered pixel.
+        const motion = splitKeyframes(item.keyframes, firstFrames / sequence.output.fps);
+        const withMotion = <T extends { keyframes?: TransformKeyframe[] }>(part: T, keyframes: TransformKeyframe[] | undefined) => {
+          const next = { ...part };
+          if (keyframes) next.keyframes = keyframes; else delete next.keyframes;
+          return next;
+        };
         sequence.items.splice(index, 1,
-          { ...item, clip: first },
-          { ...halved, ...(item.at == null ? {} : { at: (from + firstFrames) / sequence.output.fps }), id: op.newItemId, clip: { ...trim(item.clip, split, item.clip.end), id: op.newItemId } });
+          withMotion({ ...item, clip: first }, motion.first),
+          withMotion({ ...halved, ...(item.at == null ? {} : { at: (from + firstFrames) / sequence.output.fps }), id: op.newItemId, clip: { ...trim(item.clip, split, item.clip.end), id: op.newItemId } }, motion.second));
       }
       continue;
     }

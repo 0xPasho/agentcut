@@ -267,3 +267,44 @@ test("a saved timeline of hard cuts stays free of transitions, and an old EDL st
   assert.equal(JSON.stringify(edited).includes("transition"), false);
   assert.deepEqual(sequenceFrames(edited.sequences[0]).items.map(i => i.from), [0, 20]);
 });
+
+test("motion is one editor: HTTP and agent write the same move, and a bad keyframe rolls the batch back", async () => {
+  const { id } = await mediaService.createVideoProject("Moves", [{ file: source }, { file: source }]);
+  const initial = store.readEditor(id), seq = initial.edl.sequences[0];
+  for (const item of seq.items) assert.equal("keyframes" in item, false, "an ordinary import holds still and says nothing about motion");
+  const { PATCH } = await import("../src/app/api/projects/[id]/route");
+  const { NextRequest } = await import("next/server");
+  const patch = (operations: unknown[], expectedRevision: number) => PATCH(
+    new NextRequest(`http://localhost/api/projects/${id}`, { method: "PATCH", body: JSON.stringify({ expectedRevision, operations }) }),
+    { params: Promise.resolve({ id }) });
+  // A person fades the first shot up through the UI's own endpoint.
+  const human = [{ type: "item.keyframes", sequenceId: seq.id, itemId: seq.items[0].id, keyframes: [{ t: 0, opacity: 0 }, { t: 0.5, opacity: 1, ease: "ease" }] }];
+  const response = await patch(human, initial.revision);
+  assert.equal(response.status, 200);
+  const ui = await response.json() as { edl: typeof initial.edl; revision: number };
+  assert.deepEqual(ui.edl, applyOperations(initial.edl, human));
+  assert.equal(sequenceFrames(ui.edl.sequences[0]).duration, 40, "animating a layer does not change how long the video is");
+  // The agent continues it on the other shot, through the same operation and validation.
+  const agentOps = [{ type: "item.keyframes", sequenceId: seq.id, itemId: seq.items[1].id, keyframes: [{ t: 0, x: 60, width: 30, height: 30, by: "agent:7" }, { t: 1, x: 5 }] }];
+  const agent = await tools.executeEditorTool(id, { tool: "project.edit", expectedRevision: ui.revision, operations: agentOps }) as { edl: typeof initial.edl; revision: number };
+  assert.deepEqual(agent.edl, applyOperations(ui.edl, agentOps));
+  assert.equal(agent.edl.sequences[0].items[1].keyframes![0].by, "agent:7", "why is this here survives the round trip");
+  const { animatedAt } = await import("../src/lib/keyframes");
+  assert.equal(animatedAt(agent.edl.sequences[0].items[1], 0.5).x, 32.5, "and the agent's move resolves for the human too");
+  // The human retimes one of the agent's keyframes: the other keeps its mark, and the
+  // fade the human placed on the first shot is untouched by either.
+  const retimed = agent.edl.sequences[0].items[1].keyframes!.map(key => (key.t === 1 ? { ...key, t: 0.6 } : key));
+  const both = store.editProject(id, { expectedRevision: agent.revision, operations: [
+    { type: "item.keyframes", sequenceId: seq.id, itemId: seq.items[1].id, keyframes: retimed, before: agent.edl.sequences[0].items[1].keyframes },
+  ] }, { actor: "human" });
+  assert.equal(both.edl.sequences[0].items[1].keyframes![1].t, 0.6);
+  assert.equal(both.edl.sequences[0].items[1].keyframes![0].by, "agent:7");
+  assert.deepEqual(both.edl.sequences[0].items[0].keyframes, ui.edl.sequences[0].items[0].keyframes);
+  // The identical impossible keyframe is refused the same way through both doors, and
+  // nothing else in its batch lands.
+  const refused = { type: "item.keyframes", sequenceId: seq.id, itemId: seq.items[0].id, keyframes: [{ t: 99, opacity: 1 }] };
+  const bad = await patch([{ type: "sequence.patch", sequenceId: seq.id, title: "Must roll back" }, refused], both.revision);
+  assert.equal(bad.status, 400);
+  await assert.rejects(tools.executeEditorTool(id, { tool: "project.edit", expectedRevision: both.revision, operations: [refused] }), /past the end/);
+  assert.deepEqual(store.readEditor(id), both, "nothing in the refused batch landed");
+});

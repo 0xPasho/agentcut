@@ -183,6 +183,34 @@ test("a terminal agent sets a transition over MCP, with the same contract and th
   assert.match(refused.content[0].text, /first shot on its track/);
 });
 
+test("a terminal agent animates a layer over MCP, and the panel would read back exactly what it wrote", async () => {
+  const id = "mcp-motion";
+  database.q.insertProject({ id, name: id, source_path: "", created_at: Date.now() });
+  const shot = (name: string) => ({ id: name, mediaId: null, clip: { id: name, title: name, start: 0, end: 2, crop: [], layout: { type: "crop" }, captions: {}, words: [], edits: [], hook: "", reason: "", score: 50, tags: [] } });
+  const start = store.publishClips(id, { version: 1, projectId: id, source: null, output: { width: 640, height: 360, fps: 10 }, clips: [], media: [],
+    sequences: [{ id: "s", title: "Two shots", output: { width: 640, height: 360, fps: 10 }, items: [shot("a"), shot("b")], plan: {} }], plan: {} } as never);
+  const edit = mcp.listMcpTools().find((t) => t.name === "agentcut_project_edit")!;
+  assert.ok(JSON.stringify(edit.inputSchema).includes("item.keyframes"), "the move is part of the published tool contract, not a private operation");
+  const call = (operations: unknown[], expectedRevision: number) => mcp.handleMcpRequest({ jsonrpc: "2.0", id: 12, method: "tools/call",
+    params: { name: "agentcut_project_edit", arguments: { projectId: id, expectedRevision, operations } } }, "1.0") as Promise<{ content: Array<{ text: string }>; isError?: boolean }>;
+  const set = await call([{ type: "item.keyframes", sequenceId: "s", itemId: "b", keyframes: [{ t: 0, x: 70, y: 5, width: 25, height: 25 }, { t: 2, x: 5, ease: "out" }] }], start.revision);
+  assert.ok(!set.isError, set.content?.[0]?.text);
+  const saved = store.readEditor(id).edl.sequences[0].items[1];
+  assert.equal(saved.keyframes!.length, 2);
+  // The properties panel lists keyframes through these two helpers, so what the agent
+  // wrote is what a person sees and can retime — one state, two interfaces.
+  const { keyframeSummary, retimeKeyframe } = await import("../src/lib/editor/motion");
+  assert.equal(keyframeSummary(saved.keyframes![0]), "position across, position down, width, height");
+  assert.deepEqual(retimeKeyframe(saved.keyframes!, 1, 1).map((k) => k.t), [0, 1]);
+  const { animatedAt } = await import("../src/lib/keyframes");
+  assert.equal(animatedAt(saved, 0).x, 70);
+  assert.equal(animatedAt(saved, 2).x, 5);
+  // The same refusal reaches this transport too, with the number in it.
+  const refusedMove = await call([{ type: "item.keyframes", sequenceId: "s", itemId: "b", keyframes: [{ t: 9, x: 1 }] }], store.readEditor(id).revision);
+  assert.equal(refusedMove.isError, true);
+  assert.match(refusedMove.content[0].text, /at 9s is past the end of .b., which runs for 2\.00s/);
+});
+
 // -----------------------------------------------------------------------------
 // what the agent is looking at
 //

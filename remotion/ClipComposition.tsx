@@ -31,7 +31,12 @@ export type ClipProps = {
   hideVideo?: boolean;
   transparent?: boolean;
   hideVisuals?: boolean;
-  volume?: number;
+  /**
+   * The item's own gain: a number, or its gain at one of its own frames when keyframes
+   * animate it. A function here composes with a transition's crossfade rather than
+   * replacing it — a bed that ducks under a line still ramps across the joint it sits on.
+   */
+  volume?: number | ((itemFrame: number) => number);
   muted?: boolean;
   /**
    * Ramps at either end of the shot, in its own frames, when a transition overlaps it.
@@ -95,8 +100,13 @@ export const ClipComposition: React.FC<ClipProps> = ({
   // Words are already mapped to output time, which is the timebase the ducking
   // envelope is sampled in.
   const spans = useMemo(() => speechSpans(words), [words]);
-  /** This shot's gain at one of its own frames, once a transition's crossfade is in it. */
-  const gainAt = (f: number) => (fade ? volume * crossfadeGain(f, fade) : volume);
+  /** This shot's gain at one of its own frames, once its keyframes and a crossfade are in it. */
+  const animated = typeof volume === "function";
+  const level = (f: number) => (animated ? (volume as (itemFrame: number) => number)(f) : (volume as number));
+  const gainAt = (f: number) => (fade ? level(f) * crossfadeGain(f, fade) : level(f));
+  // Nothing animated and no joint means the gain is still a plain number all the way down,
+  // so a project without keyframes hands Remotion exactly the props it always did.
+  const perFrame = animated || !!fade;
   const urlFor = (ref: string) => assetUrls[ref] ?? `${assetBase}${ref}`;
 
   // Punch-in: ease up over ~300ms, hold, ease back down. Both ramps use an
@@ -117,7 +127,7 @@ export const ClipComposition: React.FC<ClipProps> = ({
     );
   }, 1);
 
-  const shared = { sourceUrl, sourceWidth, sourceHeight, clipStart: clip.start, map, zoom, volume: fade ? gainAt : volume, muted };
+  const shared = { sourceUrl, sourceWidth, sourceHeight, clipStart: clip.start, map, zoom, volume: perFrame ? gainAt : (volume as number), muted };
 
   let video: React.ReactNode = null;
   if (hideVideo) {
@@ -174,7 +184,7 @@ export const ClipComposition: React.FC<ClipProps> = ({
             durationInFrames={Math.max(1, Math.round(s.d * fps))}
             layout="none"
           >
-            <Audio src={urlFor(s.src)} muted={muted} volume={fade ? (f) => gainAt(from + f) * s.gain : volume * s.gain} />
+            <Audio src={urlFor(s.src)} muted={muted} volume={perFrame ? (f) => gainAt(from + f) * s.gain : (volume as number) * s.gain} />
           </Sequence>
         );
       })}

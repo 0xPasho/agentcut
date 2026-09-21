@@ -196,3 +196,165 @@ test("an equal-power crossfade holds its loudness through the joint", async () =
   assert.equal(crossfadeGain(10, fade), 1);
   assert.equal(crossfadeGain(25, fade), 1, "a shot with no ramp under it is untouched");
 });
+
+/* ---- Keyframed layer transforms: a layer's placement over the item's own time ---- */
+
+const keys = (itemId: string, keyframes: object[] | null, before?: object[] | null) =>
+  ({ type: "item.keyframes", sequenceId: "main", itemId, keyframes, ...(before !== undefined ? { before } : {}) });
+const itemOf = (edl: Edl, id: string) => edl.sequences[0].items.find(i => i.id === id)!;
+
+test("a layer with no keyframes is the static transform it always was, and one keyframe holds", async () => {
+  const { animatedAt } = await import("../src/lib/keyframes");
+  const placed = applyOperations(fixture(), [place("one", { transform: { x: 10, opacity: 0.5 } })]);
+  const still = itemOf(placed, "one");
+  assert.deepEqual(animatedAt(still, 0), { ...DEFAULT_ITEM_TRANSFORM, x: 10, opacity: 0.5, volume: 1 });
+  assert.deepEqual(animatedAt(still, 3.9), animatedAt(still, 0), "nothing moves without keyframes");
+  const single = itemOf(applyOperations(placed, [keys("one", [{ t: 1, opacity: 0.2 }])] as never), "one");
+  for (const t of [0, 1, 2, 3.9]) assert.equal(animatedAt(single, t).opacity, 0.2, `one keyframe holds the whole item, at ${t}s`);
+  assert.equal(animatedAt(single, 2).x, 10, "a field no keyframe names keeps the static transform under it");
+});
+
+test("every named ease is a different way of getting there, and all of them arrive", async () => {
+  const { animatedAt, EASES } = await import("../src/lib/keyframes");
+  const at = (ease: string, t: number) =>
+    animatedAt(itemOf(applyOperations(fixture(), [keys("one", [{ t: 0, x: 0, ease }, { t: 2, x: 100 }])] as never), "one"), t).x;
+  assert.deepEqual(Object.keys(EASES).sort(), ["ease", "hold", "in", "linear", "out"], "the whole catalogue is implemented");
+  for (const ease of Object.keys(EASES)) {
+    assert.equal(at(ease, 0), 0, `${ease} starts where it is told`);
+    assert.equal(at(ease, 2), 100, `${ease} arrives`);
+    assert.equal(at(ease, 3), 100, `${ease} holds past the last keyframe`);
+  }
+  assert.equal(at("linear", 1), 50);
+  assert.equal(at("linear", 0.5), 25);
+  assert.equal(at("ease", 1), 50, "ease is symmetrical about the middle");
+  assert.ok(at("ease", 0.5) < 25 && at("ease", 1.5) > 75, `ease is slow at both ends: ${at("ease", 0.5)}, ${at("ease", 1.5)}`);
+  assert.equal(at("in", 1), 25, "in accelerates away from the first keyframe");
+  assert.equal(at("out", 1), 75, "out decelerates into the second");
+  assert.equal(at("hold", 1.99), 0, "hold does not travel at all");
+  assert.equal(at("hold", 2), 100, "it steps on the frame the next keyframe starts");
+});
+
+test("keyframes are refused where they cannot mean anything, with the number in the message", () => {
+  const edl = fixture();
+  assert.throws(() => applyOperations(edl, [keys("one", [{ t: 2, x: 1 }, { t: 1, x: 2 }])] as never), /must run in order[\s\S]*1s is listed after 2s/);
+  assert.throws(() => applyOperations(edl, [keys("one", [{ t: 1, x: 1 }, { t: 1, x: 2 }])] as never), /must run in order[\s\S]*1s is listed after 1s/);
+  assert.throws(() => applyOperations(edl, [keys("one", [{ t: 0 }])] as never), /at 0s on “one” names nothing to animate/);
+  // "one" is four seconds long at ten frames a second.
+  applyOperations(edl, [keys("one", [{ t: 4, x: 1 }])] as never);
+  assert.throws(() => applyOperations(edl, [keys("one", [{ t: 5, x: 1 }])] as never), /at 5s is past the end of “one”, which runs for 4\.00s/);
+  assert.throws(() => applyOperations(edl, [keys("one", [{ t: -1, x: 1 }])] as never));
+  assert.throws(() => applyOperations(edl, [keys("one", [{ t: 0, opacity: 2 }])] as never));
+  // An empty list and no list are the same thing, and neither writes a field.
+  const animated = applyOperations(edl, [keys("one", [{ t: 0, x: 1 }])] as never);
+  for (const cleared of [null, []]) {
+    const back = applyOperations(animated, [keys("one", cleared)] as never);
+    assert.equal("keyframes" in itemOf(back, "one"), false, `${JSON.stringify(cleared)} leaves the layer holding still`);
+  }
+  assert.equal("keyframes" in itemOf(applyOperations(edl, [keys("one", [])] as never), "one"), false);
+});
+
+test("a fixed value for a field the keyframes animate is refused, but restoring one it already has is not", () => {
+  const animated = applyOperations(fixture(), [keys("one", [{ t: 0, opacity: 1 }, { t: 2, opacity: 0 }]), keys("two", [{ t: 0, volume: 1 }, { t: 1, volume: 0.2 }])] as never);
+  // A field the keyframes leave alone is still placed by hand, as it always was.
+  assert.equal(itemOf(applyOperations(animated, [place("one", { transform: { x: 20 } })]), "one").transform!.x, 20);
+  assert.throws(() => applyOperations(animated, [place("one", { transform: { opacity: 0.4 } })]), /“one” animates its opacity, so a fixed value would never be seen/);
+  assert.throws(() => applyOperations(animated, [place("two", { volume: 0.5 })]), /“two” animates its volume/);
+  // Writing back the value the static transform already holds changes nothing, so the
+  // placement undo of a reorder — which restores every field of every item — still works.
+  applyOperations(animated, [place("one", { transform: { ...DEFAULT_ITEM_TRANSFORM } })]);
+  applyOperations(animated, [place("two", { volume: 1 })]);
+});
+
+test("a trim moves the footage under a move, not the move; what falls off the end is kept", async () => {
+  const { animatedAt } = await import("../src/lib/keyframes");
+  const animated = applyOperations(fixture(), [keys("one", [{ t: 0, opacity: 0 }, { t: 2, opacity: 1 }])] as never);
+  const trim = (patch: object) => applyOperations(animated, [{ type: "item.patch", sequenceId: "main", itemId: "one", patch }]);
+  const head = trim({ start: 1 });
+  assert.deepEqual(itemOf(head, "one").keyframes, itemOf(animated, "one").keyframes,
+    "t is the item's own time from its own first frame, so a trim from the head leaves it where it is");
+  const tail = trim({ end: 1 });
+  assert.equal(itemOf(tail, "one").keyframes!.length, 2, "a keyframe the trim put past the end is kept, not deleted");
+  assert.ok(Math.abs(animatedAt(itemOf(tail, "one"), 0.9).opacity - 0.45) < 1e-9, "it is simply never reached");
+  // Replacing the footage is about the footage: the layer keeps moving the way it did.
+  const swapped = applyOperations(animated, [{ type: "item.source", sequenceId: "main", itemId: "one", mediaId: null }]);
+  assert.deepEqual(itemOf(swapped, "one").keyframes, itemOf(animated, "one").keyframes);
+});
+
+test("splitting a moving layer changes no rendered value, and both halves carry their share", async () => {
+  const { animatedAt } = await import("../src/lib/keyframes");
+  const animated = applyOperations(fixture(), [keys("one", [{ t: 0, x: 0 }, { t: 4, x: 100 }])] as never);
+  const split = applyOperations(animated, [{ type: "item.split", sequenceId: "main", itemId: "one", at: 1, newItemId: "tail" }]);
+  const [first, second] = split.sequences[0].items;
+  assert.equal(first.keyframes!.at(-1)!.t, 1);
+  assert.equal(first.keyframes!.at(-1)!.x, 25, "the first half ends where the move had got to");
+  assert.deepEqual([second.keyframes![0].t, second.keyframes![0].x], [0, 25], "and the second half starts there");
+  assert.equal(second.keyframes!.at(-1)!.t, 3, "the rest of the move is rebased into the second half's own time");
+  for (const t of [0, 0.5, 1, 2, 3, 4]) {
+    const actual = t <= 1 ? animatedAt(first, t).x : animatedAt(second, t - 1).x;
+    assert.ok(Math.abs(actual - 25 * t) < 1e-6, `the cut is invisible at ${t}s: ${actual} vs ${25 * t}`);
+  }
+  // A layer that was holding still does not acquire the field by being cut in two.
+  const plain = applyOperations(fixture(), [{ type: "item.split", sequenceId: "main", itemId: "one", at: 1, newItemId: "tail" }]);
+  for (const item of plain.sequences[0].items) assert.equal("keyframes" in item, false);
+});
+
+test("motion undoes through the same operations, refuses a stale form, and carries who placed it", async () => {
+  const { invertOperations } = await import("../src/lib/editor/history");
+  const { stampAuthor, describeAuthor } = await import("../src/lib/editor/authorship");
+  const edl = fixture();
+  const add = [keys("two", [{ t: 0, opacity: 0 }, { t: 1, opacity: 1 }])] as never;
+  const added = applyOperations(edl, add);
+  assert.deepEqual(applyOperations(added, invertOperations(edl, add)), edl, "undo puts the layer back to holding still");
+  const change = [keys("two", [{ t: 0, opacity: 1 }, { t: 1, opacity: 0 }], itemOf(added, "two").keyframes)] as never;
+  const changed = applyOperations(added, change);
+  assert.deepEqual(applyOperations(changed, invertOperations(added, change)), added);
+  assert.throws(() => applyOperations(changed, [keys("two", [{ t: 0, opacity: 0.5 }], null)] as never), /motion changed/);
+  // Splitting halves a move, so undoing the split has to put the whole list back.
+  const splitOp = [{ type: "item.split", sequenceId: "main", itemId: "two", at: 1, newItemId: "tail" }] as never;
+  const split = applyOperations(added, splitOp);
+  const back = applyOperations(split, invertOperations(added, splitOp));
+  assert.deepEqual(itemOf(back, "two").keyframes, itemOf(added, "two").keyframes);
+  assert.equal(back.sequences[0].items.length, 2);
+  const stamped = stampAuthor({ tool: "project.edit", operations: [keys("two", [{ t: 0, opacity: 0 }, { t: 1, opacity: 1, by: "" }])] }, "agent:13") as { operations: [{ keyframes: [{ by: string }] }] };
+  assert.equal(stamped.operations[0].keyframes[0].by, "agent:13");
+  assert.equal(describeAuthor(stamped.operations[0].keyframes[0].by), "Placed by the agent (message 13)");
+});
+
+test("the panel's shortcuts are ordinary keyframe lists, Ken Burns included", async () => {
+  const { kenBurns, pinPlacement, pinVolume, setKeyframe, retimeKeyframe, removeKeyframe } = await import("../src/lib/editor/motion");
+  const { animatedAt, itemSeconds } = await import("../src/lib/keyframes");
+  const still = itemOf(fixture(), "one");
+  // A still gets a Ken Burns move out of exactly the fields every other layer animates.
+  const move = kenBurns(still, itemSeconds(still, 10));
+  const moved = applyOperations(fixture(), [keys("one", move)] as never);
+  const opened = animatedAt(itemOf(moved, "one"), 0), closed = animatedAt(itemOf(moved, "one"), 4);
+  assert.deepEqual([opened.x, opened.y, opened.width, opened.height], [0, 0, 100, 100], "it starts exactly where the layer already was");
+  assert.ok(closed.width > opened.width && closed.height > opened.height, `and ends larger: ${closed.width}`);
+  assert.ok(closed.x < opened.x, `drifting as it grows rather than only zooming: ${closed.x}`);
+  const midway = animatedAt(itemOf(moved, "one"), 2);
+  assert.ok(midway.width > opened.width && midway.width < closed.width, `and it is part-way there in the middle: ${midway.width}`);
+  // Pinning the placement is one keyframe holding what the layer is; a drag then moves it.
+  const pinned = { ...still, keyframes: pinPlacement(still, 0) };
+  assert.equal(pinned.keyframes.length, 1);
+  const dragged = setKeyframe(pinned, 2, { x: 40, y: 10 });
+  assert.deepEqual(dragged.map(k => [k.t, k.x]), [[0, 0], [2, 40]]);
+  assert.equal(animatedAt({ ...pinned, keyframes: dragged }, 1).x, 20, "the drag made a move, not a new position for the whole shot");
+  // A field arriving for the first time is anchored on the keyframes already there.
+  const ducked = setKeyframe({ ...pinned, keyframes: dragged }, 1, { volume: 0.2 });
+  assert.equal(ducked[0].volume, 1, "the moments already pinned keep the volume they had");
+  assert.equal(ducked.find(k => k.t === 1)!.volume, 0.2);
+  assert.equal(pinVolume(still, 0)[0].volume, 1);
+  // Retiming keeps the list in order; two keyframes never land on the same moment.
+  assert.deepEqual(retimeKeyframe(dragged, 1, 0).map(k => k.t), [0, 0.008]);
+  assert.deepEqual(retimeKeyframe(dragged, 0, 3).map(k => k.t), [2, 3]);
+  assert.deepEqual(removeKeyframe(dragged, 0).map(k => k.t), [2]);
+});
+
+test("a saved timeline that holds still stays free of keyframes, and an old EDL still parses", () => {
+  const legacy = Edl.parse({ projectId: "old", source: null, clips: [], sequences: [{ id: "s", title: "Old", output: { width: 640, height: 360, fps: 10 },
+    items: [{ id: "a", mediaId: null, clip: { id: "a", title: "A", start: 0, end: 2 } }] }] });
+  assert.equal(legacy.sequences[0].items[0].keyframes, undefined);
+  assert.equal(JSON.stringify(legacy).includes("keyframes"), false, "reading an old EDL does not write a migration into it");
+  const edited = applyOperations(legacy, [{ type: "item.patch", sequenceId: "s", itemId: "a", patch: { title: "A again" } }]);
+  assert.equal(JSON.stringify(edited).includes("keyframes"), false);
+});
