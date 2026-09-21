@@ -138,7 +138,7 @@ export function Welcome({ questions, initial }: { questions: readonly Onboarding
           <div className="space-y-4">
             <div className="space-y-1">
               <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight"><Check className="size-5 text-primary" />Preferences written</h1>
-              <p className="text-sm text-muted-foreground">Edit anything that is not right. These go into every video, and the Library keeps them editable.</p>
+              <p className="text-sm text-muted-foreground">Edit anything that is not right. These go into every video, and settings keeps them editable.</p>
             </div>
             <Textarea rows={12} value={written} onChange={(e) => setWritten(e.target.value)} className="font-mono text-xs" />
             {!!glossary.length && <p className="text-xs text-muted-foreground">Names added to the glossary: {glossary.join(", ")}.</p>}
@@ -152,7 +152,7 @@ export function Welcome({ questions, initial }: { questions: readonly Onboarding
       </div>
 
       <footer className="mx-auto w-full max-w-2xl text-xs text-muted-foreground">
-        Skipping is fine. The interview stays in the Library, and the agent can ask you at any time.
+        Skipping is fine. The interview stays in settings, and the agent can ask you at any time.
       </footer>
     </main>
   );

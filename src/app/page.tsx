@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Library, Trash2 } from "lucide-react";
+import { Library, Settings, Trash2 } from "lucide-react";
 import { AgentcutIcon } from "@/components/agentcut-mark";
 import { Button } from "@/components/ui/button";
 import { q } from "@/lib/db";
@@ -38,6 +38,7 @@ export default async function Home() {
           <Library className="size-4" />
           Library
         </Button>
+        <Button variant="ghost" size="icon" aria-label="Settings" nativeButton={false} render={<Link href="/settings" />}><Settings className="size-4" /></Button>
       </Glass>
 
       {!onboarding.hasPreferences && onboarding.reminder && <OnboardingReminder />}

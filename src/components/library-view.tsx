@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { ArrowLeft, Loader2, Trash2, Upload } from "lucide-react";
+import { ArrowLeft, Loader2, Settings, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Glass } from "@/components/ui/glass";
@@ -10,8 +10,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose, DialogTrigger } from "@/components/ui/dialog";
 import { api, assetFileUrl, type AssetSummary } from "@/lib/client";
 import { classifyFile, hasFileDrag } from "@/lib/editor/dnd";
-import { RulesPanel } from "@/components/rules-panel";
-import { PacksPanel } from "@/components/packs-panel";
 
 export function LibraryView() {
   const [kind, setKind] = useState<"image" | "audio" | "video">("image");
@@ -86,6 +84,10 @@ export function LibraryView() {
           <ArrowLeft className="size-4" />
         </Button>
         <h1 className="flex-1 text-sm font-medium">Library</h1>
+        <Button variant="ghost" size="sm" render={<Link href="/settings" />}>
+          <Settings className="size-4" />
+          Settings
+        </Button>
         <Button size="sm" disabled={pending} onClick={() => fileInput.current?.click()}>
           {pending ? <Loader2 className="size-4 motion-safe:animate-spin" /> : <Upload className="size-4" />}
           Upload
@@ -178,21 +180,10 @@ export function LibraryView() {
 
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
 
-      <section aria-labelledby="workspace-rules" className="space-y-3">
-        <h2 id="workspace-rules" className="text-sm font-medium">Rules, glossary and preferences</h2>
-        <p className="text-xs text-muted-foreground">Apply to every project. The agent reads them when it chooses clips and when it edits; a project can add its own.</p>
-        <Card><CardContent className="py-4"><RulesPanel /></CardContent></Card>
-      </section>
-
-      <section aria-labelledby="workspace-packs" className="space-y-3">
-        <h2 id="workspace-packs" className="text-sm font-medium">Packs</h2>
-        <p className="text-xs text-muted-foreground">Templates, rules, glossary, assets and quick actions that travel together. Import from a folder or a URL; export yours to share.</p>
-        <Card><CardContent className="py-4"><PacksPanel /></CardContent></Card>
-      </section>
-
       <p className="mt-auto text-xs text-muted-foreground">
         Anything dropped into <code className="font-mono">workspace/library/</code> is picked up
-        automatically.
+        automatically. Rules, names, preferences and packs are in{" "}
+        <Link href="/settings" className="underline underline-offset-2">settings</Link>.
       </p>
     </main>
   );

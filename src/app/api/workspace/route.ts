@@ -5,7 +5,8 @@ import { listTemplates } from "@/lib/templates/registry";
 import { readObservations, reviewObservations } from "@/lib/observations";
 import { onboardingState, runOnboarding, skipOnboarding, saveOnboardingAnswers, reopenOnboarding, dismissOnboardingReminder, ONBOARDING_QUESTIONS } from "@/lib/onboarding";
 import { listPacks, inspectPack, importPack, removePack, exportPack } from "@/lib/packs";
-import { effectiveSelection } from "@/lib/agent/selection";
+import { effectiveSelection, applySelection, selectionOverview } from "@/lib/agent/selection";
+import { providerKeys, setProviderKey } from "@/lib/secrets";
 export const runtime = "nodejs";
 
 /**
@@ -14,11 +15,14 @@ export const runtime = "nodejs";
  */
 export async function GET() {
   const [rules, glossary, preferences, templates] = await Promise.all([listRules(), readGlossaryLevel("workspace"), readPreferences(), listTemplates()]);
-  return Response.json({ rules, glossary, preferences: preferences.workspace, templates: templates.map((t) => ({ id: t.id, name: t.name, builtin: t.builtin })), schema: ruleSchema(), observations: readObservations({ limit: 100 }), onboarding: { ...(await onboardingState()), questions: ONBOARDING_QUESTIONS }, packs: await listPacks() });
+  // Everything the settings page reads in one answer, except which CLIs are on the
+  // machine: that probe spawns four binaries and belongs on /api/agents, which the
+  // page asks separately so the rest of it paints immediately.
+  return Response.json({ rules, glossary, preferences: preferences.workspace, templates: templates.map((t) => ({ id: t.id, name: t.name, builtin: t.builtin })), schema: ruleSchema(), observations: readObservations({ limit: 100 }), onboarding: { ...(await onboardingState()), questions: ONBOARDING_QUESTIONS }, packs: await listPacks(), providerKeys: providerKeys(), ...selectionOverview() });
 }
 
 export async function POST(req: Request) {
-  const body = (await req.json().catch(() => ({}))) as { action?: string; rule?: unknown; id?: string; glossary?: unknown; text?: string; answers?: unknown; source?: string; replace?: boolean; pack?: Parameters<typeof exportPack>[0] };
+  const body = (await req.json().catch(() => ({}))) as { action?: string; rule?: unknown; id?: string; glossary?: unknown; text?: string; answers?: unknown; source?: string; replace?: boolean; pack?: Parameters<typeof exportPack>[0]; scope?: string; task?: string; provider?: string; model?: string; value?: string };
   try {
     switch (body.action) {
       case "rules.save": return Response.json(await saveRule(body.rule, "workspace"));
@@ -26,10 +30,10 @@ export async function POST(req: Request) {
       case "glossary.save": return Response.json(await saveGlossary(body.glossary, "workspace"));
       case "preferences.set": return Response.json(await savePreferences(String(body.text ?? ""), "workspace"));
       // Workspace-scoped agent runs are not jobs, so they fold in the selection here.
-      case "observations.review": return Response.json(await reviewObservations(undefined, effectiveSelection(undefined)));
+      case "observations.review": return Response.json(await reviewObservations(undefined, effectiveSelection(undefined, {}, "observations")));
       case "onboarding.status": return Response.json({ ...(await onboardingState()), questions: ONBOARDING_QUESTIONS });
       case "onboarding.answer": return Response.json(await saveOnboardingAnswers(body.answers ?? {}));
-      case "onboarding.run": return Response.json(await runOnboarding(body.answers ?? {}, effectiveSelection(undefined)));
+      case "onboarding.run": return Response.json(await runOnboarding(body.answers ?? {}, effectiveSelection(undefined, {}, "observations")));
       case "onboarding.skip": return Response.json(await skipOnboarding());
       case "onboarding.reopen": return Response.json(await reopenOnboarding());
       case "onboarding.dismiss": return Response.json(await dismissOnboardingReminder());
@@ -37,6 +41,9 @@ export async function POST(req: Request) {
       case "packs.import": return Response.json(await importPack(String(body.source ?? ""), { replace: !!body.replace }));
       case "packs.remove": return Response.json(await removePack(String(body.id ?? "")));
       case "packs.export": return Response.json(await exportPack(body.pack as Parameters<typeof exportPack>[0]));
+      // The same functions the agent tools call, with the level fixed at workspace.
+      case "agents.select": { applySelection({ scope: body.scope ?? "workspace", task: body.task, provider: body.provider ?? "", model: body.model ?? "" }); return Response.json(selectionOverview()); }
+      case "providerkeys.set": return Response.json(setProviderKey(String(body.id ?? ""), String(body.value ?? "")));
       default: return Response.json({ error: "Unknown action" }, { status: 400 });
     }
   } catch (error) {

@@ -9,7 +9,7 @@ import { Button } from "./ui/button";
 /**
  * What is left of the interview on the home page after it was skipped: one line,
  * not a form. The page is for making a video; the interview has its own screen.
- * "Not now" only silences this line — the Library entry and the agent still offer
+ * "Not now" only silences this line — the settings entry and the agent still offer
  * it, which is the point of a skip that is reversible.
  */
 export function OnboardingReminder() {
