@@ -340,9 +340,13 @@ somebody speaking on a *different* layer has no words of its own to duck under.
 
 ### What is refused, and what is clamped
 
-`item.keyframes` refuses, with the number in the message: two keyframes at the same `t`
-or out of order (it names both times), a keyframe that animates nothing at all, and one
-past the end of the shot (it says how long the shot runs). It also refuses `item.place`
+Refused, with the number in the message: two keyframes at the same `t` or out of order
+(it names both times) and a keyframe that animates nothing at all — both checked in
+`validateEdl`, so they hold on every path into the project and not only on
+`item.keyframes` — and a keyframe past the end of the shot (it says how long the shot
+runs), which is checked by the operation rather than in `validateEdl` on purpose: a trim
+that shortened a shot would otherwise freeze the project it had just shortened. The
+engine also refuses `item.place`
 setting a fixed `transform` field or `volume` that the keyframes animate — that edit
 could never be seen — but only when the value would actually change, so restoring a
 placement an item already has, which is what undoing a reorder writes back for every
