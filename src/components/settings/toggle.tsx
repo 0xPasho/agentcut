@@ -6,10 +6,17 @@ import { cn } from "cn";
  * is the real control — hidden visually, not from the keyboard or a screen reader —
  * so the label, the focus ring and Space all work without a line of custom JS.
  */
-export function Toggle({ checked, onChange, label, disabled, describedBy }: {
+export function Toggle({ checked, onChange, label, about, disabled, describedBy }: {
   checked: boolean;
   onChange: (next: boolean) => void;
+  /** The visible word, which is the state: "On" or "Off". */
   label: string;
+  /**
+   * What it is on or off for. A switch reached out of context announces its own
+   * label and nothing else, and "On" alone is not an answer — so the name keeps the
+   * visible word and adds the thing it governs.
+   */
+  about?: string;
   disabled?: boolean;
   describedBy?: string;
 }) {
@@ -21,6 +28,7 @@ export function Toggle({ checked, onChange, label, disabled, describedBy }: {
         className="peer sr-only"
         checked={checked}
         disabled={disabled}
+        aria-label={about ? `${label} for ${about}` : undefined}
         aria-describedby={describedBy}
         onChange={(e) => onChange(e.target.checked)}
       />

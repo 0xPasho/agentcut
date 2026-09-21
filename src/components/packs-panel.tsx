@@ -85,7 +85,7 @@ export function PacksPanel() {
           });
         }}>
           <div className="grid gap-2 sm:grid-cols-2">
-            <Input aria-label="Pack id" required pattern="[a-z0-9][a-z0-9-]*" placeholder="streamer-kit" value={exportForm.id} onChange={(e) => setExportForm({ ...exportForm, id: e.target.value })} />
+            <Input aria-label="Pack id" required pattern="[a-z0-9][a-z0-9\-]*" placeholder="streamer-kit" value={exportForm.id} onChange={(e) => setExportForm({ ...exportForm, id: e.target.value })} />
             <Input aria-label="Pack name" placeholder="Streamer kit" value={exportForm.name} onChange={(e) => setExportForm({ ...exportForm, name: e.target.value })} />
           </div>
           <div className="grid gap-2 sm:grid-cols-2 text-xs">

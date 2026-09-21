@@ -121,6 +121,7 @@ export function RulesSettings() {
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                   <Toggle
                     checked={rule.enabled}
+                    about={rule.name}
                     disabled={pending === `save:${rule.id}`}
                     label={rule.enabled ? "On" : "Off"}
                     onChange={(enabled) => save(strip({ ...rule, enabled }))}
@@ -244,7 +245,7 @@ function RuleForm({ initial, isNew, templates, terms, pending, error, onSave, on
           </div>
           <div className="space-y-1.5">
             <Label htmlFor={`${id}-id`}>Id</Label>
-            <Input id={`${id}-id`} required pattern="[a-z0-9][a-z0-9-]*" value={rule.id} disabled={!isNew}
+            <Input id={`${id}-id`} required pattern="[a-z0-9][a-z0-9\-]*" value={rule.id} disabled={!isNew}
               aria-describedby={`${id}-id-help`} onChange={(e) => set({ id: e.target.value })} />
             <p id={`${id}-id-help`} className="text-xs text-muted-foreground">
               {isNew ? "Lowercase letters, digits and dashes. It is how packs and edits refer to this rule." : "Fixed once a rule exists, because edits it made point at it."}
@@ -290,6 +291,10 @@ function RuleForm({ initial, isNew, templates, terms, pending, error, onSave, on
             <p id={`${id}-subject-help`} className="text-xs text-muted-foreground">Names a glossary term this rule is about.</p>
           </div>
         </div>
+        <div className="space-y-1">
+          <Toggle checked={rule.enabled} about={rule.name || "this rule"} label={rule.enabled ? "On" : "Off"} describedBy={`${id}-enabled-help`} onChange={(enabled) => set({ enabled })} />
+          <p id={`${id}-enabled-help`} className="text-xs text-muted-foreground">Off keeps the rule and stops it applying.</p>
+        </div>
       </fieldset>
 
       <fieldset className="flex flex-col gap-4 rounded-2xl bg-card px-4 py-4 ring-1 ring-foreground/10">
@@ -322,7 +327,6 @@ function RuleForm({ initial, isNew, templates, terms, pending, error, onSave, on
             aria-describedby={`${id}-prompt-help`} onChange={(e) => setThen({ prompt: e.target.value })} />
           <p id={`${id}-prompt-help`} className="text-xs text-muted-foreground">Handed to the agent as a standing instruction whenever this rule holds.</p>
         </div>
-        <Toggle checked={rule.enabled} label={rule.enabled ? "On" : "Off"} onChange={(enabled) => set({ enabled })} />
       </fieldset>
 
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

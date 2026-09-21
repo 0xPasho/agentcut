@@ -229,7 +229,7 @@ function RuleForm({ initial, level: initialLevel, templates, canProject, pending
     }}>
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1"><Label htmlFor={`${id}-name`}>Name</Label><Input id={`${id}-name`} required value={rule.name} onChange={(e) => set({ name: e.target.value, id: initial.id || slug(e.target.value) })} /></div>
-        <div className="space-y-1"><Label htmlFor={`${id}-id`}>Id</Label><Input id={`${id}-id`} required pattern="[a-z0-9][a-z0-9-]*" value={rule.id} disabled={!!initial.id} onChange={(e) => set({ id: e.target.value })} /></div>
+        <div className="space-y-1"><Label htmlFor={`${id}-id`}>Id</Label><Input id={`${id}-id`} required pattern="[a-z0-9][a-z0-9\-]*" value={rule.id} disabled={!!initial.id} onChange={(e) => set({ id: e.target.value })} /></div>
       </div>
       <div className="space-y-1"><Label htmlFor={`${id}-when`}>When</Label><Textarea id={`${id}-when`} required value={rule.when} placeholder="the clip is gameplay footage" onChange={(e) => set({ when: e.target.value })} /></div>
       <div className="grid gap-3 sm:grid-cols-3">

@@ -13,7 +13,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-6 px-4 pt-4 pb-14 sm:px-6">
       <Glass shape="capsule" thickness="thick" className="sticky top-4 z-20 flex items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-4">
-        <Button aria-label="Back to projects" variant="ghost" size="icon" render={<Link href="/" />}>
+        <Button aria-label="Back to projects" variant="ghost" size="icon" nativeButton={false} render={<Link href="/" />}>
           <ArrowLeft className="size-4" />
         </Button>
         <h1 className="flex-1 text-sm font-medium">Settings</h1>

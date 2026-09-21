@@ -84,7 +84,7 @@ export function LibraryView() {
           <ArrowLeft className="size-4" />
         </Button>
         <h1 className="flex-1 text-sm font-medium">Library</h1>
-        <Button variant="ghost" size="sm" render={<Link href="/settings" />}>
+        <Button variant="ghost" size="sm" nativeButton={false} render={<Link href="/settings" />}>
           <Settings className="size-4" />
           Settings
         </Button>

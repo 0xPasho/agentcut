@@ -81,7 +81,7 @@ export function PreferencesSettings() {
               <p className="text-sm font-medium">The setup interview</p>
               <p className="mt-0.5 text-sm text-muted-foreground">{interviewLine(onboarding.status, !!parts.generated)}</p>
             </div>
-            <Button size="sm" variant="outline" render={<Link href="/welcome" />}>
+            <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/welcome" />}>
               {onboarding.status === "done" ? "Redo the interview" : "Answer the questions"}
             </Button>
           </div>
