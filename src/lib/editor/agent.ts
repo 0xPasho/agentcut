@@ -10,6 +10,7 @@ import { stampAuthor } from "./authorship";
 import { grabFrame } from "../media";
 import { sequenceFrames } from "../sequences";
 import type { EditorOperation } from "./operations";
+import type { Edl, VideoSequence } from "../edl";
 
 /**
  * A file the human dropped into the chat. It is an ordinary library asset — the same
@@ -93,7 +94,7 @@ export async function runEditorAgent(projectId: string, instruction: string, opt
   const seen = options.media === false ? null : await describeMedia(projectId, dir, context.sequenceId).catch(() => null);
   const attached = await copyAttachments(dir, context.attachments ?? []);
   const contextLine = [
-    seen ? `frames/ holds ${seen.frames} sampled frames of the open video named frame-<output seconds>.jpg; Read them to see framing, who is on screen and what is already overlaid. transcript.txt is its spoken text with times. signals.json lists scene cuts and loudness peaks per source.` : "",
+    seen ? `${seen.line} Read them. transcript.txt is the video's spoken text with times. signals.json lists scene cuts and loudness peaks per source.` : "",
     context.sequenceId ? `The open video is sequence ${context.sequenceId}; "this video" means that one.` : "",
     context.selection?.length ? `The human has selected timeline item${context.selection.length === 1 ? "" : "s"} ${context.selection.join(", ")}; "this", "it" and "the selected one" mean those.` : "",
     context.playhead !== undefined ? `The playhead is at ${context.playhead.toFixed(2)}s of the output.` : "",
@@ -189,36 +190,25 @@ async function copyAttachments(dir: string, attachments: Attachment[]) {
 const MAX_FRAMES = 24;
 
 /**
- * What the agent can see of the open video: frames from its footage at the start of
- * every shot and every few seconds between, the spoken words with times, and the
- * scene cuts and loudness peaks of each source. Source frames, not rendered ones:
- * a render for every message is too slow, so overlays are described in project.json
- * rather than seen.
+ * What the agent can see of the open video: stills of the finished video, the spoken
+ * words with times, and the scene cuts and loudness peaks of each source.
+ *
+ * The stills are rendered output wherever that is possible — see `./frames.ts` for why
+ * that is the point and what it costs. When it is not possible they are frames grabbed
+ * from the footage, which is what this always used to give, and the difference is said
+ * out loud in `frames.json` and in the prompt. It has to be: an agent that believes the
+ * captions it cannot see are fine will say so.
  */
 async function describeMedia(projectId: string, dir: string, sequenceId?: string) {
-  const { edl } = readEditor(projectId);
+  const { edl, revision } = readEditor(projectId);
   const sequence = edl.sequences.find((s) => s.id === sequenceId) ?? (edl.sequences.length === 1 ? edl.sequences[0] : undefined);
   if (!sequence) return null;
   const resolved = sequenceFrames(sequence);
   const fps = sequence.output.fps;
   const framesDir = path.join(dir, "frames");
   await fs.mkdir(framesDir, { recursive: true });
-  const duration = resolved.duration / fps;
-  const every = Math.max(2, duration / MAX_FRAMES);
-  const wanted: Array<{ outputSec: number; file: string; sourceSec: number }> = [];
-  for (const entry of resolved.items) {
-    const media = entry.item.mediaId ? edl.media.find((m) => m.id === entry.item.mediaId) : null;
-    if (!media) continue;
-    const from = entry.from / fps;
-    const length = entry.item.clip.end - entry.item.clip.start;
-    for (let t = 0; t < length && wanted.length < MAX_FRAMES; t += every) {
-      wanted.push({ outputSec: from + t, file: media.file, sourceSec: entry.item.clip.start + t });
-    }
-  }
-  let frames = 0;
-  for (const w of wanted) {
-    try { await grabFrame(w.file, w.sourceSec, path.join(framesDir, `frame-${w.outputSec.toFixed(1)}.jpg`), 640); frames += 1; } catch { /* a bad seek is not fatal */ }
-  }
+  const seen = await seeSequence(projectId, edl, sequence, framesDir, revision);
+  await fs.writeFile(path.join(dir, "frames.json"), JSON.stringify(seen.manifest, null, 2));
   const transcript = resolved.items.map((entry) => {
     const from = entry.from / fps;
     const words = entry.item.clip.words;
@@ -241,5 +231,100 @@ async function describeMedia(projectId: string, dir: string, sequenceId?: string
     } catch { /* signals are a nicety */ }
   }
   await fs.writeFile(path.join(dir, "signals.json"), JSON.stringify(signals, null, 2));
-  return { frames };
+  return seen;
+}
+
+/** What frames of the footage alone cannot answer, named so the manifest can list them. */
+const HIDDEN_BY_SOURCE_FRAMES = [
+  "captions", "titles and text", "images and logos placed on the video",
+  "crops, split framing and layer placement", "transitions between shots",
+  "everything a template put on screen",
+];
+
+export type SeenFrames = {
+  frames: number;
+  kind: "output" | "source";
+  /** The sentence the prompt carries, which must never claim more than the frames are. */
+  line: string;
+  manifest: Record<string, unknown>;
+};
+
+/**
+ * Fill `frames/` with the best pictures of this video this machine can produce now,
+ * and describe them honestly.
+ */
+async function seeSequence(projectId: string, edl: Edl, sequence: VideoSequence, framesDir: string, revision: number): Promise<SeenFrames> {
+  const { outputFrames, NoOutputFrames } = await import("./frames");
+  const shared = { sequenceId: sequence.id, revision, naming: "frame-<output seconds>.jpg" };
+  try {
+    const set = await outputFrames(projectId, edl, sequence);
+    for (const frame of set.frames) {
+      await fs.copyFile(frame.file, path.join(framesDir, `frame-${frame.outputSec.toFixed(1)}.jpg`));
+    }
+    const covers = set.frames.length ? Number((set.frames.at(-1)!.outputSec + set.cadenceSec).toFixed(1)) : 0;
+    const shortfall = set.partial
+      ? `They stop at about ${Math.min(covers, Number(set.durationSec.toFixed(1)))}s of ${set.durationSec.toFixed(1)}s — the rest did not render in time, so read the timeline for what happens after that.`
+      : "";
+    return {
+      frames: set.frames.length, kind: "output",
+      line: `frames/ holds ${set.frames.length} still${set.frames.length === 1 ? "" : "s"} of the FINISHED video — rendered output at ${set.width}×${set.height} every ${set.cadenceSec}s, named frame-<output seconds>.jpg. This is what the viewer sees: captions, titles, images, crops, layer placement and the blend part-way through a transition are already in the picture, so judge the look from these rather than inferring it from the EDL. ${shortfall}frames.json records what they cover and what they still cannot show.`,
+      manifest: {
+        ...shared,
+        kind: "output",
+        what: "Rendered frames of the finished video, from the same composition the preview and the export use.",
+        shows: "captions, titles, images, crops and split framing, layer placement and opacity, and transitions part-way through",
+        width: set.width, height: set.height, cadenceSec: set.cadenceSec,
+        durationSec: Number(set.durationSec.toFixed(2)),
+        count: set.frames.length, planned: set.planned,
+        coversSec: [0, Math.min(covers, Number(set.durationSec.toFixed(1)))],
+        complete: !set.partial,
+        cached: set.cached, renderMs: set.ms, cacheKey: set.key,
+        missing: [
+          "sound — these are pictures only; the transcript and signals.json carry the audio",
+          "anything that happens between two sampled frames",
+          ...(set.partial ? [`the video after about ${Math.min(covers, Number(set.durationSec.toFixed(1)))}s`] : []),
+        ],
+      },
+    };
+  } catch (error) {
+    const reason = error instanceof NoOutputFrames ? error.reason : `the render failed (${(error as Error).message})`;
+    const frames = await sourceFrames(edl, sequence, framesDir);
+    return {
+      frames, kind: "source",
+      line: frames
+        ? `frames/ holds ${frames} still${frames === 1 ? "" : "s"} of the SOURCE FOOTAGE, not of the finished video, because ${reason}. Captions, titles, images, layer placement and transitions are NOT in these pictures: use them for framing and who is on screen, and take everything overlaid from project.json instead of from what you see. frames.json says the same thing.`
+        : `There are no frames of this video to look at: ${reason}. Judge it from project.json and the transcript.`,
+      manifest: {
+        ...shared,
+        kind: "source",
+        what: "Frames grabbed from the footage at shot starts — not the finished video.",
+        fallbackFrom: "rendered output frames",
+        reason,
+        count: frames,
+        missing: HIDDEN_BY_SOURCE_FRAMES,
+      },
+    };
+  }
+}
+
+/** The original frames: the footage at the start of every shot and every few seconds between. */
+async function sourceFrames(edl: Edl, sequence: VideoSequence, framesDir: string) {
+  const resolved = sequenceFrames(sequence);
+  const fps = sequence.output.fps;
+  const every = Math.max(2, resolved.duration / fps / MAX_FRAMES);
+  const wanted: Array<{ outputSec: number; file: string; sourceSec: number }> = [];
+  for (const entry of resolved.items) {
+    const media = entry.item.mediaId ? edl.media.find((m) => m.id === entry.item.mediaId) : null;
+    if (!media) continue;
+    const from = entry.from / fps;
+    const length = entry.item.clip.end - entry.item.clip.start;
+    for (let t = 0; t < length && wanted.length < MAX_FRAMES; t += every) {
+      wanted.push({ outputSec: from + t, file: media.file, sourceSec: entry.item.clip.start + t });
+    }
+  }
+  let frames = 0;
+  for (const w of wanted) {
+    try { await grabFrame(w.file, w.sourceSec, path.join(framesDir, `frame-${w.outputSec.toFixed(1)}.jpg`), 640); frames += 1; } catch { /* a bad seek is not fatal */ }
+  }
+  return frames;
 }
