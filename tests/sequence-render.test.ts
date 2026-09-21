@@ -145,3 +145,63 @@ test("separated audio still sounds, and the picture it came from does not show",
   const frame = pixel(output.outputs[0].file, 0.5, CENTRE);
   assert.ok(frame[0] < 60, `the hidden picture is not on screen, got rgb(${frame.join(",")})`);
 });
+
+/** RMS of a window of the exported audio, decoded to mono floats. */
+function loudness(file: string, sec: number, span: number) {
+  const result = spawnSync(FFMPEG, ["-v", "error", "-ss", String(sec), "-i", file, "-t", String(span), "-vn", "-ac", "1", "-f", "f32le", "-"]);
+  assert.equal(result.status, 0, result.stderr.toString());
+  let sum = 0;
+  for (let i = 0; i < result.stdout.length; i += 4) sum += result.stdout.readFloatLE(i) ** 2;
+  return Math.sqrt(sum / Math.max(1, result.stdout.length / 4));
+}
+
+test("a transition blends real pixels, dips through its colour, ramps the sound, and exports the same from every entry point", { timeout: 240_000 }, async () => {
+  const { createVideoProject } = await import("../src/lib/editor/media");
+  const { readEditor, editProject } = await import("../src/lib/editor/store");
+  const { executeEditorTool } = await import("../src/lib/editor/tools");
+  const { renderProject } = await import("../src/lib/editor/render");
+  const { probe } = await import("../src/lib/media");
+  const inputs = [];
+  // The first shot sounds and the second is silent, so the ramp across the joint is
+  // measurable: without one, the first shot would play at full volume under the second.
+  for (const [index, color] of ["red", "blue"].entries()) {
+    const file = path.join(workspace, `joint-${color}.mp4`);
+    const audio = index === 0 ? "sine=frequency=440:duration=1" : "anullsrc=r=44100:cl=mono:duration=1";
+    const r = spawnSync(FFMPEG, ["-y", "-f", "lavfi", "-i", `color=${color}:size=160x90:rate=10:duration=1`, "-f", "lavfi", "-i", audio, "-shortest", "-pix_fmt", "yuv420p", "-c:a", "aac", file], { encoding: "utf8" });
+    assert.equal(r.status, 0, r.stderr); inputs.push({ file });
+  }
+  const { id } = await createVideoProject("A joint", inputs);
+  const initial = readEditor(id), seq = initial.edl.sequences[0];
+  assert.equal(sequenceFrames(seq).duration, 20, "two one-second shots meeting on a hard cut");
+  const joint = { type: "item.transition", sequenceId: seq.id, itemId: seq.items[1].id, transition: { kind: "dissolve", durationSec: 0.6 } };
+  const state = editProject(id, { expectedRevision: initial.revision, operations: [joint] });
+  assert.equal(sequenceFrames(state.edl.sequences[0]).duration, 14, "the overlap comes out of the programme");
+  const output = await renderProject(id, { only: [seq.id], expectedRevision: state.revision });
+  const file = output.outputs[0].file, meta = await probe(file);
+  assert.ok(Math.abs(meta.durationSec - 1.4) < 0.15, `${meta.durationSec}`);
+  const before = pixel(file, 0.15, CENTRE), middle = pixel(file, 0.75, CENTRE), after = pixel(file, 1.25, CENTRE);
+  assert.ok(before[0] > before[2] + 80, `the first shot is still itself before the joint: ${before}`);
+  assert.ok(after[2] > after[0] + 80, `the second shot arrives whole after it: ${after}`);
+  assert.ok(middle[0] > 50 && middle[2] > 50, `inside the joint both shots are on screen at once: ${middle}`);
+  assert.ok(middle[0] < before[0] - 40 && middle[2] < after[2] - 40, `and neither of them has won it yet: ${middle}`);
+  const loud = loudness(file, 0.4, 0.15), quiet = loudness(file, 0.85, 0.15);
+  assert.ok(loud > 0.02, `the first shot still sounds as the joint opens: ${loud}`);
+  assert.ok(quiet < loud * 0.5, `and is ramped down by the end of it rather than playing under the next shot: ${quiet} vs ${loud}`);
+  // The same revision, through the agent's own render tool and the CLI.
+  const hash = () => spawnSync(FFMPEG, ["-v", "error", "-i", file, "-f", "framemd5", "-"], { encoding: "utf8" }).stdout;
+  const expected = hash();
+  await executeEditorTool(id, { tool: "project.render", only: [seq.id], expectedRevision: state.revision });
+  assert.equal(hash(), expected, "the agent's export of this revision is the same video");
+  const cli = spawnSync(process.execPath, [path.join(process.cwd(), "scripts/agentcut.mjs"), "render", id, "--only", seq.id], { cwd: os.tmpdir(), env: { ...process.env, AGENTCUT_WORKSPACE: workspace }, encoding: "utf8", timeout: 120_000 });
+  assert.equal(cli.status, 0, cli.stderr);
+  assert.equal(hash(), expected, "and so is the command line's");
+  // A dip holds its colour over the cut it is hiding, which is the whole point of one.
+  const dipped = await executeEditorTool(id, { tool: "project.edit", expectedRevision: state.revision, operations: [
+    { ...joint, transition: { kind: "dip", durationSec: 0.6, color: "#ffffff" }, before: state.edl.sequences[0].items[1].transition },
+  ] }) as typeof state;
+  const dipFile = (await renderProject(id, { only: [seq.id], expectedRevision: dipped.revision })).outputs[0].file;
+  const held = pixel(dipFile, 0.75, CENTRE);
+  assert.ok(held.every(channel => channel > 200), `the dip is at its colour over the cut: ${held}`);
+  assert.ok(pixel(dipFile, 0.15, CENTRE)[0] > 150, "and the shots either side are untouched by it");
+  assert.ok(pixel(dipFile, 1.25, CENTRE)[2] > 150);
+});

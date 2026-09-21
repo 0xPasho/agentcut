@@ -156,3 +156,34 @@ test("promoting legacy clips preserves every decoded video frame and audio sampl
   const layered = await renderProject(id, { expectedRevision: promoted.revision });
   for (const output of layered.outputs) assert.equal(hash(output.file), expected.get(output.clip.id), `${output.clip.id}: promotion preserves video and source audio including captions, crop/split, punch and silence timing`);
 });
+
+test("a dip stays inside its own track: the joint darkens the footage, not the watermark above it", { timeout: 180_000 }, async () => {
+  const { createVideoProject } = await import("../src/lib/editor/media");
+  const { readEditor, editProject } = await import("../src/lib/editor/store");
+  const { renderProject } = await import("../src/lib/editor/render");
+  const inputs = [];
+  for (const color of ["red", "blue", "green"]) {
+    const file = path.join(workspace, `joint-${color}.mp4`);
+    ffmpeg(["-y", "-f", "lavfi", "-i", `color=${color}:size=640x360:rate=10:duration=1`, "-pix_fmt", "yuv420p", file]);
+    inputs.push({ file });
+  }
+  const { id } = await createVideoProject("A joint under a mark", inputs);
+  const initial = readEditor(id), seq = initial.edl.sequences[0];
+  const [red, blue, green] = seq.items;
+  const state = editProject(id, { expectedRevision: initial.revision, operations: [
+    { type: "sequence.remove", sequenceId: seq.id },
+    { type: "sequence.add", sequence: { ...seq, output: { width: 640, height: 360, fps: 10 }, items: [
+      { ...red, muted: true }, { ...blue, muted: true, transition: { kind: "dip", durationSec: 0.6, color: "#000000" } },
+      // A corner mark held over both shots, on its own track.
+      { ...green, id: "mark", at: 0, layer: 1, muted: true, clip: { ...green.clip, id: "mark" },
+        transform: { x: 70, y: 70, width: 25, height: 25, rotation: 0, opacity: 1 } },
+    ] } },
+  ] });
+  assert.equal(sequenceFrames(state.edl.sequences[0]).duration, 14, "the joint takes 0.6s out of two one-second shots");
+  const file = (await renderProject(id, { only: [seq.id], expectedRevision: state.revision })).outputs[0].file;
+  const beforeJoint = pixel(file, 0.15, 320, 180), inJoint = pixel(file, 0.75, 320, 180);
+  assert.ok(beforeJoint[0] > beforeJoint[2] + 100, `the first shot before the joint: ${beforeJoint}`);
+  assert.ok(inJoint.every(channel => channel < 60), `the footage dips to its colour: ${inJoint}`);
+  const mark = pixel(file, 0.75, 480, 270);
+  assert.ok(mark[1] > mark[0] + 80 && mark[1] > mark[2] + 80, `the mark on the track above holds straight through it: ${mark}`);
+});

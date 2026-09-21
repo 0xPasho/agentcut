@@ -27,9 +27,10 @@ export const Transition: React.FC<{ resolved: ResolvedTransition | null; childre
   if (transition.kind === "dissolve") return <AbsoluteFill style={{ opacity: progress }}>{children}</AbsoluteFill>;
 
   if (transition.kind === "dip") {
-    // The colour is already solid before the swap underneath it and still solid after,
-    // so the cut it hides is never a visible frame of its own.
-    const cover = interpolate(progress, [0, 0.45, 0.55, 1], [0, 1, 1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+    // The colour holds across the middle third rather than touching full for an instant:
+    // a dip that only grazes its colour reads as a dirty dissolve, and the swap underneath
+    // it has to happen while nothing of either shot can be seen.
+    const cover = interpolate(progress, [0, 0.35, 0.65, 1], [0, 1, 1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
     return <AbsoluteFill>
       <AbsoluteFill style={{ opacity: progress < 0.5 ? 0 : 1 }}>{children}</AbsoluteFill>
       <AbsoluteFill data-transition-dip="" style={{ backgroundColor: transition.color, opacity: cover }} />
