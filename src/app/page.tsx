@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Clapperboard, Library, Trash2 } from "lucide-react";
+import { Library, Trash2 } from "lucide-react";
+import { AgentcutMark } from "@/components/agentcut-mark";
 import { Button } from "@/components/ui/button";
 import { q } from "@/lib/db";
 import { NewProject } from "@/components/new-project";
@@ -28,7 +29,7 @@ export default async function Home() {
         thickness="thick"
         className="sticky top-4 z-20 flex items-center gap-2 px-3 py-3 sm:gap-3 sm:px-5"
       >
-        <Clapperboard className="size-6 shrink-0 text-primary" />
+        <AgentcutMark className="size-6 shrink-0 text-primary" />
         <h1 className="text-xl font-semibold tracking-tight">agentcut</h1>
         <Badge variant="secondary" className="font-mono text-xs">
           local

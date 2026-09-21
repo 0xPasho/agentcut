@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Check, ChevronDown, Clapperboard, ListChecks, Scissors, Wand2, X } from "lucide-react";
+import { Check, ChevronDown, ListChecks, Scissors, Wand2, X } from "lucide-react";
+import { AgentcutMark } from "@/components/agentcut-mark";
 import { useStartChat, type StartOptions } from "@/lib/use-chat";
 import { Chat } from "./chat";
 import { Button } from "./ui/button";
@@ -249,7 +250,7 @@ export function StartChat() {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 px-4 pt-4 pb-10 sm:px-6">
       <Glass shape="capsule" thickness="thick" className="sticky top-4 z-20 flex items-center gap-2 px-3 py-3 sm:gap-3 sm:px-5">
-        <Clapperboard className="size-6 shrink-0 text-primary" />
+        <AgentcutMark className="size-6 shrink-0 text-primary" />
         <h1 className="text-xl font-semibold tracking-tight">agentcut</h1>
         <Button variant="ghost" size="sm" nativeButton={false} className="ml-auto" render={<Link href="/" />}>Projects</Button>
       </Glass>

@@ -13,6 +13,8 @@ using `<Glass>`, `<Button>`, `<Card>`.
 block and the `@custom-variant` declarations in `src/app/globals.css` — shadcn's and
 Tailwind's own configuration mechanisms.
 
+The mark itself — the scissors that are also a face — lives in [BRAND.md](./BRAND.md).
+
 ## Palette and type
 
 Tokens are taken from the reference build we're matching: `#101010` ground,
