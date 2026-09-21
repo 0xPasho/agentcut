@@ -253,13 +253,21 @@ export const q = {
 
   getJob: (id: string) => plain<JobRow>(db.prepare("SELECT * FROM jobs WHERE id = ?").get(id)),
 
-  /** Every job a process could still be working on, this project's or all of them. */
+  /**
+   * Every job a process could still be working on, this project's or all of them.
+   * `background` is unfinished but does not hold the project — automatic
+   * transcription — and must be reaped from pid liveness like everything else.
+   */
   unfinishedJobs: (projectId?: string) =>
     plainAll<JobRow>(
       projectId
-        ? db.prepare("SELECT * FROM jobs WHERE project_id = ? AND status IN ('queued','running')").all(projectId)
-        : db.prepare("SELECT * FROM jobs WHERE status IN ('queued','running')").all(),
+        ? db.prepare("SELECT * FROM jobs WHERE project_id = ? AND status IN ('queued','running','background')").all(projectId)
+        : db.prepare("SELECT * FROM jobs WHERE status IN ('queued','running','background')").all(),
     ),
+
+  /** Unfinished work that deliberately does not hold the project lock. */
+  backgroundJobs: (projectId: string) =>
+    plainAll<JobRow>(db.prepare("SELECT * FROM jobs WHERE project_id = ? AND status = 'background' ORDER BY created_at").all(projectId)),
 
   /** Keep the owner's claim fresh; a job whose heartbeat stops is a candidate for reaping. */
   beat: (ids: string[], at: number) => {
@@ -284,9 +292,15 @@ export const q = {
         .get(projectId),
     ),
 
+  /**
+   * The job an interface means by "what is this project doing". Background
+   * transcription is excluded on purpose: it is reported next to the source it
+   * belongs to, and letting it become the project's headline job would paint the
+   * editor busy over work that is not holding anything.
+   */
   latestJob: (projectId: string) =>
     plain<JobRow>(
-      db.prepare("SELECT * FROM jobs WHERE project_id = ? ORDER BY created_at DESC LIMIT 1").get(projectId),
+      db.prepare("SELECT * FROM jobs WHERE project_id = ? AND kind <> 'transcribe-media' ORDER BY created_at DESC LIMIT 1").get(projectId),
     ),
 
   insertAsset: (a: AssetRow) =>

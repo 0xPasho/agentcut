@@ -50,8 +50,16 @@ export async function runBatch(projectId: string, o: BatchOptions = {}): Promise
     stage("transcribing", 0.02);
     const { transcribeProjectMedia } = await import("./transcribe/media");
     const mediaIds = [...new Set(pending.flatMap((s) => s.items.map((i) => i.mediaId)).filter((id): id is string => !!id))];
-    const { results } = await transcribeProjectMedia(projectId, { mediaIds, brief: o.brief, provider: o.provider, model: o.model, onLog: (t) => log("log", t), onEvent: o.onEvent });
-    for (const r of results) log(r.error ? "error" : "log", r.error ? `transcribe ${r.mediaId}: ${r.error}` : `transcribed ${r.mediaId}: ${r.words} words on ${r.items} shots`);
+    // The same skip rules an import uses: a set of forty raw videos should not pay
+    // for a recogniser run on the ones with nothing on their audio track. A source
+    // already transcribed on import reuses its cached transcript here, so this pass
+    // costs nothing twice, and a run already in flight is joined rather than raced.
+    const { results } = await transcribeProjectMedia(projectId, { mediaIds, brief: o.brief, provider: o.provider, model: o.model, gate: "audio", by: "batch", onLog: (t) => log("log", t), onEvent: o.onEvent });
+    for (const r of results) {
+      if (r.error) log("error", `transcribe ${r.mediaId}: ${r.error}`);
+      else if (r.status === "skipped") log("log", `${r.mediaId}: not transcribed — ${r.reason}`);
+      else log("log", `transcribed ${r.mediaId}: ${r.words} words on ${r.items} shots`);
+    }
   }
 
   const { generateProjectPlan, generateSequencePlan } = await import("./plan/generate");

@@ -85,6 +85,32 @@ export async function loudnessCurve(src: string): Promise<Array<{ t: number; db:
   return out;
 }
 
+/**
+ * How loud a file's audio actually is, in dBFS, from one ffmpeg pass.
+ *
+ * This is the cheap signal that decides whether a newly imported source is worth
+ * recognising: digital silence and a muted camera track peak around -91 dB, while
+ * anything with a voice in it peaks far above -50. It answers "is there sound
+ * here", not "is there speech here" — a room-tone b-roll clip still counts as
+ * sound, and that is the honest limit of a test that costs a decode.
+ *
+ * `null` means there is no audio stream to measure, or ffmpeg could not read one.
+ */
+export async function audioLevel(src: string): Promise<{ maxDb: number; meanDb: number } | null> {
+  try {
+    const { stderr } = await run(FFMPEG, ["-i", src, "-vn", "-af", "volumedetect", "-f", "null", "-"]);
+    const max = stderr.match(/max_volume:\s*(-?[0-9.]+) dB/);
+    if (!max) return null;
+    const mean = stderr.match(/mean_volume:\s*(-?[0-9.]+) dB/);
+    return { maxDb: Number(max[1]), meanDb: mean ? Number(mean[1]) : Number(max[1]) };
+  } catch {
+    return null;
+  }
+}
+
+/** Below this peak a file is silence, not quiet speech. Speech never lives down here. */
+export const SILENCE_PEAK_DB = -50;
+
 /** Sample a frame as JPEG so the agent can actually look at the video. */
 export async function grabFrame(src: string, atSec: number, dest: string, width = 640) {
   await run(FFMPEG, [

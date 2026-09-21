@@ -17,6 +17,11 @@ import { q, type JobRow } from "./db";
  * MCP runs in its own process (lib/mcp.ts) and can start jobs too, so "clear every
  * running row when the web server boots" is not an option — it would cut a live
  * terminal-agent batch out from under itself.
+ *
+ * A row with status `background` is unfinished work that deliberately does not hold
+ * the project — automatic transcription of a newly imported source (see
+ * `transcribe/auto.ts`). It is reaped from pid liveness like everything else, but
+ * it never hands the project back, because it never took it.
  */
 
 declare global {
@@ -94,7 +99,13 @@ export function reapDeadJobs(projectId?: string) {
     if (isAlive(job)) continue;
     const reason = `interrupted — the app closed during ${job.stage ?? job.kind}`;
     q.setJob(job.id, { status: "error", error: reason });
-    releaseProject(job.project_id, job.id, reason);
+    // Background work never held the project, so handing the project back is not
+    // this row's to do: doing it would clear the status of a render or an agent
+    // run that is alive and holding the lock right now. The sources it had not
+    // reached are still marked waiting in the EDL, which is exactly true — they
+    // resume on the next import, retry or `media.transcribe`.
+    if (job.status === "background") q.insertEvent({ project_id: job.project_id, job_id: job.id, kind: "error", name: "job", text: reason, at: Date.now() });
+    else releaseProject(job.project_id, job.id, reason);
     dead.push(job);
   }
   return dead;
@@ -121,8 +132,17 @@ function releaseProject(projectId: string, jobId: string, reason: string) {
  * AbortSignal threaded through conversation, render and transcribe; it is not here yet.
  */
 export function unlockProject(projectId: string) {
+  // "Give me my project back" also means "stop recognising my footage". Background
+  // transcription holds no lock, but it is work the owner did not ask to continue,
+  // and its drain loop stops as soon as `ownsJob` goes false.
+  const background = q.backgroundJobs(projectId);
+  for (const job of background) {
+    q.setJob(job.id, { status: "canceled", error: `stopped by the owner during ${job.stage ?? job.kind}` });
+    release(job.id);
+    q.insertEvent({ project_id: projectId, job_id: job.id, kind: "error", name: "job", text: `transcription stopped by the owner`, at: Date.now() });
+  }
   const job = q.activeJob(projectId);
-  if (!job) return null;
+  if (!job) return background[0] ?? null;
   const reason = `stopped by the owner during ${job.stage ?? job.kind}`;
   q.setJob(job.id, { status: "canceled", error: reason });
   release(job.id);

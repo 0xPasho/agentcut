@@ -4,7 +4,7 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { projectDir } from "../config";
 import { probe } from "../media";
-import { Clip, Edl, MediaSource } from "../edl";
+import { Clip, Edl, MediaSource, type MediaTranscription } from "../edl";
 import { q } from "../db";
 import { editProject, publishClips, readEditor, RevisionConflict } from "./store";
 import type { EditorOperation } from "./operations";
@@ -12,6 +12,18 @@ import type { EditorOperation } from "./operations";
 export type MediaInput = { name: string; bytes: Uint8Array } | { file: string } | { assetId: string };
 /** Where a new shot goes when it is imported straight onto a timeline. */
 export type MediaPlacement = { sequenceId: string; at?: number | null; layer?: number };
+/**
+ * What an import says about its own words. Every route into this app's media —
+ * the home composer, `media.import`, `media.upload`, a library video placed into a
+ * project, the batch flow, the CLI — lands in one of the two functions below, which
+ * is why this is the only place that has to ask the question.
+ *
+ * `transcribe: false` is "not this one" and `true` is "this one regardless";
+ * omitted follows the project's setting. Either way the answer is written onto the
+ * media in the same atomic batch that registers it, so a source is never a video
+ * that merely happens to have no words.
+ */
+export type ImportOptions = { transcribe?: boolean; by?: string };
 /** Copy source footage into the project so moving the original does not break edits. */
 async function prepareMedia(projectId: string, input: MediaInput): Promise<MediaSource> {
   // A library video is already in the workspace: reference it, do not copy it again.
@@ -38,12 +50,25 @@ async function prepareMedia(projectId: string, input: MediaInput): Promise<Media
     return MediaSource.parse({ id, name, file, ...metadata });
   } catch (error) { await fs.rm(file, { force: true }); throw error; }
 }
-export async function importProjectMedia(projectId: string, expectedRevision: number, input: MediaInput, place?: MediaPlacement) {
+/**
+ * Whether this source should recognise itself, as a record to store on it. The
+ * decision is taken here, at import, because that is where the person or the agent
+ * said what they were doing; the run itself happens afterwards, off the lock.
+ */
+async function transcriptionIntent(projectId: string, options: ImportOptions = {}): Promise<MediaTranscription> {
+  const { importSkipReason } = await import("../transcribe/auto");
+  const reason = importSkipReason(projectId, options.transcribe);
+  const base = { engine: "", words: 0, at: Date.now(), by: options.by ?? "import" };
+  return reason ? { ...base, status: "skipped", reason } : { ...base, status: "queued", reason: "" };
+}
+
+export async function importProjectMedia(projectId: string, expectedRevision: number, input: MediaInput, place?: MediaPlacement, options: ImportOptions = {}) {
   if (!q.getProject(projectId)) throw new Error("Project not found");
   z.number().int().nonnegative().parse(expectedRevision);
   const current = readEditor(projectId);
   if (current.revision !== expectedRevision) throw new RevisionConflict(current);
-  const media = await prepareMedia(projectId, input);
+  const prepared = await prepareMedia(projectId, input);
+  const media = { ...prepared, transcription: await transcriptionIntent(projectId, options) };
   // The same library video used twice is one media entry, not two.
   const known = current.edl.media.find(m => m.file === media.file);
   const source = known ?? media;
@@ -57,8 +82,27 @@ export async function importProjectMedia(projectId: string, expectedRevision: nu
     } });
   }
   if (!operations.length) return current;
-  try { return editProject(projectId, { expectedRevision, operations }); }
+  let saved;
+  try { saved = editProject(projectId, { expectedRevision, operations }); }
   catch (error) { if (!known && !("assetId" in input)) await fs.rm(media.file, { force: true }); throw error; }
+  // Only once the media is committed: a queue entry for a source no revision holds
+  // would be a recogniser run against a file the project does not have.
+  if (!known && media.transcription?.status === "queued") await startTranscribing(projectId, [media.id], options.by);
+  return saved;
+}
+
+/**
+ * Hand the new sources to the background recogniser. Never fatal: an import that
+ * succeeded must not be reported as failed because the queue could not start, and
+ * the sources stay marked waiting, which is what the retry reads.
+ */
+async function startTranscribing(projectId: string, mediaIds: string[], by?: string) {
+  try {
+    const { startMediaTranscription } = await import("../transcribe/auto");
+    startMediaTranscription(projectId, { mediaIds, by: by ?? "import" });
+  } catch (error) {
+    console.error("automatic transcription did not start", error);
+  }
 }
 /**
  * A new video project. With no inputs it is an empty canvas in the same editor: one
@@ -73,12 +117,15 @@ export async function createVideoProject(name: string, inputs: MediaInput[] = []
    * "vertical" on an empty canvas and then dropped a landscape clip in.
    */
   output?: { width: number; height: number; fps: number };
+  /** Off for this project's starting footage, on regardless, or the setting's answer. */
+  transcribe?: boolean;
 } = {}) {
   const id = randomUUID().slice(0, 10);
   let inserted = false;
   try {
-    const media = [];
-    for (const input of inputs) media.push(await prepareMedia(id, input));
+    const media: MediaSource[] = [];
+    const intent = await transcriptionIntent(id, { transcribe: options.transcribe });
+    for (const input of inputs) media.push({ ...(await prepareMedia(id, input)), transcription: intent });
     const first = media[0] ?? null;
     q.insertProject({ id, name: name.trim() || "Untitled project", source_path: first?.file ?? "", created_at: Date.now() });
     inserted = true;
@@ -91,6 +138,9 @@ export async function createVideoProject(name: string, inputs: MediaInput[] = []
       : [{ id: `s_${randomUUID().slice(0, 8)}`, title: "Main video", output, items: media.map(item) }];
     publishClips(id, Edl.parse({ projectId: id, source: first, output, media, clips: [], sequences }));
     q.setProject(id, { status: "ready" });
+    // Footage dropped on the home screen is exactly the footage whose words every
+    // later judgement needs, so a new project starts recognising itself too.
+    if (intent.status === "queued" && media.length) await startTranscribing(id, media.map((m) => m.id));
     return { id, name: q.getProject(id)!.name };
   } catch (error) {
     if (inserted) q.deleteProject(id);
