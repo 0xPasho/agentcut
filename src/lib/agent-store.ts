@@ -1,7 +1,10 @@
 "use client";
 import { useCallback, useSyncExternalStore } from "react";
 import type { HarnessStatus } from "./agent/detect";
-import type { ResolvedSelection, Selection } from "./agent/selection";
+import type { ResolvedSelection, Selection, taskSelections } from "./agent/selection";
+
+/** One kind of work, what it resolves to today, and whether that is its own choice. */
+export type TaskSelection = ReturnType<typeof taskSelections>[number];
 
 /**
  * One copy of "which harnesses exist and which one is picked", shared by every
@@ -22,6 +25,8 @@ export type AgentsSnapshot = {
   selection: ResolvedSelection;
   override: Selection | null;
   workspaceDefault: Selection | null;
+  /** Model per task (decision 50). Workspace-wide, so it is the same list in every scope. */
+  tasks: TaskSelection[];
   loading: boolean;
   error: string;
 };
@@ -31,6 +36,7 @@ const EMPTY: AgentsSnapshot = {
   selection: { provider: "", model: "", scope: "none" },
   override: null,
   workspaceDefault: null,
+  tasks: [],
   loading: true,
   error: "",
 };
@@ -121,6 +127,30 @@ export function useAgents(projectId?: string) {
     [scope],
   );
 
+  /**
+   * The harness and model for one kind of work. Saved at workspace level whatever
+   * scope this hook was mounted in, because a task choice is about the work, not
+   * about a project — and every scope is reloaded so no picker keeps a stale list.
+   */
+  const selectTask = useCallback(
+    async (task: string, provider: string, model: string) => {
+      try {
+        const res = await fetch("/api/agents", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "select", scope: "task", task, provider, model }),
+        });
+        const body = (await res.json()) as { tasks?: TaskSelection[]; error?: string };
+        if (!res.ok) throw new Error(body.error ?? "The choice could not be saved.");
+        set(scope, { tasks: body.tasks ?? [], error: "" });
+        for (const other of snapshots.keys()) if (other !== scope) void load(other, true);
+      } catch (error) {
+        set(scope, { error: (error as Error).message });
+      }
+    },
+    [scope],
+  );
+
   /** Re-ask every installed CLI for its models. Slow on purpose; user-triggered only. */
   const refresh = useCallback(async () => {
     set(scope, { loading: true });
@@ -140,7 +170,7 @@ export function useAgents(projectId?: string) {
     }
   }, [scope]);
 
-  return { ...snapshot, select, refresh, reload: useCallback(() => load(scope, true), [scope]) };
+  return { ...snapshot, select, selectTask, refresh, reload: useCallback(() => load(scope, true), [scope]) };
 }
 
 /** Test seam: drop everything so a fresh mount refetches. */

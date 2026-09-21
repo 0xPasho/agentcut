@@ -2,8 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { detectHarnesses } from "@/lib/agent/detect";
 import { refreshAll } from "@/lib/agent/models/cache";
-import { resolveSelection, saveSelection, storedSelection } from "@/lib/agent/selection";
-import { HARNESS_IDS } from "@/lib/agent/registry";
+import { applySelection, selectionOverview, SelectionRequest } from "@/lib/agent/selection";
 export const runtime = "nodejs";
 // Discovery spawns four CLIs; the default serverless budget would cut it short.
 export const maxDuration = 120;
@@ -21,23 +20,15 @@ export async function GET(req: NextRequest) {
   const projectId = req.nextUrl.searchParams.get("projectId") ?? undefined;
   try {
     const harnesses = await detectHarnesses();
-    return Response.json({
-      harnesses,
-      selection: resolveSelection(projectId),
-      override: projectId ? storedSelection(projectId) : null,
-      workspaceDefault: storedSelection(),
-    });
+    return Response.json({ harnesses, ...selectionOverview(projectId) });
   } catch (error) {
     return Response.json({ error: (error as Error).message }, { status: 500 });
   }
 }
 
-const Select = z.object({
-  action: z.literal("select"),
-  provider: z.enum(HARNESS_IDS as [string, ...string[]]).or(z.literal("")),
-  model: z.string().default(""),
-  projectId: z.string().optional(),
-});
+// One schema for every surface that picks a harness: the prompt composer's picker,
+// the settings page and the `agents.select` tool all parse the same request here.
+const Select = SelectionRequest.extend({ action: z.literal("select") });
 
 const Refresh = z.object({ action: z.literal("refresh"), projectId: z.string().optional() });
 
@@ -51,11 +42,9 @@ export async function POST(req: NextRequest) {
       const results = await refreshAll(installed);
       return Response.json({ results, harnesses: await detectHarnesses() });
     }
-    saveSelection({ provider: body.provider as never, model: body.model }, body.projectId);
-    return Response.json({
-      selection: resolveSelection(body.projectId),
-      override: body.projectId ? storedSelection(body.projectId) : null,
-    });
+    // A picker that names a project means the project scope; the settings page says so.
+    applySelection({ ...body, scope: body.scope === "workspace" && body.projectId ? "project" : body.scope });
+    return Response.json(selectionOverview(body.projectId));
   } catch (error) {
     return Response.json({ error: (error as Error).message }, { status: 400 });
   }

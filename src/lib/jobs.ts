@@ -8,7 +8,7 @@ import { selectClips, readRuleMatches } from "./pipeline/select";
 import { readEditor, publishClips, RevisionConflict } from "./editor/store";
 import { downloadUrl, isUrl } from "./ingest";
 import { BOOT_ID, claim, ownsJob, reapDeadJobs, release } from "./reaper";
-import { effectiveSelection } from "./agent/selection";
+import { effectiveSelection, taskForJobKind } from "./agent/selection";
 
 export type JobKind = "analyze" | "render" | "edit" | "transcribe" | "batch";
 
@@ -41,7 +41,7 @@ export function startJob(projectId: string, kind: JobKind, options: AnalyzeOptio
   // harness choice has to be applied. The runners below stay storage-free and
   // take the answer as an argument; an explicit provider/model still wins,
   // because that is a caller's instruction rather than a standing preference.
-  options = { ...options, ...effectiveSelection(projectId, { provider: options.provider, model: options.model }) };
+  options = { ...options, ...effectiveSelection(projectId, { provider: options.provider, model: options.model }, taskForJobKind(kind)) };
   if (options.expectedRevision !== undefined) {
     const current = readEditor(projectId);
     if (current.revision !== options.expectedRevision) throw new RevisionConflict(current);
