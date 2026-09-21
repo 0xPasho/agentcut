@@ -11,10 +11,11 @@ import { FFMPEG } from "../src/lib/bin";
  *
  * These are the tests that actually render, because the whole claim is about pixels:
  * a title the source frame does not contain, a joint where two shots are on screen at
- * once, and a framing caught part-way through a move. A source frame of any of those
- * three shows something that is not what the viewer sees, which is precisely what the
- * agent used to be handed. The cheap half — every way this declines to render, and the
- * wording it declines with — lives in tests/conversation.test.ts.
+ * once, a framing caught part-way through a move across the source, and a layer caught
+ * part-way across the output frame. A source frame of any of those four shows something
+ * that is not what the viewer sees, which is precisely what the agent used to be handed.
+ * The cheap half — every way this declines to render, and the wording it declines with —
+ * lives in tests/conversation.test.ts.
  *
  * `test:render` runs with `--test-force-exit` because of this file. Remotion's public
  * `renderFrames()` opens its own static server and closes it without `force`, which in
@@ -67,6 +68,15 @@ function centre(buf: Buffer, width: number, height: number) {
     }
   }
   return sum.map((c) => Math.round(c / n)) as [number, number, number];
+}
+
+/** The average column of the blue pixels in a still: where a blue layer has got to. */
+function blueCentre(buf: Buffer, width: number) {
+  let sum = 0, n = 0;
+  for (let i = 0; i < buf.length; i += 3) {
+    if (buf[i + 2] > buf[i] + 60 && buf[i + 2] > buf[i + 1] + 60) { sum += (i / 3) % width; n += 1; }
+  }
+  return n ? sum / n : -1;
 }
 
 /** What share of a still leans red, and what share leans blue. */
@@ -217,6 +227,32 @@ test("a frame sampled mid-move shows where the framing has got to, not where it 
     assert.ok(end.blue > 0.7, `and is well to the right by the end: ${JSON.stringify(end)}`);
     assert.ok(half.red > 0.25 && half.blue > 0.25,
       `halfway the window straddles the seam, which a frame grabbed at the shot's start could never show: ${JSON.stringify(half)}`);
+  } finally { delete process.env.AGENTCUT_OUTPUT_FRAMES_CADENCE; }
+});
+
+test("a frame sampled mid-move shows where a keyframed layer has travelled to", { timeout: 240_000 }, async () => {
+  // The crop test above catches a move *inside* the source. This one is the other kind:
+  // the layer itself travelling across the output frame, which is what `item.keyframes`
+  // animates and what no frame grabbed out of a source file can show at all — the source
+  // is one flat colour from end to end.
+  const bed = flat("layer-red", "red", 4), pip = flat("layer-blue", "blue", 4);
+  process.env.AGENTCUT_OUTPUT_FRAMES_CADENCE = "1";
+  try {
+    const { id, sequenceId } = await timeline("layer-move", [bed, pip], ([a, b]) => [
+      shot("bed", a, 4),
+      shot("pip", b, 4, { at: 0, layer: 1,
+        transform: { x: 0, y: 40, width: 20, height: 20, rotation: 0, opacity: 1 },
+        keyframes: [{ t: 0, x: 0 }, { t: 4, x: 80 }] }),
+    ]);
+
+    const seen = await turn(id, sequenceId);
+    assert.equal(seen.manifest.kind, "output");
+    const centres = ["frame-0.0.jpg", "frame-1.0.jpg", "frame-3.0.jpg"]
+      .map((name) => blueCentre(rgb(path.join(seen.dir, name)), 640));
+    assert.ok(centres.every((c) => c >= 0), `the layer is on every still: ${centres}`);
+    assert.ok(centres[0] < 120, `it starts at the left edge of the frame: ${centres}`);
+    assert.ok(centres[1] > centres[0] + 80, `a second later it has moved: ${centres}`);
+    assert.ok(centres[2] > 380, `and by three seconds it is well to the right: ${centres}`);
   } finally { delete process.env.AGENTCUT_OUTPUT_FRAMES_CADENCE; }
 });
 

@@ -187,3 +187,131 @@ test("a dip stays inside its own track: the joint darkens the footage, not the w
   const mark = pixel(file, 0.75, 480, 270);
   assert.ok(mark[1] > mark[0] + 80 && mark[1] > mark[2] + 80, `the mark on the track above holds straight through it: ${mark}`);
 });
+
+/**
+ * How many pixels along one row of the frame lean blue — the width of a blue block on it.
+ *
+ * Two rows are cropped rather than one because a 4:2:0 frame has no odd heights; the
+ * first row of the decoded pair is the scanline.
+ */
+function blueRun(file: string, sec: number, y: number, width: number) {
+  const rows = ffmpeg(["-ss", String(sec), "-i", file, "-frames:v", "1", "-vf", `crop=${width}:2:0:${y}`, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
+  let n = 0;
+  for (let i = 0; i < width * 3; i += 3) if (rows[i + 2] > rows[i] + 60 && rows[i + 2] > rows[i + 1] + 60) n += 1;
+  return n;
+}
+
+test("a keyframed layer travels, grows and fades in decoded pixels, ducks its own sound, and exports the same from every entry point", { timeout: 300_000 }, async () => {
+  const { createVideoProject } = await import("../src/lib/editor/media");
+  const { readEditor, editProject } = await import("../src/lib/editor/store");
+  const { executeEditorTool } = await import("../src/lib/editor/tools");
+  const { renderProject } = await import("../src/lib/editor/render");
+  const inputs = [];
+  for (const colour of ["green", "blue", "red"]) {
+    const file = path.join(workspace, `move-${colour}.mp4`);
+    ffmpeg(["-y", "-f", "lavfi", "-i", `color=${colour}:size=640x360:rate=10:duration=2`, "-pix_fmt", "yuv420p", file]);
+    inputs.push({ file });
+  }
+  const bed = path.join(workspace, "bed.wav");
+  ffmpeg(["-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=2", bed]);
+  const { id } = await createVideoProject("Moves", inputs);
+  const initial = readEditor(id), seq = initial.edl.sequences[0];
+  const music = await executeEditorTool(id, { tool: "assets.importLocal", file: bed }) as { id: string };
+  const [background, slider, fader] = seq.items;
+  const state = editProject(id, { expectedRevision: initial.revision, operations: [
+    { type: "sequence.remove", sequenceId: seq.id },
+    { type: "sequence.add", sequence: { ...seq, output: { width: 640, height: 360, fps: 10 }, items: [
+      { ...background, at: 0, muted: true },
+      // Across the top strip: starts narrow on the left, ends wide on the right.
+      { ...slider, id: "slider", at: 0, layer: 1, muted: true, clip: { ...slider.clip, id: "slider" },
+        transform: { x: 0, y: 0, width: 10, height: 20, rotation: 0, opacity: 1 },
+        keyframes: [{ t: 0, x: 0, width: 10 }, { t: 2, x: 60, width: 40 }] },
+      // Low and to the middle, holding still: only its opacity is animated.
+      { ...fader, id: "fader", at: 0, layer: 2, muted: true, clip: { ...fader.clip, id: "fader" },
+        transform: { x: 40, y: 70, width: 20, height: 25, rotation: 0, opacity: 0 },
+        keyframes: [{ t: 0, opacity: 0 }, { t: 2, opacity: 1 }] },
+      // A bed that dips under the middle of the video and comes back: the gain a person
+      // draws by hand, multiplying the music edit's own automatic ducking rather than
+      // replacing it (`src/lib/ducking.ts`, switched off here so this measures one thing).
+      { id: "bed", mediaId: null, at: 0, layer: 3, hidden: true,
+        keyframes: [{ t: 0, volume: 0.9 }, { t: 0.6, volume: 0.05 }, { t: 1.4, volume: 0.05 }, { t: 2, volume: 0.9 }],
+        clip: { id: "bed", title: "Bed", start: 0, end: 2, captions: { preset: "none" },
+          edits: [{ type: "music", t: 0, d: 2, src: music.id, gain: 0.6, duck: false, loop: false }] } },
+    ] } },
+  ] });
+  assert.equal(sequenceFrames(state.edl.sequences[0]).duration, 20, "animating a layer changes nothing about the timing");
+  const file = (await renderProject(id, { only: [seq.id], expectedRevision: state.revision })).outputs[0].file;
+
+  // It travelled: the block is on the left at the start and on the right at the end.
+  const leftEarly = pixel(file, 0, 30, 30), rightEarly = pixel(file, 0, 500, 30);
+  const leftLate = pixel(file, 1.9, 30, 30), rightLate = pixel(file, 1.9, 500, 30);
+  assert.ok(leftEarly[2] > leftEarly[1] + 60, `the layer starts on the left: ${leftEarly}`);
+  assert.ok(rightEarly[1] > rightEarly[2] + 40, `and is not yet on the right: ${rightEarly}`);
+  assert.ok(rightLate[2] > rightLate[1] + 60, `by the end it is on the right: ${rightLate}`);
+  assert.ok(leftLate[1] > leftLate[2] + 40, `and has left where it started: ${leftLate}`);
+  // It grew: the same block is wider every time it is measured.
+  const widths = [0, 1, 1.9].map(sec => blueRun(file, sec, 30, 640));
+  assert.ok(widths[0] > 40 && widths[0] < 95, `10% of 640 at the first frame: ${widths}`);
+  assert.ok(widths[1] > 130 && widths[1] < 195, `25% of 640 halfway: ${widths}`);
+  assert.ok(widths[2] > 205 && widths[2] < 285, `38.5% of 640 near the end: ${widths}`);
+  // It faded: the same spot goes from the footage underneath to the layer above it.
+  const fade = [0, 1, 1.9].map(sec => pixel(file, sec, 320, 300));
+  assert.ok(fade[0][1] > fade[0][0] + 80, `at the start the layer is invisible: ${fade[0]}`);
+  assert.ok(fade[1][0] > fade[0][0] + 60 && fade[1][1] > fade[2][1] + 40, `halfway it is half there: ${fade[1]}`);
+  assert.ok(fade[2][0] > fade[2][1] + 150, `by the end it has covered what was under it: ${fade[2]}`);
+  // It ducked: the bed is loud, dips through the middle, and comes back.
+  const levels = [0.15, 1.0, 1.8].map(sec => rms(file, sec));
+  assert.ok(levels[0] > levels[1] * 4, `the bed dips under the middle of the video: ${levels}`);
+  assert.ok(levels[2] > levels[1] * 4, `and comes back up after it: ${levels}`);
+  // The same revision, through the agent's own render tool and through the command line.
+  const decodedHash = () => ffmpeg(["-i", file, "-f", "framemd5", "-"]).toString();
+  const expected = decodedHash();
+  await executeEditorTool(id, { tool: "project.render", only: [seq.id], expectedRevision: state.revision });
+  assert.equal(decodedHash(), expected, "the agent's export of this revision is the same video");
+  const cli = spawnSync(process.execPath, [path.join(process.cwd(), "scripts/agentcut.mjs"), "render", id, "--only", seq.id], {
+    cwd: os.tmpdir(), env: { ...process.env, AGENTCUT_WORKSPACE: workspace }, encoding: "utf8", timeout: 120_000,
+  });
+  assert.equal(cli.status, 0, cli.stderr);
+  assert.equal(decodedHash(), expected, "and so is the command line's");
+});
+
+test("a shot that arrives on a blend starts its own move at the first frame of the overlap", { timeout: 300_000 }, async () => {
+  const { createVideoProject } = await import("../src/lib/editor/media");
+  const { readEditor, editProject } = await import("../src/lib/editor/store");
+  const { renderProject } = await import("../src/lib/editor/render");
+  const inputs = [];
+  for (const colour of ["green", "blue"]) {
+    const file = path.join(workspace, `joint-move-${colour}.mp4`);
+    ffmpeg(["-y", "-f", "lavfi", "-i", `color=${colour}:size=640x360:rate=10:duration=1`, "-pix_fmt", "yuv420p", file]);
+    inputs.push({ file });
+  }
+  const { id } = await createVideoProject("A move inside a joint", inputs);
+  const initial = readEditor(id), seq = initial.edl.sequences[0];
+  const [first, second] = seq.items;
+  const state = editProject(id, { expectedRevision: initial.revision, operations: [
+    { type: "sequence.remove", sequenceId: seq.id },
+    { type: "sequence.add", sequence: { ...seq, output: { width: 640, height: 360, fps: 10 }, items: [
+      { ...first, muted: true },
+      { ...second, muted: true, transition: { kind: "dissolve", durationSec: 0.6 },
+        transform: { x: 0, y: 0, width: 50, height: 50, rotation: 0, opacity: 1 },
+        keyframes: [{ t: 0, x: 0 }, { t: 1, x: 50 }] },
+    ] } },
+  ] });
+  const resolved = sequenceFrames(state.edl.sequences[0]);
+  assert.equal(resolved.duration, 14, "the joint still takes 0.6s out of two one-second shots");
+  assert.equal(resolved.items[1].from, 4, "and the incoming shot's own time zero is the first frame of the overlap");
+  const file = (await renderProject(id, { only: [seq.id], expectedRevision: state.revision })).outputs[0].file;
+
+  // Inside the joint the incoming shot is faint, so where it is reads as a difference
+  // between two places rather than as an absolute colour. Early in the overlap the blend
+  // is on the left; late in it, it has already travelled right — which is the documented
+  // behaviour: the move begins as the shot begins to appear, not after the blend ends.
+  const earlyLeft = pixel(file, 0.5, 60, 90), earlyRight = pixel(file, 0.5, 450, 90);
+  assert.ok(earlyLeft[2] > earlyRight[2] + 15, `0.1s into the joint the moving layer is on the left: ${earlyLeft} vs ${earlyRight}`);
+  const lateLeft = pixel(file, 0.95, 60, 90), lateRight = pixel(file, 0.95, 450, 90);
+  assert.ok(lateRight[2] > lateLeft[2] + 15, `by the end of the joint it has travelled right: ${lateLeft} vs ${lateRight}`);
+  // Past the joint it keeps going on the same clock, with nothing under it any more.
+  const after = pixel(file, 1.25, 500, 90), vacated = pixel(file, 1.25, 60, 90);
+  assert.ok(after[2] > after[0] + 80, `after the joint the layer is whole and further right: ${after}`);
+  assert.ok(vacated.every(channel => channel < 60), `and where it started is the empty frame: ${vacated}`);
+});
