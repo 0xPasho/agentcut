@@ -148,7 +148,9 @@ all of it lands in one place, the project's `events` table:
   whoever started it: the UI (`via: "web"`), a terminal agent (`"mcp"`), the CLI (`"cli"`).
   Reads and status polls stay out of the feed so it does not fill with someone's polling.
 - The web streams it over SSE (`/api/projects/[id]/events`). `useProjectStream` keeps one
-  connection per project, so the agent panel and the project page show the same trail.
+  connection per project, so every surface reads the same trail. The project page shows it
+  once, in the agent panel: a second raw copy of the same feed below it was noise, not a
+  second view.
   The panel is a chat: `src/lib/thread.ts` interleaves the conversation with the feed by
   time (splitting on job id, and on a gap over three minutes), so each turn shows what
   was asked, the steps that answered it and the reply. Steps collapse to one line —

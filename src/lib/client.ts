@@ -233,6 +233,10 @@ export type AssetSummary = {
 };
 
 export const sourceUrl = (id: string) => `/api/projects/${id}/source`;
-export const thumbUrl = (id: string, clipId: string) =>
-  `/api/projects/${id}/clips/${clipId}/thumb`;
+/**
+ * The poster is cached `immutable`, so the revision has to travel in the URL:
+ * without it a trim leaves the old frame on screen until the browser is cleared.
+ */
+export const thumbUrl = (id: string, clipId: string, revision?: number) =>
+  `/api/projects/${id}/clips/${clipId}/thumb${revision ? `?v=${revision}` : ""}`;
 export const clipUrl = (id: string, clipId: string) => `/api/projects/${id}/clips/${clipId}/file`;
