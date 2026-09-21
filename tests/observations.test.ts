@@ -157,7 +157,9 @@ test("an editing run stamps its message id, sees frames and the transcript of th
   assert.ok(files.includes("transcript.txt") && files.includes("signals.json") && files.includes("observations.md"), files.join(","));
   assert.ok(frames.length >= 3, `frames sampled: ${frames.length}`);
   assert.match(frames[0], /^frame-\d+\.\d\.jpg$/);
-  assert.match(prompt, /frames\/ holds \d+ sampled frames/);
+  // Rendered output where the machine can render it, footage where it cannot — either
+  // way the run is told how many stills it has and which of the two they are.
+  assert.match(prompt, /frames\/ holds \d+ stills? of the (FINISHED video|SOURCE FOOTAGE)/);
   assert.match(prompt, /Removed a picture the agent placed/);
   const edit = store.readEditor(id).edl.sequences[0].items[0].clip.edits.at(-1)!;
   assert.equal(edit.by, `agent:${sent.id}`);

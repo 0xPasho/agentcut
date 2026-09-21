@@ -182,3 +182,126 @@ test("a terminal agent sets a transition over MCP, with the same contract and th
   assert.equal(refused.isError, true);
   assert.match(refused.content[0].text, /first shot on its track/);
 });
+
+// -----------------------------------------------------------------------------
+// what the agent is looking at
+//
+// The editing agent is shown the *rendered output* of the open video, so it judges
+// captions, titles and transitions the way a viewer sees them. Rendering costs
+// seconds, so there are several ways it can decline — and every one of them has to
+// leave the agent holding footage frames and *knowing* that is what it holds. These
+// tests are the declining half; the pixels are in tests/output-frames-render.test.ts,
+// which renders for real.
+// -----------------------------------------------------------------------------
+
+/** Run one turn and hand back what the run directory says about its frames. */
+async function framesOfATurn(id: string, sequenceId: string) {
+  const { runEditorAgent } = await import("../src/lib/editor/agent");
+  let seen: { manifest: Record<string, never>; files: string[]; prompt: string } | null = null;
+  await runEditorAgent(id, "Look at this", { context: { sequenceId }, runner: {
+    id: "test", label: "Test", available: async () => true,
+    run: async (o) => {
+      seen = {
+        manifest: JSON.parse(await fs.readFile(path.join(o.cwd, "frames.json"), "utf8")),
+        files: await fs.readdir(path.join(o.cwd, "frames")).catch(() => []),
+        prompt: o.prompt,
+      };
+      return { provider: "test", text: "Looked.", events: [], durationMs: 1 };
+    },
+  } });
+  return seen! as { manifest: Record<string, string & never[]>; files: string[]; prompt: string };
+}
+
+/** A project with one real two-second shot on a timeline, so frames can actually be grabbed. */
+async function shotProject(name: string) {
+  const { FFMPEG } = await import("../src/lib/bin");
+  const { spawnSync } = await import("node:child_process");
+  const file = path.join(workspace, `${name}.mp4`);
+  const made = spawnSync(FFMPEG, ["-v", "error", "-y", "-f", "lavfi", "-i", "color=orange:size=320x180:rate=10:duration=2",
+    "-pix_fmt", "yuv420p", file]);
+  assert.equal(made.status, 0, made.stderr?.toString());
+  const { createVideoProject } = await import("../src/lib/editor/media");
+  const { id } = await createVideoProject(name, [{ file }], { transcribe: false });
+  return { id, sequenceId: store.readEditor(id).edl.sequences[0].id };
+}
+
+test("a video with nothing in it says so, instead of showing the agent nothing and letting it assume", async () => {
+  const id = "no-shots";
+  database.q.insertProject({ id, name: id, source_path: "", created_at: Date.now() });
+  store.publishClips(id, { version: 1, projectId: id, source: null, output: { width: 640, height: 360, fps: 10 },
+    clips: [], media: [], sequences: [{ id: "empty", title: "Empty", output: { width: 640, height: 360, fps: 10 }, items: [], plan: {} }], plan: {} } as never);
+  const seen = await framesOfATurn(id, "empty");
+  assert.equal(seen.manifest.kind, "source");
+  assert.match(String(seen.manifest.reason), /no shots/);
+  assert.equal(seen.files.length, 0);
+  assert.match(seen.prompt, /no frames of this video to look at/);
+});
+
+test("switched off, the agent gets footage frames and is told what they cannot show", async () => {
+  const { id, sequenceId } = await shotProject("switched-off");
+  process.env.AGENTCUT_OUTPUT_FRAMES = "0";
+  try {
+    const seen = await framesOfATurn(id, sequenceId);
+    assert.equal(seen.manifest.kind, "source");
+    assert.equal(seen.manifest.fallbackFrom, "rendered output frames");
+    assert.match(String(seen.manifest.reason), /switched off/);
+    assert.ok(seen.files.length > 0, "the footage frames are still grabbed");
+    assert.ok(seen.files.every((f) => /^frame-\d+\.\d\.jpg$/.test(f)), `named by output second: ${seen.files}`);
+    assert.ok((seen.manifest.missing as string[]).some((m) => /caption/.test(m)), "the manifest names captions among what is hidden");
+    assert.match(seen.prompt, /SOURCE FOOTAGE, not of the finished video/);
+    assert.match(seen.prompt, /are NOT in these pictures/);
+    assert.doesNotMatch(seen.prompt, /FINISHED video/, "nothing in the prompt may suggest it is seeing the output");
+  } finally { delete process.env.AGENTCUT_OUTPUT_FRAMES; }
+});
+
+test("a sampler already running elsewhere is passed by, not waited for", async () => {
+  const { id, sequenceId } = await shotProject("busy");
+  const { projectDir } = await import("../src/lib/config");
+  const lock = path.join(projectDir(id), "output-frames", "sampling.lock");
+  await fs.mkdir(path.dirname(lock), { recursive: true });
+  // A live pid: this process. A turn must never block behind somebody else's render.
+  await fs.writeFile(lock, JSON.stringify({ pid: process.pid, at: Date.now() }));
+  const started = Date.now();
+  const seen = await framesOfATurn(id, sequenceId);
+  assert.ok(Date.now() - started < 30_000, "the turn did not wait for the lock");
+  assert.equal(seen.manifest.kind, "source");
+  assert.match(String(seen.manifest.reason), /already being rendered elsewhere/);
+  assert.ok(seen.files.length > 0);
+  await fs.rm(lock, { force: true });
+});
+
+test("the wall-clock cap gives the person footage frames rather than a longer wait", async () => {
+  const { id, sequenceId } = await shotProject("too-slow");
+  process.env.AGENTCUT_OUTPUT_FRAMES_MS = "1";
+  try {
+    const seen = await framesOfATurn(id, sequenceId);
+    assert.equal(seen.manifest.kind, "source");
+    assert.match(String(seen.manifest.reason), /no frames within/);
+    assert.ok(seen.files.length > 0, "the fallback is real frames, not an empty directory");
+  } finally { delete process.env.AGENTCUT_OUTPUT_FRAMES_MS; }
+});
+
+test("the sampling plan holds its caps: 360 on the short side, and a long video widens rather than truncates", async () => {
+  const { framePlan } = await import("../src/lib/editor/frames");
+  const { Edl } = await import("../src/lib/edl");
+  const sequence = (output: { width: number; height: number; fps: number }, seconds: number) =>
+    Edl.parse({ projectId: "p", clips: [], sequences: [{ id: "s", title: "S", output, items: [
+      { id: "one", mediaId: null, clip: { id: "one", title: "one", start: 0, end: seconds } },
+    ] }] }).sequences[0];
+
+  const landscape = framePlan(sequence({ width: 1920, height: 1080, fps: 30 }, 20));
+  assert.deepEqual([landscape.width, landscape.height], [640, 360], "360 on the short side");
+  assert.equal(landscape.cadenceSec, 2, "decision 29's cadence when the video fits under the cap");
+  assert.equal(landscape.frames.length, 10, "0s, 2s … 18s of a twenty-second video");
+
+  const vertical = framePlan(sequence({ width: 1080, height: 1920, fps: 30 }, 20));
+  assert.deepEqual([vertical.width, vertical.height], [360, 640], "the same 360p, the other way up");
+
+  const tiny = framePlan(sequence({ width: 320, height: 180, fps: 30 }, 4));
+  assert.deepEqual([tiny.width, tiny.height], [320, 180], "a sequence already smaller than the box is never blown up");
+
+  const long = framePlan(sequence({ width: 1920, height: 1080, fps: 30 }, 300));
+  assert.ok(long.frames.length <= 32, `capped at 32, got ${long.frames.length}`);
+  assert.ok(long.cadenceSec > 2, `the cadence widened to ${long.cadenceSec}s`);
+  assert.ok(long.frames.at(-1)! / 30 > 280, "and the end of a five-minute video is still sampled, not dropped");
+});
