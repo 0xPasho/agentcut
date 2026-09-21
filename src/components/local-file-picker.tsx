@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowLeft, ArrowRight, ArrowUp, ChevronRight, Film, Folder, Image as ImageIcon,
-  LayoutGrid, List as ListIcon, Loader2, Lock, Music, Search,
+  ArrowLeft, ArrowRight, ArrowUp, ChevronDown, ChevronRight, ChevronUp, Film, Folder,
+  Image as ImageIcon, LayoutGrid, List as ListIcon, Loader2, Lock, Music, Search,
 } from "lucide-react";
 import { api } from "@/lib/client";
 import type { FilesResponse, FolderEntry } from "@/lib/editor/local-assets";
@@ -48,20 +48,26 @@ function dateLabel(ms: number) {
   if (!ms) return "--";
   const date = new Date(ms);
   const time = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  const today = new Date();
-  const sameDay = date.toDateString() === today.toDateString();
-  if (sameDay) return `Today at ${time}`;
+  if (date.toDateString() === new Date().toDateString()) return `Today at ${time}`;
   return `${date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })} at ${time}`;
 }
 
 type SortKey = "name" | "size" | "kind" | "date";
 
 const COLUMNS: Array<{ key: SortKey; label: string; className: string }> = [
-  { key: "name", label: "Name", className: "flex-1 min-w-0" },
+  { key: "name", label: "Name", className: "min-w-0 flex-1 justify-start" },
   { key: "size", label: "Size", className: "w-24 shrink-0 justify-end" },
-  { key: "kind", label: "Kind", className: "w-40 shrink-0" },
-  { key: "date", label: "Date Modified", className: "w-48 shrink-0" },
+  { key: "kind", label: "Kind", className: "w-40 shrink-0 justify-start" },
+  { key: "date", label: "Date Modified", className: "w-48 shrink-0 justify-start" },
 ];
+
+/**
+ * Pressable surfaces, shared by the rows and the tiles. Glass belongs to the window, not
+ * to what sits inside it, so a row is a fill and a highlight rather than a second pane of
+ * material — and it gives under the pointer, because a list you pick from should answer.
+ */
+const ROW = "cursor-pointer select-none rounded-xl transition-[background-color,box-shadow,scale] duration-150 ease-out motion-reduce:transition-none motion-safe:active:scale-[0.995]";
+const ROW_SELECTED = "bg-linear-to-b from-primary/25 to-primary/12 text-foreground shadow-(--control-highlight) ring-1 ring-inset ring-primary/30";
 
 /**
  * The folders of this machine, listed by the server that will read the file anyway. A local
@@ -141,7 +147,8 @@ export function LocalFilePicker({ open, onOpenChange, onPick, kinds = ["video"],
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={false}
-        className="flex h-[min(42rem,calc(100dvh-3rem))] flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(64rem,calc(100vw-3rem))]"
+        initialFocus={rows}
+        className="flex h-[min(42rem,calc(100dvh-3rem))] flex-col gap-0 overflow-hidden rounded-[24px] p-0 sm:max-w-[min(64rem,calc(100vw-3rem))]"
         onKeyDown={e => {
           if (e.key === "ArrowDown") { e.preventDefault(); move(1); }
           if (e.key === "ArrowUp") { e.preventDefault(); move(-1); }
@@ -154,81 +161,85 @@ export function LocalFilePicker({ open, onOpenChange, onPick, kinds = ["video"],
         </DialogDescription>
 
         <div className="flex min-h-0 flex-1">
-          <aside className="hidden w-52 shrink-0 flex-col gap-1 overflow-y-auto border-r border-white/10 bg-black/25 p-3 sm:flex">
-            <p className="px-2 pb-1 text-[11px] font-medium tracking-wide text-muted-foreground">Favorites</p>
+          {/* Inside glass go fills and vibrancy, never a second sheet of glass: the sidebar
+              is a darker fill with its own highlight, not another blurred pane. */}
+          <aside className="hidden w-56 shrink-0 flex-col gap-1 overflow-y-auto border-r border-white/10 bg-white/3 p-3 shadow-(--control-highlight) sm:flex">
+            <p className="px-3 pb-1 text-[11px] font-medium tracking-wide text-muted-foreground">Favorites</p>
             {listing?.places.map(place => {
               const here = listing.path === place.path;
               return (
-                <button
+                <Button
                   key={place.path}
-                  type="button"
+                  variant={here ? "outline" : "ghost"}
+                  size="sm"
                   disabled={pending}
                   onClick={() => void load(place.path)}
                   aria-current={here ? "true" : undefined}
-                  className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] transition-colors duration-150 motion-reduce:transition-none ${
-                    here ? "bg-white/10 text-foreground" : "text-foreground/80 hover:bg-white/5"
-                  }`}
+                  className="w-full justify-start gap-2 px-3"
                 >
-                  <Folder aria-hidden className="size-4 shrink-0 text-primary/80" />
-                  <span className="min-w-0 flex-1 truncate">{place.name}</span>
+                  <Folder aria-hidden className={here ? "text-primary" : "text-primary/70"} />
+                  <span className="min-w-0 flex-1 truncate text-left">{place.name}</span>
                   {/* macOS has not let this server into the folder yet. Saying so here beats
                       an error after the click, which reads as the app being broken. */}
-                  {place.blocked ? <Lock aria-label="Blocked by macOS privacy settings" className="size-3 shrink-0 text-muted-foreground" /> : null}
-                </button>
+                  {place.blocked ? <Lock aria-label="Blocked by macOS privacy settings" className="size-3 text-muted-foreground" /> : null}
+                </Button>
               );
             })}
           </aside>
 
           <div className="flex min-w-0 flex-1 flex-col">
-            <header className="flex items-center gap-2 border-b border-white/10 px-3 py-2.5">
+            <header className="flex items-center gap-1.5 border-b border-white/10 bg-white/4 px-3 py-2.5 shadow-(--control-highlight)">
               <Button variant="ghost" size="icon-sm" aria-label="Back" disabled={pending || step <= 0} onClick={() => travel(step - 1)}><ArrowLeft /></Button>
               <Button variant="ghost" size="icon-sm" aria-label="Forward" disabled={pending || step >= history.length - 1} onClick={() => travel(step + 1)}><ArrowRight /></Button>
               <Button variant="ghost" size="icon-sm" aria-label="Enclosing folder" disabled={pending || !listing?.parent} onClick={() => void load(listing!.parent!)}><ArrowUp /></Button>
-              <h2 className="min-w-0 flex-1 truncate px-1 font-heading text-base font-medium">
+              <h2 className="min-w-0 flex-1 truncate px-2 font-heading text-[15px] font-semibold tracking-tight">
                 {crumbs.at(-1) ?? "/"}
               </h2>
               {pending ? <Loader2 aria-hidden className="size-4 motion-safe:animate-spin text-muted-foreground" /> : null}
-              <div className="flex items-center rounded-full border border-white/10 p-0.5" role="group" aria-label="View">
+              <div className="flex items-center gap-0.5 rounded-full border border-white/12 bg-white/5 p-0.5 shadow-(--control-highlight)" role="group" aria-label="View">
                 {([["list", ListIcon, "List"], ["gallery", LayoutGrid, "Gallery"]] as const).map(([mode, Icon, label]) => (
-                  <button
+                  <Button
                     key={mode}
-                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
                     aria-pressed={view === mode}
                     aria-label={label}
                     onClick={() => setView(mode)}
-                    className={`rounded-full p-1.5 transition-colors duration-150 motion-reduce:transition-none ${
-                      view === mode ? "bg-white/12 text-foreground" : "text-muted-foreground hover:text-foreground"
-                    }`}
+                    className={view === mode ? "bg-white/14 text-foreground shadow-(--control-highlight)" : "text-muted-foreground"}
                   >
-                    <Icon aria-hidden className="size-4" />
-                  </button>
+                    <Icon />
+                  </Button>
                 ))}
               </div>
               <div className="relative w-44">
-                <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input aria-label="Search this folder" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search" className="h-8 pl-8 text-xs" />
+                <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input aria-label="Search this folder" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search" className="h-8 rounded-full pl-8 text-xs" />
               </div>
             </header>
 
             {view === "list" ? (
-              <div className="flex items-center gap-3 border-b border-white/10 px-4 py-1.5 text-[11px] text-muted-foreground">
+              <div className="flex items-center gap-3 border-b border-white/10 px-4 py-1 text-[11px]">
                 {COLUMNS.map(column => (
-                  <button
-                    key={column.key}
-                    type="button"
-                    onClick={() => setSort(current => ({ key: column.key, descending: current.key === column.key ? !current.descending : column.key !== "name" }))}
-                    className={`flex items-center gap-1 rounded py-0.5 text-left hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring ${column.className}`}
-                    aria-sort={sort.key === column.key ? (sort.descending ? "descending" : "ascending") : "none"}
-                  >
-                    {column.label}
-                    {sort.key === column.key ? <span aria-hidden className="text-[9px]">{sort.descending ? "▼" : "▲"}</span> : null}
-                  </button>
+                  <div key={column.key} className={`flex ${column.className}`}>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => setSort(current => ({ key: column.key, descending: current.key === column.key ? !current.descending : column.key !== "name" }))}
+                      aria-label={`Sort by ${column.label}${sort.key === column.key ? (sort.descending ? ", descending" : ", ascending") : ""}`}
+                      className={`-mx-1.5 min-w-0 rounded-lg px-1.5 text-[11px] font-normal ${sort.key === column.key ? "text-foreground" : "text-muted-foreground"}`}
+                    >
+                      <span className="truncate">{column.label}</span>
+                      {sort.key === column.key ? (sort.descending ? <ChevronDown className="text-primary" /> : <ChevronUp className="text-primary" />) : null}
+                    </Button>
+                  </div>
                 ))}
               </div>
             ) : null}
 
-            <div ref={rows} className="min-h-0 flex-1 overflow-y-auto p-2">
-              {error ? <p role="alert" className="px-2 py-3 text-sm text-destructive">{error}</p> : null}
+            <div ref={rows} tabIndex={-1} className="min-h-0 flex-1 overflow-y-auto p-2 outline-none">
+              {error ? (
+                <p role="alert" className="mx-1 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</p>
+              ) : null}
 
               {view === "list" ? (
                 <div role="listbox" aria-label="Files">
@@ -244,14 +255,14 @@ export function LocalFilePicker({ open, onOpenChange, onPick, kinds = ["video"],
                         tabIndex={-1}
                         onClick={() => (entry.kind === "folder" ? choose(entry) : setSelected(entry))}
                         onDoubleClick={() => choose(entry)}
-                        className={`flex cursor-default items-center gap-3 rounded-lg px-2 py-1.5 text-[13px] transition-colors duration-150 motion-reduce:transition-none ${
-                          active ? "bg-primary/20 text-foreground" : "hover:bg-white/5"
-                        }`}
+                        className={`group/row flex items-center gap-3 px-2 py-1.5 text-[13px] ${ROW} ${active ? ROW_SELECTED : "hover:bg-white/6"}`}
                       >
                         <span className="flex min-w-0 flex-1 items-center gap-2">
                           <Icon aria-hidden className={`size-4 shrink-0 ${entry.kind === "folder" ? "text-primary/80" : "text-muted-foreground"}`} />
                           <span className="min-w-0 flex-1 truncate">{entry.name}</span>
-                          {entry.kind === "folder" ? <ChevronRight aria-hidden className="size-3.5 shrink-0 text-muted-foreground" /> : null}
+                          {entry.kind === "folder" ? (
+                            <ChevronRight aria-hidden className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 motion-reduce:transition-none" />
+                          ) : null}
                         </span>
                         <span className="w-24 shrink-0 text-right tabular-nums text-muted-foreground">{sizeLabel(entry.size)}</span>
                         <span className="w-40 shrink-0 truncate text-muted-foreground">{kindLabel(entry)}</span>
@@ -261,7 +272,7 @@ export function LocalFilePicker({ open, onOpenChange, onPick, kinds = ["video"],
                   })}
                 </div>
               ) : (
-                <div role="listbox" aria-label="Files" className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-2">
+                <div role="listbox" aria-label="Files" className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-2.5 p-1">
                   {shown.map(entry => {
                     const Icon = ICONS[entry.kind];
                     const active = selected?.path === entry.path;
@@ -274,13 +285,15 @@ export function LocalFilePicker({ open, onOpenChange, onPick, kinds = ["video"],
                         tabIndex={-1}
                         onClick={() => (entry.kind === "folder" ? choose(entry) : setSelected(entry))}
                         onDoubleClick={() => choose(entry)}
-                        className={`flex cursor-default flex-col gap-1.5 rounded-xl p-2 transition-colors duration-150 motion-reduce:transition-none ${
-                          active ? "bg-primary/20" : "hover:bg-white/5"
+                        className={`group/tile flex cursor-pointer select-none flex-col gap-2 rounded-2xl border p-2 shadow-(--control-highlight) transition-[background-color,border-color,box-shadow,scale,translate] duration-150 ease-out motion-reduce:transition-none motion-safe:hover:-translate-y-0.5 motion-safe:active:translate-y-0 motion-safe:active:scale-[0.97] ${
+                          active
+                            ? "border-primary/50 bg-primary/12 shadow-[var(--control-highlight),0_10px_30px_-12px_var(--primary)]"
+                            : "border-white/10 bg-white/3 hover:border-white/20 hover:bg-white/6"
                         }`}
                       >
-                        <span className="flex aspect-video items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-black/40">
+                        <span className="flex aspect-video items-center justify-center overflow-hidden rounded-xl bg-black/50 ring-1 ring-inset ring-white/10">
                           {entry.kind === "folder" || entry.kind === "audio" ? (
-                            <Icon aria-hidden className="size-7 text-muted-foreground" />
+                            <Icon aria-hidden className={`size-10 ${entry.kind === "folder" ? "text-primary/70" : "text-muted-foreground"}`} />
                           ) : (
                             // A plain <img>: the source is an arbitrary path on this disk
                             // behind a route of ours, not something the image optimiser
@@ -289,12 +302,12 @@ export function LocalFilePicker({ open, onOpenChange, onPick, kinds = ["video"],
                               src={`/api/files/thumb?path=${encodeURIComponent(entry.path)}`}
                               alt=""
                               loading="lazy"
-                              className="size-full object-cover"
+                              className="size-full object-contain transition-transform duration-300 ease-out motion-safe:group-hover/tile:scale-[1.04] motion-reduce:transition-none"
                             />
                           )}
                         </span>
-                        <span className="truncate text-center text-[12px]" title={entry.name}>{entry.name}</span>
-                        <span className="truncate text-center text-[11px] text-muted-foreground">{sizeLabel(entry.size)}</span>
+                        <span className="truncate px-1 text-[12px]" title={entry.name}>{entry.name}</span>
+                        <span className="truncate px-1 text-[11px] tabular-nums text-muted-foreground">{sizeLabel(entry.size)}</span>
                       </div>
                     );
                   })}
@@ -308,25 +321,26 @@ export function LocalFilePicker({ open, onOpenChange, onPick, kinds = ["video"],
               ) : null}
 
               {!shown.length && !pending && !error ? (
-                <p className="px-2 py-6 text-center text-sm text-muted-foreground">
+                <p className="px-2 py-8 text-center text-sm text-muted-foreground">
                   {query ? `Nothing here matches “${query}”.` : "No video or folder here. Try another place."}
                 </p>
               ) : null}
             </div>
 
-            <footer className="flex items-center gap-3 border-t border-white/10 bg-black/35 px-3 py-2.5">
-              <nav aria-label="Path" className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-[11px] text-muted-foreground">
+            <footer className="flex items-center gap-3 border-t border-white/10 bg-white/3 px-3 py-2.5 shadow-(--control-highlight)">
+              <nav aria-label="Path" className="flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden">
                 {crumbs.map((crumb, at) => (
-                  <span key={at} className="flex min-w-0 items-center gap-1">
-                    {at ? <ChevronRight aria-hidden className="size-3 shrink-0" /> : null}
-                    <button
-                      type="button"
+                  <span key={at} className="flex min-w-0 items-center">
+                    {at ? <ChevronRight aria-hidden className="size-3 shrink-0 text-muted-foreground/60" /> : null}
+                    <Button
+                      variant="ghost"
+                      size="xs"
                       disabled={pending}
                       onClick={() => void load("/" + crumbs.slice(0, at + 1).join("/"))}
-                      className="truncate rounded px-0.5 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                      className="min-w-0 rounded-lg px-1.5 font-normal text-muted-foreground hover:text-foreground"
                     >
-                      {crumb}
-                    </button>
+                      <span className="truncate">{crumb}</span>
+                    </Button>
                   </span>
                 ))}
               </nav>
