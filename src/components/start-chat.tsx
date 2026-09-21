@@ -1,10 +1,11 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Check, ChevronDown, Clapperboard, Scissors, Wand2 } from "lucide-react";
+import { Check, ChevronDown, Clapperboard, ListChecks, Scissors, Wand2, X } from "lucide-react";
 import { useStartChat, type StartOptions } from "@/lib/use-chat";
 import { Chat } from "./chat";
 import { Button } from "./ui/button";
+import { Input } from "./ui/input";
 import { Glass } from "./ui/glass";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { cn } from "cn";
@@ -23,68 +24,127 @@ const SUGGESTIONS = [
   { label: "A title card", text: "Start me a 9:16 video with a bold title card that says " },
 ];
 
-type TemplateSummary = { id: string; name: string; description: string; builtin: boolean };
+type TemplateSummary = { id: string; name: string; description: string; tags: string[]; builtin: boolean };
 
 /**
- * The look the project is made in, chosen before it exists. It is the same template a
- * person applies later from the editor — picking it here only writes it into the
- * project's plan, so the agent starts out knowing it and nothing is locked in.
+ * The look the project is made in, chosen before it exists.
+ *
+ * Several can be chosen: that is a shortlist, not a merge — two caption styles cannot both
+ * win. One template names the project's look; several mean "decide per video, from these",
+ * which is exactly what a set of clips wants. Either way it is written into the project's
+ * plan, so the agent starts out knowing and the editor shows it.
  */
-function TemplateChip({ value, onChange }: { value: string; onChange: (id: string) => void }) {
+function TemplateChip({ value, onChange }: { value: string[]; onChange: (ids: string[]) => void }) {
   const [templates, setTemplates] = useState<TemplateSummary[]>([]);
   const [open, setOpen] = useState(false);
+  const [multi, setMulti] = useState(false);
+  const [query, setQuery] = useState("");
   useEffect(() => {
     fetch("/api/templates").then(r => r.json()).then(d => setTemplates(d.templates ?? [])).catch(() => setTemplates([]));
   }, []);
-  const active = templates.find(t => t.id === value);
+
+  const chosen = templates.filter(t => value.includes(t.id));
+  const term = query.trim().toLowerCase();
+  const shown = term
+    ? templates.filter(t => `${t.name} ${t.description} ${t.tags.join(" ")}`.toLowerCase().includes(term))
+    : templates;
+  const label = chosen.length > 1 ? `${chosen.length} templates` : chosen[0]?.name ?? "None yet";
+
+  const pick = (id: string) => {
+    if (!multi) { onChange([id]); setOpen(false); return; }
+    onChange(value.includes(id) ? value.filter(kept => kept !== id) : [...value, id]);
+  };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        render={
-          <Button type="button" variant="outline" className={cn("h-10 gap-2 px-3 font-normal", active && "border-primary/50 bg-primary/10")}>
-            <Wand2 className="size-4 shrink-0 text-primary" />
-            <span className="flex flex-col items-start leading-tight">
-              <span className="text-[10px] text-muted-foreground">Template</span>
-              <span className="max-w-40 truncate text-xs">{active ? active.name : "None yet"}</span>
-            </span>
-            <ChevronDown className="size-3 opacity-60" />
-          </Button>
-        }
-      />
-      <PopoverContent align="start" className="w-[22rem] p-1.5">
-        <ul className="max-h-80 space-y-0.5 overflow-y-auto" aria-label="Templates">
-          <li>
-            <button
-              type="button"
-              onClick={() => { onChange(""); setOpen(false); }}
-              className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-            >
-              <span className="flex-1">Decide later</span>
-              {!value ? <Check className="size-4 text-primary" /> : null}
-            </button>
-          </li>
-          {templates.map(template => (
-            <li key={template.id}>
-              <button
-                type="button"
-                onClick={() => { onChange(template.id); setOpen(false); }}
-                className="flex w-full items-start gap-2.5 rounded-lg p-2 text-left hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-              >
-                {/* The same schematic the editor's template panel shows: hook, caption band,
-                    picture plate. A drawing of the layout, not a render of a video. */}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={`/api/templates/${template.id}/preview?aspect=9:16`} alt="" className="h-14 w-8 shrink-0 rounded border border-white/10 object-cover" />
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-1.5 text-sm">{template.name}{value === template.id ? <Check className="size-3.5 text-primary" /> : null}</span>
-                  <span className="line-clamp-2 text-[11px] leading-snug text-muted-foreground">{template.description}</span>
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </PopoverContent>
-    </Popover>
+    <div className="flex items-center gap-1">
+      {/* Each one that is in also sits on the row, the way an attachment does. */}
+      {chosen.map(template => (
+        <button
+          key={template.id}
+          type="button"
+          onClick={() => onChange(value.filter(id => id !== template.id))}
+          title={`${template.name} — click to remove`}
+          aria-label={`Remove ${template.name}`}
+          className="h-10 w-6 shrink-0 overflow-hidden rounded-md border border-primary/50 hover:border-destructive focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={`/api/templates/${template.id}/preview?aspect=9:16`} alt="" className="size-full object-cover" />
+        </button>
+      ))}
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger
+          render={
+            <Button type="button" variant="outline" className={cn("h-10 gap-2 px-3 font-normal", chosen.length && "border-primary/50 bg-primary/10")}>
+              <Wand2 className="size-4 shrink-0 text-primary" />
+              <span className="flex flex-col items-start leading-tight">
+                <span className="text-[10px] text-muted-foreground">Template</span>
+                <span className="max-w-40 truncate text-xs">{label}</span>
+              </span>
+              <ChevronDown className="size-3 opacity-60" />
+            </Button>
+          }
+        />
+        <PopoverContent align="start" className="w-[23rem] p-1.5">
+          <div className="flex items-center gap-1.5 px-0.5 pb-1.5">
+            <Input
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search templates"
+              aria-label="Search templates"
+              className="h-8 flex-1 text-xs"
+            />
+            <Button
+              type="button" size="xs" variant={multi ? "secondary" : "ghost"} aria-pressed={multi}
+              title="Choose several and let each video take the one that suits it"
+              onClick={() => setMulti(!multi)}
+            ><ListChecks />Multi</Button>
+            {value.length ? (
+              <Button type="button" size="icon-sm" variant="ghost" aria-label="Clear templates" onClick={() => onChange([])}><X /></Button>
+            ) : null}
+          </div>
+          <ul className="max-h-80 space-y-0.5 overflow-y-auto" aria-label="Templates">
+            {!value.length || !multi ? (
+              <li>
+                <button
+                  type="button"
+                  onClick={() => { onChange([]); setOpen(false); }}
+                  className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                >
+                  <span className="flex-1">Decide later</span>
+                  {!value.length ? <Check className="size-4 text-primary" /> : null}
+                </button>
+              </li>
+            ) : null}
+            {shown.map(template => (
+              <li key={template.id}>
+                <button
+                  type="button"
+                  aria-pressed={value.includes(template.id)}
+                  onClick={() => pick(template.id)}
+                  className={cn(
+                    "flex w-full items-start gap-2.5 rounded-lg border p-2 text-left focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
+                    value.includes(template.id) ? "border-primary/60 bg-primary/10" : "border-transparent hover:bg-accent",
+                  )}
+                >
+                  {/* The same schematic the editor's template panel shows: hook, caption band,
+                      picture plate. A drawing of the layout, not a render of a video. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={`/api/templates/${template.id}/preview?aspect=9:16`} alt="" className="h-14 w-8 shrink-0 rounded border border-white/10 object-cover" />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-1.5 text-sm">{template.name}{value.includes(template.id) ? <Check className="size-3.5 text-primary" /> : null}</span>
+                    <span className="line-clamp-2 text-[11px] leading-snug text-muted-foreground">{template.description}</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+            {!shown.length ? <li className="px-2 py-3 text-xs text-muted-foreground">Nothing matches “{query}”.</li> : null}
+          </ul>
+          {value.length > 1 ? (
+            <p className="px-2 pt-1.5 text-[11px] text-muted-foreground">Each video takes whichever of these suits it.</p>
+          ) : null}
+        </PopoverContent>
+      </Popover>
+    </div>
   );
 }
 
@@ -153,11 +213,11 @@ function StartFrom({ value, onChange, onClips }: { value: string; onChange: (asp
  */
 export function StartChatPanel({ heading = "What are we making?", onClips }: { heading?: string; onClips?: () => void }) {
   const [aspect, setAspect] = useState("");
-  const [templateId, setTemplateId] = useState("");
+  const [templateIds, setTemplateIds] = useState<string[]>([]);
   // Read when a message is sent rather than when this renders, so the controller is
   // never rebuilt because somebody clicked a shape.
   const options = useRef<StartOptions>({});
-  options.current = { aspect, templateId };
+  options.current = { aspect, templateIds };
   const controller = useStartChat(() => options.current);
 
   return (
@@ -177,7 +237,7 @@ export function StartChatPanel({ heading = "What are we making?", onClips }: { h
           autoFocus
           threadHidden={!controller.messages.length}
           threadClassName="h-[22rem]"
-          tools={<TemplateChip value={templateId} onChange={setTemplateId} />}
+          tools={<TemplateChip value={templateIds} onChange={setTemplateIds} />}
           below={!controller.messages.length && onClips ? <StartFrom value={aspect} onChange={setAspect} onClips={onClips} /> : null}
         />
       </Glass>

@@ -344,6 +344,18 @@ against the caller: `node /path/to/agentcut/scripts/agentcut.mjs templates apply
 `scripts/edit.ts PROJECT_ID call request.json` reaches every template tool directly.
 No web server is required for any of them.
 
+## A shortlist, rather than one template
+
+`plan.templates` is the set of templates a project may be made in. One of them, and
+`plan.template` names it; several, and the choice is made per video from that shortlist and
+no further. It is a shortlist, not a merge: two caption styles cannot both win.
+
+The home screen writes it — **Multi** in the template picker keeps adding rather than
+replacing, and each chosen template sits on the composer's own row — and the editor's
+**Video → Plan and templates** shows it as chips: click one to settle it for every video,
+or drop it from the list. `templates.suggest` ranks only the shortlist when there is one,
+because a shortlist is a decision already made.
+
 ## Built-in templates
 
 | Id | For |

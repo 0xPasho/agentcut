@@ -5,8 +5,8 @@ The application now supports two starting flows into the same local workspace:
 The home screen offers two, as tabs:
 
 - **Make something:** one box. Say what you want, drop videos into it, or paste a link;
-  beside it you choose the shape (blank, 9:16, 4:5, 1:1, 16:9), the template it is made in,
-  and which agent runs it. Dropped videos are imported and placed in the order they were
+  beside it you choose the shape (blank, 9:16, 4:5, 1:1, 16:9), the template it is made in —
+  or several, a shortlist each video chooses from — and which agent runs it. Dropped videos are imported and placed in the order they were
   dropped, so the project opens with footage on the timeline. What to do with several of
   them — one video, or one each — is a sentence, not a form. Nothing here is required:
   send an empty shape and you get an empty canvas in the same editor.

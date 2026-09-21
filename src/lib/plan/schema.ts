@@ -69,6 +69,12 @@ export const Series = z.object({
 export const ProjectPlan = z.object({
   brief: Brief.prefault({}),
   template: z.string().nullable().default(null),
+  /**
+   * The templates this project may be made in. One of them and `template` names it; several
+   * and the choice is made per video, from this shortlist and no further — which is what
+   * picking several on the home screen means. Empty is "anything on this machine".
+   */
+  templates: z.array(z.string()).default([]),
   overrides: z.record(z.string(), z.unknown()).default({}),
   rules: z.array(z.string()).default([]),
   tags: z.array(z.string()).default([]),

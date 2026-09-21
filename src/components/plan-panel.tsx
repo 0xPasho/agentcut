@@ -1,6 +1,6 @@
 "use client";
 import { useId, useState, type ReactNode } from "react";
-import { Loader2, Sparkles, Trash2, Wand2 } from "lucide-react";
+import { Loader2, Sparkles, Trash2, Wand2, X } from "lucide-react";
 import { api } from "@/lib/client";
 import type { Edl } from "@/lib/edl";
 import type { EditorOperation } from "@/lib/editor/operations";
@@ -96,6 +96,23 @@ export function PlanPanel({ projectId, edl, sequenceId, templates, dispatch, see
             </Select>
           </Field>
         </div>
+        {/* A shortlist chosen on the home screen, or by the agent: the templates this
+            project may use. Clicking one settles it for every video; the cross drops it. */}
+        {project.templates.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-xs text-muted-foreground">Shortlist</span>
+            {project.templates.map((templateId) => {
+              const name = templates.find((t) => t.id === templateId)?.name ?? templateId;
+              return (
+                <span key={templateId} className={`flex items-center gap-0.5 rounded-full border py-0.5 pr-0.5 pl-2 text-xs ${project.template === templateId ? "border-primary/60 bg-primary/10" : "border-border bg-card/60"}`}>
+                  <button type="button" title="Use this for every video" className="hover:underline" onClick={() => patchProject({ template: templateId })}>{name}</button>
+                  <Button size="icon-sm" variant="ghost" aria-label={`Drop ${name} from the shortlist`} onClick={() => patchProject({ templates: project.templates.filter((kept) => kept !== templateId), ...(project.template === templateId ? { template: null } : {}) })}><X /></Button>
+                </span>
+              );
+            })}
+            {project.templates.length > 1 && !project.template && <span className="text-[11px] text-muted-foreground">Each video takes whichever of these suits it.</span>}
+          </div>
+        )}
         {!!Object.keys(project.reasons).length && <Reasons reasons={project.reasons} />}
         <Button size="sm" variant="outline" disabled={!!busy} onClick={() => run("all", async () => {
           const r = await api.editorTool<ProjectApplyResult>(projectId, { tool: "plan.apply", all: true, expectedRevision: await revision() });

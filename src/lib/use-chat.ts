@@ -205,7 +205,7 @@ export const nameFromMessage = (text: string) => {
  * already knows what they want.
  */
 /** What the home screen decided before a word was typed: the shape, and the look. */
-export type StartOptions = { aspect?: string; templateId?: string };
+export type StartOptions = { aspect?: string; templateIds?: string[] };
 
 export function useStartChat(start: () => StartOptions = () => ({})): ChatController {
   const router = useRouter();
@@ -227,14 +227,17 @@ export function useStartChat(start: () => StartOptions = () => ({})): ChatContro
     setMessages([{ id: Date.now(), role: "user", source: "web", text, sequenceId: null, context: attachments.length ? { attachments } : null, jobId: null, at: Date.now(), changes: null }]);
     try {
       const { link, videos, kind } = readStart(text, attachments);
-      const { aspect, templateId } = options.current();
-      // The chosen template is the project's, from before its first edit: it is an
-      // ordinary plan field, so the agent reads it and the editor shows it.
+      const { aspect, templateIds = [] } = options.current();
+      /**
+       * The chosen templates are the project's, from before its first edit: ordinary plan
+       * fields, so the agent reads them and the editor shows them. One is the project's
+       * look; several are a shortlist each video chooses from.
+       */
       const chooseTemplate = async (projectId: string) => {
-        if (!templateId) return;
+        if (!templateIds.length) return;
         const current = await api.getProject(projectId);
         await api.editorTool(projectId, { tool: "project.edit", expectedRevision: current.revision,
-          operations: [{ type: "plan.patch", patch: { template: templateId } }] });
+          operations: [{ type: "plan.patch", patch: { templates: templateIds, template: templateIds.length === 1 ? templateIds[0] : null } }] });
       };
       if (kind === "link") {
         setStatus("Fetching the video…");

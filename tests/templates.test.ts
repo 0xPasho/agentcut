@@ -1477,3 +1477,33 @@ test("the home screen can list templates before a project exists", async () => {
   assert.ok(templates.every(t => t.name && t.description), "a picker needs a name and a line about it");
   assert.ok(templates.some(t => t.id === "fast-cuts" && t.builtin));
 });
+
+test("a shortlist of templates narrows what is suggested, and one of them settles it", async () => {
+  const { id, sequenceId } = await projectWithScript();
+  const shortlist = ["talking-head", "quote-card"];
+  store.editProject(id, { expectedRevision: store.readEditor(id).revision, operations: [
+    { type: "plan.patch", patch: { templates: shortlist } },
+  ] });
+
+  const { suggestions } = await tools.executeEditorTool(id, { tool: "templates.suggest", sequenceId }) as {
+    suggestions: import("../src/lib/templates/suggest").TemplateSuggestion[];
+  };
+  assert.deepEqual(suggestions.map(s => s.templateId).sort(), [...shortlist].sort(),
+    "a shortlist is a decision already made; ranking anything else answers a question nobody asked");
+  assert.ok(suggestions[0].why.length, "and each is still ranked on the material, with reasons");
+
+  // Settling on one keeps the shortlist: the others are still what it was chosen from.
+  store.editProject(id, { expectedRevision: store.readEditor(id).revision, operations: [
+    { type: "plan.patch", patch: { template: "quote-card" } },
+  ] });
+  const plan = store.readEditor(id).edl.plan;
+  assert.equal(plan.template, "quote-card");
+  assert.deepEqual(plan.templates, shortlist);
+
+  // An empty shortlist means the whole machine, as before.
+  store.editProject(id, { expectedRevision: store.readEditor(id).revision, operations: [
+    { type: "plan.patch", patch: { templates: [] } },
+  ] });
+  const all = await tools.executeEditorTool(id, { tool: "templates.suggest", sequenceId }) as { suggestions: Array<{ templateId: string }> };
+  assert.ok(all.suggestions.length > shortlist.length);
+});

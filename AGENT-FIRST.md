@@ -162,7 +162,9 @@ uses, and everything the agent decides is inspectable and editable in the UI.
   a collapsible gallery of shapes — blank, 9:16, 4:5, 1:1, 16:9 — which the assemble endpoint
   honours over the shape of the first source. The second tab is clipping a long video. The
   separate "Edit" card is gone: dropped videos are imported *and placed*, and what to do with
-  several of them is something you say rather than a control.
+  several of them is something you say rather than a control. Templates can be chosen several
+  at a time (**Multi**): `plan.templates` is a shortlist each video chooses from, shown as
+  chips in the plan panel and honoured by `templates.suggest`.
 - **Phase 3: not started** (registry, caption translation, publishing, non-footage sources).
 
 ## Phases

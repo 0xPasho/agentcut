@@ -180,7 +180,11 @@ export async function suggestTemplates(
   // never assumed full here either, or a suggestion's shortfall warning could not fire.
   const { countPools } = await import("./apply");
   const { sizes } = await countPools(slots);
-  for (const template of await listTemplates()) {
+  // A shortlist is a decision already made: ranking templates outside it would be
+  // answering a question nobody asked.
+  const shortlist = new Set(edl.plan.templates);
+  const available = (await listTemplates()).filter(t => !shortlist.size || shortlist.has(t.id));
+  for (const template of (available.length ? available : await listTemplates())) {
     // Planning is pure and offline; it touches no network and writes nothing.
     const plan = await planTemplate(edl, template, { ...target, slots }, sizes);
     suggestions.push(score(template, signals, slots, plan));
