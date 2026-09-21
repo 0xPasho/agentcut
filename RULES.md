@@ -3,8 +3,9 @@
 Three files that make the agent edit the way its owner would, without the owner saying
 so every time. All three live at two levels: `<workspace>/` applies to every project;
 `<workspace>/projects/<id>/` adds to it for one project and wins on a conflict. The
-panel (**Video → Rules and preferences** in the editor, and the **Library** page for the workspace
-level), the agent tools and the `agentcut rules` command read and write the same files.
+panel (**Video → Rules and preferences** in the editor, for a project and a video), the
+**/settings** pages (for the workspace level), the agent tools and the `agentcut rules`
+command read and write the same files.
 
 | File | What it is | Who reads it |
 | --- | --- | --- |
@@ -120,8 +121,39 @@ agentcut rules glossary
 agentcut rules preferences
 ```
 
+## Where they live on screen
+
+Everything at workspace level has its own home at **/settings**, reached from the header
+on the home page and from the library. Six sections, one subject each:
+
+| Section | What you do there |
+| --- | --- |
+| Rules | The list for every project: create, edit, reorder, switch one off without deleting it, delete. |
+| Glossary | The table of names, their mishearings and one line of what each is. |
+| Subjects | The glossary terms you have given a look to: colours, fonts and a logo (decision 48). |
+| Preferences | `preferences.md` by hand, with the interview's marked section shown and removable apart from it, the interview's state, and the observation bank with **Review my preferences**. |
+| Agents and models | Which harnesses this machine has, the default harness and model, the model per kind of work (decision 50), and the keys for the optional picture providers. |
+| Packs | Import by path or URL and export, moved here unchanged. |
+
+Rules at project and sequence level stay in the editor, under **Video → Rules and
+preferences**, beside the video they are about. Every control on /settings calls the
+same tool an agent calls — `rules.save`, `rules.delete`, `glossary.save`,
+`preferences.set`, `onboarding.*`, `agents.select`, `providerkeys.set`, `packs.*` — so
+there is no settings-only way to write any of these files.
+
+A provider key is the one thing neither interface can read. `providerkeys.list` answers
+whether a key is set and whether the value came from settings or from the environment;
+nothing returns the key itself, to the page or to an agent, and nothing puts one in
+`process.env`, which every spawned harness inherits.
+
 ## Not yet
 
 Adding an asset at the start or end of a video from a rule (an outro, a sting) waits for
 video in the library. Project-level tags set by hand, the plan artifact, the observation
 bank and packs are the next milestones in [AGENT-FIRST.md](./AGENT-FIRST.md).
+
+Two gaps the settings home did not close. A subject has no assets of its own: a library
+image named after it is still found by name, which is how the picture search has always
+worked. And the workspace-level tools are still bound to a project id the way every other
+editor tool is, so a terminal agent on a machine with no project yet can set a key, run
+the interview or choose a model, but not write a workspace rule.

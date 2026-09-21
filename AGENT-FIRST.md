@@ -234,13 +234,27 @@ Registry adapter for packs; caption translation; publish flows for videos; image
 
 ## Wanted, not yet decided in detail (noted 2026-09-21)
 
-- **A settings home (`/settings`).** Rules, glossary, `preferences.md`, subjects, model per
-  task and provider keys are user-level configuration (decision 36), and today rules and
-  packs are two sections stacked under `/library`, which is where media lives. Mostly a
-  move plus the editors that were never built (glossary, preferences by hand, subjects,
-  model per task). Project- and sequence-level rules stay in the editor, where their
-  subject is.
-- **One marketplace, for packs, as a client of a static index.** Decisions 6 and 8 already
+- **A settings home (`/settings`): built 2026-09-21.** Six sections — rules, glossary,
+  subjects, preferences, agents and models, packs — reached from the home header and from
+  the library, which keeps its media and nothing else. What moved: the workspace rules
+  panel and the packs panel, the latter unchanged. What was written: rules you can reorder
+  and switch off without deleting, a glossary table, subjects as the glossary terms that
+  carry a brand kit (decision 48) — with the kit now actually inherited when a plan names
+  the subject, which the schema had promised and nothing read — `preferences.md` by hand
+  with the interview's marked section shown and removable apart from the owner's lines
+  (decision 62), the interview's state and the observation bank, and model per task
+  (decision 50) over five kinds of work with the harness detection and the provider keys
+  beside it. Two bugs fell out on the way: `rules.evaluate`, `plan.generate` and
+  `observations.review` ran the first installed harness rather than the chosen one,
+  because they are agent runs that are not jobs; and `preferences.md` had no serialised
+  writer, so two saves at once could tear it. Every control calls the tool an agent calls
+  (`agents.select` and `providerkeys.set` are new; `onboarding.reopen` closed a gap), and
+  a provider key is write-only for both interfaces. Project- and sequence-level rules
+  stayed in the editor. Not done: a subject has no assets of its own, and the
+  workspace-level rules/glossary/preferences tools are still bound to a project id, so a
+  terminal agent on a machine with no project cannot yet write a workspace rule.
+- **One marketplace, for packs, as a client of a static index. Still open, deliberately
+  untouched by the settings home.** Decisions 6 and 8 already
   shape it: any static host serves a pack, so v1 is an `index.json` (name, author,
   description, version, hash, URL), a search, the existing untrusted preview and install.
   No server, no accounts, no publishing yet — that is still the registry of phase 3.

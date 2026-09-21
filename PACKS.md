@@ -32,7 +32,7 @@ Nothing in a pack is code. Templates are the same documents as in `workspace/tem
 
 ## Import
 
-**Library → Packs → Read it** takes a folder path or a URL to `pack.json` and shows
+**Settings → Packs → Read it** takes a folder path or a URL to `pack.json` and shows
 everything the pack carries before anything is installed: template names, every rule
 with its full text, quick actions, assets, glossary. A pack from anyone else is untrusted
 text an agent will follow, which is why the rules are shown in full and marked.
@@ -51,6 +51,11 @@ Removing a pack removes its templates and rules. Assets stay, because projects m
 **Export** writes `workspace/exports/packs/<id>/` from what is in this workspace: chosen
 templates and rules, the glossary, chosen assets, quick actions. Serve that folder or send
 it as is. Publishing to a registry comes when a registry exists.
+
+There is no catalogue to browse. Import is a path or a URL you type, export writes a
+folder, and nothing in the app goes looking for packs on the network — no index, no
+search, no remote discovery. A marketplace is still an open question in
+[AGENT-FIRST.md](./AGENT-FIRST.md), not a thing that exists.
 
 ## Tools
 
