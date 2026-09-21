@@ -80,30 +80,47 @@ export function crossfadeGain(frame: number, fade: AudioFade): number {
   return gain;
 }
 
+/** A joint on a track: the shot before this one, and what the two can afford between them. */
+export type TransitionJoint = {
+  previous: SequenceItem;
+  /** The longest blend this joint can hold, in frames. Each shot keeps at least one of its own. */
+  maxFrames: number;
+  /** For a shot pinned to a fixed time, the overlap it already has. `null` when it follows on its own. */
+  overlapFrames: number | null;
+};
+
 /**
- * The joint a transition on this shot would sit in: the shot before it on its own
- * track, and the longest blend the two can afford between them. `null` when there is
- * nothing before it, which is the one case a transition can never mean anything.
+ * Every joint on this timeline, in one pass over the allocation.
  *
- * Both interfaces ask this the same question — the operation to refuse an impossible
- * one with a number in the message, the timeline to say what a joint has room for.
+ * Both interfaces ask the same question here — the operation, to refuse an impossible
+ * transition with a number in the message; the timeline, to say what a joint has room
+ * for before anyone asks for it.
  */
-export function transitionJoint(sequence: VideoSequence, itemId: string): { previous: SequenceItem; maxFrames: number; overlapFrames: number | null } | null {
-  const item = sequence.items.find(candidate => candidate.id === itemId);
-  if (!item) return null;
-  const onLayer = sequence.items.filter(candidate => (candidate.layer ?? 0) === (item.layer ?? 0));
-  const position = onLayer.indexOf(item);
-  if (position <= 0) return null;
-  const previous = onLayer[position - 1];
-  const resolved = sequenceFrames(sequence).items;
-  const own = resolved.find(entry => entry.item.id === itemId)!;
-  const before = resolved.find(entry => entry.item.id === previous.id)!;
-  // What the outgoing shot has left after its own opening blend, and what the incoming
-  // shot has left before the next one starts. Each keeps at least a frame of its own.
-  const free = before.duration - (before.transition?.frames ?? 0);
-  return {
-    previous,
-    maxFrames: Math.max(0, Math.min(own.duration - own.outFrames, free) - 1),
-    overlapFrames: item.at == null ? null : Math.max(0, before.from + before.duration - own.from),
-  };
+export function transitionJoints(sequence: VideoSequence): Map<string, TransitionJoint> {
+  const tracks = new Map<number, ResolvedItem[]>();
+  for (const entry of sequenceFrames(sequence).items) {
+    const layer = entry.item.layer ?? 0;
+    const track = tracks.get(layer) ?? [];
+    track.push(entry);
+    tracks.set(layer, track);
+  }
+  const joints = new Map<string, TransitionJoint>();
+  for (const track of tracks.values()) {
+    for (let index = 1; index < track.length; index++) {
+      const own = track[index], before = track[index - 1];
+      // What the outgoing shot has left after its own opening blend, and what the incoming
+      // shot has left before the next one starts. Each keeps at least a frame of its own.
+      const free = before.duration - (before.transition?.frames ?? 0);
+      joints.set(own.item.id, {
+        previous: before.item,
+        maxFrames: Math.max(0, Math.min(own.duration - own.outFrames, free) - 1),
+        overlapFrames: own.item.at == null ? null : Math.max(0, before.from + before.duration - own.from),
+      });
+    }
+  }
+  return joints;
 }
+
+/** The one joint a transition on this shot would sit in, or `null` if it opens its track. */
+export const transitionJoint = (sequence: VideoSequence, itemId: string): TransitionJoint | null =>
+  transitionJoints(sequence).get(itemId) ?? null;

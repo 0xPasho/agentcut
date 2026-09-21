@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ComponentProps, type PointerEvent } from "react";
-import { EyeOff, Eye, VolumeX, Volume2, Play, Pause, Plus, Film, Music2, Layers, Magnet, Minus, Copy, Scissors, Trash2, ArrowUp, ArrowDown, MousePointerClick, MessageSquare } from "lucide-react";
+import { EyeOff, Eye, VolumeX, Volume2, Play, Pause, Plus, Film, Music2, Layers, Magnet, Minus, Copy, Scissors, Trash2, ArrowUp, ArrowDown, MousePointerClick, MessageSquare, Blend, Timer } from "lucide-react";
+import { Transition } from "@/lib/edl";
 import type { Edit, MediaSource, VideoSequence } from "@/lib/edl";
 import type { EditorOperation } from "@/lib/editor/operations";
 import { buildTimelineGroupMove, buildTimelineMove, buildTimelineTrim, timelineCollides } from "@/lib/editor/timeline-interactions";
@@ -10,7 +11,8 @@ import { usePlayhead, usePlayheadSelector, usePlayheadStore } from "@/lib/editor
 import { cachedMediaPeaks, cachedPeaks, loadMediaPeaks, loadPeaks, thinPeaks } from "@/lib/editor/waveform";
 import { cachedFrames, loadFrames } from "@/lib/editor/filmstrip";
 import { activeDrag, classifyFile, dropDuration, hasFileDrag, hasMediaDrag, readDrag, type DragKind, type DragPayload } from "@/lib/editor/dnd";
-import { sequenceFrames } from "@/lib/sequences";
+import { sequenceFrames, transitionJoints } from "@/lib/sequences";
+import { DEFAULT_TRANSITION_SEC, TRANSITION_DURATIONS, TRANSITION_KINDS, TRANSITION_LABELS, describeTransition } from "@/lib/editor/transitions";
 import { buildTimeMap, srcToOut, type TimeMap } from "@/lib/timeline";
 import { Button } from "./ui/button";
 import { describeAuthor, isAgentAuthor } from "@/lib/editor/authorship";
@@ -43,6 +45,52 @@ function Ruler({ max, children, ...rest }: { max: number } & ComponentProps<"div
 function SplitItem({ from, until, onSplit }: { from: number; until: number; onSplit: () => void }) {
   const inside = usePlayheadSelector(seconds => seconds > from + .02 && seconds < until - .02);
   return <ContextMenuItem shortcut="S" disabled={!inside} onClick={onSplit}><Scissors />Split at playhead</ContextMenuItem>;
+}
+
+/**
+ * The joint between two shots on one track.
+ *
+ * It sits on the seam itself, because that is the thing being changed: the marker
+ * hangs over the top of the two blocks and, once a transition is set, the overlap it
+ * costs is drawn across both of them so the time it takes is visible rather than
+ * implied. With nothing set the marker only appears when the track is under the
+ * pointer or the keyboard — an empty joint is not news, and one of these between
+ * every pair of shots would be.
+ */
+function TransitionJointControl({ left, width, current, title, previousTitle, maxSeconds, onSet }: {
+  left: number; width: number; current: Transition | null; title: string; previousTitle: string;
+  maxSeconds: number; onSet: (transition: Transition | null) => void;
+}) {
+  const between = `from “${previousTitle}” into “${title}”`;
+  const label = current ? `${describeTransition(current)} ${between}` : `Add a transition ${between}`;
+  const held = Math.min(current?.durationSec ?? DEFAULT_TRANSITION_SEC, maxSeconds);
+  // Changing one field keeps the rest, including who placed it: editing a template's
+  // transition leaves it the template's, exactly as editing one of its titles does.
+  const set = (patch: Partial<Transition>) => onSet(Transition.parse({ ...(current ?? {}), durationSec: held, ...patch }));
+  return <>
+    {current && width > 0 && <span aria-hidden className="pointer-events-none absolute top-2 z-20 h-12 rounded-[4px] bg-primary/20 ring-1 ring-inset ring-primary/60" style={{ left, width }} />}
+    <Menu>
+      <MenuTrigger render={<button type="button" title={label} aria-label={label}
+        className={`absolute top-0 z-30 flex size-4 -translate-x-1/2 items-center justify-center rounded-md border transition-[opacity,color,background-color,border-color] duration-150 ease-out motion-reduce:transition-none after:absolute after:-inset-x-2 after:-top-1.5 after:bottom-0 after:content-[''] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring ${current
+          ? "border-primary/70 bg-primary text-primary-foreground"
+          : "border-white/25 bg-zinc-900 text-muted-foreground opacity-0 hover:border-white/60 hover:text-foreground focus-visible:opacity-100 group-hover/track:opacity-100 aria-expanded:opacity-100"}`}
+        style={{ left: left + width / 2 }} />}>
+        <Blend className="size-2.5" aria-hidden />
+      </MenuTrigger>
+      <MenuContent>
+        <ContextMenuLabel>{current ? describeTransition(current) : "No transition"} · {between}</ContextMenuLabel>
+        {TRANSITION_KINDS.map(kind => <ContextMenuItem key={kind} onClick={() => set({ kind })}>
+          <Blend className={current?.kind === kind ? "text-primary" : "text-muted-foreground"} />{TRANSITION_LABELS[kind]}
+        </ContextMenuItem>)}
+        <ContextMenuSeparator />
+        {TRANSITION_DURATIONS.map(value => <ContextMenuItem key={value} disabled={value > maxSeconds + 1e-6} onClick={() => set({ durationSec: value })}>
+          <Timer className={current && Math.abs(held - value) < 1e-6 ? "text-primary" : "text-muted-foreground"} />{value}s
+        </ContextMenuItem>)}
+        <ContextMenuSeparator />
+        <ContextMenuItem disabled={!current} onClick={() => onSet(null)}><Trash2 />No transition</ContextMenuItem>
+      </MenuContent>
+    </Menu>
+  </>;
 }
 
 const NO_MORE_FOOTAGE = "This clip has no more footage that way.";
@@ -246,6 +294,7 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
   }, []);
 
   const layout = sequenceFrames(sequence);
+  const joints = transitionJoints(sequence);
   const fps = sequence.output.fps;
   const seconds = sequence.items.length ? layout.duration / fps : 10;
   const baseSpan = Math.max(seconds + Math.min(seconds * .08, 3), 5);
@@ -260,6 +309,8 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
   const selected = layout.items.find(({ item }) => item.id === selectedId);
   const selectedMap = selected ? buildTimeMap(selected.item.clip) : null;
   const standalone = (item: VideoSequence["items"][number]) => item.mediaId === null && item.clip.edits.length === 1 && item.clip.edits[0].t === 0 && Math.abs(item.clip.edits[0].d - (item.clip.end - item.clip.start)) < .001;
+  /** What this shot is called wherever it is named: a standalone scene is its own content. */
+  const shotName = (item: VideoSequence["items"][number]) => standalone(item) ? effectLabel(item.clip.edits[0]) : item.clip.title;
   const effectTypes = [...new Set(selected && !standalone(selected.item) ? selected.item.clip.edits.map(edit => edit.type) : [])];
   const roundFrame = (value: number) => Math.round(value * fps) / fps;
   geometry.current = { scale, fps };
@@ -688,7 +739,7 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
               </>}
             </MenuContent>
           </Menu>
-          <div {...marqueeHandlers} className={`relative h-16 shrink-0 touch-none ${externalDrop?.layer === layer ? "bg-primary/5" : ""}`} style={{ width }}>
+          <div {...marqueeHandlers} className={`group/track relative h-16 shrink-0 touch-none ${externalDrop?.layer === layer ? "bg-primary/5" : ""}`} style={{ width }}>
             {layout.items.filter(entry => (entry.item.layer ?? 0) === layer).map(({ item, from, duration }) => {
               // Two ways to be a sound on this timeline: a standalone music/sfx scene, or a
               // shot whose own audio was lifted off its picture.
@@ -761,6 +812,18 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
                   <ContextMenuItem shortcut="Del" onClick={() => removeFrom(item.id)}><Trash2 />{selection.has(item.id) && selection.size > 1 ? `Remove ${selection.size} clips` : "Remove from timeline"}</ContextMenuItem>
                 </ContextMenuContent>
               </ContextMenu>;
+            })}
+            {layout.items.filter(entry => (entry.item.layer ?? 0) === layer).map(entry => {
+              const joint = joints.get(entry.item.id);
+              if (!joint) return null;
+              const current = entry.item.transition ?? null;
+              // A shot pinned to a fixed time can only blend over the overlap it already has.
+              const room = Math.min(joint.maxFrames, joint.overlapFrames ?? joint.maxFrames);
+              if (!current && room < 1) return null;
+              return <TransitionJointControl key={`joint-${entry.item.id}`} left={entry.from / fps * scale} width={(entry.transition?.frames ?? 0) / fps * scale}
+                current={current} title={shotName(entry.item)} previousTitle={shotName(joint.previous)} maxSeconds={room / fps}
+                onSet={transition => commit([{ type: "item.transition", sequenceId: sequence.id, itemId: entry.item.id, transition, before: current }],
+                  transition ? `${describeTransition(transition)} between “${shotName(joint.previous)}” and “${shotName(entry.item)}”.` : "Transition removed.", true)} />;
             })}
             {!sequence.items.length && layer === 0 && <span className="pointer-events-none absolute inset-2 flex items-center rounded-md border border-dashed border-white/20 px-3 text-xs text-muted-foreground">Drop videos here to start</span>}
             {ghost && ghost.layer === layer && ghost.kind !== "effect" && <div aria-hidden className={`pointer-events-none absolute top-1 z-30 h-14 rounded-md border-2 border-primary ${ghost.kind === "move" && ghost.index !== undefined ? "w-1 bg-primary" : ghostClash ? "" : "bg-primary/15"}`} style={{ left: ghost.at * scale, width: ghost.kind === "move" && ghost.index !== undefined ? 3 : Math.max(8, ghost.duration * scale), ...(ghostClash ? HATCH : {}) }}><span className="absolute left-1 top-0 whitespace-nowrap rounded bg-black/85 px-1 text-[10px] text-white">{ghost.kind === "move" ? (ghost.index !== undefined ? "Insert here" : ghostClash ? `Stacks · ${timeLabel(ghost.at)}` : timeLabel(ghost.at)) : `${ghost.duration.toFixed(1)}s`}</span></div>}

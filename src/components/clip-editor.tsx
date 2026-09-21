@@ -44,7 +44,7 @@ import { buildTimelineSlip } from "@/lib/editor/timeline-interactions";
 import { adoptSearchHit, importFiles, importLocalFile, importedDuration, type Imported } from "@/lib/editor/upload";
 import { api, assetUrl, clipUrl, type AssetSummary } from "@/lib/client";
 import { buildTimeMap, srcToOut } from "@/lib/timeline";
-import { sequenceFrames } from "@/lib/sequences";
+import { sequenceFrames, transitionJoints } from "@/lib/sequences";
 import { fmt } from "@/lib/transcript";
 import { Clip as ClipSchema, type Clip, type Edit, type Edl, type SequenceItem } from "@/lib/edl";
 import { emptySequencePlan } from "@/lib/plan/schema";
@@ -137,6 +137,14 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
   },[output.width,output.height]);
   const map = useMemo(() => buildTimeMap(clip), [clip]);
   const allocation = useMemo(() => sequence ? sequenceFrames(sequence) : null, [sequence]);
+  /** The joint this shot arrives on, if it has one: the same answer the timeline's seam gets. */
+  const joint = useMemo(() => {
+    if (!sequence || !item) return null;
+    const found = transitionJoints(sequence).get(item.id);
+    if (!found) return null;
+    const room = Math.min(found.maxFrames, found.overlapFrames ?? found.maxFrames);
+    return { sequenceId: sequence.id, itemId: item.id, previousTitle: found.previous.clip.title, maxSeconds: room / sequence.output.fps, current: item.transition ?? null };
+  }, [sequence, item]);
   const itemOffset = (allocation?.items.find(i => i.item.id === item?.id)?.from ?? 0) / output.fps;
   /** The playhead inside the selected clip, in that clip's own output seconds. */
   const localAt = (seconds: number) => Math.max(0, Math.min(map.duration, seconds-itemOffset));
@@ -649,7 +657,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
       </section>
       <aside aria-label="Editing properties" className="flex w-full min-h-0 shrink-0 flex-col gap-3 lg:w-[340px] lg:overflow-y-auto lg:pr-1">
         <Card className="shrink-0 p-4"><EditorStatus editor={editor} />{actionError&&<p role="alert" className="text-sm text-destructive">{actionError}</p>}<AgentEditor projectId={projectId} beforeRun={save} afterUndo={editor.reload} prefill={agentPrefill} selection={item?{id:item.id,title:clip.title}:null} context={()=>({ sequenceId: sequence ? activeSequenceId : undefined, selection: item ? [item.id] : [], playhead: playhead.get() })} />
-          {picked&&<><Button variant="outline" aria-expanded={propertiesOpen} onClick={()=>setPropertiesOpen(!propertiesOpen)}>{propertiesOpen?"Close properties":"All item properties"}</Button>{propertiesOpen&&<EditorProperties key={clip.id} clip={clip} edl={inspectEdl} validationEdl={edl} mapOperations={mapOperations} dispatch={dispatch} onApplied={()=>setPropertiesOpen(false)} />}</>}
+          {picked&&<><Button variant="outline" aria-expanded={propertiesOpen} onClick={()=>setPropertiesOpen(!propertiesOpen)}>{propertiesOpen?"Close properties":"All item properties"}</Button>{propertiesOpen&&<EditorProperties key={clip.id} clip={clip} edl={inspectEdl} validationEdl={edl} joint={joint} mapOperations={mapOperations} dispatch={dispatch} onApplied={()=>setPropertiesOpen(false)} />}</>}
         </Card>
         {!picked&&<p className="shrink-0 rounded-2xl border border-dashed border-white/15 p-4 text-xs leading-relaxed text-muted-foreground"><MousePointerClick aria-hidden className="mb-2 size-4" /><br />Pick a clip on the frame or the timeline and its controls appear here. The video as a whole — plan, templates, rules, format — is under <strong className="font-medium text-foreground">Video</strong> at the top.</p>}
         {picked&&<>
