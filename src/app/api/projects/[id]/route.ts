@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { q } from "@/lib/db";
 import { renderedClips } from "@/lib/clipFiles";
 import { editProject, readEditor, RevisionConflict } from "@/lib/editor/store";
+import { reapDeadJobs } from "@/lib/reaper";
+import { jobState } from "@/lib/client";
 
 export const runtime = "nodejs";
 
@@ -9,10 +11,14 @@ type Ctx = { params: Promise<{ id: string }> };
 
 export async function GET(_req: NextRequest, { params }: Ctx) {
   const { id } = await params;
+  // The editor polls this; reaping here is what makes a project stuck behind a job
+  // from a dead process heal itself without anybody having to know why.
+  reapDeadJobs(id);
   const p = q.getProject(id);
   if (!p) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   const rendered = await renderedClips(id);
+  const job = q.latestJob(id);
   return NextResponse.json({
     id: p.id,
     name: p.name,
@@ -23,7 +29,7 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
     revision: p.revision,
     edl: p.edl ? readEditor(id).edl : null,
     rendered: Object.keys(rendered),
-    job: q.latestJob(id) ?? null,
+    job: jobState(job),
   });
 }
 

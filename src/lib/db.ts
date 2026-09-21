@@ -30,7 +30,10 @@ function open(): DatabaseSync {
       progress   REAL NOT NULL DEFAULT 0,
       error      TEXT,
       created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
+      updated_at INTEGER NOT NULL,
+      pid        INTEGER,
+      boot_id    TEXT,
+      heartbeat  INTEGER
     );
     CREATE TABLE IF NOT EXISTS events (
       id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -91,6 +94,15 @@ if (!(db.prepare("PRAGMA table_info(projects)").all() as { name: string }[]).som
 if (!(db.prepare("PRAGMA table_info(messages)").all() as { name: string }[]).some(c => c.name === "changes")) {
   db.exec("ALTER TABLE messages ADD COLUMN changes TEXT");
 }
+
+// Who owns a running job, so a row left behind by a dead process can be told
+// apart from one a live process is still working on. See lib/reaper.ts.
+{
+  const jobColumns = (db.prepare("PRAGMA table_info(jobs)").all() as { name: string }[]).map(c => c.name);
+  if (!jobColumns.includes("pid")) db.exec("ALTER TABLE jobs ADD COLUMN pid INTEGER");
+  if (!jobColumns.includes("boot_id")) db.exec("ALTER TABLE jobs ADD COLUMN boot_id TEXT");
+  if (!jobColumns.includes("heartbeat")) db.exec("ALTER TABLE jobs ADD COLUMN heartbeat INTEGER");
+}
 db.exec(`CREATE TABLE IF NOT EXISTS project_assets (
   project_id TEXT NOT NULL, asset_id TEXT NOT NULL,
   PRIMARY KEY (project_id, asset_id)
@@ -118,6 +130,10 @@ export type JobRow = {
   error: string | null;
   created_at: number;
   updated_at: number;
+  /** The process that is executing this job, and which run of it. */
+  pid: number | null;
+  boot_id: string | null;
+  heartbeat: number | null;
 };
 
 export type AssetRow = {
@@ -231,15 +247,32 @@ export const q = {
   insertJob: (j: JobRow) =>
     db
       .prepare(
-        "INSERT INTO jobs (id, project_id, kind, status, stage, progress, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO jobs (id, project_id, kind, status, stage, progress, created_at, updated_at, pid, boot_id, heartbeat) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       )
-      .run(j.id, j.project_id, j.kind, j.status, j.stage, j.progress, j.created_at, j.updated_at),
+      .run(j.id, j.project_id, j.kind, j.status, j.stage, j.progress, j.created_at, j.updated_at, j.pid, j.boot_id, j.heartbeat),
+
+  getJob: (id: string) => plain<JobRow>(db.prepare("SELECT * FROM jobs WHERE id = ?").get(id)),
+
+  /** Every job a process could still be working on, this project's or all of them. */
+  unfinishedJobs: (projectId?: string) =>
+    plainAll<JobRow>(
+      projectId
+        ? db.prepare("SELECT * FROM jobs WHERE project_id = ? AND status IN ('queued','running')").all(projectId)
+        : db.prepare("SELECT * FROM jobs WHERE status IN ('queued','running')").all(),
+    ),
+
+  /** Keep the owner's claim fresh; a job whose heartbeat stops is a candidate for reaping. */
+  beat: (ids: string[], at: number) => {
+    if (!ids.length) return;
+    db.prepare(`UPDATE jobs SET heartbeat = ? WHERE id IN (${ids.map(() => "?").join(", ")})`).run(at, ...ids);
+  },
 
   setJob: (id: string, patch: Partial<Pick<JobRow, "status" | "stage" | "progress" | "error">>) => {
     const keys = Object.keys(patch);
     if (!keys.length) return;
-    db.prepare(`UPDATE jobs SET ${keys.map((k) => `${k} = ?`).join(", ")}, updated_at = ? WHERE id = ?`)
-      .run(...keys.map((k) => (patch as Record<string, string | number | null>)[k]), Date.now(), id);
+    const now = Date.now();
+    db.prepare(`UPDATE jobs SET ${keys.map((k) => `${k} = ?`).join(", ")}, updated_at = ?, heartbeat = ? WHERE id = ?`)
+      .run(...keys.map((k) => (patch as Record<string, string | number | null>)[k]), now, now, id);
   },
 
   activeJob: (projectId: string) =>

@@ -5,10 +5,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { q } from "@/lib/db";
 import { projectDir } from "@/lib/config";
 import { isUrl, titleFor } from "@/lib/ingest";
+import { reapDeadJobs } from "@/lib/reaper";
 
 export const runtime = "nodejs";
 
 export async function GET() {
+  // The project list is the first thing loaded after a restart: sweep every project
+  // here so a crash leaves at most one stale row, visible to nobody.
+  reapDeadJobs();
   return NextResponse.json({
     projects: q.listProjects().map((p) => ({
       id: p.id,

@@ -7,11 +7,8 @@ import { computeSignals } from "./pipeline/signals";
 import { selectClips, readRuleMatches } from "./pipeline/select";
 import { readEditor, publishClips, RevisionConflict } from "./editor/store";
 import { downloadUrl, isUrl } from "./ingest";
-
-declare global {
-  var __agentcutRunning: Set<string> | undefined;
-}
-const running = (globalThis.__agentcutRunning ??= new Set<string>());
+import { BOOT_ID, claim, ownsJob, reapDeadJobs, release } from "./reaper";
+import { effectiveSelection } from "./agent/selection";
 
 export type JobKind = "analyze" | "render" | "edit" | "transcribe" | "batch";
 
@@ -40,13 +37,20 @@ export type AnalyzeOptions = {
 
 export function startJob(projectId: string, kind: JobKind, options: AnalyzeOptions & { only?: string[] } = {}) {
   if (!q.getProject(projectId)) throw new Error("Project not found");
+  // Every agent run in this app is a job, so this is the one place the owner's
+  // harness choice has to be applied. The runners below stay storage-free and
+  // take the answer as an argument; an explicit provider/model still wins,
+  // because that is a caller's instruction rather than a standing preference.
+  options = { ...options, ...effectiveSelection(projectId, { provider: options.provider, model: options.model }) };
   if (options.expectedRevision !== undefined) {
     const current = readEditor(projectId);
     if (current.revision !== options.expectedRevision) throw new RevisionConflict(current);
   }
+  // A row left behind by a process that died still holds the lock; clear those first
+  // so the only thing that can refuse this job is a run that is genuinely alive.
+  reapDeadJobs(projectId);
   const existing = q.activeJob(projectId);
-  if (existing) throw new Error("A job is already running for this project");
-  if (running.has(projectId)) throw new Error("a job is already running for this project");
+  if (existing) throw new Error(`A ${existing.kind} job is already running for this project`);
 
   const now = Date.now();
   const job: JobRow = {
@@ -59,19 +63,26 @@ export function startJob(projectId: string, kind: JobKind, options: AnalyzeOptio
     error: null,
     created_at: now,
     updated_at: now,
+    pid: process.pid,
+    boot_id: BOOT_ID,
+    heartbeat: now,
   };
   q.insertJob(job);
-  running.add(projectId);
+  claim(job.id, projectId);
 
   // Fire and forget: the SSE stream and the jobs table are the progress channel.
   void execute(job, options)
-    .then(() => q.setJob(job.id, { status: "done", progress: 1, stage: "done" }))
+    .then(() => {
+      // An unlock or a reap already gave the project back; this run's ending is stale.
+      if (ownsJob(job.id)) q.setJob(job.id, { status: "done", progress: 1, stage: "done" });
+    })
     .catch((err: Error) => {
+      if (!ownsJob(job.id)) return;
       q.setJob(job.id, { status: "error", error: err.message });
       q.setProject(projectId, { status: "error", error: err.message });
       log(projectId, job.id, "error", err.message);
     })
-    .finally(() => running.delete(projectId));
+    .finally(() => release(job.id));
 
   return job;
 }

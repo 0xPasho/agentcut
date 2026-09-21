@@ -3,12 +3,14 @@ import { q } from "@/lib/db";
 import { renderedClips } from "@/lib/clipFiles";
 import { readEditor } from "@/lib/editor/store";
 import { ProjectView } from "@/components/project-view";
-import type { ProjectDetail } from "@/lib/client";
+import { jobState, type ProjectDetail } from "@/lib/client";
+import { reapDeadJobs } from "@/lib/reaper";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  reapDeadJobs(id);
   const p = q.getProject(id);
   if (!p) notFound();
 
@@ -22,7 +24,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     revision: p.revision,
     edl: p.edl ? readEditor(id).edl : null,
     rendered: Object.keys(await renderedClips(id)),
-    job: q.latestJob(id) ?? null,
+    job: jobState(q.latestJob(id)),
   };
 
   return <ProjectView key={id} initial={initial} />;

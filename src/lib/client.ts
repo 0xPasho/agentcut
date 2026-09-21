@@ -1,9 +1,11 @@
 import type { EditorOperation, EditorSnapshot } from "./editor/operations";
 import type { Edl } from "./edl";
 import type { Probe } from "./media";
-import type { MessageContext } from "./editor/agent";
+import type { Attachment, MessageContext } from "./editor/agent";
 import type { Message } from "./editor/conversation";
-export type { MessageContext, Message };
+import type { JobState } from "./job-state";
+export type { Attachment, MessageContext, Message };
+export { JOB_ACTIVE, jobState, type JobState } from "./job-state";
 
 export type ProjectSummary = {
   id: string;
@@ -14,13 +16,6 @@ export type ProjectSummary = {
   sequenceCount?: number;
 };
 
-export type JobState = {
-  id: string;
-  kind: string;
-  status: string;
-  stage: string | null;
-  progress: number;
-};
 
 export type ProjectDetail = {
   id: string;
@@ -35,7 +30,21 @@ export type ProjectDetail = {
   job: JobState | null;
 };
 
-export type LogEvent = { id: number; kind: string; name: string | null; text: string; at: number };
+export type LogEvent = { id: number; kind: string; name: string | null; text: string; at: number; jobId?: string | null };
+
+/** The first-run interview, as both the web flow and the agent see it. */
+export type OnboardingQuestion = { id: string; label: string; placeholder: string; required: boolean };
+export type OnboardingState = {
+  status: "pending" | "skipped" | "done";
+  done: boolean;
+  skipped: boolean;
+  hasPreferences: boolean;
+  reminder: boolean;
+  answers: Record<string, string>;
+  remaining: string[];
+  questions?: readonly OnboardingQuestion[];
+};
+export type OnboardingResult = { preferences: string; glossary: Array<{ term: string }>; usedAgent: boolean; answers: Record<string, string> };
 
 export class ApiError extends Error {
   constructor(message: string, public status: number) { super(message); }
@@ -75,6 +84,10 @@ export const api = {
 
   deleteProject: (id: string) => fetch(`/api/projects/${id}`, { method: "DELETE" }).then(json<{ ok: true }>),
 
+  /** Hand the project back when a job is stuck; the run itself is abandoned, not cancelled. */
+  unlockProject: (id: string) =>
+    fetch(`/api/projects/${id}/unlock`, { method: "POST" }).then(json<{ reaped: string[]; stopped: string | null }>),
+
   edit: (id: string, expectedRevision: number, operations: EditorOperation[]) =>
     fetch(`/api/projects/${id}`, {
       method: "PATCH",
@@ -95,6 +108,35 @@ export const api = {
     (body
       ? fetch("/api/workspace", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
       : fetch("/api/workspace")).then(json<T>),
+
+  /**
+   * The interview's final step, with the agent's progress as it happens. Falls back
+   * to nothing visible but the same result if the stream cannot be read.
+   */
+  runOnboarding: async (answers: Record<string, string>, onProgress?: (line: string) => void) => {
+    const res = await fetch("/api/workspace/onboarding", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers }) });
+    if (!res.ok || !res.body) throw new Error((await res.text().catch(() => "")) || "The interview could not be written.");
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let result: OnboardingResult | null = null;
+    for (;;) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+      const lines = buffer.split("\n");
+      buffer = done ? "" : (lines.pop() ?? "");
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const payload = JSON.parse(line) as { kind?: string; name?: string; text?: string; done?: OnboardingResult; error?: string };
+        if (payload.error) throw new Error(payload.error);
+        if (payload.done) result = payload.done;
+        else if (payload.text) onProgress?.(payload.name ? `${payload.name}: ${payload.text}` : payload.text);
+      }
+      if (done) break;
+    }
+    if (!result) throw new Error("The interview ended without writing preferences.");
+    return result;
+  },
 
   editorTool: <T>(id: string, call: unknown) =>
     fetch(`/api/projects/${id}/editor`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(call) }).then(json<T>),
