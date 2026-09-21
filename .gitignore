@@ -46,3 +46,6 @@ next-env.d.ts
 
 # Share configuration documentation without committing local configuration.
 !.env.example
+
+# scratch
+/.scratch/
