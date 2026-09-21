@@ -127,3 +127,47 @@ test("a disabled rhythm cuts nothing", async () => {
   const said = words([[0, 0.2, "y"], [0.25, 0.2, "esto"], [0.5, 0.2, "y"], [0.75, 0.2, "esto"]]);
   assert.deepEqual(redundancyCuts(said, { ...rhythm, enabled: false }, 2), []);
 });
+
+test("a crop keyframe and an emphasis are read on the clock the frames are drawn on", async () => {
+  const { mapCrop, mapWindow } = await import("../src/lib/timeline");
+  const map = buildTimeMap(clip(0, 10, [{ type: "silence", t: 1, d: 2 }]));
+  assert.deepEqual(mapCrop(map, [{ t: 0, x: 0, y: 0, w: 10, h: 10 }, { t: 6, x: 90, y: 0, w: 10, h: 10 }]).map((k) => k.t), [0, 4]);
+  assert.deepEqual(mapWindow(map, 6, 1), { t: 4, d: 1 });
+  // A keyframe inside the cut lands on the cut's edge: that is where the footage went.
+  assert.deepEqual(mapCrop(map, [{ t: 2, x: 0, y: 0, w: 10, h: 10 }]).map((k) => k.t), [1]);
+});
+
+test("edits written against the proposed boundaries move with the settled ones", async (t) => {
+  const fs = await import("node:fs/promises");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "agentcut-boundaries-"));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+
+  // The agent proposes a clip that opens ten seconds before anyone speaks, and puts a
+  // punch on the line at source second 33 — three seconds into the clip as it saw it.
+  await fs.writeFile(path.join(dir, "clips.json"), JSON.stringify({
+    clips: [{
+      title: "Late start", score: 80, start: 30, end: 40,
+      edits: [{ type: "punch", t: 3, d: 1, scale: 1.1 }],
+      crop: [{ t: 0, x: 0, y: 0, w: 100, h: 200 }, { t: 3, x: 50, y: 0, w: 100, h: 200 }],
+      tags: [], rules: [],
+    }],
+  }));
+  const transcript = {
+    language: "es", engine: "test", segments: [],
+    words: [[32.9, 0.4, "Esto"], [33.4, 0.5, "importa."]].map(([t, d, w]) => ({ t, d, w })),
+  };
+  const { buildEdl } = await import("../src/lib/pipeline/select");
+  const edl = await buildEdl({
+    projectId: "boundaries", videoPath: "/tmp/none.mp4", dir,
+    probe: { width: 100, height: 200, fps: 30, durationSec: 600 } as never,
+    transcript: transcript as never, minSec: 1,
+  });
+  const built = edl.clips[0];
+  assert.ok(Math.abs(built.start - 32.65) < 0.01, `the clip starts where the talking does: ${built.start}`);
+  const punch = built.edits.find((e) => e.type === "punch")!;
+  assert.ok(Math.abs(built.start + punch.t - 33) < 0.01, `the punch stays on source second 33: ${built.start + punch.t}`);
+  assert.ok(built.crop.some((k) => k.t === 0), "the clip opens on a keyframe, interpolated at its new start");
+  assert.ok(built.words.length === 2, "and carries the words it actually contains");
+});

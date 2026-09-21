@@ -1,7 +1,7 @@
 import React, { useMemo } from "react";
 import { AbsoluteFill, Audio, Easing, Img, Sequence, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 import type { Clip, CropKeyframe, Edit, Region } from "../src/lib/edl";
-import { buildTimeMap, mapWords, srcToOut } from "../src/lib/timeline";
+import { buildTimeMap, mapCrop, mapWindow, mapWords, srcToOut } from "../src/lib/timeline";
 import { duckedVolume, speechSpans } from "../src/lib/ducking";
 import { crossfadeGain, type AudioFade } from "../src/lib/sequences";
 import { Captions } from "./Captions";
@@ -81,9 +81,12 @@ export const ClipComposition: React.FC<ClipProps> = ({
   const words = useMemo(() => mapWords(map, clip.words), [map, clip.words]);
 
   const punches = clip.edits.filter((e): e is Extract<Edit, { type: "punch" }> => e.type === "punch");
-  const emphasis = clip.edits.filter(
-    (e): e is Extract<Edit, { type: "emphasis" }> => e.type === "emphasis",
-  );
+  // Captions are drawn on the output clock, so the spans that colour their words
+  // have to arrive on it too — an emphasis is written in source seconds like every
+  // other edit, and a clip with cuts in it coloured the wrong line.
+  const emphasis = clip.edits
+    .filter((e): e is Extract<Edit, { type: "emphasis" }> => e.type === "emphasis")
+    .map((e) => ({ ...e, ...mapWindow(map, e.t, e.d) }));
   const texts = clip.edits.filter((e): e is Extract<Edit, { type: "text" }> => e.type === "text");
   const images = clip.edits.filter((e): e is Extract<Edit, { type: "image" }> => e.type === "image");
   const sfx = clip.edits.filter((e): e is Extract<Edit, { type: "sfx" }> => e.type === "sfx");
@@ -138,7 +141,7 @@ export const ClipComposition: React.FC<ClipProps> = ({
     );
   } else {
     const fallback: CropKeyframe = { t: 0, x: 0, y: 0, w: sourceWidth, h: sourceHeight };
-    const crop = cropAt(clip.crop, t, fallback);
+    const crop = cropAt(mapCrop(map, clip.crop), t, fallback);
     const region: Region = { x: crop.x, y: crop.y, w: crop.w, h: crop.h };
     video = <VideoRegion {...shared} region={region} boxWidth={width} boxHeight={height} />;
   }

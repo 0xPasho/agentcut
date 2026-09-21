@@ -22,6 +22,11 @@ function ffmpeg(args: string[]) {
   return result.stdout;
 }
 
+/** One RGB sample from a frame of the render. */
+function pixel(file: string, sec: number, x: number, y: number) {
+  return [...ffmpeg(["-ss", String(sec), "-i", file, "-frames:v", "1", "-vf", `crop=2:2:${x}:${y},scale=1:1`, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])];
+}
+
 /** Every frame of the render, as one RGB sample each. A splice that drops a frame shows up as black. */
 function frameSamples(file: string) {
   const raw = ffmpeg(["-i", file, "-vf", "crop=2:2:0:0,scale=1:1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
@@ -52,4 +57,36 @@ test("a silence cut splices without a black frame, and the clip plays to its las
   assert.equal(frames.length, 29, `the clip is as long as the kept spans: ${frames.length}`);
   const black = frames.flatMap((rgb, i) => (rgb.every((v) => v < 24) ? [i] : []));
   assert.deepEqual(black, [], `no frame of a spliced clip is black: ${black}`);
+});
+
+test("a crop keyframe lands where the words it follows land, not where the uncut clock would put it", { timeout: 180_000 }, async () => {
+  const source = path.join(workspace, "bands.mp4");
+  // Three vertical bands: red, green, blue. Which one fills the frame says exactly
+  // where the crop had got to.
+  ffmpeg(["-y", "-f", "lavfi", "-i", "color=black:size=360x180:rate=10:duration=3",
+    "-vf", "drawbox=x=0:y=0:w=120:h=180:color=red@1:t=fill,drawbox=x=120:y=0:w=120:h=180:color=green@1:t=fill,drawbox=x=240:y=0:w=120:h=180:color=blue@1:t=fill",
+    "-pix_fmt", "yuv420p", source]);
+
+  const { publishClips } = await import("../src/lib/editor/store");
+  const { renderProject } = await import("../src/lib/editor/render");
+  database.q.insertProject({ id: "crop", name: "crop", source_path: source, created_at: Date.now() });
+  const saved = publishClips("crop", Edl.parse({
+    projectId: "crop",
+    source: { file: source, width: 360, height: 180, fps: 10, durationSec: 3 },
+    output: { width: 120, height: 180, fps: 10 },
+    clips: [{
+      id: "one", title: "Crop", start: 0, end: 3, captions: { preset: "none" },
+      // A second of the clip is cut away before the move finishes, so the keyframe at
+      // source second 2 is reached at output second 1.
+      edits: [{ type: "silence", t: 0.5, d: 1 }],
+      crop: [{ t: 0, x: 0, y: 0, w: 120, h: 180 }, { t: 2, x: 240, y: 0, w: 120, h: 180 }],
+    }],
+  }));
+
+  const result = await renderProject("crop", { expectedRevision: saved.revision });
+  const file = result.outputs[0].file;
+  const opening = pixel(file, 0.15, 10, 90);
+  assert.ok(opening[0] > opening[1] + 60 && opening[0] > opening[2] + 60, `the clip opens on the first keyframe: ${opening}`);
+  const arrived = pixel(file, 1.5, 10, 90);
+  assert.ok(arrived[2] > arrived[1] + 60, `the crop has arrived, instead of still crossing the middle band: ${arrived}`);
 });

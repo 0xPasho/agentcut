@@ -10,6 +10,14 @@ const { fontFamily: inter } = loadFont("normal", {
   subsets: ["latin"],
 });
 
+/**
+ * How a word is compared to an emphasis. Accents fold rather than disappear: stripping
+ * everything outside a-z turned "años" into "aos" and left every accented Spanish word
+ * matching only by accident.
+ */
+const spoken = (word: string) =>
+  word.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\p{L}\p{N}]/gu, "");
+
 type Props = {
   words: Word[];
   style: CaptionStyle;
@@ -41,7 +49,7 @@ export const Captions: React.FC<Props> = ({ words, style, emphasis }) => {
   const emphasized = new Set(
     emphasis
       .filter((e) => t >= e.t - 0.5 && t <= e.t + e.d + 0.5)
-      .flatMap((e) => e.words.map((w) => w.toLowerCase().replace(/[^a-z0-9]/g, ""))),
+      .flatMap((e) => e.words.map(spoken)),
   );
 
   return (
@@ -60,7 +68,7 @@ export const Captions: React.FC<Props> = ({ words, style, emphasis }) => {
       >
         {shown.map((w, i) => {
           const active = popline || line.words.indexOf(w) === activeIndex;
-          const key = w.w.toLowerCase().replace(/[^a-z0-9]/g, "");
+          const key = spoken(w.w);
           const isEmphasis = emphasized.has(key);
           const color = active || isEmphasis ? style.highlight : style.color;
           const label = style.uppercase ? w.w.toUpperCase() : w.w;

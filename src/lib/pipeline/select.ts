@@ -5,6 +5,7 @@ import { grabFrame, type Probe } from "../media";
 import { toAgentText, wordsForClip, type Transcript } from "../transcript";
 import { AgentClipProposals, CaptionStyle, Edl, centerCrop, type Clip } from "../edl";
 import { resolveProvider, type AgentEvent } from "../agent";
+import { trim } from "../editor/operations";
 import { resolveQuery } from "../search";
 import { buildSelectPrompt } from "./prompt";
 import { tightenBoundaries } from "./boundaries";
@@ -133,20 +134,28 @@ export async function buildEdl(o: {
       });
       const id = randomUUID().slice(0, 8);
       if (p.rules.length) matches[id] = [...new Set(p.rules)];
-      return {
+      const proposed: Clip = {
         id,
         title: p.title,
         hook: p.hook,
         reason: p.reason,
         score: p.score,
-        start,
-        end,
+        start: p.start,
+        end: p.end,
         crop: p.crop.length ? p.crop : [fallbackCrop],
         layout: p.layout ?? { type: "crop" as const },
         captions: CaptionStyle.parse(p.captions ?? {}),
-        words: wordsForClip(transcript, start, end),
+        words: [],
         edits: p.edits ?? [],
         tags: [...new Set(p.tags.map((t) => t.toLowerCase().trim()).filter(Boolean))],
+      };
+      // The agent wrote its punches, overlays and crop moves against the boundaries it
+      // proposed. Settling those boundaries moves the clip under them, so they are
+      // rebased through the same trim both interfaces use — an edit that stayed put
+      // while the clip moved would point at a different sentence entirely.
+      return {
+        ...trim(proposed, start, end),
+        words: wordsForClip(transcript, start, end),
       };
     })
     .filter((c) => c.end - c.start >= Math.min(5, minSec))

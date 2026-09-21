@@ -1,4 +1,4 @@
-import type { Clip, Edit } from "./edl";
+import type { Clip, CropKeyframe, Edit } from "./edl";
 import type { Word } from "./transcript";
 
 /** A span of source time that survives into the output. */
@@ -94,6 +94,31 @@ export function srcToOut(map: TimeMap, t: number): number {
     if (t <= s.srcEnd) return s.outStart + (t - s.srcStart);
   }
   return map.duration;
+}
+
+/**
+ * An edit's window on the output clock.
+ *
+ * Everything a clip carries — edits, crop keyframes, words — is authored in
+ * clip-relative SOURCE seconds, and silence cuts move source time away from output
+ * time. Anything drawn against the frame clock has to come through here first.
+ */
+export function mapWindow(map: TimeMap, t: number, d: number): { t: number; d: number } {
+  const start = srcToOut(map, t);
+  return { t: start, d: Math.max(0, srcToOut(map, t + d) - start) };
+}
+
+/**
+ * Crop keyframes in output time.
+ *
+ * They are written in the same source seconds as the words they follow — a trim
+ * rebases them alongside the transcript — so a clip with cuts in it moved its framing
+ * late by exactly the time the cuts removed, and a move authored near the end never
+ * arrived at all. A keyframe inside a cut lands on the cut's edge, which is where the
+ * footage it described went.
+ */
+export function mapCrop(map: TimeMap, keys: CropKeyframe[]): CropKeyframe[] {
+  return keys.map((k) => ({ ...k, t: srcToOut(map, k.t) }));
 }
 
 export function isCut(map: TimeMap, t: number): boolean {

@@ -134,8 +134,14 @@ export function validateEdl(input: unknown): Edl {
   return edl;
 }
 
-/** Keep existing content anchored to source time when trimming. */
-function trim(clip: Clip, start: number, end: number): Clip {
+/**
+ * Keep existing content anchored to source time when trimming.
+ *
+ * Exported because clip selection needs the same arithmetic: boundaries settled from
+ * the words move a clip after its edits were written against the boundaries proposed
+ * for it, and an edit that does not move with them points at the wrong second.
+ */
+export function trim(clip: Clip, start: number, end: number): Clip {
   const shift = start - clip.start;
   const duration = end - start;
   const timed = <T extends { t: number; d: number }>(items: T[]): T[] => items.flatMap(item => {
