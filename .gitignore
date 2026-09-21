@@ -41,7 +41,7 @@ yarn-error.log*
 next-env.d.ts
 
 # clipsmith
-workspace/
+/workspace/
 .env.local
 
 # Share configuration documentation without committing local configuration.
