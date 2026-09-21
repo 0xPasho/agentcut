@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Clapperboard, Library, MessageCircle, Trash2 } from "lucide-react";
+import { Clapperboard, Library, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { q } from "@/lib/db";
 import { NewProject } from "@/components/new-project";
@@ -33,11 +33,7 @@ export default async function Home() {
         <Badge variant="secondary" className="font-mono text-xs">
           local
         </Badge>
-        <Button variant="secondary" size="sm" nativeButton={false} className="ml-auto" render={<Link href="/chat" />}>
-          <MessageCircle className="size-4" />
-          New chat
-        </Button>
-        <Button variant="ghost" size="sm" render={<Link href="/library" />}>
+        <Button variant="ghost" size="sm" className="ml-auto" nativeButton={false} render={<Link href="/library" />}>
           <Library className="size-4" />
           Library
         </Button>

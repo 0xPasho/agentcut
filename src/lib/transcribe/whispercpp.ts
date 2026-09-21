@@ -6,7 +6,7 @@ import { pipeline } from "node:stream/promises";
 import { createWriteStream, existsSync } from "node:fs";
 import { run, which } from "../bin";
 import { Transcript, type Segment, type Word } from "../transcript";
-import { refineWordTimes, speechRunsFromWav } from "./align";
+import { rebaseOntoSource, refineWordTimes, speechRunsFromWav } from "./align";
 
 const LEGACY_MODEL_DIR = path.join(os.homedir(), ".cache", "clipsmith", "models");
 /** Models are hundreds of megabytes; reuse an existing cache instead of re-downloading after the rename. */
@@ -51,7 +51,7 @@ const DTW_PRESET: Partial<Record<WhisperModel, string>> = {
 };
 
 /** Bumping this invalidates cached transcripts produced by weaker settings. */
-export const ENGINE_VERSION = "whispercpp-2";
+export const ENGINE_VERSION = "whispercpp-3";
 export const engineId = (model: WhisperModel = DEFAULT_MODEL) => `${ENGINE_VERSION}:${model}`;
 
 export async function available() {
@@ -230,11 +230,16 @@ async function runModel(wavPath: string, model: WhisperModel, opts: TranscribeOp
   }
 
   const runs = await speechRunsFromWav(wavPath).catch(() => []);
-  const words = perSegment.flat();
+  // Token times come off the audio whisper actually decoded, which with VAD is the
+  // speech stitched together without the silence. Only the segment timestamps are
+  // mapped back to the source, so each segment's words are put back with them.
+  // Without VAD both are already the source's own clock and must not be touched.
+  const onSource = vad ? perSegment.map((segWords, i) => rebaseOntoSource(segWords, segments[i], runs)) : perSegment;
+  const words = onSource.flat();
   const aligned = runs.length ? refineWordTimes(words, runs) : words;
 
   let cursor = 0;
-  for (const [i, segWords] of perSegment.entries()) {
+  for (const [i, segWords] of onSource.entries()) {
     const own = aligned.slice(cursor, cursor + segWords.length);
     cursor += segWords.length;
     if (!own.length) continue;

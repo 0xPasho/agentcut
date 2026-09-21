@@ -340,8 +340,8 @@ export function templateOperations(
   watermark?: { src: string } | null,
   author?: string,
   bookends: { intro?: Bookend | null; outro?: Bookend | null } = {},
-  /** The sound to play on every punch-in, already resolved to an asset. */
-  punchSfx?: { src: string } | null,
+  /** The template's sounds, already resolved to assets: on every punch-in, on every cut, on the first frame. */
+  sounds: { punch?: { src: string } | null; transitions?: { src: string } | null; opener?: { src: string } | null } = {},
 ): EditorOperation[] {
   const by = author ?? templateAuthor(template.id);
   if (!isTemplateEdit({ by })) throw new Error("A template author must start with template:");
@@ -390,7 +390,7 @@ export function templateOperations(
     const generated = [
       ...planned.silences.map((edit) => ({ ...edit, by })),
       ...planned.punches.map((edit) => ({ ...edit, by })),
-      ...(punchSfx ? planned.punches.map((edit) => ({ type: "sfx" as const, t: edit.t, d: Math.min(sfx.durationSec, edit.d), src: punchSfx.src, gain: sfx.gain, by })) : []),
+      ...(sounds.punch ? planned.punches.map((edit) => ({ type: "sfx" as const, t: edit.t, d: Math.min(sfx.durationSec, edit.d), src: sounds.punch!.src, gain: sfx.gain, by })) : []),
       ...planned.emphasis.map((edit) => ({ ...edit, by })),
       ...images,
     ];
@@ -500,6 +500,38 @@ export function templateOperations(
       },
     });
   }
+
+  /** One canvas layer holding a set of stings, the way the music bed is one layer holding a bed. */
+  const soundLayer = (title: string, src: string, gain: number, times: Array<{ t: number; d: number }>) => {
+    const id = newId("i");
+    return {
+      type: "item.add" as const,
+      sequenceId: plan.sequenceId,
+      item: {
+        id, mediaId: null, at: 0, layer: topLayer + 5,
+        clip: Clip.parse({
+          id, title, start: 0, end: duration, captions: { preset: "none" },
+          edits: times.map(({ t, d }) => ({ type: "sfx" as const, t, d, src, gain, by })),
+        }),
+      },
+    };
+  };
+
+  if (sounds.transitions && !kept.has("Transitions")) {
+    // Every cut between shots on the main track except the first frame, which is the
+    // opener's job. A sting on a cut nobody can hear yet is just a sting on silence.
+    const main = sequenceFrames(sequence).items
+      .filter((entry) => (entry.item.layer ?? 0) === 0)
+      .sort((a, b) => a.from - b.from)
+      .slice(1)
+      .map((entry) => entry.from / sequence.output.fps)
+      .filter((t) => t > 0.05 && t < duration - 0.05);
+    const length = template.sound.transitions.durationSec;
+    if (main.length) push(soundLayer("Transitions", sounds.transitions.src, template.sound.transitions.gain, main.map((t) => ({ t, d: Math.min(length, duration - t) }))));
+  }
+  if (sounds.opener && !kept.has("Opener"))
+    push(soundLayer("Opener", sounds.opener.src, template.sound.opener.gain, [{ t: 0, d: Math.min(template.sound.opener.durationSec, duration) }]));
+
   return operations;
 }
 

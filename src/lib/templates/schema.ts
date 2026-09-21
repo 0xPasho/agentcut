@@ -95,6 +95,21 @@ export const TemplateImages = z.object({
 });
 export type TemplateImages = z.infer<typeof TemplateImages>;
 
+/**
+ * Where a sound comes from, in the same shape everywhere a template asks for one:
+ * an `audio` slot the author filled, a literal asset id, or a search that is run and
+ * adopted into the project the way a picture is. Empty means the template stays silent
+ * there rather than picking something at random.
+ */
+export const TemplateSoundSource = z.object({
+  enabled: z.boolean().default(false),
+  slot: z.string().default(""),
+  assetId: z.string().default(""),
+  /** Free-licence audio search, e.g. "whoosh transition". Only used when no slot or asset answers. */
+  query: z.string().default(""),
+});
+export type TemplateSoundSource = z.infer<typeof TemplateSoundSource>;
+
 export const TemplateRhythm = z.object({
   silence: z.object({
     enabled: z.boolean().default(true),
@@ -110,11 +125,8 @@ export const TemplateRhythm = z.object({
     perMinute: z.number().min(0).max(30).default(4),
     scale: z.number().min(1).max(2).default(1.12),
     durationSec: z.number().positive().default(1.2),
-    /** A sound on every punch-in — a whoosh, a hit — from an `audio` slot or an asset. */
-    sfx: z.object({
-      enabled: z.boolean().default(false),
-      slot: z.string().default(""),
-      assetId: z.string().default(""),
+    /** A sound on every punch-in — a whoosh, a hit — from an `audio` slot, an asset or a search. */
+    sfx: TemplateSoundSource.extend({
       gain: z.number().min(0).max(2).default(0.6),
       durationSec: z.number().positive().default(0.8),
     }).prefault({}),
@@ -127,15 +139,32 @@ export const TemplateRhythm = z.object({
 });
 export type TemplateRhythm = z.infer<typeof TemplateRhythm>;
 
-export const TemplateMusic = z.object({
-  enabled: z.boolean().default(false),
-  /** A library/project asset id, or the id of an `audio` slot to take it from. */
-  assetId: z.string().default(""),
-  slot: z.string().default(""),
+export const TemplateMusic = TemplateSoundSource.extend({
   gain: z.number().min(0).max(2).default(0.22),
   duck: z.boolean().default(true),
   loop: z.boolean().default(true),
 });
+
+/**
+ * The sounds a template places that are not tied to a punch-in: a sting on every cut
+ * between shots, and one on the opening frame.
+ *
+ * `mode: "off"` silences everything the template would add — its bed, its punch sounds
+ * and these — in one field, so a sound design is something a video can refuse whole
+ * rather than something that has to be unpicked edit by edit.
+ */
+export const TemplateSound = z.object({
+  mode: z.enum(["on", "off"]).default("on"),
+  transitions: TemplateSoundSource.extend({
+    gain: z.number().min(0).max(2).default(0.5),
+    durationSec: z.number().positive().default(0.7),
+  }).prefault({}),
+  opener: TemplateSoundSource.extend({
+    gain: z.number().min(0).max(2).default(0.7),
+    durationSec: z.number().positive().default(1.2),
+  }).prefault({}),
+});
+export type TemplateSound = z.infer<typeof TemplateSound>;
 
 /**
  * A mark held in a corner for the whole video — a channel logo, a show bug. It is
@@ -239,6 +268,7 @@ export const VideoTemplate = z.object({
   images: TemplateImages.prefault({}),
   rhythm: TemplateRhythm.prefault({}),
   music: TemplateMusic.prefault({}),
+  sound: TemplateSound.prefault({}),
   cards: z.array(TemplateCard).default([]),
   watermark: TemplateWatermark.prefault({}),
   slots: z.array(TemplateSlot).default([]),

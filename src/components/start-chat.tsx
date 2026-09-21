@@ -20,20 +20,17 @@ const SUGGESTIONS = [
   { label: "A title card", text: "Start me a 9:16 video with a bold title card that says " },
 ];
 
-export function StartChat() {
+/**
+ * The conversation itself, without a page around it. The home screen mounts this as one
+ * of its three ways in; `/chat` is the same panel on a page of its own.
+ */
+export function StartChatPanel({ heading = "What are we making?" }: { heading?: string }) {
   const controller = useStartChat();
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 px-4 pt-4 pb-10 sm:px-6">
-      <Glass shape="capsule" thickness="thick" className="sticky top-4 z-20 flex items-center gap-2 px-3 py-3 sm:gap-3 sm:px-5">
-        <Clapperboard className="size-6 shrink-0 text-primary" />
-        <h1 className="text-xl font-semibold tracking-tight">agentcut</h1>
-        <Button variant="ghost" size="sm" nativeButton={false} className="ml-auto" render={<Link href="/" />}>Projects</Button>
-      </Glass>
-
-      <div className="flex flex-1 flex-col justify-end gap-4">
+    <div className="flex flex-1 flex-col justify-end gap-4">
         {!controller.messages.length ? (
           <div className="space-y-2 pt-10 text-center">
-            <h2 className="text-balance text-3xl font-semibold tracking-tight">What are we making?</h2>
+            <h2 className="text-balance text-3xl font-semibold tracking-tight">{heading}</h2>
             <p className="text-pretty text-sm leading-relaxed text-muted-foreground">
               Describe it, drop a video or an image, or paste a link. Everything lands in the editor with this conversation already going.
             </p>
@@ -46,7 +43,19 @@ export function StartChat() {
           threadHidden={!controller.messages.length}
           threadClassName="h-[24rem]"
         />
-      </div>
+    </div>
+  );
+}
+
+export function StartChat() {
+  return (
+    <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 px-4 pt-4 pb-10 sm:px-6">
+      <Glass shape="capsule" thickness="thick" className="sticky top-4 z-20 flex items-center gap-2 px-3 py-3 sm:gap-3 sm:px-5">
+        <Clapperboard className="size-6 shrink-0 text-primary" />
+        <h1 className="text-xl font-semibold tracking-tight">agentcut</h1>
+        <Button variant="ghost" size="sm" nativeButton={false} className="ml-auto" render={<Link href="/" />}>Projects</Button>
+      </Glass>
+      <StartChatPanel />
     </main>
   );
 }

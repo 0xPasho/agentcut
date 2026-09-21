@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { frameLevels, readWavMono, refineWordTimes, speechRuns } from "../src/lib/transcribe/align";
+import { frameLevels, readWavMono, rebaseOntoSource, refineWordTimes, speechRuns } from "../src/lib/transcribe/align";
 import { applyCorrections, retimeWords, suspectSegments } from "../src/lib/transcribe/polish";
 import { activeWordIndex, lineAt, toLines, visibleWords } from "../src/lib/timeline";
 import { Transcript, type Word } from "../src/lib/transcript";
@@ -61,6 +61,31 @@ test("refined word times stay ordered and positive", () => {
   const refined = refineWordTimes([word("a", 1.05, 0.3), word("b", 1.04, 0.3), word("c", 1.9, 0.3)], runs);
   for (let i = 1; i < refined.length; i++) assert.ok(refined[i].t > refined[i - 1].t);
   for (const w of refined) assert.ok(w.d > 0);
+});
+
+test("VAD words come back onto the source's clock, not the decoded audio's", () => {
+  // Whisper decoded speech-only audio: its words start at 0, but this segment is
+  // really 100s into the source, after 100s of silence VAD removed.
+  const seg = { start: 100, end: 102 };
+  const runs = [{ start: 100, end: 102 }];
+  const words = [word("uno", 0, 0.5), word("dos", 0.5, 0.5), word("tres", 1.0, 1.0)];
+  const rebased = rebaseOntoSource(words, seg, runs);
+  assert.deepEqual(rebased.map((w) => Number(w.t.toFixed(2))), [100, 100.5, 101]);
+  assert.ok(rebased.every((w) => w.t >= seg.start && w.t + w.d <= seg.end + 0.01));
+});
+
+test("silence removed inside a segment is put back between its words", () => {
+  // 1s of speech, a 4s pause, 1s more — the decoder saw the two seconds back to back.
+  const seg = { start: 10, end: 16 };
+  const runs = [{ start: 10, end: 11 }, { start: 15, end: 16 }];
+  const rebased = rebaseOntoSource([word("antes", 0, 1), word("después", 1, 1)], seg, runs);
+  assert.ok(Math.abs(rebased[0].t - 10) < 0.01, `first at ${rebased[0].t}`);
+  assert.ok(Math.abs(rebased[1].t - 15) < 0.01, `second at ${rebased[1].t}`);
+});
+
+test("words already on the source's clock are left alone", () => {
+  const words = [word("uno", 10.02, 0.5), word("dos", 10.6, 0.5)];
+  assert.deepEqual(rebaseOntoSource(words, { start: 10, end: 11.2 }, [{ start: 10, end: 11.2 }]), words);
 });
 
 test("word confidence survives a round trip through the schema", () => {

@@ -5,7 +5,7 @@ import { q } from "../db";
 import { projectDir } from "../config";
 import { grabFrame } from "../media";
 import { scanLibrary, registerAsset, uploadLibraryAsset } from "../assets";
-import { searchImages, adoptHit, listProviders } from "../search";
+import { searchImages, adoptHit, listProviders, searchAudio, adoptAudioHit } from "../search";
 import { TemplateRequest } from "../templates/plan";
 import { RuleApplyRequest } from "../rules/apply";
 import { RuleLevel, RuleStage } from "../rules/schema";
@@ -15,6 +15,9 @@ import { EditRequest, EditorOperation } from "./operations";
 import { editProject, readEditor } from "./store";
 import { jobState, JOB_ACTIVE } from "../job-state";
 import { reapDeadJobs } from "../reaper";
+
+/** What a found sound is for. A sting and a bed are the same search with different ranking. */
+const AudioKindSchema = z.enum(["sfx", "music"]).default("sfx");
 
 export const EditorToolCall = z.discriminatedUnion("tool", [
   z.object({ tool: z.literal("project.read") }),
@@ -34,6 +37,10 @@ export const EditorToolCall = z.discriminatedUnion("tool", [
   z.object({ tool: z.literal("assets.capture"), atSec: z.number().nonnegative(), mediaId: z.string().optional() }),
   z.object({ tool: z.literal("assets.search"), query: z.string().trim().min(1), providers: z.array(z.string()).optional() }),
   z.object({ tool: z.literal("assets.providers") }),
+  // Sounds are searched and adopted exactly like pictures: find, download into the
+  // project, reference the asset id from a music or sfx edit.
+  z.object({ tool: z.literal("assets.searchAudio"), query: z.string().trim().min(1), kind: AudioKindSchema }),
+  z.object({ tool: z.literal("assets.adoptAudio"), query: z.string().trim().min(1), kind: AudioKindSchema, id: z.string(), provider: z.string().default("openverse") }),
   z.object({ tool: z.literal("assets.importFolder"), folder: z.string().min(1) }),
   z.object({ tool: z.literal("assets.adopt"), query: z.string().trim().min(1), provider: z.string(), id: z.string(), providers: z.array(z.string()).optional() }),
   z.object({ tool: z.literal("assets.upload"), name: z.string().min(1), base64: z.string().min(1).max(100_000_000) }),
@@ -164,6 +171,14 @@ export async function executeEditorTool(projectId: string, raw: unknown, onActiv
     case "assets.list": await scanLibrary(); return q.listAssets(call.kind, projectId);
     case "assets.capture": return captureAsset(projectId, call.atSec, call.mediaId);
     case "assets.search": return searchImages(call.query, 12, call.providers);
+    case "assets.searchAudio": return searchAudio(call.query, 12, call.kind);
+    case "assets.adoptAudio": {
+      // Re-run the same search that produced the hit, the way a picture is adopted:
+      // the id alone is not a URL we are willing to fetch on an agent's say-so.
+      const hit = (await searchAudio(call.query, 12, call.kind)).find(h => h.id === call.id && h.provider === call.provider);
+      if (!hit) throw new Error("Search result is no longer available. Search again before choosing a sound.");
+      return adoptAudioHit(hit, projectId);
+    }
     case "assets.providers": return listProviders();
     case "assets.importFolder": {
       const { importLocalFolder } = await import("./local-assets");

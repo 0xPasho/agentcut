@@ -151,3 +151,4 @@ export async function resolveQueryDetailed(
 export async function resolveQuery(query: string, projectId: string, providers?: string[]): Promise<AssetRow | null> {
   return (await resolveQueryDetailed(query, projectId, providers)).asset;
 }
+export { searchAudio, adoptAudioHit, type AudioHit, type AudioKind } from "./audio";

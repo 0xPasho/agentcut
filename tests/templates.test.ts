@@ -1386,3 +1386,51 @@ test("re-ticking a picture source restores the template's order rather than appe
   const restored = order.filter(s => s === "slot" || chosen.has(s.split(":")[0]));
   assert.deepEqual(restored, order, "slot must come back first, where the template put it, not last");
 });
+
+test("a template places its sounds as ordinary sfx layers, and one switch turns all of them off", async () => {
+  const { installStarterSounds } = await import("../src/lib/assets");
+  await installStarterSounds();
+  const sound = database.q.listAssets("audio").find(a => a.name === "Whoosh")!;
+  assert.ok(sound, "the starter sounds are available offline");
+
+  // Two shots, so there is a cut between them for a transition to land on.
+  const { id } = await mediaService.createVideoProject("Sounded", [{ file: source }, { file: source }]);
+  let snapshot = store.readEditor(id);
+  const sequence = snapshot.edl.sequences[0];
+  snapshot = store.editProject(id, { expectedRevision: snapshot.revision, operations: [
+    { type: "item.patch", sequenceId: sequence.id, itemId: sequence.items[0].id,
+      patch: { title: "Ranking", hook: "How ranking really works", start: 0, end: 20, words: speak(SCRIPT) } },
+  ] });
+
+  const sounded = {
+    rhythm: { punch: { sfx: { enabled: true, assetId: sound.id } } },
+    sound: { transitions: { enabled: true, assetId: sound.id }, opener: { enabled: true, assetId: sound.id } },
+  };
+  await tools.executeEditorTool(id, { tool: "template.apply", templateId: "talking-head", sequenceId: sequence.id,
+    expectedRevision: snapshot.revision, overrides: sounded });
+
+  const after = store.readEditor(id).edl.sequences.find(s => s.id === sequence.id)!;
+  const opener = after.items.find(i => i.clip.title === "Opener")!;
+  const transitions = after.items.find(i => i.clip.title === "Transitions")!;
+  assert.ok(opener && transitions, after.items.map(i => i.clip.title).join(", "));
+  assert.ok(opener.clip.edits.every(e => e.type === "sfx" && e.src === sound.id));
+  assert.equal(opener.clip.edits[0].t, 0);
+  assert.ok(transitions.clip.edits.length >= 1, "the cut between the two shots gets a sting");
+  assert.ok(transitions.clip.edits.every(e => e.t > 0), "nothing is stacked on the first frame");
+  assert.ok(after.items.find(i => i.id === sequence.items[0].id)!.clip.edits.some(e => e.type === "sfx"), "punch-ins get their sound");
+  assert.ok([...opener.clip.edits, ...transitions.clip.edits].every(e => e.by === "template:talking-head"), "they are the template's, so re-applying replaces them");
+
+  // Off means off: the same template, the same sounds configured, and silence.
+  const { id: quiet } = await mediaService.createVideoProject("Quiet", [{ file: source }, { file: source }]);
+  let quietSnapshot = store.readEditor(quiet);
+  const quietSequence = quietSnapshot.edl.sequences[0];
+  quietSnapshot = store.editProject(quiet, { expectedRevision: quietSnapshot.revision, operations: [
+    { type: "item.patch", sequenceId: quietSequence.id, itemId: quietSequence.items[0].id,
+      patch: { title: "Ranking", start: 0, end: 20, words: speak(SCRIPT) } },
+  ] });
+  await tools.executeEditorTool(quiet, { tool: "template.apply", templateId: "talking-head", sequenceId: quietSequence.id,
+    expectedRevision: quietSnapshot.revision, overrides: { ...sounded, sound: { ...sounded.sound, mode: "off" } } });
+  const silent = store.readEditor(quiet).edl.sequences.find(s => s.id === quietSequence.id)!;
+  assert.equal(silent.items.filter(i => ["Opener", "Transitions", "Music bed"].includes(i.clip.title)).length, 0);
+  assert.ok(silent.items.every(i => i.clip.edits.every(e => e.type !== "sfx" && e.type !== "music")), "no sound of any kind");
+});

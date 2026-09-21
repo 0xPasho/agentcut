@@ -135,6 +135,19 @@ uses, and everything the agent decides is inspectable and editable in the UI.
   diff before applying is replaced for now by "apply, then undo the whole turn", which the decision
   allowed as the first step; a separate HTTP asset provider is not needed because a pack served over
   HTTP is one.
+- **Three ways in, a contextual editor, and sound: implemented 2026-09-20.** The home screen is three
+  tabs — **Edit** (drop videos, one video or one each), **Clips**, **Chat** (the conversation that starts
+  a project, now on the home screen rather than only at `/chat`). "Edit a set" is gone as its own entry:
+  dropping several files and choosing "one each" is the same project, and the set is edited by asking for
+  it. In the editor, the properties column follows the selection and everything about the video as a whole
+  (plan, templates, rules, format) moved behind one **Video** menu; the controls people reach for constantly
+  — hook, colours, mute, separate audio, split, duplicate, remove — sit on the frame. Sound: `item.detachAudio`
+  lifts a shot’s audio onto its own track; every footage-backed clip draws its waveform from peaks computed
+  by ffmpeg here and cached; `assets.searchAudio` / `assets.adoptAudio` find free-licence sound the way
+  pictures are found, with eight synthesised starter sounds installed locally for offline use; templates
+  carry a sound design (`sound.transitions`, `sound.opener`, a `query` on any sound source) with
+  `sound.mode: "off"` to refuse all of it. Transitions between shots are stings, not renderer transitions,
+  which is what Phase 2 deferred.
 - **Phase 3: not started** (registry, caption translation, publishing, non-footage sources).
 
 ## Phases

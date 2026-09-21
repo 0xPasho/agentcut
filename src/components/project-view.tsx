@@ -138,8 +138,10 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
         </p>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
-        <div className="flex flex-col gap-4">
+      {/* `minmax(0, …)`, not `1fr`: an auto-minimum track grows to its widest line, and
+          one long agent log line would stretch the column past the page. */}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="flex min-w-0 flex-col gap-4">
           {edl?.sequences.map((sequence) => (
             <Card key={sequence.id} className="gap-3 p-4">
               <div className="min-w-0">

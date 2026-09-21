@@ -5,6 +5,7 @@ import { sequenceFrames } from "@/lib/sequences";
 import type { EditorOperation } from "@/lib/editor/operations";
 import { snapAxis } from "@/lib/editor/snapping";
 import { moveOverlay, overlayLabel, type Box, type OverlayTarget } from "@/lib/editor/canvas";
+import { usePlayhead } from "@/lib/editor/playhead";
 
 type Transform = typeof DEFAULT_ITEM_TRANSFORM;
 const SNAP_PX = 8;
@@ -29,7 +30,9 @@ export function CanvasGrid() {
 }
 
 /** The draft is preview-only; release commits one shared item.place or item.patch transaction. */
-export function CanvasSelection({item,sequence,currentSec,dispatch,onPreview,selectedEdit=null,onSelectEdit,onSelectCaptions}:{item:SequenceItem;sequence:VideoSequence;currentSec:number;dispatch:(ops:EditorOperation[])=>void;onPreview:(preview:CanvasPreview)=>void;selectedEdit?:number|null;onSelectEdit?:(index:number)=>void;onSelectCaptions?:()=>void}) {
+export function CanvasSelection({item,sequence,dispatch,onPreview,selectedEdit=null,onSelectEdit,onSelectCaptions}:{item:SequenceItem;sequence:VideoSequence;dispatch:(ops:EditorOperation[])=>void;onPreview:(preview:CanvasPreview)=>void;selectedEdit?:number|null;onSelectEdit?:(index:number)=>void;onSelectCaptions?:()=>void}) {
+  // Handles only show while the preview is paused, so following every frame costs nothing.
+  const currentSec=usePlayhead();
   const area=useRef<HTMLDivElement>(null);
   const [bounds,setBounds]=useState<Box|null>(null);
   const [frame,setFrame]=useState<Box|null>(null);

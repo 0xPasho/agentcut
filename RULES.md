@@ -3,7 +3,7 @@
 Three files that make the agent edit the way its owner would, without the owner saying
 so every time. All three live at two levels: `<workspace>/` applies to every project;
 `<workspace>/projects/<id>/` adds to it for one project and wins on a conflict. The
-panel (**Rules & preferences** in the editor, and the **Library** page for the workspace
+panel (**Video → Rules and preferences** in the editor, and the **Library** page for the workspace
 level), the agent tools and the `agentcut rules` command read and write the same files.
 
 | File | What it is | Who reads it |

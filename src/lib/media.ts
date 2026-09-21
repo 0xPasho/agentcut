@@ -1,4 +1,7 @@
+import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { FFMPEG, FFPROBE, run } from "./bin";
 
 export type Probe = {
@@ -107,3 +110,40 @@ export async function cut(src: string, start: number, end: number, dest: string)
 }
 
 export const ext = (f: string) => path.extname(f).toLowerCase();
+
+/**
+ * The loudness envelope of a file's audio, as RMS buckets normalised to 0..1.
+ *
+ * Drawing a shot's own audio in the editor needs the shape of the whole file, and a
+ * two-hour stream is gigabytes: decoding it in the browser, which is what the library
+ * assets do, is not an option. ffmpeg resamples it to a rate that is already close to
+ * the drawing resolution, so the array that crosses the wire is the picture itself.
+ */
+export async function audioPeaks(src: string, perSecond = 10): Promise<{ rate: number; peaks: number[] }> {
+  const RATE = 2000;
+  const bucket = Math.max(1, Math.round(RATE / perSecond));
+  const tmp = path.join(os.tmpdir(), `agentcut-peaks-${randomUUID().slice(0, 8)}.pcm`);
+  try {
+    await run(FFMPEG, ["-y", "-i", src, "-vn", "-ac", "1", "-ar", String(RATE), "-f", "s16le", tmp]);
+    const bytes = await fs.readFile(tmp);
+    const samples = new Int16Array(bytes.buffer, bytes.byteOffset, Math.floor(bytes.byteLength / 2));
+    const peaks: number[] = [];
+    let loudest = 0;
+    for (let start = 0; start < samples.length; start += bucket) {
+      const stop = Math.min(samples.length, start + bucket);
+      let sum = 0;
+      for (let i = start; i < stop; i++) sum += (samples[i] / 32768) ** 2;
+      const energy = Math.sqrt(sum / Math.max(1, stop - start));
+      peaks.push(energy);
+      loudest = Math.max(loudest, energy);
+    }
+    // A quiet recording should still read as a shape, so the loudest bucket sets the ceiling.
+    return { rate: perSecond, peaks: loudest > 0 ? peaks.map(p => Math.round((p / loudest) * 1000) / 1000) : peaks };
+  } catch {
+    // A file with no audio track is normal — silent screen recordings, image sequences.
+    // The timeline draws a plain block for it, the same as an undecodable asset.
+    return { rate: perSecond, peaks: [] };
+  } finally {
+    await fs.rm(tmp, { force: true });
+  }
+}

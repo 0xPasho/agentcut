@@ -8,7 +8,7 @@ import { promoteClipToSequence } from "../editor/editable-timeline";
 import { MediaSource, type SequenceItem } from "../edl";
 import type { Bookend } from "./plan";
 import { editProject, readEditor, RevisionConflict } from "../editor/store";
-import { adoptHit, brandHit, findBrand, resolveQueryDetailed } from "../search";
+import { adoptAudioHit, adoptHit, brandHit, findBrand, resolveQueryDetailed, searchAudio, type AudioKind } from "../search";
 import { getTemplate } from "./registry";
 import { aspectOf, resolveTemplate } from "./resolve";
 import type { VideoTemplate } from "./schema";
@@ -246,6 +246,48 @@ function resolveSlotAsset(
 }
 
 /**
+ * A sound: the slot the author filled, a literal asset, or a search run once and adopted
+ * into the project the way a picture is.
+ *
+ * A search that finds nothing — or a machine with no network — leaves the template silent
+ * there and cuts the video anyway. Sound is decoration; refusing to apply the template
+ * over it would be the wrong trade.
+ */
+async function resolveSound(
+  setting: { enabled: boolean; slot: string; assetId: string; query: string },
+  slots: Record<string, SlotValue>,
+  label: string,
+  projectId: string,
+  kind: AudioKind,
+  cache: Map<string, { src: string } | null>,
+) {
+  if (!setting.enabled) return null;
+  const fromSlot = setting.slot ? slots[setting.slot]?.assetId : undefined;
+  const id = fromSlot || setting.assetId;
+  if (id) {
+    const asset = q.getAsset(id);
+    if (!asset || asset.kind !== "audio") throw new Error(`${label} asset ${id} is not an audio asset in this project.`);
+    return { src: asset.id };
+  }
+  const query = setting.query.trim();
+  if (!query) return null;
+  const key = `${kind}:${query.toLowerCase()}`;
+  const known = cache.get(key);
+  if (known !== undefined) return known;
+  let found: { src: string } | null = null;
+  try {
+    for (const hit of await searchAudio(query, 5, kind)) {
+      try { found = { src: (await adoptAudioHit(hit, projectId)).id }; break; }
+      catch { /* try the next hit: a dead download is not a dead search */ }
+    }
+  } catch {
+    // Offline, or the aggregator is down. Same outcome as no match.
+  }
+  cache.set(key, found);
+  return found;
+}
+
+/**
  * An intro or outro is a picture held for `seconds`, or a library video played whole.
  * A video that is not yet project media is added as media in the same batch, so the
  * bookend is an ordinary shot backed by the library file.
@@ -387,12 +429,19 @@ export async function applyTemplate(
     }
   }
 
-  const music = resolveSlotAsset(template.music, request.slots, "audio", "Music");
+  // One switch silences everything the template would place, without unpicking the rest of it.
+  const silent = template.sound.mode === "off";
+  const sounds = new Map<string, { src: string } | null>();
+  const music = silent ? null : await resolveSound(template.music, request.slots, "Music", projectId, "music", sounds);
   const watermark = resolveSlotAsset(template.watermark, request.slots, "image", "Watermark");
   const intro = await resolveBookend(template.intro, request.slots, "Intro", promoted.media);
   const outro = await resolveBookend(template.outro, request.slots, "Outro", promoted.media);
-  const punchSfx = resolveSlotAsset({ ...template.rhythm.punch.sfx, enabled: template.rhythm.punch.enabled && template.rhythm.punch.sfx.enabled }, request.slots, "audio", "Punch sound");
-  const operations = templateOperations(current.edl, template, plan, resolved, (prefix) => `${prefix}_${randomUUID().slice(0, 8)}`, music, watermark, options.author, { intro, outro }, punchSfx);
+  const sound = silent ? {} : {
+    punch: await resolveSound({ ...template.rhythm.punch.sfx, enabled: template.rhythm.punch.enabled && template.rhythm.punch.sfx.enabled }, request.slots, "Punch sound", projectId, "sfx", sounds),
+    transitions: await resolveSound(template.sound.transitions, request.slots, "Transition sound", projectId, "sfx", sounds),
+    opener: await resolveSound(template.sound.opener, request.slots, "Opening sound", projectId, "sfx", sounds),
+  };
+  const operations = templateOperations(current.edl, template, plan, resolved, (prefix) => `${prefix}_${randomUUID().slice(0, 8)}`, music, watermark, options.author, { intro, outro }, sound);
   if (!operations.length) throw new Error("This template would not change anything on this video.");
   const saved = editProject(projectId, { expectedRevision, operations });
   return {

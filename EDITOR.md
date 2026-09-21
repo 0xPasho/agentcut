@@ -19,6 +19,7 @@ trim behavior, and UI adapter. Both interfaces use these operations:
 | `clip.promote` | Promote a clip in place to a layered timeline, preserving its ID and edits |
 | `item.place` | Patch item timing, layer, transform, volume, mute, and visibility |
 | `item.source` | Replace an item's footage in place, keeping its slot and overlays |
+| `item.detachAudio` | Lift a shot's own sound onto its own hidden track and mute the picture |
 | `clip.add` | Add a clip with a unique ID |
 | `clip.remove` | Remove the identified clip |
 | `clip.patch` | Change only supplied clip fields; caption fields merge individually |
@@ -29,6 +30,18 @@ trim behavior, and UI adapter. Both interfaces use these operations:
 
 All seven edit types are supported: silence, punch, emphasis, text, image, sound effect,
 and music.
+
+`item.detachAudio` is how a shot's sound becomes editable on its own. It adds a second item
+over the same media with `hidden: true`, carrying the shot's silence cuts — and therefore its
+exact length — but none of its captions, titles or pictures, and mutes the original. Nothing
+about rendering changes: a hidden item's visuals are hidden and its audio still plays. The
+timeline draws such an item as a sound, with the waveform of the file behind it.
+
+A source's loudness envelope is computed by ffmpeg on this machine (`src/lib/peaks.ts`,
+cached under `<project>/cache/peaks-<mediaId>.json`, served by
+`GET /api/projects/<id>/media/<mediaId>/peaks`). A long stream cannot be decoded in the
+browser, which is what the library's small audio assets still do. A file with no audio track
+returns an empty envelope rather than an error.
 
 Undo and redo are `invertOperations` in `src/lib/editor/history.ts`: the inverse of a batch,
 expressed in these same operations and sent through the same save path. Nothing in the UI
@@ -63,6 +76,13 @@ Apply submits one atomic batch, and concurrent changes require reopening the for
 The agent follows the same revision protocol. On conflict it receives the current snapshot
 and must reconsider its requested changes. It must not blindly replay a stale full clip.
 
+The playhead is deliberately not React state. The player reports a frame thirty times a
+second, and re-rendering the editor on each one costs tens of milliseconds — enough to
+starve the player's own loop, which then drags the video element back to catch up and
+replays the audio it had already played. `src/lib/editor/playhead.ts` holds the position
+in a small store: handlers read it without subscribing, and only the running time, the
+playhead marks, the ruler's slider value and the lit transcript word follow it.
+
 ## Agent and headless tools
 
 `src/lib/editor/tools.ts` exposes project-scoped tools used by the UI and agent transport:
@@ -75,6 +95,10 @@ and must reconsider its requested changes. It must not blindly replay a stale fu
 - `transcript.resync` (re-recognise the source and refresh every clip's words)
 - `assets.list` (library plus project assets), `assets.capture` (source seconds)
 - `assets.search`, `assets.adopt` (select a returned provider/ID for a query)
+- `assets.searchAudio`, `assets.adoptAudio` (the same two steps for sound: free-licence audio
+  search, then download into the project with its licence and credit). A handful of starter
+  sounds ship with the app and are installed into the library on first read, so a sting is
+  available with no network at all.
 - `assets.import` (a file inside the project workspace)
 - `assets.upload` (name and base64 contents, using the same ingestion as UI uploads)
 - `assets.importFolder` (every image/audio file in a local folder, in filename order)

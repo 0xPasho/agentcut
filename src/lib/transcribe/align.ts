@@ -167,3 +167,55 @@ export function refineWordTimes(words: Word[], runs: SpeechRun[]): Word[] {
   }
   return out;
 }
+
+/** How far a segment's words may sit from its start before they are a different timeline. */
+const SAME_TIMELINE = 0.05;
+
+/**
+ * Put a segment's words back onto the source's clock.
+ *
+ * With VAD on, whisper.cpp decodes the speech-only audio it stitched together and
+ * maps only its *segment* timestamps back onto the original file — token times,
+ * `offsets` and `t_dtw` alike, stay in the compressed timeline. Every word is then
+ * early by all the silence cut out before it, which after an hour of a stream is
+ * minutes: captions read out a completely different part of the video.
+ *
+ * The segment's own start and end are the two trustworthy anchors. Words are walked
+ * across the speech inside them, so silence that VAD removed mid-segment is put
+ * back where it was rather than smeared over the words.
+ */
+export function rebaseOntoSource(words: Word[], seg: { start: number; end: number }, runs: SpeechRun[]): Word[] {
+  if (!words.length) return words;
+  const base = words[0].t;
+  // No VAD, or nothing removed before this segment: the times are already the source's.
+  if (Math.abs(seg.start - base) < SAME_TIMELINE) return words;
+
+  const last = words[words.length - 1];
+  const spoken = Math.max(0, last.t + last.d - base);
+  const inside = runs
+    .filter((r) => r.end > seg.start && r.start < seg.end)
+    .map((r) => ({ start: Math.max(r.start, seg.start), end: Math.min(r.end, seg.end) }));
+  const speech = inside.reduce((total, r) => total + (r.end - r.start), 0);
+  // Our own speech detection and Silero's rarely agree to the frame; fitting the
+  // words to the speech we can see keeps the last one from running past the segment.
+  const scale = spoken > 0.01 && speech > 0.01 ? speech / spoken : 1;
+
+  // A word that fills a run exactly ends where the run ends, but the next one
+  // starts after the pause — so where a run boundary lands depends on which edge
+  // of a word is being placed.
+  const at = (t: number, edge: "start" | "end") => {
+    let left = Math.max(0, t - base) * scale;
+    for (const run of inside) {
+      const dur = run.end - run.start;
+      if (left < dur || (edge === "end" && left <= dur)) return run.start + left;
+      left -= dur;
+    }
+    const tail = inside.length ? inside[inside.length - 1].end : seg.start;
+    return Math.min(seg.end, tail + left);
+  };
+
+  return words.map((w) => {
+    const t = at(w.t, "start");
+    return { ...w, t, d: Math.max(0.01, at(w.t + w.d, "end") - t) };
+  });
+}

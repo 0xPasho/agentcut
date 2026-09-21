@@ -13,7 +13,8 @@ export function SequenceSettings({ sequence, dispatch }: { sequence: VideoSequen
   useEffect(() => {
     if (stale && draft.title === base.title && JSON.stringify(draft.output) === JSON.stringify(base.output)) { setDraft(sequence); setBase(sequence); }
   }, [stale, draft, base, sequence]);
-  return <Card className="gap-3 p-4"><h2 className="text-sm font-semibold">Video settings</h2><form className="space-y-3" onSubmit={e => { e.preventDefault(); dispatch([{ type: "sequence.patch", sequenceId: sequence.id, title: draft.title, output: draft.output }]); setBase(draft); }}>
+  // The heading belongs to whatever opens this — today the editor’s Video menu, which names it.
+  return <Card className="gap-3 p-4"><form className="space-y-3" onSubmit={e => { e.preventDefault(); dispatch([{ type: "sequence.patch", sequenceId: sequence.id, title: draft.title, output: draft.output }]); setBase(draft); }}>
     <label className="space-y-2 text-xs">Video name<Input required value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })} /></label>
     <div className="grid grid-cols-2 gap-3">{(["width", "height", "fps"] as const).map(key => <label key={key} className="space-y-2 text-xs">{key === "fps" ? "Frame rate" : key === "width" ? "Width" : "Height"}<Input type="number" min={1} step={key === "fps" ? "any" : 1} required value={draft.output[key]} onChange={e => setDraft({ ...draft, output: { ...draft.output, [key]: Number(e.target.value) } })} /></label>)}</div>
     {stale && <p role="status" className="text-xs text-muted-foreground">Settings changed elsewhere. Load the latest settings before editing.</p>}

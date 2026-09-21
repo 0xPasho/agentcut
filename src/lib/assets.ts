@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
-import { WORKSPACE, projectDir } from "./config";
+import { ROOT, WORKSPACE, projectDir } from "./config";
 import { q, type AssetRow } from "./db";
 import { probe } from "./media";
 
@@ -116,9 +116,44 @@ export async function registerAsset(input: RegisterInput): Promise<AssetRow> {
   return row;
 }
 
+/**
+ * The handful of sounds that ship with the app — a whoosh, a ding, an impact.
+ *
+ * They are synthesised (see `scripts/make-sfx.mjs`), so they carry no licence and need
+ * no network, and they are copied into the library rather than referenced from it, which
+ * makes them ordinary assets: renameable, usable by the agent, and deletable for good.
+ * The marker is what makes deleting one stick.
+ */
+const STARTER_MARKER = ".starter-sounds";
+export const STARTER_SOUNDS = ["whoosh", "ding", "pop", "impact", "riser", "click", "swipe", "sparkle"] as const;
+
+export async function installStarterSounds(): Promise<number> {
+  await ensureLibrary();
+  const dir = libraryDirFor("audio");
+  const marker = path.join(dir, STARTER_MARKER);
+  if (await fs.stat(marker).then(() => true, () => false)) return 0;
+  let added = 0;
+  for (const name of STARTER_SOUNDS) {
+    const from = path.join(ROOT, "public", "sfx", `${name}.mp3`);
+    const to = path.join(dir, `${name}.mp3`);
+    try {
+      await fs.copyFile(from, to, fs.constants?.COPYFILE_EXCL ?? 1);
+      await registerAsset({ file: to, kind: "audio", scope: "library", name: name[0].toUpperCase() + name.slice(1), tags: "sfx,starter", source: "starter" });
+      added += 1;
+    } catch {
+      // Already there, or shipped without the files: neither is worth failing a library read over.
+    }
+  }
+  await fs.writeFile(marker, `${STARTER_SOUNDS.join("\n")}\n`);
+  return added;
+}
+
 /** Pick up anything the user dropped into library/ by hand. */
 export async function scanLibrary(): Promise<number> {
   await ensureLibrary();
+  // The starter sounds are not something the user dropped in, so they are not counted
+  // as such: the number this returns answers "what did I just pick up from my folder".
+  await installStarterSounds();
   let added = 0;
   for (const sub of ["images", "audio", "video"] as const) {
     const dir = path.join(LIBRARY, sub);

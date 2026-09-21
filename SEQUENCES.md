@@ -2,9 +2,15 @@
 
 The application now supports two starting flows into the same local workspace:
 
-- **Find clips:** analyze a source video and produce independently editable highlights.
-- **Create a video:** open an empty canvas in the same editor, then add videos, titles, images, and audio.
-  No agent, transcription service, or hosted account is required for manual assembly.
+The home screen offers three, as tabs:
+
+- **Edit:** drag videos in and start editing them. Footage is optional — with nothing dropped
+  this is an empty canvas. Several files are either one video made of them or one video each,
+  which is asked rather than guessed. No agent, transcription service, or hosted account is
+  required for manual assembly.
+- **Clips:** analyze a long source video and produce independently editable highlights.
+- **Chat:** say what you want. The sentence creates the project and opens in the editor with
+  that conversation already going.
 
 A project can hold source media and multiple sequences. Each sequence is one output
 video, with its own name, dimensions, frame rate, and layered timeline items. An item
@@ -13,7 +19,7 @@ in/out, crop/split framing, transcript words, caption styling, and all supported
 
 ## Use the visual editor
 
-Choose **Create a video** on the home screen, name the project, and choose **Open editor**.
+Choose **Edit** on the home screen, name the project, and choose **Open editor**.
 No footage is required. Optionally select starting videos (or enter local paths);
 they appear on the initial timeline in the selected order. Files are copied into the project's local `media/` folder, so moving
 the originals does not break the project. Invalid media rejects the import.
@@ -33,6 +39,13 @@ In the editor:
 - Place titles, images, and audio on independent canvas layers, including music spanning cuts.
 - Use **Captions** and **Add** for common shot edits. Source-frame
   capture uses the selected shot’s media, through the same `assets.capture` tool.
+- Select a clip and its controls appear over the frame: hook, colours, mute, separate audio,
+  split, duplicate, remove. Nothing selected means an empty column — the plan, templates,
+  rules and format live behind **Video** in the header.
+- Separate a shot’s audio to move, trim or level it on its own track. Every clip backed by
+  footage draws that footage’s waveform.
+- Find sounds online from the editor: free-licence search, downloaded into the project with
+  its credit. A few starter sounds are installed locally, so this works offline too.
 - Open **All scene properties** for captions, transcript words, titles, images, music,
   sound effects, silence cuts, punch-ins, crop keyframes, and split framing.
 - Change each video's dimensions and frame rate in **Video settings**.
@@ -61,6 +74,7 @@ engine. UI and agent boundaries use the same validation.
 | `item.move` | Move an item to a zero-based destination index |
 | `item.patch` | Update changed clip properties; optional `before` protects staged edits |
 | `item.split` | Split at seconds relative to the item's source start, before silence cuts |
+| `item.detachAudio` | Lift a shot's sound onto its own track, muting the picture it came from |
 | `item.source` | Replace an item's footage in place, keeping its slot, overlays and placement |
 
 `media.import` and `media.upload` are project tools accepting an `expectedRevision`.

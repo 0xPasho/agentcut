@@ -4,10 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Player, type PlayerRef } from "@remotion/player";
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, Copy, Download, FolderOpen, Loader2, Plus, Redo2, Scissors, Square, Undo2, Wand2 } from "lucide-react";
+import { ArrowLeft, Check, ChevronLeft, ChevronRight, Copy, Download, FolderOpen, ImagePlus, Loader2, MousePointerClick, Music2, Plus, Redo2, Scissors, Settings2, Square, Undo2, Wand2 } from "lucide-react";
 import { promoteClipToSequence } from "@/lib/editor/editable-timeline";
 import { LayerInspector } from "./layer-inspector";
 import { CanvasGrid, CanvasSelection, type CanvasPreview } from "./canvas-selection";
+import { QuickActions, DEFAULT_PALETTE } from "./quick-actions";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
+import { Menu, MenuContent, MenuTrigger, ContextMenuItem } from "./ui/context-menu";
 import { SequenceComposition } from "@/../remotion/SequenceComposition";
 import { Button, buttonVariants } from "./ui/button";
 import { cn } from "cn";
@@ -36,6 +39,7 @@ import { patchFromClip, type EditorOperation } from "@/lib/editor/operations";
 import { assetEdit } from "@/lib/editor/asset-edit";
 import { activeDrag, classifyFile, hasFileDrag, hasMediaDrag, readDrag, type DragKind, type DragPayload } from "@/lib/editor/dnd";
 import { snapTargets } from "@/lib/editor/snapping";
+import { createPlayheadStore, PlayheadProvider, usePlayheadSelector } from "@/lib/editor/playhead";
 import { buildTimelineSlip } from "@/lib/editor/timeline-interactions";
 import { adoptSearchHit, importFiles, importLocalFile, importedDuration, type Imported } from "@/lib/editor/upload";
 import { api, assetUrl, clipUrl, type AssetSummary } from "@/lib/client";
@@ -46,6 +50,8 @@ import { Clip as ClipSchema, type Clip, type Edit, type Edl, type SequenceItem }
 import { emptySequencePlan } from "@/lib/plan/schema";
 
 const uid = (prefix: string) => `${prefix}_${crypto.randomUUID().slice(0,8)}`;
+/** A template as this screen needs it: a name to pick by, and the colours it edits in. */
+type TemplateOption = { id: string; name: string; brand?: { palette?: Partial<Record<"primary"|"secondary"|"text"|"background", string>> } };
 /** Clip-relative output seconds back to the clip's own source seconds, across its silence cuts. */
 function sourceSecondsAt(clip: Clip, outputSec: number) {
   const map = buildTimeMap(clip);
@@ -85,13 +91,21 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
   const item = sequence?.items.find(i => i.id === activeItemId) ?? sequence?.items[0];
   const clip = item?.clip ?? EMPTY;
   const hasContent = !!item;
+  /**
+   * Whether a clip was actually picked, rather than the editor falling back to the first
+   * one so there is something to preview. The properties column follows this: until you
+   * choose something, it has nothing to say.
+   */
+  const picked = !!activeItemId && !!sequence?.items.some(i => i.id === activeItemId);
   const output = sequence?.output ?? edl.output;
   const source = edl.media.find(m => m.id === item?.mediaId) ?? null;
   const [actionError, setActionError] = useState<string | null>(null);
   const [assetBusy, setAssetBusy] = useState(false);
-  const [templateOptions, setTemplateOptions] = useState<Array<{ id: string; name: string }>>([]);
+  const [templateOptions, setTemplateOptions] = useState<TemplateOption[]>([]);
+  /** Which of the video’s own panels is open. None by default: the frame is the editor. */
+  const [panel, setPanel] = useState<null | "plan" | "rules" | "settings">(null);
   const [agentPrefill, setAgentPrefill] = useState<{ text: string; nonce: number } | null>(null);
-  useEffect(() => { api.editorTool<Array<{ id: string; name: string }>>(projectId, { tool: "templates.list" }).then(list => setTemplateOptions(list.map(t => ({ id: t.id, name: t.name })))).catch(() => {}); }, [projectId]);
+  useEffect(() => { api.editorTool<TemplateOption[]>(projectId, { tool: "templates.list" }).then(list => setTemplateOptions(list.map(t => ({ id: t.id, name: t.name, brand: t.brand })))).catch(() => {}); }, [projectId]);
   const [fileDrag, setFileDrag] = useState(false);
   const clipboard = useRef<SequenceItem | null>(null);
   const [libraryDrag, setLibraryDrag] = useState(false);
@@ -100,7 +114,9 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
   const [assetPanelOpen, setAssetPanelOpen] = useState(false);
   const [propertiesOpen, setPropertiesOpen] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
-  const [currentSec, setCurrentSec] = useState(0);
+  // The playhead is not state: see src/lib/editor/playhead.ts for why the editor must
+  // not re-render thirty times a second while the preview plays.
+  const [playhead] = useState(createPlayheadStore);
   const [rendering, setRendering] = useState(false);
   const [download, setDownload] = useState(false);
   const [tab, setTab] = useState<"captions" | "overlays" | "edit">("captions");
@@ -122,16 +138,17 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
   const map = useMemo(() => buildTimeMap(clip), [clip]);
   const allocation = useMemo(() => sequence ? sequenceFrames(sequence) : null, [sequence]);
   const itemOffset = (allocation?.items.find(i => i.item.id === item?.id)?.from ?? 0) / output.fps;
-  const localSec = Math.max(0, Math.min(map.duration, currentSec-itemOffset));
+  /** The playhead inside the selected clip, in that clip's own output seconds. */
+  const localAt = (seconds: number) => Math.max(0, Math.min(map.duration, seconds-itemOffset));
   const targetId = sequence?.id ?? clipId;
 
   useEffect(() => {
     const p = player.current; if (!p) return;
-    const onFrame = () => setCurrentSec(p.getCurrentFrame()/output.fps);
+    const onFrame = () => playhead.set(p.getCurrentFrame()/output.fps);
     const onPlay=()=>setPlaying(true),onPause=()=>setPlaying(false);
     p.addEventListener("frameupdate", onFrame);p.addEventListener("play",onPlay);p.addEventListener("pause",onPause);
     return () => {p.removeEventListener("frameupdate",onFrame);p.removeEventListener("play",onPlay);p.removeEventListener("pause",onPause);};
-  }, [output.fps, !!sequence?.items.length]);
+  }, [playhead, output.fps, !!sequence?.items.length]);
   useEffect(() => {
     let disposed = false;
     const refresh = async () => { try {
@@ -141,11 +158,13 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
     void refresh(); const timer = setInterval(refresh, 1500); return () => { disposed = true; clearInterval(timer); };
   }, [projectId, targetId, editor.snapshot!.revision]);
   /** Scrubbing parks the preview on one frame, so a seek always pauses first. */
-  const seek = useCallback((seconds: number) => { player.current?.pause(); player.current?.seekTo(Math.round(seconds*output.fps)); setCurrentSec(seconds); },[output.fps]);
-  const playheadInSource = useMemo(() => {
+  const seek = useCallback((seconds: number) => { player.current?.pause(); player.current?.seekTo(Math.round(seconds*output.fps)); playhead.set(seconds); },[playhead, output.fps]);
+  /** Where the playhead sits in the selected clip's source time, across its silence cuts. */
+  const playheadInSource = () => {
+    const localSec = localAt(playhead.get());
     const span = map.spans.find(s => localSec >= s.outStart && localSec < s.outStart+s.srcEnd-s.srcStart);
     return Math.max(0, Math.min(span ? span.srcStart+localSec-span.outStart : localSec, clip.end-clip.start-0.01));
-  }, [map, localSec, clip.start, clip.end]);
+  };
   const assetUrls = useMemo(() => Object.fromEntries((sequence ? sequence.items.map(i=>i.clip) : [clip]).flatMap(c=>c.edits.flatMap(e=>"src" in e ? [[e.src,assetUrl(projectId,e.src)]] : []))),[sequence,clip,projectId]);
   const mediaUrls = useMemo(() => Object.fromEntries(edl.media.map(m=>[m.id,savedEdl.media.some(stored=>stored.id===m.id) ? `/api/projects/${projectId}/media/${m.id}` : `/api/projects/${projectId}/source`])),[edl.media,savedEdl.media,projectId]);
 
@@ -169,7 +188,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
   const addCanvas = (edit?: Edit, title = "Blank scene", placement?:{at:number;layer:number}) => {
     if (!sequence) return;
     const id = uid("layer"), duration = edit ? edit.d : 5;
-    const ops:EditorOperation[]=[{type:"item.add",sequenceId:sequence.id,item:{id,mediaId:null,at:placement?.at ?? currentSec,layer:placement?.layer ?? topLayer(),clip:ClipSchema.parse({id,title,start:0,end:duration,captions:{preset:"none"},edits:edit ? [{...edit,t:0}] : []})}}];
+    const ops:EditorOperation[]=[{type:"item.add",sequenceId:sequence.id,item:{id,mediaId:null,at:placement?.at ?? playhead.get(),layer:placement?.layer ?? topLayer(),clip:ClipSchema.parse({id,title,start:0,end:duration,captions:{preset:"none"},edits:edit ? [{...edit,t:0}] : []})}}];
     if(placement?.layer===0)ops.push({type:"item.reorder",sequenceId:sequence.id,itemId:id,layer:0,index:allocation!.items.filter(i=>(i.item.layer??0)===0).sort((a,b)=>a.from-b.from).filter(i=>placement.at>=(i.from+i.duration/2)/output.fps).length});
     dispatch(ops);
     setActiveItemId(id); setCanvasSelected(true); player.current?.pause(); if(placement)seek(placement.at); resetSelection();
@@ -183,7 +202,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
     if (!media || !sequence) { setActionError("Choose a timeline and an available source."); return undefined; }
     const ops: EditorOperation[] = [];
     if (!edl.media.some(m=>m.id===media.id)) ops.push({type:"media.add",media});
-    const id=uid("i"), at=drop?.at ?? (overlay ? currentSec : mainEnd());
+    const id=uid("i"), at=drop?.at ?? (overlay ? playhead.get() : mainEnd());
     ops.push({type:"item.add",sequenceId:sequence.id,item:{id,mediaId:media.id,at,layer:drop?.layer ?? (overlay ? topLayer() : 0),
       ...(spot ? {transform:{x:Math.round((spot.x*100-15)*10)/10,y:Math.round((spot.y*100-15)*10)/10,width:30,height:30,rotation:0,opacity:1}}
         : overlay ? {transform:{x:65,y:5,width:30,height:30,rotation:0,opacity:1}} : {}),
@@ -196,7 +215,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
     return media.name;
   };
   const placeAsset = (asset: AssetSummary, mode?: "music" | "sfx", placement?:{at:number;layer:number}, spot?: Spot) => {
-    const duration = asset.kind === "audio" && mode !== "sfx" ? Math.max(5,(allocation?.duration ?? 0)/output.fps-(placement?.at??currentSec)) : 3;
+    const duration = asset.kind === "audio" && mode !== "sfx" ? Math.max(5,(allocation?.duration ?? 0)/output.fps-(placement?.at??playhead.get())) : 3;
     const edit = assetEdit(asset,0,duration,mode);
     // An image dropped on the frame keeps the spot it was dropped on; audio has no position.
     addCanvas(spot && edit.type === "image" ? {...edit, x: Math.round(spot.x*1000)/1000, y: Math.round(spot.y*1000)/1000} : edit, asset.name, placement);
@@ -303,11 +322,24 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
     const span = itemSpan(target?.id);
     if (!sequence || !target || !span) return;
     // The cut is expressed in the clip's own source time, mapped back through its silence cuts.
+    const currentSec = playhead.get();
     const at = sourceSecondsAt(target.clip, currentSec - span.from/output.fps);
     const inside = currentSec > span.from/output.fps + .02 && currentSec < (span.from+span.duration)/output.fps - .02;
     if (!inside || at <= 0 || at >= target.clip.end-target.clip.start) return setActionError("Move the playhead inside the clip you want to split.");
     setActionError(null);
     dispatch([{type:"item.split",sequenceId:sequence.id,itemId:target.id,at,newItemId:uid("i")}]);
+  };
+  /**
+   * Lift a shot's own sound onto its own track. The picture stays where it is and goes
+   * muted; the sound becomes an ordinary clip that can be moved, trimmed and levelled
+   * under anything else. `item.detachAudio` is the same operation the agent calls.
+   */
+  const detachAudio = (itemId?: string) => {
+    const target = sequence?.items.find(i => i.id === (itemId ?? item?.id));
+    if (!sequence || !target) return;
+    setActionError(null);
+    if (dispatch([{type:"item.detachAudio",sequenceId:sequence.id,itemId:target.id,newItemId:uid("i")}]) !== false)
+      notify("Audio separated onto its own track.", "change");
   };
   /** A copy lands right after the original, carrying its trim, placement and overlays. */
   const duplicateSelected = (itemId?: string) => {
@@ -333,6 +365,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
     const source = clipboard.current;
     if (!sequence || !source || !allocation) return;
     const id = uid("i"), layer = source.layer ?? 0;
+    const currentSec = playhead.get();
     const ops: EditorOperation[] = [{type:"item.add",sequenceId:sequence.id,item:{...source,id,at:currentSec,clip:{...source.clip,id}}}];
     if(layer===0){
       const ordered = allocation.items.filter(entry=>(entry.item.layer??0)===0).sort((a,b)=>a.from-b.from);
@@ -363,7 +396,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
       // Read the player, not the last render: holding a step key must not repeat from a stale frame.
       const step = (frames: number) => {
         event.preventDefault();
-        const at = player.current ? player.current.getCurrentFrame() / output.fps : currentSec;
+        const at = player.current ? player.current.getCurrentFrame() / output.fps : playhead.get();
         seek(Math.max(0, Math.min(duration, at + frames / output.fps)));
       };
       if (event.key === "," ) return step(-1);
@@ -377,6 +410,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
       if ((event.key === "ArrowUp" || event.key === "ArrowDown") && sequence) {
         event.preventDefault();
         const edges = snapTargets(sequence, {}).map(point => point.at).filter(at => at <= duration);
+        const currentSec = playhead.get();
         const next = event.key === "ArrowDown"
           ? edges.find(at => at > currentSec + 1e-4) ?? duration
           : [...edges].reverse().find(at => at < currentSec - 1e-4) ?? 0;
@@ -432,7 +466,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
   const addEdit = (kind: string) => {
     if(kind === "text") { addCanvas(NEW_EDIT.text(0),"Title"); return; }
     if(!sequence || !item) return;
-    dispatch([{type:"item.edit.add",sequenceId:sequence.id,itemId:item.id,edit:NEW_EDIT[kind](playheadInSource)}]);
+    dispatch([{type:"item.edit.add",sequenceId:sequence.id,itemId:item.id,edit:NEW_EDIT[kind](playheadInSource())}]);
     setSelected(clip.edits.length);setTab("edit");
   };
   /** What a Replace button in the asset panel would act on, so the gesture is not drag-only. */
@@ -445,6 +479,19 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
     return undefined;
   })();
   const inspectEdl: Edl = {...edl,output};
+  /**
+   * The colours the quick controls offer. A video edited under a template edits in that
+   * template’s brand kit, so changing a caption colour by hand stays on brand instead of
+   * starting a second palette beside it.
+   */
+  const palette = useMemo(() => {
+    const templateId = sequence?.plan.template ?? edl.plan.template;
+    const brand = templateOptions.find(t => t.id === templateId)?.brand?.palette ?? {};
+    const chosen = [brand.primary, brand.text, brand.secondary, brand.background].filter((color): color is string => !!color);
+    return chosen.length ? [...new Set([...chosen, ...DEFAULT_PALETTE])].slice(0, 8) : DEFAULT_PALETTE;
+  }, [templateOptions, sequence?.plan.template, edl.plan.template]);
+  // A fresh object here re-renders the whole composition on every unrelated editor render.
+  const previewProps = useMemo(() => !sequence ? null : ({sequence:canvasPreview ? {...sequence,items:sequence.items.map(i=>i.id===canvasPreview.id?{...i,...(canvasPreview.transform?{transform:canvasPreview.transform}:{}),...(canvasPreview.clip?{clip:canvasPreview.clip}:{})}:i)} : sequence,media:edl.media,mediaUrls,assetUrls,assetBase:`/api/projects/${projectId}/asset/`}), [sequence, canvasPreview, edl.media, mediaUrls, assetUrls, projectId]);
 
 
   if(!sequence && activeSequenceId) return <main className="p-8"><h1 className="mb-4 text-xl font-medium">This video is no longer available</h1><Button render={<Link href={`/p/${projectId}`} />}>Back to project</Button></main>;
@@ -475,9 +522,9 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
         const payload = readDrag(event.dataTransfer);
         if (!payload) return setActionError("This asset could not be added.");
         if (payload.mediaId) return appendVideo(payload.mediaId, placed, undefined, placed ? spot : undefined);
-        if (payload.assetId) return void dropAsset(payload.assetId, currentSec, topLayer(), payload.kind === "audio" || !placed ? undefined : spot);
-        if (payload.search) return dropSearchHit(payload.search, { at: currentSec, layer: topLayer() }, placed ? spot : undefined);
-        if (payload.file) return dropLocalFile(payload.file, payload.kind, { at: currentSec, layer: placed ? topLayer() : 0 });
+        if (payload.assetId) return void dropAsset(payload.assetId, playhead.get(), topLayer(), payload.kind === "audio" || !placed ? undefined : spot);
+        if (payload.search) return dropSearchHit(payload.search, { at: playhead.get(), layer: topLayer() }, placed ? spot : undefined);
+        if (payload.file) return dropLocalFile(payload.file, payload.kind, { at: playhead.get(), layer: placed ? topLayer() : 0 });
       }
       const files = Array.from(event.dataTransfer.files).filter(file => classifyFile(file.name));
       if (!files.length) return setActionError("Those files are not video, image or audio.");
@@ -517,7 +564,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
       dropFiles(files, null);
     },
   };
-  return <main {...fileDropHandlers} className="flex min-h-dvh flex-col lg:h-dvh lg:min-h-0 lg:overflow-hidden">
+  return <PlayheadProvider value={playhead}><main {...fileDropHandlers} className="flex min-h-dvh flex-col lg:h-dvh lg:min-h-0 lg:overflow-hidden">
     {fileDrag && <div aria-hidden className="pointer-events-none fixed inset-0 z-50 flex justify-center p-4">
       <div className="absolute inset-2 rounded-3xl border-2 border-dashed border-primary/70 bg-primary/5" />
       <p className="relative mt-3 h-fit rounded-full bg-black/85 px-4 py-2 text-sm text-white shadow-lg">Drop to import — release over a track to place it there</p>
@@ -526,6 +573,16 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
     <Glass shape="panel" className="mx-4 mt-4 flex shrink-0 flex-wrap items-center gap-3 px-4 py-2.5 lg:rounded-full">
       <Link aria-label="Back to project" href={`/p/${projectId}`} className={cn(buttonVariants({ variant: "ghost", size: "icon" }))} onClick={async e=>{if(e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;e.preventDefault();if(await save())router.push(`/p/${projectId}`);}}><ArrowLeft /></Link>
       <div className="min-w-0 flex-1"><h1 className="break-words text-sm font-medium">{sequence?.title ?? projectName}</h1><p className="truncate text-xs text-muted-foreground">{projectName} · {sequence?.items.length ?? 0} {(sequence?.items.length ?? 0)===1?"clip":"clips"}</p></div>
+      {/* Everything about the video as a whole lives behind one menu, so the column beside
+          the frame can be about whatever is selected. */}
+      <Menu>
+        <MenuTrigger render={<Button variant="ghost" size="sm" disabled={!sequence}><Settings2 />Video</Button>} />
+        <MenuContent align="end">
+          <ContextMenuItem onClick={()=>setPanel("plan")}>Plan and templates</ContextMenuItem>
+          <ContextMenuItem onClick={()=>setPanel("rules")}>Rules and preferences</ContextMenuItem>
+          <ContextMenuItem onClick={()=>setPanel("settings")}>Video settings</ContextMenuItem>
+        </MenuContent>
+      </Menu>
       <Shortcuts />
       <Button variant="ghost" size="icon-sm" aria-label="Undo" title="Undo (Cmd or Ctrl + Z)" disabled={!editor.canUndo} onClick={editor.undo}><Undo2 /></Button>
       <Button variant="ghost" size="icon-sm" aria-label="Redo" title="Redo (Shift + Cmd or Ctrl + Z)" disabled={!editor.canRedo} onClick={editor.redo}><Redo2 /></Button>
@@ -547,25 +604,35 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
               <span className="absolute size-16 -translate-x-1/2 -translate-y-1/2 rounded-xl border-2 border-primary bg-primary/20" style={{left:`${canvasDrop.x*100}%`,top:`${canvasDrop.y*100}%`}} />
               <span className="absolute inset-x-0 bottom-4 text-center text-xs font-medium text-white">Drop to place it here</span>
             </div>}
-            {sequence ? <Player ref={player} component={SequenceComposition} inputProps={{sequence:canvasPreview ? {...sequence,items:sequence.items.map(i=>i.id===canvasPreview.id?{...i,...(canvasPreview.transform?{transform:canvasPreview.transform}:{}),...(canvasPreview.clip?{clip:canvasPreview.clip}:{})}:i)} : sequence,media:edl.media,mediaUrls,assetUrls,assetBase:`/api/projects/${projectId}/asset/`}} durationInFrames={allocation!.duration} fps={output.fps} compositionWidth={output.width} compositionHeight={output.height} spaceKeyToPlayOrPause={false} clickToPlay={false} acknowledgeRemotionLicense className="overflow-hidden rounded-2xl border border-border bg-black" style={{width:"100%",height:"100%"}} /> : null}
-            {canvasSelected && !playing && item && sequence && (item.mediaId || clip.edits.some(e=>e.type==="text"||e.type==="image") || (clip.words.length>0&&clip.captions.preset!=="none")) && <CanvasSelection key={item.id} item={item} sequence={sequence} currentSec={currentSec} dispatch={dispatch} onPreview={setCanvasPreview} selectedEdit={selected} onSelectEdit={index=>{setSelected(index);setTab("edit");}} onSelectCaptions={()=>setTab("captions")} />}
+            {previewProps ? <Player ref={player} component={SequenceComposition} inputProps={previewProps} durationInFrames={allocation!.duration} fps={output.fps} compositionWidth={output.width} compositionHeight={output.height} spaceKeyToPlayOrPause={false} clickToPlay={false} acknowledgeRemotionLicense className="overflow-hidden rounded-2xl border border-border bg-black" style={{width:"100%",height:"100%"}} /> : null}
+            {canvasSelected && !playing && item && sequence && (item.mediaId || clip.edits.some(e=>e.type==="text"||e.type==="image") || (clip.words.length>0&&clip.captions.preset!=="none")) && <CanvasSelection key={item.id} item={item} sequence={sequence} dispatch={dispatch} onPreview={setCanvasPreview} selectedEdit={selected} onSelectEdit={index=>{setSelected(index);setTab("edit");}} onSelectCaptions={()=>setTab("captions")} />}
+            {/* The controls that belong on the picture. They exist only while a clip is
+                selected, which is what keeps the rest of the screen quiet. */}
+            {canvasSelected && !playing && item && sequence && <QuickActions key={`quick-${item.id}`} item={item} clip={clip} palette={palette} canSplit={hasContent}
+              canDetach={!!item.mediaId && !item.muted && !item.hidden}
+              onChange={update}
+              onMute={muted=>dispatch([{type:"item.place",sequenceId:sequence.id,itemId:item.id,patch:{muted},before:{muted:item.muted??false}}])}
+              onSplit={()=>splitAtPlayhead()} onDuplicate={()=>duplicateSelected()} onDetachAudio={()=>detachAudio()}
+              onRemove={()=>{if(dispatched([{type:"item.remove",sequenceId:sequence.id,itemId:item.id}])){setActiveItemId("");notify(`${clip.title} removed from the timeline.`,"change");}}} />}
           </div>}
         </div>
         <Card className="min-h-0 max-h-[45dvh] min-w-0 shrink-0 overflow-hidden py-3"><CardContent className="flex min-h-0 flex-col gap-3 overflow-hidden px-4">
-          {sequence && <SequenceTimeline sequence={sequence} selectedId={item?.id} dispatch={dispatch} currentSec={currentSec} onSeek={seek} playing={playing} onPlayToggle={()=>{if(playing)player.current?.pause();else player.current?.play();}} onBlank={()=>addCanvas()} media={edl.media} mediaUrls={mediaUrls} assetUrls={assetUrls} selectedEdit={selected} onSelectEdit={index=>{setSelected(index);setTab("edit");}} onDropMedia={(id,at,layer)=>appendVideo(id,layer>0,{at,layer})} onDropAsset={(id,at,layer)=>void dropAsset(id,at,layer)} onDropFiles={(files,at,layer)=>dropFiles(files,{at,layer})} onDropLocalFile={(file,kind,at,layer)=>dropLocalFile(file,kind,{at,layer})} onDropSearchHit={(hit,at,layer)=>dropSearchHit(hit,{at,layer})} onReplaceMedia={replaceMedia} onReplaceAsset={(itemId,assetId,editIndex)=>void replaceAsset(itemId,assetId,editIndex)} onSplit={splitAtPlayhead} onDuplicate={duplicateSelected} onAskAgent={id=>{const target=sequence?.items.find(i=>i.id===id);setActiveItemId(id);setCanvasSelected(true);setAgentPrefill({text:`About "${target?.clip.title??"this clip"}": `,nonce:Date.now()});}} onNotify={notify} onSelect={(id,t)=>{setActiveItemId(id);setCanvasSelected(true);player.current?.pause();seek(t);resetSelection();}} />}
+          {sequence && <SequenceTimeline projectId={projectId} sequence={sequence} selectedId={item?.id} dispatch={dispatch} onSeek={seek} playing={playing} onPlayToggle={()=>{if(playing)player.current?.pause();else player.current?.play();}} onBlank={()=>addCanvas()} media={edl.media} mediaUrls={mediaUrls} assetUrls={assetUrls} selectedEdit={selected} onSelectEdit={index=>{setSelected(index);setTab("edit");}} onDropMedia={(id,at,layer)=>appendVideo(id,layer>0,{at,layer})} onDropAsset={(id,at,layer)=>void dropAsset(id,at,layer)} onDropFiles={(files,at,layer)=>dropFiles(files,{at,layer})} onDropLocalFile={(file,kind,at,layer)=>dropLocalFile(file,kind,{at,layer})} onDropSearchHit={(hit,at,layer)=>dropSearchHit(hit,{at,layer})} onReplaceMedia={replaceMedia} onReplaceAsset={(itemId,assetId,editIndex)=>void replaceAsset(itemId,assetId,editIndex)} onSplit={splitAtPlayhead} onDuplicate={duplicateSelected} onDetachAudio={detachAudio} onAskAgent={id=>{const target=sequence?.items.find(i=>i.id===id);setActiveItemId(id);setCanvasSelected(true);setAgentPrefill({text:`About "${target?.clip.title??"this clip"}": `,nonce:Date.now()});}} onNotify={notify} onSelect={(id,t)=>{setActiveItemId(id);setCanvasSelected(true);player.current?.pause();seek(t);resetSelection();}} />}
           <div className="flex flex-wrap items-center gap-2"><Button size="xs" variant="outline" disabled={!sequence} onClick={()=>addEdit("text")}><Plus />Title</Button>
+            <Button size="xs" variant="outline" disabled={!sequence} title="Browse pictures in your project, your library and online" onClick={()=>setAssetPanelOpen(true)}><ImagePlus />Image</Button>
+            {/* Music and sound effects live with the selected shot; without a selection this
+                opens them on the first one rather than refusing. */}
+            <Button size="xs" variant="outline" disabled={!hasContent} title="Music and sound effects for this shot" onClick={()=>{if(!picked&&item)setActiveItemId(item.id);setTab("overlays");}}><Music2 />Sound</Button>
             <Button size="xs" variant="outline" disabled={!hasContent} title="Split the selected clip at the playhead (S)" onClick={()=>splitAtPlayhead()}><Scissors />Split</Button>
             <Button size="xs" variant="outline" disabled={!hasContent} title="Duplicate the selected clip (D)" onClick={()=>duplicateSelected()}><Copy />Duplicate</Button>{hasContent&&<details className="text-xs"><summary className="cursor-pointer rounded-full px-3 py-2 text-muted-foreground">Clip effects</summary><div className="flex flex-wrap gap-2 py-2">{["silence","punch","emphasis"].map(kind=><Button key={kind} size="xs" variant="outline" onClick={()=>addEdit(kind)}><Plus />{kind}</Button>)}</div></details>}</div>
         </CardContent></Card>
       </section>
       <aside aria-label="Editing properties" className="flex w-full min-h-0 shrink-0 flex-col gap-3 lg:w-[340px] lg:overflow-y-auto lg:pr-1">
-        <Card className="shrink-0 p-4"><EditorStatus editor={editor} />{actionError&&<p role="alert" className="text-sm text-destructive">{actionError}</p>}<AgentEditor projectId={projectId} beforeRun={save} afterUndo={editor.reload} prefill={agentPrefill} selection={item?{id:item.id,title:clip.title}:null} context={()=>({ sequenceId: sequence ? activeSequenceId : undefined, selection: item ? [item.id] : [], playhead: currentSec })} />
-          {hasContent&&<><Button variant="outline" aria-expanded={propertiesOpen} onClick={()=>setPropertiesOpen(!propertiesOpen)}>{propertiesOpen?"Close properties":"All item properties"}</Button>{propertiesOpen&&<EditorProperties key={clip.id} clip={clip} edl={inspectEdl} validationEdl={edl} mapOperations={mapOperations} dispatch={dispatch} onApplied={()=>setPropertiesOpen(false)} />}</>}
+        <Card className="shrink-0 p-4"><EditorStatus editor={editor} />{actionError&&<p role="alert" className="text-sm text-destructive">{actionError}</p>}<AgentEditor projectId={projectId} beforeRun={save} afterUndo={editor.reload} prefill={agentPrefill} selection={item?{id:item.id,title:clip.title}:null} context={()=>({ sequenceId: sequence ? activeSequenceId : undefined, selection: item ? [item.id] : [], playhead: playhead.get() })} />
+          {picked&&<><Button variant="outline" aria-expanded={propertiesOpen} onClick={()=>setPropertiesOpen(!propertiesOpen)}>{propertiesOpen?"Close properties":"All item properties"}</Button>{propertiesOpen&&<EditorProperties key={clip.id} clip={clip} edl={inspectEdl} validationEdl={edl} mapOperations={mapOperations} dispatch={dispatch} onApplied={()=>setPropertiesOpen(false)} />}</>}
         </Card>
-        {sequence&&<details className="shrink-0 rounded-2xl border border-border bg-card p-4"><summary className="cursor-pointer text-sm font-medium">Video settings</summary><div className="mt-3"><SequenceSettings key={sequence.id} sequence={sequence} dispatch={dispatch} /></div></details>}
-        {sequence&&<details open className="shrink-0 rounded-2xl border border-border bg-card p-4"><summary className="cursor-pointer text-sm font-medium">Plan</summary><div className="mt-3"><PlanPanel projectId={projectId} edl={edl} sequenceId={activeSequenceId} templates={templateOptions} dispatch={dispatch} seek={seek} beforeRun={save} afterRun={editor.reload}><TemplatePanel projectId={projectId} sequenceId={activeSequenceId} beforeApply={save} afterApply={editor.reload} onBusy={setAssetBusy} /></PlanPanel></div></details>}
-        <details className="shrink-0 rounded-2xl border border-border bg-card p-4"><summary className="cursor-pointer text-sm font-medium">Rules & preferences</summary><div className="mt-3"><RulesPanel projectId={projectId} sequenceId={sequence ? activeSequenceId : undefined} beforeApply={save} afterApply={editor.reload} /></div></details>
-        {hasContent&&<>
+        {!picked&&<p className="shrink-0 rounded-2xl border border-dashed border-white/15 p-4 text-xs leading-relaxed text-muted-foreground"><MousePointerClick aria-hidden className="mb-2 size-4" /><br />Pick a clip on the frame or the timeline and its controls appear here. The video as a whole — plan, templates, rules, format — is under <strong className="font-medium text-foreground">Video</strong> at the top.</p>}
+        {picked&&<>
           {sequence&&item&&<details className="shrink-0 rounded-2xl border border-border bg-card p-4"><summary className="cursor-pointer text-sm font-medium">Position & audio</summary><div className="mt-3"><LayerInspector key={`placement-${item.id}`} sequence={sequence} item={item} dispatch={dispatch} /></div></details>}
           {sequence&&item&&<details className="shrink-0 rounded-2xl border border-border bg-card p-4"><summary className="cursor-pointer text-sm font-medium">Trim & split</summary><div className="mt-3"><SceneBounds key={item.id} clip={clip} sourceDuration={source?.durationSec} onChange={(start,end)=>{
             const duration=end-start;
@@ -581,11 +648,38 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
             <TabsContent value="overlays" className="pt-4"><OverlayEditor key={clip.id} projectId={projectId} mediaId={savedEdl.media.some(m=>m.id===item?.mediaId) ? item?.mediaId ?? undefined : undefined} canCapture={!!source} clip={clip} atSec={playheadInSource} onChange={edits=>update({...clip,edits})} /></TabsContent>
             <TabsContent value="edit" className="pt-4">{selected!==null&&clip.edits[selected]?<ClipInspector projectId={projectId} edit={clip.edits[selected]} onChange={edit=>update({...clip,edits:clip.edits.map((e,i)=>i===selected?edit:e)})} onRemove={()=>{update({...clip,edits:clip.edits.filter((_,i)=>i!==selected)});setSelected(null);setTab("captions");}} />:<p className="text-xs text-muted-foreground">Pick a block on the timeline.</p>}</TabsContent>
           </Tabs></Card>
-          <Card className="flex min-h-0 shrink-0 flex-col gap-0 py-0"><div className="px-4 py-2.5 text-xs text-muted-foreground">Transcript — click to seek</div><Separator /><ScrollArea className="h-48"><div className="flex flex-wrap gap-x-1 gap-y-1.5 p-4 text-sm leading-relaxed">{clip.words.map((word,i)=>{const t=srcToOut(map,word.t);return <button key={i} type="button" onClick={()=>seek(itemOffset+t)} onDoubleClick={()=>update({...clip,start:clip.start+word.t})} title={`${fmt(t)} — double-click to trim the start here`} className={`rounded-md px-1 outline-none hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-ring ${localSec>=t&&localSec<t+word.d?"bg-primary/25 text-primary":""}`}>{word.w}</button>;})}{!clip.words.length&&<p className="text-xs text-muted-foreground">No transcript yet. Caption words can be edited in Properties.</p>}</div></ScrollArea></Card>
+          <Transcript clip={clip} map={map} itemOffset={itemOffset} onSeek={seek} onTrimStart={word=>update({...clip,start:clip.start+word.t})} />
         </>}
       </aside>
     </fieldset>
-  </main>;
+
+    <Dialog open={panel !== null} onOpenChange={open=>{if(!open)setPanel(null);}}>
+      <DialogContent className="max-h-[85dvh] w-[min(38rem,92vw)] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{panel==="plan"?"Plan and templates":panel==="rules"?"Rules and preferences":"Video settings"}</DialogTitle>
+        </DialogHeader>
+        {panel==="plan"&&sequence&&<PlanPanel projectId={projectId} edl={edl} sequenceId={activeSequenceId} templates={templateOptions} dispatch={dispatch} seek={seek} beforeRun={save} afterRun={editor.reload}><TemplatePanel projectId={projectId} sequenceId={activeSequenceId} beforeApply={save} afterApply={editor.reload} onBusy={setAssetBusy} /></PlanPanel>}
+        {panel==="rules"&&<RulesPanel projectId={projectId} sequenceId={sequence ? activeSequenceId : undefined} beforeApply={save} afterApply={editor.reload} />}
+        {panel==="settings"&&sequence&&<SequenceSettings key={sequence.id} sequence={sequence} dispatch={dispatch} />}
+      </DialogContent>
+    </Dialog>
+  </main></PlayheadProvider>;
+}
+
+/**
+ * The transcript doubles as a scrub bar, so it follows the playhead — but only the word
+ * that lights up changes, so it subscribes to the index rather than to every frame.
+ */
+function Transcript({ clip, map, itemOffset, onSeek, onTrimStart }: {
+  clip: Clip; map: ReturnType<typeof buildTimeMap>; itemOffset: number;
+  onSeek: (seconds: number) => void; onTrimStart: (word: Clip["words"][number]) => void;
+}) {
+  const times = useMemo(() => clip.words.map(word => srcToOut(map, word.t)), [clip.words, map]);
+  const active = usePlayheadSelector(seconds => {
+    const local = Math.max(0, Math.min(map.duration, seconds - itemOffset));
+    return times.findIndex((t, i) => local >= t && local < t + clip.words[i].d);
+  });
+  return <Card className="flex min-h-0 shrink-0 flex-col gap-0 py-0"><div className="px-4 py-2.5 text-xs text-muted-foreground">Transcript — click to seek</div><Separator /><ScrollArea className="h-48"><div className="flex flex-wrap gap-x-1 gap-y-1.5 p-4 text-sm leading-relaxed">{clip.words.map((word,i)=><button key={i} type="button" onClick={()=>onSeek(itemOffset+times[i])} onDoubleClick={()=>onTrimStart(word)} title={`${fmt(times[i])} — double-click to trim the start here`} className={`rounded-md px-1 outline-none hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-ring ${active===i?"bg-primary/25 text-primary":""}`}>{word.w}</button>)}{!clip.words.length&&<p className="text-xs text-muted-foreground">No transcript yet. Caption words can be edited in Properties.</p>}</div></ScrollArea></Card>;
 }
 function SceneBounds({clip,sourceDuration,onChange,onSplit,onSlip}:{clip:Clip;sourceDuration?:number;onChange:(start:number,end:number)=>void;onSplit:(at:number)=>void;onSlip:(delta:number)=>void}) {
   const [start,setStart]=useState(clip.start),[end,setEnd]=useState(clip.end),[base,setBase]=useState({start:clip.start,end:clip.end}),[split,setSplit]=useState(1);

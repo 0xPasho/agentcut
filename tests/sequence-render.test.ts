@@ -111,3 +111,37 @@ test("a source-free canvas segment exports its title, image and music with no fo
   database.db.prepare("UPDATE projects SET edl = ? WHERE id = ?").run(JSON.stringify(snapshot.edl), id);
   await assert.rejects(renderProject(id, { only: ["broken"] }));
 });
+
+test("separated audio still sounds, and the picture it came from does not show", { timeout: 180_000 }, async () => {
+  const { createVideoProject } = await import("../src/lib/editor/media");
+  const { readEditor, editProject } = await import("../src/lib/editor/store");
+  const { renderProject } = await import("../src/lib/editor/render");
+  const { probe } = await import("../src/lib/media");
+
+  // One second of red with a tone under it: the picture and the sound are both checkable.
+  const talking = path.join(workspace, "talking.mp4");
+  const made = spawnSync(FFMPEG, ["-y", "-f", "lavfi", "-i", "color=red:size=160x90:rate=10:duration=1",
+    "-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-shortest", "-pix_fmt", "yuv420p", "-c:a", "aac", talking], { encoding: "utf8" });
+  assert.equal(made.status, 0, made.stderr);
+
+  const { id } = await createVideoProject("Detached", [{ file: talking }]);
+  const initial = readEditor(id);
+  const sequence = initial.edl.sequences[0];
+  const state = editProject(id, { expectedRevision: initial.revision, operations: [
+    { type: "item.detachAudio", sequenceId: sequence.id, itemId: sequence.items[0].id, newItemId: "sound" },
+    // With the picture hidden as well, what is left on screen is the empty canvas — and
+    // whatever comes out of the speakers came from the separated track.
+    { type: "item.place", sequenceId: sequence.id, itemId: sequence.items[0].id, patch: { hidden: true } },
+  ] });
+  assert.equal(sequenceFrames(state.edl.sequences[0]).duration, 10, "separating audio does not change the length");
+
+  const output = await renderProject(id, { only: [sequence.id], expectedRevision: state.revision });
+  const meta = await probe(output.outputs[0].file);
+  assert.equal(meta.hasAudio, true, "the separated track is still in the export");
+  // An audio stream is not a sound: a silent track would pass that and fail the ear.
+  const levels = spawnSync(FFMPEG, ["-v", "info", "-i", output.outputs[0].file, "-af", "volumedetect", "-f", "null", "-"], { encoding: "utf8" });
+  const mean = Number(levels.stderr.match(/mean_volume: (-?[\d.]+) dB/)?.[1] ?? -100);
+  assert.ok(mean > -40, `the separated audio is audible, mean volume ${mean} dB`);
+  const frame = pixel(output.outputs[0].file, 0.5, CENTRE);
+  assert.ok(frame[0] < 60, `the hidden picture is not on screen, got rgb(${frame.join(",")})`);
+});

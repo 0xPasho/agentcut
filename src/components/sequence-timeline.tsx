@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useId, useLayoutEffect, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ComponentProps, type PointerEvent } from "react";
 import { EyeOff, Eye, VolumeX, Volume2, Play, Pause, Plus, Film, Music2, Layers, Magnet, Minus, Copy, Scissors, Trash2, ArrowUp, ArrowDown, MousePointerClick, MessageSquare } from "lucide-react";
 import type { Edit, MediaSource, VideoSequence } from "@/lib/edl";
 import type { EditorOperation } from "@/lib/editor/operations";
 import { buildTimelineGroupMove, buildTimelineMove, buildTimelineTrim, timelineCollides } from "@/lib/editor/timeline-interactions";
 import { snapSpan, snapTargets, snapTime, type SnapPoint } from "@/lib/editor/snapping";
-import { cachedPeaks, loadPeaks } from "@/lib/editor/waveform";
+import { usePlayhead, usePlayheadSelector, usePlayheadStore } from "@/lib/editor/playhead";
+import { cachedMediaPeaks, cachedPeaks, loadMediaPeaks, loadPeaks, thinPeaks } from "@/lib/editor/waveform";
 import { cachedFrames, loadFrames } from "@/lib/editor/filmstrip";
 import { activeDrag, classifyFile, dropDuration, hasFileDrag, hasMediaDrag, readDrag, type DragKind, type DragPayload } from "@/lib/editor/dnd";
 import { sequenceFrames } from "@/lib/sequences";
@@ -16,15 +17,45 @@ import { describeAuthor, isAgentAuthor } from "@/lib/editor/authorship";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel, ContextMenuSeparator, ContextMenuTrigger, Menu, MenuContent, MenuTrigger } from "./ui/context-menu";
 
 const LABEL_WIDTH = 76;
+/* Everything below follows the playhead. They are separate components, and small ones,
+   because each of them re-renders as the preview plays and the timeline around them
+   must not. See src/lib/editor/playhead.ts. */
+
+/** The running time, which only changes when the label itself does — ten times a second. */
+function PlayheadLabel() {
+  return <>{usePlayheadSelector(seconds => timeLabel(seconds))}</>;
+}
+
+/** The playhead's own mark: the handle in the ruler, and the line down the tracks. */
+function PlayheadMark({ span, scale, offset = 0, className }: { span: number; scale: number; offset?: number; className: string }) {
+  const left = usePlayheadSelector(seconds => offset + Math.min(seconds, span) * scale);
+  return <span aria-hidden className={className} style={{ left }} />;
+}
+
+/** The ruler is a slider, so its value has to follow the playhead for a screen reader too. */
+function Ruler({ max, children, ...rest }: { max: number } & ComponentProps<"div">) {
+  const seconds = usePlayhead();
+  return <div role="slider" tabIndex={0} aria-label="Current time" aria-valuemin={0} aria-valuemax={max}
+    aria-valuenow={Math.min(seconds, max)} aria-valuetext={timeLabel(seconds)} {...rest}>{children}</div>;
+}
+
+/** Splitting needs the playhead inside the clip, and the menu opens long after the last render. */
+function SplitItem({ from, until, onSplit }: { from: number; until: number; onSplit: () => void }) {
+  const inside = usePlayheadSelector(seconds => seconds > from + .02 && seconds < until - .02);
+  return <ContextMenuItem shortcut="S" disabled={!inside} onClick={onSplit}><Scissors />Split at playhead</ContextMenuItem>;
+}
+
 const NO_MORE_FOOTAGE = "This clip has no more footage that way.";
 const EMPTY_MEDIA: MediaSource[] = [];
 type Drag = { id: string; kind: "move" | "start" | "end" | "effect" | "effect-start" | "effect-end"; x: number; y: number; at: number; duration: number; layer: number; index?: number; moved: boolean; snapshot: VideoSequence; scrollLeft: number };
 type Ghost = { id: string; at: number; duration: number; layer: number; index?: number; delta: number; kind: Drag["kind"]; guide?: SnapPoint | null; shift?: number; lift?: number };
 type ExternalDrop = { layer: number; at: number; guide: SnapPoint | null; payload: DragPayload | null; files: boolean; replace?: { itemId: string; at: number; duration: number } };
 type Props = {
+  /** Whose media the peaks belong to: a shot's own audio is drawn from the host's copy of it. */
+  projectId: string;
   sequence: VideoSequence; selectedId?: string; dispatch: (ops: EditorOperation[]) => boolean | void;
   onSelect: (id: string, seconds: number) => void; onBlank: () => void;
-  currentSec: number; onSeek: (seconds: number) => void;
+  onSeek: (seconds: number) => void;
   /** Transport lives here because the preview has no controls of its own. */
   playing?: boolean; onPlayToggle?: () => void;
   mediaUrls?: Record<string, string>; media?: MediaSource[];
@@ -42,6 +73,8 @@ type Props = {
   onReplaceAsset?: (itemId: string, assetId: string, editIndex?: number) => void;
   onSplit?: (itemId: string) => void;
   onDuplicate?: (itemId: string) => void;
+  /** Lift a shot's own sound onto its own track, so it can be moved, trimmed and levelled alone. */
+  onDetachAudio?: (itemId: string) => void;
   /** Open the conversation about this clip: "shorter", "move it", "why is this here". */
   onAskAgent?: (itemId: string) => void;
   /** Feedback that deserves to be seen, not only announced: an undoable change or a refusal. */
@@ -82,6 +115,37 @@ function Filmstrip({ src, start, end }: { src: string; start: number; end: numbe
   </span>;
 }
 
+/** One drawn envelope, mirrored around the middle and stretched to whatever width it has. */
+function WaveShape({ peaks, className }: { peaks: number[]; className: string }) {
+  const shown = thinPeaks(peaks);
+  if (shown.length < 2) return null;
+  const points = shown.map((peak, index) => `${(index / (shown.length - 1) * 100).toFixed(2)},${(50 - peak * 46).toFixed(2)}`).join(" ")
+    + " " + shown.map((peak, index) => `${((shown.length - 1 - index) / (shown.length - 1) * 100).toFixed(2)},${(50 + shown[shown.length - 1 - index] * 46).toFixed(2)}`).join(" ");
+  return <svg aria-hidden viewBox="0 0 100 100" preserveAspectRatio="none" className={className}>
+    <polygon points={points} />
+  </svg>;
+}
+
+/**
+ * A shot's own audio, drawn inside the shot. The peaks are computed on this machine and
+ * sliced to the part of the file the shot actually uses, so trimming redraws it.
+ */
+function SourceWaveform({ projectId, mediaId, start, end, strong }: { projectId: string; mediaId: string; start: number; end: number; strong: boolean }) {
+  const [data, setData] = useState(() => cachedMediaPeaks(projectId, mediaId));
+  useEffect(() => setData(cachedMediaPeaks(projectId, mediaId)), [projectId, mediaId]);
+  useEffect(() => {
+    if (data !== undefined) return;
+    let disposed = false;
+    void loadMediaPeaks(projectId, mediaId).then(result => { if (!disposed) setData(result); });
+    return () => { disposed = true; };
+  }, [projectId, mediaId, data]);
+  if (!data?.peaks.length) return null;
+  const from = Math.max(0, Math.round(start * data.rate));
+  const slice = data.peaks.slice(from, Math.max(from + 2, Math.round(end * data.rate)));
+  if (slice.length < 2) return null;
+  return <WaveShape peaks={slice} className={`pointer-events-none absolute inset-x-0 ${strong ? "inset-y-0 h-full fill-emerald-300/60" : "bottom-0 h-6 fill-white/45"}`} />;
+}
+
 /** The real shape of a sound, decoded once per file and drawn to fit whatever width it has. */
 function Waveform({ src }: { src: string }) {
   const [peaks, setPeaks] = useState<number[] | null | undefined>(() => cachedPeaks(src));
@@ -93,14 +157,13 @@ function Waveform({ src }: { src: string }) {
   }, [src, peaks]);
   useEffect(() => setPeaks(cachedPeaks(src)), [src]);
   if (!peaks?.length) return null;
-  const points = peaks.map((peak, index) => `${(index / (peaks.length - 1) * 100).toFixed(2)},${(50 - peak * 46).toFixed(2)}`).join(" ")
-    + " " + peaks.map((peak, index) => `${((peaks.length - 1 - index) / (peaks.length - 1) * 100).toFixed(2)},${(50 + peaks[peaks.length - 1 - index] * 46).toFixed(2)}`).join(" ");
-  return <svg aria-hidden viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-x-0 bottom-0 h-7 w-full opacity-60">
-    <polygon points={points} className="fill-emerald-300/70" />
-  </svg>;
+  return <WaveShape peaks={peaks} className="pointer-events-none absolute inset-x-0 bottom-0 h-7 w-full fill-emerald-300/70 opacity-60" />;
 }
 
-export function SequenceTimeline({ sequence, selectedId, dispatch, onSelect, onBlank, currentSec, onSeek, mediaUrls = {}, assetUrls = {}, media = EMPTY_MEDIA, selectedEdit, onSelectEdit, onDropMedia, onDropAsset, onDropFiles, onDropLocalFile, onDropSearchHit, onReplaceMedia, onReplaceAsset, onSplit, onDuplicate, onAskAgent, onNotify, playing = false, onPlayToggle }: Props) {
+export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, onSelect, onBlank, onSeek, mediaUrls = {}, assetUrls = {}, media = EMPTY_MEDIA, selectedEdit, onSelectEdit, onDropMedia, onDropAsset, onDropFiles, onDropLocalFile, onDropSearchHit, onReplaceMedia, onReplaceAsset, onSplit, onDuplicate, onDetachAudio, onAskAgent, onNotify, playing = false, onPlayToggle }: Props) {
+  // Reading the playhead here never re-renders the timeline; the parts that draw it
+  // subscribe on their own, so a playing preview repaints a marker, not every clip.
+  const playhead = usePlayheadStore();
   const viewport = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
   const ghostRef = useRef<Ghost | null>(null);
@@ -234,8 +297,8 @@ export function SequenceTimeline({ sequence, selectedId, dispatch, onSelect, onB
   // holding Command or Control inverts it for one drag without leaving the gesture.
   const tolerance = 9 / scale;
   const magnet = (event: { metaKey?: boolean; ctrlKey?: boolean }) => snapping !== !!(event.metaKey || event.ctrlKey);
-  const targets = (excludeId?: string, playhead = true) => {
-    const points = snapTargets(sequence, { excludeId, playheadSec: playhead ? currentSec : undefined });
+  const targets = (excludeId?: string, withPlayhead = true) => {
+    const points = snapTargets(sequence, { excludeId, playheadSec: withPlayhead ? playhead.get() : undefined });
     if (group.current.length < 2) return points;
     // A selection should never snap to the clips travelling with it.
     const moving = new Set(group.current.map(entry => entry.id));
@@ -579,7 +642,7 @@ export function SequenceTimeline({ sequence, selectedId, dispatch, onSelect, onB
   return <div className="flex min-h-0 min-w-0 flex-col gap-2 overflow-hidden">
     <div className="flex flex-wrap items-center gap-2">
       {onPlayToggle && <Button size="icon-xs" variant="secondary" aria-label={playing ? "Pause" : "Play"} aria-pressed={playing} title={playing ? "Pause (Space)" : "Play (Space)"} disabled={!sequence.items.length} onClick={onPlayToggle}>{playing ? <Pause /> : <Play />}</Button>}
-      <h2 className="text-sm font-medium">Timeline <span className="ml-2 text-xs tabular-nums text-muted-foreground">{sequence.items.length ? `${timeLabel(currentSec)} / ${timeLabel(seconds)}` : "Empty"}</span></h2>
+      <h2 className="text-sm font-medium">Timeline <span className="ml-2 text-xs tabular-nums text-muted-foreground">{sequence.items.length ? <><PlayheadLabel /> / {timeLabel(seconds)}</> : "Empty"}</span></h2>
       {selection.size > 1
         ? <Button size="xs" variant="secondary" className="mr-auto" onClick={() => setExtra([])}>{selection.size} clips selected · Clear</Button>
         : <span className="mr-auto" />}
@@ -593,14 +656,14 @@ export function SequenceTimeline({ sequence, selectedId, dispatch, onSelect, onB
       <div className="relative" style={{ width: width + LABEL_WIDTH }}>
         <div className="sticky top-0 z-30 flex h-9 bg-card/95 backdrop-blur-md">
           <span className="sticky left-0 z-40 w-[76px] shrink-0 bg-card" />
-          <div role="slider" tabIndex={0} aria-label="Current time" aria-valuemin={0} aria-valuemax={seconds} aria-valuenow={Math.min(currentSec, seconds)} aria-valuetext={timeLabel(currentSec)} className="relative h-9 shrink-0 cursor-crosshair touch-none focus-visible:outline-2 focus-visible:outline-ring" style={{ width }}
+          <Ruler max={seconds} className="relative h-9 shrink-0 cursor-crosshair touch-none focus-visible:outline-2 focus-visible:outline-ring" style={{ width }}
             onPointerDown={event => { if (event.button !== 0) return; try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* the pointer ended first */ } scrubTo(event); }}
             onPointerMove={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) scrubTo(event); }}
             onPointerUp={() => setScrubGuide(null)} onPointerCancel={() => setScrubGuide(null)}
-            onKeyDown={event => { if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return; event.preventDefault(); onSeek(event.key === "Home" ? 0 : event.key === "End" ? seconds : Math.max(0, Math.min(seconds, currentSec + (event.key === "ArrowLeft" ? -1 : 1) * (event.shiftKey ? 1 : 1 / fps)))); }}>
+            onKeyDown={event => { if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return; event.preventDefault(); onSeek(event.key === "Home" ? 0 : event.key === "End" ? seconds : Math.max(0, Math.min(seconds, playhead.get() + (event.key === "ArrowLeft" ? -1 : 1) * (event.shiftKey ? 1 : 1 / fps)))); }}>
             {ticks.map(t => <span key={t} aria-hidden style={{ left: t * scale }} className="pointer-events-none absolute inset-y-0 border-l border-white/15 pl-1 pt-1 text-[10px] tabular-nums text-muted-foreground">{timeLabel(t)}</span>)}
-            <span aria-hidden className="pointer-events-none absolute bottom-0 h-3 w-3 -translate-x-1/2 rounded-t-sm bg-primary [clip-path:polygon(0_0,100%_0,100%_55%,50%_100%,0_55%)]" style={{ left: Math.min(currentSec, span) * scale }} />
-          </div>
+            <PlayheadMark span={span} scale={scale} className="pointer-events-none absolute bottom-0 h-3 w-3 -translate-x-1/2 rounded-t-sm bg-primary [clip-path:polygon(0_0,100%_0,100%_55%,50%_100%,0_55%)]" />
+          </Ruler>
         </div>
         <div data-timeline-layer={newLayer} className={`flex h-8 ${ghost?.layer === newLayer || externalDrop?.layer === newLayer ? "bg-primary/10" : ""}`} {...dropHandlers(newLayer)}>
           <span className="sticky left-0 z-20 flex w-[76px] shrink-0 items-center justify-center bg-card text-muted-foreground"><Plus className="size-3" aria-hidden /></span>
@@ -627,11 +690,13 @@ export function SequenceTimeline({ sequence, selectedId, dispatch, onSelect, onB
           </Menu>
           <div {...marqueeHandlers} className={`relative h-16 shrink-0 touch-none ${externalDrop?.layer === layer ? "bg-primary/5" : ""}`} style={{ width }}>
             {layout.items.filter(entry => (entry.item.layer ?? 0) === layer).map(({ item, from, duration }) => {
-              const audio = !item.mediaId && item.clip.edits.length > 0 && item.clip.edits.every(edit => edit.type === "music" || edit.type === "sfx");
+              // Two ways to be a sound on this timeline: a standalone music/sfx scene, or a
+              // shot whose own audio was lifted off its picture.
+              const detached = !!item.mediaId && !!item.hidden;
+              const audio = detached || (!item.mediaId && item.clip.edits.length > 0 && item.clip.edits.every(edit => edit.type === "music" || edit.type === "sfx"));
               const active = selection.has(item.id), primary = selectedId === item.id;
               const clipWidth = Math.max(40, duration / fps * scale);
               const moving = ghost?.id === item.id && ghost.kind !== "effect";
-              const inside = currentSec > from / fps + .02 && currentSec < (from + duration) / fps - .02;
               return <ContextMenu key={item.id} onOpenChange={open => {
                 if (!open) return;
                 // Right-clicking inside a selection keeps it; right-clicking outside one starts over,
@@ -662,7 +727,8 @@ export function SequenceTimeline({ sequence, selectedId, dispatch, onSelect, onB
                       event.preventDefault(); commit(buildTimelineMove(sequence, item.id, Math.max(0, from / fps + direction * (event.shiftKey ? 1 : 1 / fps)), layer), "Clip moved.");
                     }
                   }}>
-                  {item.mediaId && mediaUrls[item.mediaId] && <Filmstrip src={mediaUrls[item.mediaId]} start={item.clip.start} end={item.clip.end} />}
+                  {item.mediaId && mediaUrls[item.mediaId] && !detached && <Filmstrip src={mediaUrls[item.mediaId]} start={item.clip.start} end={item.clip.end} />}
+                  {item.mediaId && !item.muted && <SourceWaveform projectId={projectId} mediaId={item.mediaId} start={item.clip.start} end={item.clip.end} strong={detached} />}
                   {audio && (() => {
                     const source = item.clip.edits.flatMap(edit => "src" in edit && assetUrls[edit.src] ? [assetUrls[edit.src]] : [])[0];
                     return source
@@ -680,7 +746,7 @@ export function SequenceTimeline({ sequence, selectedId, dispatch, onSelect, onB
                 </ContextMenuTrigger>
                 <ContextMenuContent>
                   <ContextMenuLabel>{standalone(item) ? effectLabel(item.clip.edits[0]) : item.clip.title}</ContextMenuLabel>
-                  {onSplit && <ContextMenuItem shortcut="S" disabled={!inside} onClick={() => onSplit(item.id)}><Scissors />Split at playhead</ContextMenuItem>}
+                  {onSplit && <SplitItem from={from / fps} until={(from + duration) / fps} onSplit={() => onSplit(item.id)} />}
                   {onDuplicate && <ContextMenuItem shortcut="D" onClick={() => onDuplicate(item.id)}><Copy />Duplicate</ContextMenuItem>}
                   {onAskAgent && <ContextMenuItem onClick={() => onAskAgent(item.id)}><MessageSquare />Ask the agent about this</ContextMenuItem>}
                   <ContextMenuSeparator />
@@ -690,6 +756,7 @@ export function SequenceTimeline({ sequence, selectedId, dispatch, onSelect, onB
                   <ContextMenuItem onClick={() => commit([{ type: "item.place", sequenceId: sequence.id, itemId: item.id, patch: { hidden: !item.hidden }, before: { hidden: item.hidden ?? false } }], item.hidden ? "Visuals shown." : "Visuals hidden.")}>
                     {item.hidden ? <><Eye />Show visuals</> : <><EyeOff />Hide visuals</>}
                   </ContextMenuItem>
+                  {onDetachAudio && item.mediaId && !item.muted && <ContextMenuItem onClick={() => onDetachAudio(item.id)}><Music2 />Separate audio</ContextMenuItem>}
                   <ContextMenuSeparator />
                   <ContextMenuItem shortcut="Del" onClick={() => removeFrom(item.id)}><Trash2 />{selection.has(item.id) && selection.size > 1 ? `Remove ${selection.size} clips` : "Remove from timeline"}</ContextMenuItem>
                 </ContextMenuContent>
@@ -747,7 +814,7 @@ export function SequenceTimeline({ sequence, selectedId, dispatch, onSelect, onB
             })}
           </div>
         </div>)}
-        <span aria-hidden className="pointer-events-none absolute bottom-0 top-9 z-10 w-px bg-primary" style={{ left: LABEL_WIDTH + Math.min(currentSec, span) * scale }} />
+        <PlayheadMark span={span} scale={scale} offset={LABEL_WIDTH} className="pointer-events-none absolute bottom-0 top-9 z-10 w-px bg-primary" />
         {guide && <span aria-hidden className="pointer-events-none absolute bottom-0 top-9 z-40 w-px bg-white shadow-[0_0_6px_rgba(255,255,255,.55)]" style={{ left: LABEL_WIDTH + guide.at * scale }}><span className="absolute -top-px left-1/2 size-1.5 -translate-x-1/2 rotate-45 bg-white" /></span>}
       </div>
     </div>

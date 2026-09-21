@@ -35,6 +35,7 @@ export const EditorOperation = z.discriminatedUnion("type", [
   z.object({ type: z.literal("item.move"), sequenceId: z.string(), itemId: z.string(), index: z.number().int().nonnegative() }).strict(),
   z.object({ type: z.literal("item.patch"), sequenceId: z.string(), itemId: z.string(), patch: ClipPatch, before: ClipPatch.optional() }).strict(),
   z.object({ type: z.literal("item.split"), sequenceId: z.string(), itemId: z.string(), at: z.number().positive(), newItemId: z.string().regex(/^[a-zA-Z0-9_-]+$/) }).strict(),
+  z.object({ type: z.literal("item.detachAudio"), sequenceId: z.string(), itemId: z.string(), newItemId: z.string().regex(/^[a-zA-Z0-9_-]+$/), layer: z.number().int().nonnegative().optional() }).strict(),
   z.object({ type: z.literal("item.source"), sequenceId: z.string(), itemId: z.string(), mediaId: z.string().nullable(), start: z.number().nonnegative().optional(), end: z.number().positive().optional(), title: z.string().min(1).optional(), before: z.object({ mediaId: z.string().nullable() }).strict().optional() }).strict(),
   z.object({ type: z.literal("clip.add"), clip: Clip }).strict(),
   z.object({ type: z.literal("clip.remove"), clipId: z.string() }).strict(),
@@ -288,6 +289,29 @@ export function applyOperations(input: Edl, raw: unknown): Edl {
         });
         item.mediaId = op.mediaId;
         item.clip = { ...item.clip, start, end, edits, words: [], crop: [], title: op.title ?? item.clip.title };
+        continue;
+      }
+      if (op.type === "item.detachAudio") {
+        // A canvas scene's sound is already its own edits; there is no footage track under it.
+        if (item.mediaId === null) throw new Error("This scene has no footage audio to separate");
+        if (item.muted) throw new Error("This shot is muted, so it has no audio to separate");
+        const from = sequenceFrames(sequence).items[index].from;
+        const layer = op.layer ?? Math.max(0, ...sequence.items.map(i => i.layer ?? 0)) + 1;
+        // Silence cuts are what shape the time map, so the separated track keeps exactly
+        // the length of the shot it came from. Captions, titles and pictures stay with
+        // the picture; copying them would render everything twice.
+        const audio = SequenceItem.parse({
+          id: op.newItemId, mediaId: item.mediaId, at: from / sequence.output.fps, layer,
+          hidden: true, muted: false, volume: item.volume ?? 1,
+          clip: Clip.parse({
+            id: op.newItemId, title: `${item.clip.title} (audio)`,
+            start: item.clip.start, end: item.clip.end,
+            captions: { preset: "none" },
+            edits: item.clip.edits.filter(e => e.type === "silence"),
+          }),
+        });
+        item.muted = true;
+        sequence.items.splice(index + 1, 0, audio);
         continue;
       }
       if (op.type === "item.split") {

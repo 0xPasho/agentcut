@@ -25,15 +25,16 @@ export function OverlayEditor({
   mediaId,
   canCapture = true,
   clip,
-  atSec = 0,
+  atSec = () => 0,
   onChange,
 }: {
   projectId: string;
   mediaId?: string;
   canCapture?: boolean;
   clip: Clip;
-  /** Where new overlays land, clip-relative. The editor passes its playhead. */
-  atSec?: number;
+  /** Where new overlays land, clip-relative. Read when one is added, so a playing
+      preview never re-renders this panel just to keep the number current. */
+  atSec?: () => number;
   onChange: (edits: Edit[]) => void;
 }) {
   const [at, setAt] = useState("");
@@ -171,7 +172,7 @@ export function OverlayEditor({
         </div>
         {error ? <p className="text-xs text-destructive">{error}</p> : null}
 
-        <ProjectAssets projectId={projectId} onChoose={asset => onChange([...clip.edits, { type: "image", t: atSec, d: 3, src: asset.id, query: "", credit: asset.attribution ?? "", y: 0.3, x: null, widthPct: 78, heightPct: 100, style: "card", caption: "", by: "" }])} />
+        <ProjectAssets projectId={projectId} onChoose={asset => onChange([...clip.edits, { type: "image", t: atSec(), d: 3, src: asset.id, query: "", credit: asset.attribution ?? "", y: 0.3, x: null, widthPct: 78, heightPct: 100, style: "card", caption: "", by: "" }])} />
 
         <ImageSearch
           projectId={projectId}
@@ -180,7 +181,7 @@ export function OverlayEditor({
               ...clip.edits,
               {
                 type: "image",
-                t: atSec,
+                t: atSec(),
                 d: 3,
                 src: asset.id,
                 query: "",

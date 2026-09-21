@@ -123,14 +123,19 @@ watched on TikTok, not inside the app.
 
 ## Video project workspace
 
-The home screen exposes two equal starting points: **Find clips** and **Create a video**.
-Both open the same editor: clipping starts with footage; general editing starts with
-an empty canvas and optional starting media. Keep the existing caption, overlay,
+The home screen exposes three equal starting points, as tabs: **Edit** (drag videos in),
+**Clips** (a long video becomes highlights) and **Chat** (say what you want).
+All three open the same editor: clipping starts with footage; general editing starts with
+an empty canvas and optional starting media; chat starts from a sentence. Keep the existing caption, overlay,
 transcript, properties, and agent controls together rather than introducing a second
 assembly interface. The editor uses a glass navigation bar above media, timeline, and
 inspector surfaces. Render is the primary action; media and editing actions stay neutral.
 Desktop groups media on the left, preview/timeline in the center, and selected-shot
-properties on the right. Smaller widths stack these regions without page overflow;
+properties on the right. The right column is about the selection and nothing else: with
+nothing selected it says so, and everything about the video as a whole — plan, templates,
+rules, format — opens from one **Video** menu in the header. The controls a person reaches
+for constantly (hook, colours, mute, split) sit on the frame itself, on the glass layer,
+and disappear with the selection. Smaller widths stack these regions without page overflow;
 the timeline has its own horizontal scroll. Reorder buttons provide a keyboard path.
 Every visual operation uses the same sequence and item operations as the agent.
 

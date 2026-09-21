@@ -11,7 +11,7 @@ built-in with the same `id`. Writing one needs no code.
 
 ## One editor, two interfaces
 
-The human panel (**Templates** in the editor's properties column) and the agent call the
+The human panel (**Video → Plan and templates** in the editor header) and the agent call the
 same two project tools:
 
 | Tool | Behaviour |
@@ -53,8 +53,16 @@ it decides which one the material wants.
   template is applied to a video of that shape. `sequence.derive` copies a video into
   another aspect as its own editable sequence (crops recentred, plan carried, status
   pending, linked through `plan.reasons.derivedFrom`).
-- **Sound on punch-ins**: `rhythm.punch.sfx` (`enabled`, `slot` or `assetId`, `gain`, `durationSec`)
-  plays a sound on every punch-in the template places, from an `audio` slot or an asset.
+- **Sound**: a template can carry its own sound design. `rhythm.punch.sfx` plays a sound on
+  every punch-in; `sound.transitions` plays one on every cut between shots; `sound.opener`
+  plays one on the first frame; `music` is the bed. Each takes `enabled`, then a `slot`, an
+  `assetId` or a `query` — a free-licence audio search, run once and downloaded into the
+  project like a picture. A search that finds nothing, or a machine with no network, leaves
+  that sound out and applies the rest of the template anyway.
+  **`sound.mode: "off"` silences all of it in one field**, so sound is something a video can
+  refuse whole rather than unpick edit by edit. Transitions and the opener are placed as
+  ordinary sfx layers, authored by the template, so re-applying replaces them and a person
+  can move, level or delete them by hand.
 - **Video bookends**: `intro` / `outro` may name a library video; it is added as project media
   and placed as a shot (played whole), marked as the template's through the shot's `reason`.
 - **Preview**: `templates.preview` and `GET /api/templates/<id>/preview?aspect=9:16` return
