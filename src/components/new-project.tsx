@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { AgentPicker } from "@/components/agent-picker";
 import { CreateVideo } from "./create-video";
 import { api } from "@/lib/client";
 import { classifyFile } from "@/lib/editor/dnd";
@@ -62,7 +63,12 @@ function BatchStart() {
           </div>
           <input ref={fileInput} type="file" accept="video/*" multiple className="hidden" onChange={(e) => { add(e.target.files); e.target.value = ""; }} />
           {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-          <Button type="submit" size="lg" disabled={pending || !files.length}>{pending ? <Loader2 className="motion-safe:animate-spin" /> : null}Start the set <ArrowRight aria-hidden /></Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="submit" size="lg" disabled={pending || !files.length}>{pending ? <Loader2 className="motion-safe:animate-spin" /> : null}Start the set <ArrowRight aria-hidden /></Button>
+            {/* No project exists yet, so this sets the workspace default — which is
+                what the set will run on. */}
+            <AgentPicker className="ml-auto" locked={pending} lockedReason="the set is starting" />
+          </div>
         </form>
       </CardContent>
     </Card>

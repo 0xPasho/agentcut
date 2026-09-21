@@ -1,4 +1,4 @@
-import { which } from "../bin";
+import { harnessBinary, spawnable } from "./binary";
 import { spawnStream, makeEvent } from "./spawn";
 import type { AgentEvent, AgentProvider, AgentResult, AgentRunOptions } from "./types";
 
@@ -11,7 +11,7 @@ export const codexProvider: AgentProvider = {
   label: "Codex",
 
   async available() {
-    return (await which("codex")) !== null;
+    return harnessBinary("codex") !== null;
   },
 
   async run(opts: AgentRunOptions): Promise<AgentResult> {
@@ -34,7 +34,7 @@ export const codexProvider: AgentProvider = {
 
     let text = "";
 
-    const res = await spawnStream("codex", args, {
+    const res = await spawnStream(spawnable("codex"), args, {
       cwd: opts.cwd,
       timeoutMs: opts.timeoutMs ?? 15 * 60_000,
       onStderr: (c) => emit(makeEvent("log", c)),
@@ -58,7 +58,7 @@ export const codexProvider: AgentProvider = {
           emit(makeEvent("text", msg.message));
         } else if (type.includes("command") || type.includes("exec")) {
           const cmd = Array.isArray(msg.command) ? msg.command.join(" ") : String(msg.command ?? "");
-          if (cmd) emit(makeEvent("tool", cmd.slice(0, 200), "Bash"));
+          if (cmd) emit(makeEvent("tool", cmd.slice(0, 1000), "Bash"));
         } else if (type.includes("error")) {
           emit(makeEvent("error", JSON.stringify(msg).slice(0, 500)));
         }

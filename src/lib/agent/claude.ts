@@ -1,5 +1,6 @@
-import { which } from "../bin";
+import { harnessBinary, spawnable } from "./binary";
 import { spawnStream, makeEvent } from "./spawn";
+import { describeAgentToolInput } from "../activity";
 import type { AgentEvent, AgentProvider, AgentResult, AgentRunOptions } from "./types";
 
 /**
@@ -14,7 +15,7 @@ export const claudeProvider: AgentProvider = {
   label: "Claude Code",
 
   async available() {
-    return (await which("claude")) !== null;
+    return harnessBinary("claude") !== null;
   },
 
   async run(opts: AgentRunOptions): Promise<AgentResult> {
@@ -42,7 +43,7 @@ export const claudeProvider: AgentProvider = {
     let costUsd: number | undefined;
     let sessionId: string | undefined;
 
-    const res = await spawnStream("claude", args, {
+    const res = await spawnStream(spawnable("claude"), args, {
       cwd: opts.cwd,
       timeoutMs: opts.timeoutMs ?? 15 * 60_000,
       onStderr: (c) => emit(makeEvent("log", c)),
@@ -62,7 +63,7 @@ export const claudeProvider: AgentProvider = {
             if (block.type === "text" && typeof block.text === "string") {
               emit(makeEvent("text", block.text));
             } else if (block.type === "tool_use") {
-              emit(makeEvent("tool", summarizeInput(block.input), String(block.name)));
+              emit(makeEvent("tool", describeAgentToolInput(block.input, opts.cwd), String(block.name)));
             }
           }
         } else if (msg.type === "result") {
@@ -85,11 +86,3 @@ export const claudeProvider: AgentProvider = {
     return { provider: "claude", text, events, durationMs: Date.now() - started, costUsd, sessionId };
   },
 };
-
-function summarizeInput(input: unknown): string {
-  if (!input || typeof input !== "object") return "";
-  const o = input as Record<string, unknown>;
-  const first = o.command ?? o.file_path ?? o.pattern ?? o.path ?? o.description;
-  const s = typeof first === "string" ? first : JSON.stringify(o);
-  return s.length > 200 ? `${s.slice(0, 200)}…` : s;
-}
