@@ -425,6 +425,10 @@ each adopted asset and reported by `template.apply`.
   "Main video"; a sticky card reading either, held from the first frame to the last, is the
   worst thing a template can put on screen. Neither is used, and the dry run says there is
   no hook rather than inventing one. `{{hook}}`, `{{title}}` and `{{slot:<id>}}` are substituted.
+- `hook.maxWords` is the length a card holds, and the clip selection is asked for a line
+  that fits it: run again on the same material, its four hooks came back at five to ten
+  words — "¿Qué pedo? ¿Qué me falta?" — where sentences of sixteen and twenty had been
+  arriving before, each losing its ending to make room.
 - `hook.maxWords` is the length a card holds, and it is no longer a knife. A hook is
   written in sentences — by a person, or by the agent that picked the clip — so a line
   over the limit is cut where a sentence lets go: **the question in it**, if it has one,
