@@ -323,7 +323,8 @@ test("a template replaces the draft the clip selection made, and leaves a hand e
   const byAuthor = shot.clip.edits.reduce((acc: Record<string, number>, e) => ({ ...acc, [e.by || "hand"]: (acc[e.by || "hand"] ?? 0) + 1 }), {});
   assert.equal(byAuthor.select, undefined, "the selection's first draft is gone, not stacked under the template's");
   assert.equal(byAuthor.hand, 1, "the title someone placed by hand survives");
-  assert.equal(shot.clip.edits.find((e) => e.by === "")!.text, "Mía");
+  const kept = shot.clip.edits.find((e) => e.by === "");
+  assert.ok(kept && kept.type === "text" && kept.text === "Mía");
   assert.ok((byAuthor["template:stream-split"] ?? 0) > 1, "and the template wrote its own");
   // Exactly one title on screen: the hook, on its own layer.
   const titles = store.readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!.items

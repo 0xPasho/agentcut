@@ -75,14 +75,16 @@ If the frames show **a screen share with a small webcam somewhere in the corner*
   "type": "split",
   "top":    { "x": 0, "y": 0, "w": 0, "h": 0 },
   "bottom": { "x": 0, "y": 0, "w": 0, "h": 0 },
-  "topPct": 40
+  "topPct": 40,
+  "camera": "top"
 }
 \`\`\`
 
-- \`top\` is the webcam rectangle — read its real position off the frames, do not guess a corner.
-- \`bottom\` is the part of the screen that the clip is actually about: the terminal, the editor pane, the diff, the browser window. Not the whole desktop.
-- \`topPct\` is how much output height the webcam gets. 35-45 usually reads well.
-- Both rectangles are in **source pixels** and each gets cropped to fill its half, so their aspect ratios do not need to match.
+- One half is the webcam rectangle — read its real position off the frames, do not guess a corner.
+- The other is the part of the screen that the clip is actually about: the terminal, the editor pane, the diff, the browser window. Not the whole desktop.
+- \`camera\` says which half the person is in, and the push-in follows them: zooming the shared screen instead makes the content lurch on every emphasis beat. Put them on top when the clip is about what they are saying, underneath when it is about what is on screen.
+- \`topPct\` is how much output height the top half gets. The person usually reads well at 32-45.
+- Both rectangles are in **source pixels** and each gets cropped to fill its half, so their aspect ratios do not need to match. Each half keeps its middle, so the screen rectangle must stop where the webcam starts — otherwise the person appears twice, small in the screen half and large in their own.
 
 If instead the frames are **a person filling the frame** — a talking head, a podcast — skip \`layout\` and give \`crop\` keyframes as below.
 
