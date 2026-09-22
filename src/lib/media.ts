@@ -69,11 +69,26 @@ export async function detectScenes(src: string, threshold = 0.3): Promise<number
   return [...times].sort((a, b) => a - b);
 }
 
-/** Per-second loudness in dB. Laughter/applause/emphasis show up as peaks. */
+/** How often the loudness curve is sampled, in seconds. */
+export const LOUDNESS_STEP_SEC = 0.5;
+
+/**
+ * Loudness in dB, twice a second. Laughter, applause and emphasis show up as peaks.
+ *
+ * astats resets once per audio frame, and a decoded frame is about 23ms, so this used
+ * to print one reading every 23ms — 7.2kB of stderr per second of audio. A four-hour
+ * recording is 114MB of it, past the 64MB `run` will hold, so the pass failed and the
+ * caller's catch turned that into "this video has no loud moments at all": every
+ * source over about two and a half hours silently lost the signal, which is exactly
+ * the length of source this is for. Half-second frames are 6MB for the same file, and
+ * nothing downstream wants a reaction located to the millisecond.
+ */
 export async function loudnessCurve(src: string): Promise<Array<{ t: number; db: number }>> {
+  // Resample first so the frame size is a known number of samples whatever the source is.
+  const samples = Math.round(48000 * LOUDNESS_STEP_SEC);
   const { stderr } = await run(FFMPEG, [
     "-i", src,
-    "-filter:a", "astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level",
+    "-filter:a", `aresample=48000,asetnsamples=n=${samples}:p=0,astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level`,
     "-f", "null", "-",
   ]);
   const out: Array<{ t: number; db: number }> = [];

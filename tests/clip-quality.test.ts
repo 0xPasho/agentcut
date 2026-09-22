@@ -171,3 +171,35 @@ test("edits written against the proposed boundaries move with the settled ones",
   assert.ok(built.crop.some((k) => k.t === 0), "the clip opens on a keyframe, interpolated at its new start");
   assert.ok(built.words.length === 2, "and carries the words it actually contains");
 });
+
+test("loud moments are one peak each, and they come from the whole recording", async () => {
+  const { peaksFromCurve } = await import("../src/lib/pipeline/signals");
+  // Four hours at the curve's own half-second cadence: quiet speech throughout, with a
+  // two-second reaction every ten minutes. The late ones are the loudest.
+  const curve: Array<{ t: number; db: number }> = [];
+  const reactions: number[] = [];
+  for (let t = 0; t < 4 * 3600; t += 0.5) {
+    const index = Math.floor(t / 600);
+    const inReaction = t % 600 < 2 && t >= 600;
+    if (inReaction && !reactions.includes(index)) reactions.push(index);
+    curve.push({ t, db: inReaction ? -20 + index : -40 });
+  }
+  const peaks = peaksFromCurve(curve);
+  assert.equal(peaks.length, reactions.length, "a reaction that lasts four readings is one peak, not four");
+  assert.ok(peaks.at(-1)!.t > 4 * 3600 - 700, `the last reaction is still there: ${peaks.at(-1)?.t}`);
+  assert.deepEqual(peaks.map(p => p.t), [...peaks].sort((a, b) => a.t - b.t).map(p => p.t), "peaks come back in time order");
+
+  // Past the cap it is the quietest that go, not the latest: a stream full of reactions
+  // must not be described by its first four hundred readings.
+  const many: Array<{ t: number; db: number }> = [];
+  for (let i = 0; i < 1000; i++) {
+    // One loud reading every ten seconds, each a little louder than the last, over a
+    // floor of quiet ones — so the median sits on the quiet and every reaction crosses.
+    many.push({ t: i * 10, db: -20 + i * 0.01 });
+    for (let q = 1; q < 20; q++) many.push({ t: i * 10 + q * 0.5, db: -60 });
+  }
+  const capped = peaksFromCurve(many);
+  assert.equal(capped.length, 400);
+  assert.ok(capped[0].t > 5000, `the loudest 400 are the late ones here, so the first kept is late: ${capped[0].t}`);
+  assert.ok(capped.at(-1)!.t > 9900, "and the very last one survives");
+});

@@ -181,7 +181,7 @@ async function analyze(job: JobRow, sourcePath: string, dir: string, options: An
   });
 
   stage("signals", 0.45);
-  const signals = await computeSignals(sourcePath, meta);
+  const signals = await computeSignals(sourcePath, meta, (text) => log(pid, job.id, "log", text));
   log(pid, job.id, "log", `${signals.scenes.length} scene cuts, ${signals.peaks.length} loudness peaks`);
 
   stage("agent", 0.55);
