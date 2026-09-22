@@ -70,6 +70,9 @@ function cropAt(keys: CropKeyframe[], t: number, fallback: CropKeyframe): CropKe
  * at the ends are then cut off by the frame. The card is drawn smaller rather than drawn
  * outside the picture, on the same estimate the captions use.
  */
+/** How long a picture takes to arrive and to leave, when its beat is long enough for it. */
+const APPEAR_SEC = 0.25;
+
 const TITLE_PX = 64;
 const CARD_PADDING_PX = 80;
 const titleFit = (text: string, width: number, carded: boolean) => {
@@ -231,17 +234,25 @@ export const ClipComposition: React.FC<ClipProps> = ({
       {images.map((im, i) => {
         const start = srcToOut(map, im.t);
         const end = srcToOut(map, im.t + im.d);
-        if (t < start || t > end) return null;
+        // A beat the cuts removed entirely has no time to be shown in.
+        if (end <= start || t < start || t > end) return null;
         // A picture that lands inside a shot eases in and out so it arrives rather than blinks.
         // A picture that fills its shot IS the shot: the cut in and out of it is its entrance,
         // and easing that leaves its first and last frames empty — a blink in the export, and
         // in the editor the very frame the playhead parks on when the picture is added, where
         // an author sees the selection box around nothing at all.
         const fills = im.t <= 0.001 && im.d >= clipSec - 0.001;
+        // The ease has to fit inside what is left of the beat. A picture placed on a
+        // sentence that a cut then shortened built a range running backwards — the same
+        // shape that killed a real export on a shortened push-in — and Remotion refuses
+        // it, so the whole render dies on one picture nobody would have missed.
+        const span = end - start;
+        const ease = Math.min(APPEAR_SEC, span / 3);
+        const held = span > ease * 2;
         const appear = fills ? 1 : interpolate(
           t,
-          [start, start + 0.25, Math.max(start + 0.3, end - 0.25), end],
-          [0, 1, 1, 0],
+          held ? [start, start + ease, end - ease, end] : [start, start + span / 2, end],
+          held ? [0, 1, 1, 0] : [0, 1, 0],
           { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
         );
         // Centring lives in the inline transform. Tailwind v4's -translate-y-1/2 sets
@@ -312,7 +323,9 @@ export const ClipComposition: React.FC<ClipProps> = ({
       {texts.map((tx, i) => {
         const start = srcToOut(map, tx.t);
         const end = srcToOut(map, tx.t + tx.d);
-        if (t < start || t > end) return null;
+        // A line whose whole span the cuts took is not shown for the single frame the
+        // collapsed range would still match.
+        if (end <= start || t < start || t > end) return null;
         const place =
           tx.position === "top" ? "top-[9%]" : tx.position === "center" ? "top-[45%]" : "bottom-[18%]";
         // The white card reads on any footage; plain text needs the stroke to survive.

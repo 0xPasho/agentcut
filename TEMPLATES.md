@@ -109,6 +109,15 @@ it decides which one the material wants.
   opens on an intro would otherwise read the sting and level the whole timeline to it. A
   shot whose volume is a fade somebody drew keeps its fade — a fixed value would never be
   seen, and one hand-drawn fade is not a reason to throw away the rest of the apply.
+- **A picture the cuts shortened.** A picture eases in and out over its own beat, and the
+  ease was written against the beat's full length. Shorten that beat from under it — the
+  sentence it was placed on loses a second to a false-start cut — and the interpolation
+  range runs backwards. Remotion refuses such a range, so the *whole export* died on one
+  picture nobody would have missed: `inputRange must be strictly monotonically increasing
+  but got [2, 2.25, 2.3, 2.1999…]`. The ease fits inside whatever is left of the beat now,
+  and a beat the cuts removed entirely shows nothing at all — the same shape as the
+  push-in that killed a real export, found in the two other places it was written.
+
 - **An accent that lost its sentence.** An emphasis is written in source seconds over the
   sentence it belongs to. Cut that sentence away — a false start, a repeated phrase — and
   the span maps to no length at the cut's edge, and the half second either side that makes

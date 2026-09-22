@@ -504,3 +504,50 @@ test("an accent on a sentence the cuts removed does not land on the words that r
   }
   assert.ok(reddest < 40, `the surviving "Nvidia" is not accented: ${reddest}/255 of red over the other channels`);
 });
+
+test("a picture the cuts shorten still exports", { timeout: 300_000 }, async () => {
+  // The same shape as the push-in that crashed a real export: an eased span builds an
+  // interpolation range from its own start and end, and a span the cuts shorten to less
+  // than the ease itself produces a range that runs backwards. Remotion refuses it, and
+  // the whole export dies — on a picture a template placed on a sentence that a
+  // false-start cut then removed.
+  const { createVideoProject } = await import("../src/lib/editor/media");
+  const { readEditor, editProject } = await import("../src/lib/editor/store");
+  const { renderProject } = await import("../src/lib/editor/render");
+  const { uploadLibraryAsset } = await import("../src/lib/assets");
+
+  const source = path.join(workspace, "short-picture.mp4");
+  ffmpeg(["-y", "-f", "lavfi", "-i", "color=0x203040:size=1080x1920:rate=12:duration=10",
+    "-f", "lavfi", "-i", "sine=frequency=300:duration=10", "-shortest", "-pix_fmt", "yuv420p", "-c:a", "aac", source]);
+  const pictureFile = path.join(workspace, "short-picture.png");
+  ffmpeg(["-y", "-f", "lavfi", "-i", "color=0xFF2040:size=400x400", "-frames:v", "1", pictureFile]);
+  const picture = await uploadLibraryAsset("short-picture.png", await fs.readFile(pictureFile));
+
+  const { id } = await createVideoProject("Short picture", [{ file: source }]);
+  const snapshot = readEditor(id);
+  const sequenceId = snapshot.edl.sequences[0].id;
+  editProject(id, { expectedRevision: snapshot.revision, operations: [{
+    type: "item.patch", sequenceId, itemId: snapshot.edl.sequences[0].items[0].id,
+    patch: {
+      title: "Corta", start: 0, end: 8,
+      words: [{ t: 0.5, d: 0.4, w: "hola" }, { t: 4.0, d: 0.4, w: "adiós" }],
+      edits: [
+        // A picture for a second, with most of that second cut out from under it.
+        { type: "image", t: 2.0, d: 1.0, src: picture.id, y: 0.4, x: null, widthPct: 40, heightPct: 30, style: "plain", by: "" },
+        { type: "silence", t: 2.1, d: 0.8, by: "" },
+        // And one the cuts remove entirely.
+        { type: "image", t: 5.2, d: 0.5, src: picture.id, y: 0.4, x: null, widthPct: 40, heightPct: 30, style: "plain", by: "" },
+        { type: "silence", t: 5.1, d: 0.9, by: "" },
+      ],
+    },
+  }] });
+
+  const { outputs } = await renderProject(id, { only: [sequenceId] });
+  assert.ok(outputs[0]?.file, "the export finished");
+  // The shortened picture is still shown where it survives.
+  const { buildTimeMap, srcToOut } = await import("../src/lib/timeline");
+  const map = buildTimeMap(readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!.items[0].clip);
+  const at = srcToOut(map, 2.05);
+  const seen = pixel(outputs[0].file, at, 540, Math.round(1920 * 0.4));
+  assert.ok(seen[0] > 120 && seen[0] > seen[2] + 40, `the picture is on screen at ${at.toFixed(2)}s, saw ${seen}`);
+});
