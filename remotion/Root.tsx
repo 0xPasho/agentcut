@@ -5,6 +5,7 @@ import { sequenceFrames } from "../src/lib/sequences";
 import { Composition } from "remotion";
 import "./tailwind.css";
 import { ClipComposition, type ClipProps } from "./ClipComposition";
+import { CARD, CommentCard, commentCardHeight, type CommentCardProps } from "./CommentCard";
 import { Clip } from "../src/lib/edl";
 import { buildTimeMap, clipFrames } from "../src/lib/timeline";
 
@@ -33,6 +34,12 @@ export const RemotionRoot: React.FC = () => (
     defaultProps={{ sequence: { id: "preview", title: "Preview", output: { width: 1920, height: 1080, fps: 30 }, items: [], plan: emptySequencePlan() }, media: [], mediaUrls: {} }}
     width={1920} height={1080} fps={30} durationInFrames={1}
     calculateMetadata={({ props }) => ({ ...props.sequence.output, durationInFrames: sequenceFrames(props.sequence).duration })}
+  />
+  {/* A viewer's comment, rendered once to a transparent still and placed as a picture. */}
+  <Composition id="CommentCard" component={CommentCard}
+    defaultProps={{ platform: "tiktok", name: "viewer", text: "¿Qué me recomiendas para empezar?", avatar: "" } as CommentCardProps}
+    width={CARD.width} height={400} fps={30} durationInFrames={1}
+    calculateMetadata={({ props }) => ({ height: commentCardHeight(props.text) })}
   />
   </>
 );

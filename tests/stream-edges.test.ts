@@ -187,7 +187,7 @@ test("a template applied to a video with no footage at all leaves the framing al
   await tools.executeEditorTool(id, { tool: "template.apply", templateId: "edge-split", sequenceId, expectedRevision: store.readEditor(id).revision });
   const scene = store.readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!.items.find((i) => i.id === "i_scene")!;
   assert.equal(scene.clip.layout.type, "crop", "there is nothing to split");
-  assert.equal(scene.clip.captions.preset, "popline", "but the words are still captioned in the template's style");
+  assert.equal(scene.clip.captions.preset, "karaoke", "but the words are still captioned in the template's style");
   assert.ok(scene.clip.edits.some((e) => e.type === "silence"), "and its dead air is still cut");
 });
 
@@ -981,4 +981,74 @@ test("four hundred transcripts of caption lines, and none of them loses a word o
   }
   assert.ok(lines > 400, `the run has to build real lines: ${lines}`);
   assert.ok(shown > 1000, `and show real words: ${shown}`);
+});
+
+test("a pause the transcript reports is cut only where the sound is quiet", async () => {
+  const { silenceCuts } = await import("../src/lib/templates/script");
+  const rhythm = { enabled: true, minGapSec: 1, keepSec: 0.3, maxGapSec: 30 };
+  const step = 0.05;
+  // Speech at -22 dB wherever `loud` says, room tone at -50 everywhere else.
+  const heard = (loud: Array<[number, number]>) => ({
+    stepSec: step,
+    curve: Array.from({ length: 400 }, (_, i) => ({ t: i * step, db: loud.some(([a, b]) => i * step >= a && i * step < b) ? -22 : -50 })),
+  });
+  const words = [
+    { t: 0, d: 0.5, w: "hola" }, { t: 0.6, d: 0.5, w: "a" }, { t: 1.2, d: 0.8, w: "todos" },
+    { t: 5, d: 0.5, w: "y" }, { t: 5.6, d: 0.6, w: "bueno" }, { t: 6.3, d: 0.6, w: "sigo" },
+  ];
+  const speech: Array<[number, number]> = words.map((w) => [w.t, w.t + w.d]);
+
+  // A real pause: the transcript and the sound agree, and it is cut as before.
+  const blind = silenceCuts(words, rhythm, 20);
+  assert.deepEqual(silenceCuts(words, rhythm, 20, heard(speech)).map((c) => c.t.toFixed(2)), blind.map((c) => c.t.toFixed(2)));
+
+  // The recogniser ended "todos" at 2.0 but the speaker kept talking until 3.4. The cut
+  // starts after the sound stops, so the words in it are heard.
+  const [late] = silenceCuts(words, rhythm, 20, heard([...speech, [2, 3.4]]));
+  assert.ok(late && late.t >= 3.4, `the cut starts at ${late?.t} — inside the speech`);
+
+  // A phrase it never wrote down, in the middle of the gap: the quiet either side of it
+  // is too short to be dead air, so nothing is cut and nothing is lost.
+  assert.deepEqual(silenceCuts(words, rhythm, 20, heard([...speech, [2.6, 4.4]])), []);
+
+  // A click is not a word.
+  const click = heard([...speech, [3.5, 3.55]]);
+  assert.equal(silenceCuts(words, rhythm, 20, click).length, 1);
+});
+
+test("one word at a time draws every word, and a sentence stays on two rows", async () => {
+  const { toLines, lineAt, activeWordIndex, visibleWords, LINE_LEAD } = await import("../src/lib/timeline");
+  const { fitRows, emWidth } = await import("../src/lib/text-fit");
+  // Fast speech: words a tenth of a second long, as a stream is full of.
+  const words = Array.from({ length: 30 }, (_, i) => ({ t: i * 0.12, d: 0.1, w: `w${i}` }));
+  const lines = toLines(words, 1);
+  const seen = new Set<string>();
+  for (let frame = 0; frame < 4 * 30; frame++) {
+    const t = (frame + 0.5) / 30;
+    const line = lineAt(lines, t, 0);
+    if (!line) continue;
+    for (const word of visibleWords(line.words, activeWordIndex(line.words, t), "popline")) seen.add(word.w);
+  }
+  assert.equal(seen.size, words.length, `only ${seen.size} of ${words.length} words were ever on screen`);
+  // With the lead a sentence line uses, most of these would never be drawn.
+  let withLead = 0;
+  for (const word of words) {
+    let drawn = false;
+    for (let t = word.t; t < word.t + 0.12; t += 1 / 30) {
+      const line = lineAt(lines, t, LINE_LEAD);
+      if (line && visibleWords(line.words, activeWordIndex(line.words, t), "popline").length) drawn = true;
+    }
+    if (drawn) withLead++;
+  }
+  assert.ok(withLead < words.length, "the lead is what hid them");
+
+  // Five long words would wrap to three rows at full size; the line is scaled to two.
+  const long = ["programación", "internacional", "desarrolladores", "herramientas", "inteligencia"];
+  const band = 10.5;
+  const scale = fitRows(long, band, 2);
+  assert.ok(scale < 1 && scale >= 0.4);
+  let rows = 1, used = 0;
+  for (const w of long) { const width = emWidth(w) * scale; if (used && used + 0.28 * scale + width > band * 0.97) { rows++; used = width; } else used += (used ? 0.28 * scale : 0) + width; }
+  assert.ok(rows <= 2, `${rows} rows`);
+  assert.equal(fitRows(["hola", "a", "todos"], band, 2), 1);
 });

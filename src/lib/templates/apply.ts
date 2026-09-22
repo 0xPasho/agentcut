@@ -10,9 +10,10 @@ import type { Bookend } from "./plan";
 import { editProject, readEditor, RevisionConflict } from "../editor/store";
 import { adoptAudioHit, adoptHit, brandHit, findBrand, resolveQueryDetailed, searchAudio, type AudioKind } from "../search";
 import { getTemplate } from "./registry";
+import { resolveTemplateComment } from "../chat/resolve";
 import { aspectOf, resolveTemplate } from "./resolve";
 import type { VideoTemplate } from "./schema";
-import type { ImageCue, Subject } from "./script";
+import type { Heard, ImageCue, Subject } from "./script";
 import type { Envelope } from "./quiet";
 import {
   isBookendTitle, mergeTemplate, planTemplate, requireFraming, slotFilled, templateOperations, TemplateRequest, resolveTarget,
@@ -469,27 +470,32 @@ async function templateFor(edl: ReturnType<typeof readEditor>["edl"], request: T
  * name is its content — so the file and the span are the whole key.
  */
 const heardBefore = new Map<string, Envelope>();
+/** A twentieth of a second: fine enough to find the edges of a one-second pause. */
+const HEARD_STEP_SEC = 0.05;
 const HEARD_KEEP = 24;
 
-async function envelopesFor(edl: Edl, sequenceId: string): Promise<Map<string, Envelope>> {
+async function envelopesFor(edl: Edl, sequenceId: string): Promise<Map<string, Heard>> {
   const sequence = edl.sequences.find((s) => s.id === sequenceId);
-  const envelopes = new Map<string, Envelope>();
+  const envelopes = new Map<string, Heard>();
   if (!sequence) return envelopes;
   const { loudnessCurve } = await import("../media");
   for (const item of sequence.items) {
-    if (!item.mediaId || !item.clip.words.length || envelopes.has(item.mediaId)) continue;
+    // Every shot's own stretch: two shots cut from one recording are two spans of it,
+    // and measuring only the first left the second with no sound to check its cuts by.
+    if (!item.mediaId || !item.clip.words.length) continue;
     const media = edl.media.find((m) => m.id === item.mediaId);
     if (!media) continue;
     const span = { start: item.clip.start, duration: Math.max(1, item.clip.end - item.clip.start) };
-    const key = `${media.file}@${span.start}+${span.duration}`;
-    const curve = heardBefore.get(key) ?? await loudnessCurve(media.file, span).catch(() => [] as Envelope);
+    const key = `${media.file}@${span.start}+${span.duration}/${HEARD_STEP_SEC}`;
+    const curve = heardBefore.get(key) ?? await loudnessCurve(media.file, span, HEARD_STEP_SEC).catch(() => [] as Envelope);
     if (!curve.length) continue;
     if (!heardBefore.has(key)) {
       heardBefore.set(key, curve);
       // Oldest first: a Map keeps insertion order, and a handful is all a session needs.
       for (const stale of [...heardBefore.keys()].slice(0, Math.max(0, heardBefore.size - HEARD_KEEP))) heardBefore.delete(stale);
     }
-    envelopes.set(item.mediaId, curve);
+    const before = envelopes.get(item.mediaId)?.curve ?? [];
+    envelopes.set(item.mediaId, { stepSec: HEARD_STEP_SEC, curve: [...before, ...curve].sort((a, b) => a.t - b.t) });
   }
   return envelopes;
 }
@@ -502,6 +508,10 @@ export async function previewTemplate(projectId: string, raw: unknown): Promise<
   const { sequenceId } = resolveTarget(edl, request);
   const plan = await planTemplate(edl, template, request, sizes, await envelopesFor(edl, sequenceId));
   for (const folder of unreadable) plan.warnings.unshift(`${folder} could not be read, so it counts as no pictures.`);
+  // Which comment it would open on is part of what the dry run answers; drawing it is not.
+  const opening = await resolveTemplateComment(edl, sequenceId, template, request.commentId).catch((error: Error) => ({ planned: null, warning: error.message }));
+  plan.comment = opening.planned;
+  if (opening.warning) plan.warnings.push(opening.warning);
   return plan;
 }
 
@@ -586,7 +596,15 @@ export async function applyTemplate(
     transitions: await resolveSound(template.sound.transitions, request.slots, "Transition sound", projectId, "sfx", sounds),
     opener: await resolveSound(template.sound.opener, request.slots, "Opening sound", projectId, "sfx", sounds),
   };
-  const operations = templateOperations(current.edl, template, plan, resolved, (prefix) => `${prefix}_${randomUUID().slice(0, 8)}`, music, watermark, options.author, { intro, outro }, sound, level);
+  // The comment is read against the timeline the operations produce, like the pictures.
+  const opening = await resolveTemplateComment(promoted, plan.sequenceId, template, request.commentId);
+  plan.comment = opening.planned;
+  if (opening.warning) plan.warnings.push(opening.warning);
+  // Drawing it needs the renderer's bundle, so it is loaded only for a video that has one.
+  const comment = opening.comment
+    ? { src: (await (await import("../chat/card")).commentCardAsset(projectId, opening.comment)).id }
+    : null;
+  const operations = templateOperations(current.edl, template, plan, resolved, (prefix) => `${prefix}_${randomUUID().slice(0, 8)}`, music, watermark, options.author, { intro, outro }, sound, level, comment);
   if (!operations.length) throw new Error("This template would not change anything on this video.");
   const saved = editProject(projectId, { expectedRevision, operations });
   return {

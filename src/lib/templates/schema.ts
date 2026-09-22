@@ -309,6 +309,28 @@ export const TemplateAudio = z.object({
 }).strict();
 export type TemplateAudio = z.infer<typeof TemplateAudio>;
 
+/**
+ * The viewer comment a stream short opens on.
+ *
+ * A clip cut from a stream is usually an answer, and the question it answers was typed
+ * into the chat. The template finds it — the stream's chat database, the recording's own
+ * start time, and whichever message the streamer is heard reading out — draws it as the
+ * chat drew it, and holds it over the first seconds before the hook takes over. A clip
+ * nobody asked about gets no comment rather than a random one. See `src/lib/chat/`.
+ */
+export const TemplateComment = z.object({
+  enabled: z.boolean().default(false),
+  /** How long the comment holds; the hook appears when it goes. */
+  seconds: z.number().positive().max(10).default(3),
+  /** The card's centre, as a share of the output height. Over the screen, clear of the captions. */
+  y: z.number().min(0).max(1).default(0.26),
+  /** The card's width, as a share of the output width. */
+  widthPct: z.number().min(20).max(100).default(92),
+  /** How long before the clip a comment may have arrived and still be the one it answers. */
+  lookbackSec: z.number().min(10).max(1800).default(240),
+}).strict();
+export type TemplateComment = z.infer<typeof TemplateComment>;
+
 export const TemplateCard = z.object({
   id: z.string().regex(/^[a-zA-Z0-9_-]+$/),
   /** 0 = first frame, 1 = last frame, measured on the finished timeline. */
@@ -351,6 +373,7 @@ export const VideoTemplate = z.object({
    */
   variants: z.record(z.string(), z.record(z.string(), z.unknown())).default({}),
   hook: TemplateHook.prefault({}),
+  comment: TemplateComment.prefault({}),
   images: TemplateImages.prefault({}),
   rhythm: TemplateRhythm.prefault({}),
   music: TemplateMusic.prefault({}),

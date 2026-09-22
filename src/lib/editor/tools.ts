@@ -71,6 +71,15 @@ export const EditorToolCall = z.discriminatedUnion("tool", [
   z.object({ tool: z.literal("templates.suggest"), sequenceId: z.string().optional(), clipId: z.string().optional(), slots: z.record(z.string(), z.unknown()).optional() }),
   z.object({ tool: z.literal("template.plan"), ...TemplateRequest.shape }),
   z.object({ tool: z.literal("template.apply"), ...TemplateRequest.shape, expectedRevision: z.number().int().nonnegative() }),
+  // The stream's chat: where it is read from, the comments around a video ranked by what
+  // the clip says, and choosing the one the video opens on (or none). The template's
+  // `comment` section makes the same choice on its own; these are the same choice by hand.
+  z.object({ tool: z.literal("chat.source") }),
+  z.object({ tool: z.literal("chat.setSource"), path: z.string() }),
+  z.object({ tool: z.literal("comments.list"), sequenceId: z.string().optional(), clipId: z.string().optional(), limit: z.number().int().positive().max(100).default(25) }),
+  z.object({ tool: z.literal("comments.place"), sequenceId: z.string().optional(), clipId: z.string().optional(),
+    commentId: z.union([z.number().int().nonnegative(), z.literal("none")]), seconds: z.number().positive().max(10).optional(),
+    expectedRevision: z.number().int().nonnegative() }),
   z.object({ tool: z.literal("rules.list") }),
   z.object({ tool: z.literal("rules.get"), id: z.string().min(1) }),
   z.object({ tool: z.literal("rules.schema") }),
@@ -170,7 +179,7 @@ export type ToolActivity = (e: { kind: string; name?: string; text: string }) =>
  * to run the interview, read which harnesses this machine has or save a key before
  * the first project exists, so these skip the project check.
  */
-const WORKSPACE_TOOLS = ["onboarding.", "agents.", "providerkeys."];
+const WORKSPACE_TOOLS = ["onboarding.", "agents.", "providerkeys.", "chat."];
 
 /** The host binds projectId; agents cannot select another project through tool arguments. */
 export async function executeEditorTool(projectId: string, raw: unknown, onActivity?: ToolActivity): Promise<unknown> {
@@ -309,6 +318,10 @@ export async function executeEditorTool(projectId: string, raw: unknown, onActiv
       const { tool, expectedRevision, ...request } = call; void tool;
       return applyTemplate(projectId, request, expectedRevision);
     }
+    case "chat.source": { const { chatSource } = await import("../chat/comments"); return chatSource(); }
+    case "chat.setSource": { const { saveChatSource } = await import("../chat/comments"); return saveChatSource(call.path); }
+    case "comments.list": { const { listComments } = await import("../chat/place"); return listComments(projectId, call, call.limit); }
+    case "comments.place": { const { placeComment } = await import("../chat/place"); return placeComment(projectId, call, "agent"); }
     // Rules, glossary and preferences: workspace level applies to every project, project
     // level to this one. Both interfaces read and write the same files through these.
     case "rules.list": { const { listRules } = await import("../rules/registry"); return listRules(projectId); }

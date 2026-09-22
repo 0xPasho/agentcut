@@ -169,6 +169,7 @@ playhead marks, the ruler's slider value and the lit transcript word follow it.
 - `template.plan` (a dry run over the transcript), `template.apply` (commits it)
 - `rules.list`, `rules.get`, `rules.schema`, `rules.save`, `rules.delete`
 - `rules.evaluate` (an agent judges which rules hold for a video), `rules.apply` (executes them as a template application)
+- `comments.list` (the stream chat around a video, ranked by what the clip reads out), `comments.place` (open the video on one, or on none), `chat.source` / `chat.setSource` (where the chat database is). The panel's **Video → Opening comment** is these tools; see TEMPLATES.md, "Opening on the comment a clip answers"
 - `glossary.get`, `glossary.save`, `preferences.get`, `preferences.set` (see [RULES.md](./RULES.md))
 - `plan.read`, `plan.generate` (an agent writes a sequence plan or the shared project plan), `plan.apply`
   (executes a plan as a template application; `all: true` reaches every video). Plans are part of the

@@ -68,3 +68,20 @@ export function deadAir(
   close(inside[inside.length - 1].t - clip.start + stepSec);
   return runs;
 }
+
+/**
+ * Fine readings pooled into `stepSec` ones, averaging power rather than decibels, so the
+ * dead-air report reads the same whichever resolution the sound was measured at.
+ */
+export function coarsen(heard: { stepSec: number; curve: Envelope }, stepSec: number): Envelope {
+  if (heard.stepSec >= stepSec) return heard.curve;
+  const buckets = new Map<number, number[]>();
+  for (const reading of heard.curve) {
+    const key = Math.floor(reading.t / stepSec + 1e-9);
+    const list = buckets.get(key) ?? [];
+    list.push(10 ** (reading.db / 10));
+    buckets.set(key, list);
+  }
+  return [...buckets.entries()].sort((a, b) => a[0] - b[0])
+    .map(([key, powers]) => ({ t: key * stepSec, db: 10 * Math.log10(powers.reduce((sum, p) => sum + p, 0) / powers.length) }));
+}

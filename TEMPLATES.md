@@ -39,7 +39,7 @@ it decides which one the material wants.
   parent flows through. Chains are fine; a cycle or a missing parent hides only the
   templates involved.
 - **`captionLook`** names a caption look (`templates.looks`: bold-yellow, clean-white,
-  boxed-dark, pop, stream-pop, minimal). The look supplies what the template's own `captions` do
+  boxed-dark, pop, stream-pop, stream-karaoke, minimal). The look supplies what the template's own `captions` do
   not set.
 
   `fontSizePct` is the size a look **asks** for, not always the size it gets. A caption
@@ -268,6 +268,46 @@ speaker is not in both:
 - A variant that moves the seam has to move the captions with it. `stream-short` carries
   both in each of its shapes, which is why a short derived into a square still reads one
   word at a time just above the seam rather than across the speaker's face.
+
+## Opening on the comment a clip answers
+
+A clip cut from a stream is usually an answer, and the question was typed into the chat.
+`comment` opens the video on it:
+
+```json
+"comment": { "enabled": true, "seconds": 3, "y": 0.26, "widthPct": 92, "lookbackSec": 240 }
+```
+
+- **Where the chat comes from.** The unified chat (TikTok, Twitch, YouTube and Kick in one
+  feed) stores every message in SQLite with its platform, author, avatar and the moment it
+  arrived. The workspace reads it read-only from the `chat.dbPath` setting, else
+  `CHAT_DB_PATH`, else `~/restream-tiktok-chat/data/chat.db`. **Video → Opening comment**
+  in the editor and `chat.setSource` both set it.
+- **Which clock.** A stream recording says when it went live: Restream stamps
+  `creation_time` on the file, and an OBS recording names the file after the moment it
+  started. That puts every message at a second of the video. On two real streams the
+  stamp matched the chat to the second — the last message of each arrived within a minute
+  of the recording's end.
+- **Which message.** The ones that arrived from `lookbackSec` before the clip to twenty
+  seconds into it, ranked by how much of each the streamer is heard saying in the clip's
+  first half-minute — reading a question out is what answering it on a stream sounds like.
+  Filler is ignored; half of a message said back, or four of its words, is the question.
+  Deterministic, no model. On sixteen real clips it found "¿Recomendaciones para primer
+  SaaS?", "Con cual te quedas?, claude o gpt???" and six more, and chose nothing for the
+  clips nobody asked about, which say so in the plan's warnings rather than opening on a
+  random message.
+- **What is placed.** The message drawn the way the chat draws it — avatar with the
+  platform's mark, the name, the words — on a white card, rendered once to a transparent
+  picture (`remotion/CommentCard.tsx`) and added to the project's assets. The avatar is
+  fetched at that moment and embedded, because TikTok's avatar links expire. It sits on a
+  layer titled `Comment` over the screen, arriving with a small pop and fading as it
+  leaves, drawn with ordinary keyframes; the hook's layer still spans the video but its
+  words start when the comment goes.
+- **By hand.** `comments.list` is the same ranking with every message around the clip;
+  `comments.place` opens the video on one of them, or on none. The panel is those two
+  tools. A comment chosen by hand is the person's: a template applied afterwards neither
+  replaces it nor adds a second, and its hook still waits for it. `template.apply` takes
+  `commentId` too.
 
 ## Choosing one
 
@@ -498,6 +538,15 @@ each adopted asset and reported by `template.apply`.
   `boxed` sets the line on a plate, `none` turns captions off. With `popline`, every word
   on screen *is* the spoken word, so `highlight` paints the whole video: leave it equal to
   `color` and let `rhythm.emphasis` carry the accent, which is what `stream-pop` does.
+
+  One word at a time is no longer what the stream look uses. Read frame by frame on two
+  real streams, it never drew a fifth of the words at all — the next word's line came up
+  0.15 s early with nothing lit on it, blanking every word shorter than that — and another
+  third were up for under a fifth of a second. `popline` now brings a word up on its own
+  start, and `stream-short` uses `stream-karaoke`: the phrase being said, up to five
+  words, broken at punctuation and pauses, white with the spoken word lit yellow. A line
+  is held to two rows — a longer one is drawn smaller, never onto a third row — because
+  the block grows down from `positionY` and a third row lands across the seam.
   An emphasised word is drawn in the colour its own emphasis beat asks for
   (`rhythm.emphasis.color`), not in the caption highlight.
 - `rhythm.silence` is the pace, and it is the setting most worth measuring rather than
@@ -516,6 +565,20 @@ each adopted asset and reported by `template.apply`.
   It matches the pauses, not the running time: material with more thinking in it than
   the finished video had needs a shorter `minGapSec` than the fit suggests, or every bit
   of thinking survives. `src/lib/templates/pace.ts` is the same measurement as a module.
+
+  **The transcript proposes a cut; the sound decides it.** The words are recognised once,
+  on the whole source, before anything is cut, and every cut is placed from their timings
+  — which are the recogniser's clock, not the recording's. It ends words early, starts
+  them late and leaves out a phrase here and there, so on two real streams a third of the
+  pauses it reported (62 of 196) had speech in them, and cutting them took those words out
+  of the video: heard, and gone. When the shot has footage, `template.apply` now reads its
+  loudness every twentieth of a second and a pause is cut only across audio that sits
+  10 dB under the speaker's own level: a word it ended early keeps its tail, a phrase it
+  never wrote down stays with the quiet either side of it too short to cut. The same 196
+  pauses came out as 199 cuts with none over speech. Because the pace was measured on
+  transcript gaps, which overstate the silence, real quiet of `minGapSec - keepSec` counts
+  as the pause `minGapSec` meant. Sound with no dynamics — a test tone, a music bed at one
+  level — cannot tell a pause from a word, and there the transcript decides as before.
 - `rhythm.redundancy` cuts a phrase said twice in a row — the false start a stream is full
   of, "y entonces yo… y entonces yo creo que". There is no silence in it, so the dead-air
   pass cannot see it; what marks it is the repetition. The stumble goes and the run that
@@ -660,7 +723,7 @@ because a shortlist is a decision already made.
 | `how-to-steps` | A ding and a push-in on every step, illustrated from your screenshots or from the footage, with a closing recap card |
 | `news-brief` | Company marks and lit numbers, captions low, an impact on each cut and a riser to open |
 | `music-montage` | Footage with nobody talking: no captions, a bed across the whole thing, a whoosh on every cut. The one that needs no transcript |
-| `stream-short` | A short cut from a screen-share stream: the screen on top, the person below, a hook held for the whole video, one word at a time above the seam, and the card you end every video on. Square and 4:5 give the person a larger share, because a webcam is about as wide as it is tall and a third of a square frame is not |
+| `stream-short` | A short cut from a screen-share stream: the screen on top, the person below, a hook held for the whole video, the sentence being said above the seam with its spoken word lit yellow, and the card you end every video on. Square and 4:5 give the person a larger share, because a webcam is about as wide as it is tall and a third of a square frame is not |
 
 The last five carry a sound design out of the box, built from the sounds that ship with the
 app — so they work with no network and nothing to fill in. The first six are silent unless

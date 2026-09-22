@@ -12,6 +12,12 @@ export type Probe = {
   hasAudio: boolean;
   videoCodec: string | null;
   audioCodec: string | null;
+  /**
+   * When the recording began, epoch ms, from the container's `creation_time`. A stream
+   * recording carries it — Restream stamps the moment the stream went live — and it is
+   * what puts the stream's chat on the video's clock. `null` when the file does not say.
+   */
+  recordedAt: number | null;
 };
 
 function parseFps(r: string | undefined): number {
@@ -29,7 +35,7 @@ export async function probe(file: string): Promise<Probe> {
     file,
   ]);
   const json = JSON.parse(stdout) as {
-    format?: { duration?: string };
+    format?: { duration?: string; tags?: Record<string, string> };
     streams?: Array<Record<string, string | number>>;
   };
   const streams = json.streams ?? [];
@@ -43,7 +49,22 @@ export async function probe(file: string): Promise<Probe> {
     hasAudio: Boolean(a),
     videoCodec: (v?.codec_name as string) ?? null,
     audioCodec: (a?.codec_name as string) ?? null,
+    recordedAt: recordedAt(json.format?.tags?.creation_time, file),
   };
+}
+
+/**
+ * The container's own timestamp, or failing that the one OBS writes into the file name
+ * ("2026-09-13 19-54-32.mp4", local time). An encoder that stamps the Unix epoch is
+ * saying it does not know, not that the video is from 1970.
+ */
+function recordedAt(stamp: string | undefined, file: string): number | null {
+  const parsed = stamp ? Date.parse(stamp) : NaN;
+  if (Number.isFinite(parsed) && parsed > Date.UTC(2000, 0, 1)) return parsed;
+  const named = path.basename(file).match(/(\d{4})-(\d{2})-(\d{2})[ _T](\d{2})-(\d{2})-(\d{2})/);
+  if (!named) return null;
+  const [, y, mo, d, h, mi, se] = named.map(Number);
+  return new Date(y, mo - 1, d, h, mi, se).getTime();
 }
 
 /** 16kHz mono WAV — what every whisper implementation wants. */
@@ -87,9 +108,14 @@ export async function loudnessCurve(
   src: string,
   /** Only this stretch, in seconds of the source. The readings still carry its own clock. */
   span?: { start?: number; duration?: number },
+  /**
+   * Seconds per reading. Half a second is right for finding reactions in hours of
+   * stream; checking whether a one-second pause is really quiet needs twentieths.
+   */
+  stepSec = LOUDNESS_STEP_SEC,
 ): Promise<Array<{ t: number; db: number }>> {
   // Resample first so the frame size is a known number of samples whatever the source is.
-  const samples = Math.round(48000 * LOUDNESS_STEP_SEC);
+  const samples = Math.round(48000 * stepSec);
   const seek = span?.start ? ["-ss", String(span.start)] : [];
   const length = span?.duration ? ["-t", String(span.duration)] : [];
   const { stderr } = await run(FFMPEG, [

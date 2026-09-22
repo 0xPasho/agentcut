@@ -1,16 +1,16 @@
 import { z } from "zod";
-import { Clip, type Layout, type MediaSource, DEFAULT_ITEM_TRANSFORM, type Edl, type Region, type SequenceItem, type VideoSequence, SELECTION_AUTHOR } from "../edl";
+import { Clip, type Edit, type Layout, type MediaSource, DEFAULT_ITEM_TRANSFORM, type Edl, type Region, type SequenceItem, type VideoSequence, SELECTION_AUTHOR } from "../edl";
 import { applyOperations, type EditorOperation } from "../editor/operations";
 import { promoteClipToSequence } from "../editor/editable-timeline";
 import { animatedFields } from "../keyframes";
 import { LOUDNESS_STEP_SEC } from "../media";
 import { sequenceFrames } from "../sequences";
-import { deadAir, type Envelope } from "./quiet";
+import { coarsen, deadAir } from "./quiet";
 import { brandsInText, transcriptCasing, type Casing } from "../search/brand";
 import { VideoTemplate, type TemplateRegion } from "./schema";
 import {
   analyzeSentences, emphasisBeats, punchBeats, redundancyCuts, selectImageCues, silenceCuts, toSentences,
-  type BrandMention, type ImageCue, type SentenceAnalysis,
+  type BrandMention, type Heard, type ImageCue, type SentenceAnalysis,
 } from "./script";
 
 /**
@@ -54,6 +54,11 @@ export const TemplateRequest = z.object({
   overrides: z.record(z.string(), z.unknown()).optional(),
   /** Restrict web image search to these providers. */
   providers: z.array(z.string()).optional(),
+  /**
+   * The chat message to open on, by its id in the chat database, or `"none"` for no
+   * comment. Omitted, a template that opens on one finds it from what the clip says.
+   */
+  commentId: z.union([z.number().int().nonnegative(), z.literal("none")]).optional(),
 });
 export type TemplateRequest = z.infer<typeof TemplateRequest>;
 
@@ -74,6 +79,19 @@ export function mergeTemplate(template: VideoTemplate, overrides: unknown): Vide
   void id; void schema;
   return VideoTemplate.parse(merge(structuredClone(template), rest));
 }
+
+export type PlannedComment = {
+  id: number;
+  platform: string;
+  name: string;
+  text: string;
+  /** Seconds before the clip starts that it arrived; negative is before. */
+  offsetSec: number;
+  /** The comment's words the streamer is heard saying. */
+  matched: string[];
+  /** Why this one: chosen by id, or found in what the clip says. */
+  chosen: "request" | "matched";
+};
 
 export type PlannedItem = {
   itemId: string;
@@ -107,6 +125,8 @@ export type TemplatePlan = {
    * centre-cropped. The dry run answers "what will this look like" with it.
    */
   framing: { mode: "source" | "crop" | "split"; seam: number | null; camera: "top" | "bottom" };
+  /** The viewer comment the video opens on, once the chat has been read. */
+  comment: PlannedComment | null;
   totals: { sentences: number; images: number; silences: number; redundancies: number; punches: number; emphasis: number };
   warnings: string[];
 };
@@ -285,9 +305,10 @@ export async function planTemplate(
    * How loud each shot's own footage is over time, by media id, in seconds of that
    * source. Optional: without it the dead air is whatever the transcript says it is,
    * which is what every caller did before and is still right when there is no sound to
-   * read — a dry run in a test, a canvas scene, a shot with no media behind it.
+   * read — a dry run in a test, a canvas scene, a shot with no media behind it. With it,
+   * a pause is only cut where the sound is quiet too.
    */
-  envelopes: Map<string, Envelope> = new Map(),
+  envelopes: Map<string, Heard> = new Map(),
 ): Promise<TemplatePlan> {
   const { sequenceId, promotes } = resolveTarget(edl, request);
   const working = promotes ? promoteClipToSequence(edl, sequenceId) : edl;
@@ -331,7 +352,7 @@ export async function planTemplate(
       // timings, and repeating the whole transcript inside it would dwarf the plan.
       analyses: analyses.map(analysis => ({ ...analysis, sentence: { ...analysis.sentence, words: [] } })),
       cues,
-      silences: silenceCuts(item.clip.words, template.rhythm.silence, duration),
+      silences: silenceCuts(item.clip.words, template.rhythm.silence, duration, heardUnder(envelopes, item)),
       redundancies: redundancyCuts(item.clip.words, template.rhythm.redundancy, duration),
       punches: punchBeats(analyses, template.rhythm.punch, duration),
       emphasis: emphasisBeats(analyses, template.rhythm.emphasis, duration),
@@ -354,7 +375,7 @@ export async function planTemplate(
   // can, and only if they are told before they render it.
   for (const item of sequence.items) {
     if (!item.mediaId || !envelopes.has(item.mediaId)) continue;
-    for (const run of deadAir(envelopes.get(item.mediaId)!, item.clip, LOUDNESS_STEP_SEC)) {
+    for (const run of deadAir(coarsen(envelopes.get(item.mediaId)!, LOUDNESS_STEP_SEC), item.clip, LOUDNESS_STEP_SEC)) {
       warnings.push(
         `${run.d.toFixed(1)}s from ${run.t.toFixed(1)}s into “${item.clip.title}” is room noise, `
         + `but the transcript has ${run.words.length} words over it (“${run.words.slice(0, 6).join(" ")}`
@@ -465,6 +486,8 @@ export async function planTemplate(
     }),
     items,
     framing: { mode: template.layout.mode, seam, camera: template.layout.cameraPosition },
+    // Reading the chat needs the outside world; `apply.ts` fills this in.
+    comment: null,
     totals,
     warnings,
   };
@@ -554,6 +577,49 @@ export function hookLine(template: VideoTemplate, sequence: VideoSequence, overr
   return template.hook.uppercase ? text.toUpperCase() : text;
 }
 
+/** A shot's stretch of its source's sound, on the shot's own clock. */
+function heardUnder(envelopes: Map<string, Heard>, item: SequenceItem): Heard | null {
+  const heard = item.mediaId ? envelopes.get(item.mediaId) : undefined;
+  if (!heard?.curve.length) return null;
+  const { start, end } = item.clip;
+  const curve = heard.curve
+    .filter((reading) => reading.t + heard.stepSec > start && reading.t < end)
+    .map((reading) => ({ t: reading.t - start, db: reading.db }));
+  return curve.length ? { stepSec: heard.stepSec, curve } : null;
+}
+
+/** The layer holding the viewer comment a video opens on. */
+export const COMMENT_TITLE = "Comment";
+
+/**
+ * The comment as a layer: the picture over the screen, arriving with a small pop from its
+ * own centre and fading as the hook comes in. Keyframes rather than a special renderer,
+ * so the preview, the export and both editors already know how to show and change it.
+ */
+export function commentItem(sequenceId: string, id: string, src: string, at: number, seconds: number, layer: number,
+  look: { y: number; widthPct: number }, by: string): Extract<EditorOperation, { type: "item.add" }> {
+  const grow = (scale: number) => ({ x: 50 * (1 - scale), y: look.y * 100 * (1 - scale), width: scale * 100, height: scale * 100 });
+  const fade = Math.min(0.25, seconds / 4);
+  return {
+    type: "item.add",
+    sequenceId,
+    item: {
+      id, mediaId: null, at, layer,
+      keyframes: [
+        { t: 0, ...grow(0.82), opacity: 0, ease: "out", by },
+        { t: Math.min(0.3, seconds / 3), ...grow(1), opacity: 1, ease: "linear", by },
+        { t: Math.max(0.3, seconds - fade), ...grow(1), opacity: 1, ease: "in", by },
+        { t: seconds, ...grow(1), opacity: 0, ease: "linear", by },
+      ],
+      clip: Clip.parse({
+        id, title: COMMENT_TITLE, start: 0, end: seconds, captions: { preset: "none" },
+        edits: [{ type: "image", t: 0, d: seconds, src, query: "", credit: "", x: 0.5, y: look.y,
+          widthPct: look.widthPct, heightPct: 60, style: "plain", caption: "", by }],
+      }),
+    },
+  };
+}
+
 export const templateAuthor = (templateId: string) => `template:${templateId}`;
 export const isTemplateEdit = (edit: { by: string }) => edit.by.startsWith("template:");
 /**
@@ -621,6 +687,8 @@ export function templateOperations(
   sounds: { punch?: { src: string } | null; transitions?: { src: string } | null; opener?: { src: string } | null } = {},
   /** The gain that puts the footage at the loudness the template asks for. */
   level?: { gain: number } | null,
+  /** The viewer comment to open on, already drawn as a picture. */
+  comment?: { src: string } | null,
 ): EditorOperation[] {
   const by = author ?? templateAuthor(template.id);
   if (!isTemplateEdit({ by })) throw new Error("A template author must start with template:");
@@ -767,7 +835,24 @@ export function templateOperations(
     };
   };
 
-  if (plan.hook && !kept.has("Hook")) push(canvasItem(topLayer + 1, bodyStart, plan.hook.seconds ?? body, "Hook", plan.hook.text, template.hook.position, template.hook.style));
+  // The comment a clip answers opens it, and the hook takes over when it goes. A comment
+  // somebody chose or placed by hand is theirs: the template neither replaces it nor adds
+  // a second, but still waits for it before showing the hook.
+  const theirs = sequenceOf().items.find((item) => item.clip.title === COMMENT_TITLE && templateItemState(item) !== "owned");
+  const opening = theirs ? Math.max(0, (theirs.at ?? 0) + theirs.clip.end - theirs.clip.start - bodyStart)
+    : comment?.src ? Math.min(template.comment.seconds, body * 0.5) : 0;
+  if (comment?.src && !theirs) push(commentItem(plan.sequenceId, newId("i"), comment.src, bodyStart, opening, topLayer + 6, template.comment, by));
+
+  if (plan.hook && !kept.has("Hook")) {
+    const hook = canvasItem(topLayer + 1, bodyStart, plan.hook.seconds === null ? body : plan.hook.seconds + opening, "Hook", plan.hook.text, template.hook.position, template.hook.style);
+    // The hook's own layer still spans the body from its start, so it stays the
+    // template's to replace; only its words wait for the comment to leave.
+    if (opening > 0 && opening < hook.item.clip.end - 0.2) {
+      const text = hook.item.clip.edits[0] as Extract<Edit, { type: "text" }>;
+      hook.item.clip.edits = [{ ...text, t: opening, d: hook.item.clip.end - opening }];
+    }
+    push(hook);
+  }
   for (const card of plan.cards) {
     if (kept.has(`Card: ${card.id}`)) continue;
     // A card is pinned by its start until that would push its end past the video;

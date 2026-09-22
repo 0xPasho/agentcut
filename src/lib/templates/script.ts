@@ -234,19 +234,95 @@ export function selectImageCues(
     .filter((cue) => cue.d >= 0.2);
 }
 
-/** Dead-air cuts from the word timestamps alone. Returns clip-relative silence edits. */
-export function silenceCuts(words: Word[], rhythm: TemplateRhythm["silence"], clipDuration: number) {
+/**
+ * What the footage actually sounds like under a shot, in clip-relative seconds: one
+ * reading every `stepSec`, each covering the step that follows it.
+ */
+export type Heard = { stepSec: number; curve: Array<{ t: number; db: number }> };
+
+/** How far under the speaker's own level a reading has to sit to count as a pause. */
+export const QUIET_BELOW_DB = 10;
+/** Less than this between the loud and the quiet end of a shot, and there is nothing to read. */
+const MIN_RANGE_DB = 6;
+
+/**
+ * Dead-air cuts. Returns clip-relative silence edits.
+ *
+ * The transcript proposes them — a gap between one word ending and the next beginning —
+ * and, when there is sound to read, the sound decides them. A recogniser's clock is not
+ * the recording's: on two real streams a third of the gaps it reported had speech in
+ * them, a word it ended early, one it started late, or a phrase it never wrote down, and
+ * a cut there takes those words out of the video. So a gap is cut only where the audio
+ * is quiet for the template's whole `minGapSec`, and only across that quiet: a gap with
+ * a missed word in the middle becomes two cuts either side of it, or none.
+ *
+ * Measured on eight clips of a real stream, the transcript alone cut 63 seconds of which
+ * a third was speech; checked against the sound, no cut had a word in it.
+ */
+export function silenceCuts(words: Word[], rhythm: TemplateRhythm["silence"], clipDuration: number, heard?: Heard | null) {
   if (!rhythm.enabled) return [] as Array<{ type: "silence"; t: number; d: number }>;
   const cuts: Array<{ type: "silence"; t: number; d: number }> = [];
+  const quiet = heard ? quietReadings(words, heard) : null;
+  const push = (from: number, to: number) => {
+    const t = from + rhythm.keepSec / 2;
+    const d = to - from - rhythm.keepSec;
+    if (d >= 0.1 && t >= 0 && t + d <= clipDuration) cuts.push({ type: "silence", t, d });
+  };
   for (let i = 1; i < words.length; i++) {
     const previousEnd = words[i - 1].t + words[i - 1].d;
     const gap = words[i].t - previousEnd;
     if (gap < rhythm.minGapSec || gap > rhythm.maxGapSec) continue;
-    const t = previousEnd + rhythm.keepSec / 2;
-    const d = gap - rhythm.keepSec;
-    if (d >= 0.1 && t >= 0 && t + d <= clipDuration) cuts.push({ type: "silence", t, d });
+    if (!quiet) { push(previousEnd, words[i].t); continue; }
+    // The template's pace was measured on transcripts, whose words end early and start
+    // late: a gap the transcript calls `minGapSec` is that much less of real silence. So
+    // real quiet of `minGapSec - keepSec` is the pause it meant, and the breath it keeps
+    // comes out of that quiet, not out of a word.
+    const shortest = Math.max(0.4, rhythm.minGapSec - rhythm.keepSec);
+    for (const run of quietRuns(quiet, heard!.stepSec, previousEnd, words[i].t))
+      if (run.to - run.from >= shortest) push(run.from, run.to);
   }
   return cuts;
+}
+
+/**
+ * Which readings are quiet, measured against the speaker rather than against a fixed
+ * level: a stream mic sits anywhere from -35 to -20 dB, and a pause is a pause relative
+ * to the voice in it. `null` when there is too little speech to know the voice from.
+ */
+function quietReadings(words: Word[], heard: Heard) {
+  const inWords = heard.curve.filter((reading) => {
+    const middle = reading.t + heard.stepSec / 2;
+    return words.some((word) => middle >= word.t && middle <= word.t + word.d);
+  }).map((reading) => reading.db).sort((a, b) => a - b);
+  if (inWords.length < 5) return null;
+  // A tone, a hold, a music bed at one level: sound with no dynamics cannot tell a pause
+  // from a word, and the transcript is the better witness there.
+  const all = heard.curve.map((reading) => reading.db).sort((a, b) => a - b);
+  if (all[Math.floor(all.length * 0.9)] - all[Math.floor(all.length * 0.1)] < MIN_RANGE_DB) return null;
+  const limit = inWords[Math.floor(inWords.length / 2)] - QUIET_BELOW_DB;
+  const flags = heard.curve.map((reading) => reading.db < limit);
+  // A keyboard click is one loud reading between quiet ones; it is not a word.
+  for (let i = 1; i < flags.length - 1; i++) if (!flags[i] && flags[i - 1] && flags[i + 1]) flags[i] = true;
+  return heard.curve.map((reading, i) => ({ t: reading.t, quiet: flags[i] }));
+}
+
+/** The quiet stretches inside `from..to`, clipped to it. Readings are the step that follows them. */
+function quietRuns(readings: Array<{ t: number; quiet: boolean }>, stepSec: number, from: number, to: number) {
+  const runs: Array<{ from: number; to: number }> = [];
+  let start: number | null = null;
+  for (const reading of readings) {
+    const a = reading.t;
+    const b = reading.t + stepSec;
+    if (b <= from || a >= to) continue;
+    if (reading.quiet) { if (start === null) start = Math.max(a, from); }
+    else if (start !== null) { runs.push({ from: start, to: Math.min(a, to) }); start = null; }
+  }
+  if (start !== null) {
+    // Readings stop where the recording does; nothing past the last one is known to be quiet.
+    const last = readings.filter((reading) => reading.t < to).at(-1);
+    runs.push({ from: start, to: Math.min(to, last ? last.t + stepSec : to) });
+  }
+  return runs;
 }
 
 /** Letters and digits only, accent-folded: "Entonces," and "entonces" are the same word said twice. */

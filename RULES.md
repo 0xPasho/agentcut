@@ -72,6 +72,20 @@ command read and write the same files.
 }
 ```
 
+  A rule can also switch on part of whatever template the video gets, without naming
+  one. The stream kit opens every stream clip on the viewer comment it answers this way:
+
+```json
+{
+  "id": "stream-comment",
+  "name": "Stream clips open on the comment they answer",
+  "when": "the clip was cut from a stream recording",
+  "stage": "edit",
+  "priority": 30,
+  "then": { "overrides": { "comment": { "enabled": true } } }
+}
+```
+
   Both rule editors — **Video → Rules and preferences** in the editor and the Rules page
   in /settings — show the chosen template's own slots and fill them from the library, so
   this is a pair of dropdowns rather than an asset id typed by hand. Only library assets
