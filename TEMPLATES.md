@@ -129,6 +129,11 @@ rectangles that matter instead:
   transcript, and only when it differs from what is already there — so re-applying
   converges and a project that was already framed this way is not touched. A template
   whose `mode` is `source` leaves a hand-made split exactly as it is.
+  Framing is a property the template sets, the way `captions` is, not a layer it owns:
+  a seam you move by hand on one video is written over the next time that template is
+  applied to it. Change it in the template, or in the overrides you apply with, when you
+  want it to stick — and use `mode: "source"` for a template that should keep its hands
+  off the framing altogether.
 - `template.plan` reports `framing`: the mode, which half the camera is in, and where
   the seam falls as a share of height. Two more mistakes are called out there, because
   both are invisible until the first render: captions that start above the seam and run
