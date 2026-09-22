@@ -219,3 +219,46 @@ test("two videos in one project each get their own framing, hook and card", asyn
   const hooks = edl.sequences.flatMap((s) => s.items.filter((i) => i.clip.title === "Hook").flatMap((i) => i.clip.edits.filter((e) => e.type === "text").map((e) => e.text)));
   assert.deepEqual(hooks, ["El primero", "El segundo"], "each video's own hook, not the first one twice");
 });
+
+test("a file name is never the hook, and a video with no hook at all says so", async () => {
+  // Exactly a fresh import: the timeline is "Main video" and the shot is the file.
+  const { id } = await mediaService.createVideoProject("Raw import", [{ file: source }]);
+  const snapshot = store.readEditor(id);
+  const sequenceId = snapshot.edl.sequences[0].id;
+  // Exactly what an import looks like before anyone has written anything: the shot is
+  // called after the file it came from.
+  assert.match(snapshot.edl.sequences[0].items[0].clip.title, /\.mp4$/);
+  store.editProject(id, { expectedRevision: snapshot.revision, operations: [
+    { type: "item.patch", sequenceId, itemId: snapshot.edl.sequences[0].items[0].id, patch: { start: 0, end: 8, words: speak(SCRIPT) } },
+  ] });
+
+  const bare = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "edge-split", sequenceId }) as import("../src/lib/templates/plan").TemplatePlan;
+  assert.equal(bare.hook, null, "a file name is not held on screen for the whole video");
+  assert.ok(bare.warnings.some((w) => w.includes("no hook line")), bare.warnings.join(" | "));
+
+  // A hook written on the shot, or handed in with the request, is used as it always was.
+  const asked = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "edge-split", sequenceId, hookText: "¿Y si nadie lo dice?" }) as import("../src/lib/templates/plan").TemplatePlan;
+  assert.equal(asked.hook?.text, "¿Y si nadie lo dice?");
+  assert.ok(!asked.warnings.some((w) => w.includes("no hook line")));
+
+  store.editProject(id, { expectedRevision: store.readEditor(id).revision, operations: [
+    { type: "item.patch", sequenceId, itemId: snapshot.edl.sequences[0].items[0].id, patch: { hook: "Lo que nadie te dice" } },
+  ] });
+  const written = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "edge-split", sequenceId }) as import("../src/lib/templates/plan").TemplatePlan;
+  assert.equal(written.hook?.text, "Lo que nadie te dice");
+
+  // A timeline someone has actually named is a hook again.
+  store.editProject(id, { expectedRevision: store.readEditor(id).revision, operations: [
+    { type: "item.patch", sequenceId, itemId: snapshot.edl.sequences[0].items[0].id, patch: { hook: "" } },
+    { type: "sequence.patch", sequenceId, title: "Lo que aprendí del bug" },
+  ] });
+  const named = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "edge-split", sequenceId }) as import("../src/lib/templates/plan").TemplatePlan;
+  assert.equal(named.hook?.text, "Lo que aprendí del bug");
+
+  // And a title that merely contains a dot is still a title.
+  store.editProject(id, { expectedRevision: store.readEditor(id).revision, operations: [
+    { type: "item.patch", sequenceId, itemId: snapshot.edl.sequences[0].items[0].id, patch: { hook: "", title: "Next.js y el editor" } },
+  ] });
+  const dotted = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "edge-split", sequenceId }) as import("../src/lib/templates/plan").TemplatePlan;
+  assert.equal(dotted.hook?.text, "Next.js y el editor");
+});

@@ -388,8 +388,12 @@ each adopted asset and reported by `template.apply`.
   from saying something again on purpose.
 - `hook.mode` is `sticky` (its own layer, the whole video), `intro` (`seconds` only) or `off`.
   Its text comes from `hookText`, then the template's own `hook.text`, then a hook written
-  on any shot, then a footage shot's title — never a canvas layer's title, whatever order
-  the layers happen to sit in. `{{hook}}`, `{{title}}` and `{{slot:<id>}}` are substituted.
+  on any shot, then a footage shot's title, then the video's own title — never a canvas
+  layer's title, whatever order the layers happen to sit in, and never a name nobody
+  chose. A fresh import's shot is called `dia-169-restream.mp4` and its timeline is called
+  "Main video"; a sticky card reading either, held from the first frame to the last, is the
+  worst thing a template can put on screen. Neither is used, and the dry run says there is
+  no hook rather than inventing one. `{{hook}}`, `{{title}}` and `{{slot:<id>}}` are substituted.
 - `hook.maxWords` is the length a card holds, and it is no longer a knife. A hook is
   written in sentences — by a person, or by the agent that picked the clip — so a line
   over the limit is cut where a sentence lets go: **the question in it**, if it has one,

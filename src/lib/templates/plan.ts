@@ -371,6 +371,8 @@ export async function planTemplate(
   const hookText = hookLine(template, sequence, request.hookText, request.slots);
   const hookRaw = hookSource(template, sequence, request.hookText, request.slots);
   const hookCut = shortenHook(hookRaw, template.hook.maxWords).shortened;
+  if (!hookText && template.hook.mode !== "off")
+    warnings.push("This video has no hook line, so there is no card to hold: write one, or give the shot a hook. A file name, or a timeline nobody has named, is not used as one.");
   if (hookCut && template.hook.mode !== "off")
     warnings.push(`The hook is longer than the ${template.hook.maxWords} words this template holds, so it reads "${hookText}". Write a shorter one to choose what it says.`);
   return {
@@ -450,17 +452,29 @@ export function shortenHook(raw: string, maxWords: number): { text: string; shor
   return { text: `${line.split(/\s+/).slice(0, maxWords).join(" ").replace(/[.,;:]$/, "")}…`, shortened: true };
 }
 
+/**
+ * A name nobody chose is not a hook. A freshly imported video's shot is called
+ * `dia-169-restream.mp4` and its timeline is called "Main video"; a sticky card reading
+ * either, held from the first frame to the last, is the worst thing a template can put
+ * on screen — and it did.
+ */
+const isAutomaticName = (text: string) =>
+  /\.(mp4|mov|mkv|webm|m4v|avi|mp3|wav|m4a)$/i.test(text.trim()) || text.trim().toLowerCase() === "main video";
+
 /** The line the hook is made from, before it is cut to length. */
 export function hookSource(template: VideoTemplate, sequence: VideoSequence, override?: string, slots?: Record<string, SlotValue>): string {
   // A hook someone wrote beats any title; a shot's title beats a canvas layer's. Array
   // order is not meaning: after a few edits, a hand-placed title can sit first in it.
   const hooked = sequence.items.find((item) => item.clip.hook.trim());
   const shot = sequence.items.find((item) => item.mediaId !== null && item.clip.title.trim()) ?? sequence.items.find((item) => item.clip.title.trim());
-  return (override ?? "").trim()
-    || substitute(template.hook.text, { hook: "", title: sequence.title }, slots).trim()
-    || (hooked?.clip.hook ?? "").trim()
-    || (shot?.clip.title ?? "").trim()
-    || sequence.title.trim();
+  const candidates = [
+    (override ?? "").trim(),
+    substitute(template.hook.text, { hook: "", title: sequence.title }, slots).trim(),
+    (hooked?.clip.hook ?? "").trim(),
+    (shot?.clip.title ?? "").trim(),
+    sequence.title.trim(),
+  ];
+  return candidates.find((candidate) => candidate && !isAutomaticName(candidate)) ?? "";
 }
 
 export function hookLine(template: VideoTemplate, sequence: VideoSequence, override?: string, slots?: Record<string, SlotValue>): string {
