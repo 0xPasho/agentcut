@@ -80,6 +80,17 @@ export function observeHumanEdit(projectId: string, before: Edl, operations: Edi
       if (op.patch.captions && Object.keys(op.patch.captions).length && clip.edits.some((e) => isGeneratedAuthor(e.by))) {
         push(sequenceId, "captions", `Changed caption style on "${clip.title}": ${Object.entries(op.patch.captions).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(", ")}`, "");
       }
+      // Framing is a property a template rewrites on every apply, so a person who keeps
+      // correcting it is correcting the template — which is the one thing the bank is
+      // for, and the one correction it could not see.
+      if (op.patch.layout && clip.edits.some((e) => isGeneratedAuthor(e.by))) {
+        const was = clip.layout;
+        const now = op.patch.layout;
+        const said = was.type === "split" && now.type === "split" && was.topPct !== now.topPct
+          ? `the seam moved from ${was.topPct}% to ${now.topPct}%`
+          : was.type !== now.type ? `${was.type} became ${now.type}` : "the rectangles moved";
+        push(sequenceId, "framing", `Reframed "${clip.title}": ${said}`, "");
+      }
     }
     if (op.type === "edit.remove" || op.type === "edit.replace") {
       const found = clipOf(op); const edit = found?.clip.edits[op.index];

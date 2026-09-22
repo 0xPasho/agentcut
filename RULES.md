@@ -120,8 +120,9 @@ not wrapped as untrusted the way transcripts are.
 ## Observations
 
 Corrections are noted without asking. When a person changes, removes, moves or re-times
-something an agent, rule or template placed, or fixes a caption word, one line goes into
-the observation bank (`observations` table, across every project). Only the web editor's
+something an agent, rule or template placed, fixes a caption word, or reframes a shot a
+template framed — the one a re-apply writes over, so noticing it matters more — one line
+goes into the observation bank (`observations` table, across every project). Only the web editor's
 own edits count: an agent's edits are not corrections, and work created from scratch is
 not either. Every agent run receives the recent lines as soft context.
 

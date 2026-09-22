@@ -177,3 +177,36 @@ test("an editing run stamps its message id, sees frames and the transcript of th
   const edit = store.readEditor(id).edl.sequences[0].items[0].clip.edits.at(-1)!;
   assert.equal(edit.by, `agent:${sent.id}`);
 });
+
+test("reframing a shot a template framed is a correction worth noting", async () => {
+  const { id } = await mediaService.createVideoProject("Reframed", [{ file: source }]);
+  const start = store.readEditor(id);
+  const sequenceId = start.edl.sequences[0].id;
+  const itemId = start.edl.sequences[0].items[0].id;
+  // The bank spans every project, so this reads what this test adds to it.
+  const baseline = observations.readObservations().length;
+  const split = { type: "split" as const, top: { x: 0, y: 0, w: 320, h: 120 }, bottom: { x: 100, y: 120, w: 200, h: 60 }, topPct: 68, camera: "bottom" as const };
+  const framed = store.editProject(id, { expectedRevision: start.revision, operations: [
+    { type: "item.patch", sequenceId, itemId, patch: {
+      layout: split,
+      edits: [{ type: "punch", t: 1, d: 1, scale: 1.1, by: "template:stream-short" }],
+    } },
+  ] }, { actor: "agent" });
+  assert.equal(observations.readObservations().length, baseline, "the template's own framing is not a correction");
+
+  const moved = store.editProject(id, { expectedRevision: framed.revision, operations: [
+    { type: "item.patch", sequenceId, itemId, patch: { layout: { ...split, topPct: 74 } } },
+  ] }, { actor: "human" });
+  const seen = observations.readObservations();
+  assert.equal(seen.length, baseline + 1, JSON.stringify(seen.slice(0, 3)));
+  const reframed = seen.filter((o) => o.kind === "framing");
+  assert.equal(reframed.length, 1, JSON.stringify(seen));
+  assert.match(reframed[0].text, /seam moved from 68% to 74%/);
+
+  // Turning the split off entirely is the same kind of correction, said differently.
+  store.editProject(id, { expectedRevision: moved.revision, operations: [
+    { type: "item.patch", sequenceId, itemId, patch: { layout: { type: "crop" } } },
+  ] }, { actor: "human" });
+  assert.ok(observations.readObservations().some((o) => /split became crop/.test(o.text)),
+    JSON.stringify(observations.readObservations().filter((o) => o.kind === "framing")));
+});
