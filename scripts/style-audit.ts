@@ -19,7 +19,7 @@ import { FFMPEG } from "../src/lib/bin";
 import { projectDir } from "../src/lib/config";
 import { readEditor } from "../src/lib/editor/store";
 import { sequenceFrames } from "../src/lib/sequences";
-import { buildTimeMap, type TimeMap } from "../src/lib/timeline";
+import { buildTimeMap, lineAt, mapWords, toLines, type TimeMap } from "../src/lib/timeline";
 import { regionFilter } from "../src/lib/thumbs";
 import type { Word } from "../src/lib/transcript";
 
@@ -128,33 +128,60 @@ async function main() {
     // is read the same way: the exported frame against the frame the source would give.
     // Brightness alone cannot do it — a hook card over a white browser window is no
     // brighter than the window, and a white caption over a white screenshot is not either.
-    const screenPane = item.clip.layout.type === "split"
-      ? (() => {
-          const layout = item.clip.layout;
-          const topHeight = Math.round((height * layout.topPct) / 100);
-          const onTop = layout.camera !== "bottom";
-          return { region: onTop ? layout.bottom : layout.top, top: onTop ? topHeight : 0, height: onTop ? height - topHeight : topHeight };
-        })()
-      : null;
-    /** How much of a band the render draws that the footage does not have. */
+    /** Which half of a split a row belongs to, and what that half is a picture of. */
+    const paneAt = (y: number) => {
+      if (item.clip.layout.type !== "split") return null;
+      const layout = item.clip.layout;
+      const topHeight = Math.round((height * layout.topPct) / 100);
+      return y < topHeight
+        ? { region: layout.top, top: 0, height: topHeight }
+        : { region: layout.bottom, top: topHeight, height: height - topHeight };
+    };
+    /**
+     * How much of a band the render draws that the footage does not have.
+     *
+     * A band is read against the half it is actually in: a hook in the middle of the
+     * frame of a camera-on-top video sits in the screen's half, and comparing it with
+     * the other half says a difference that is only the two halves being different.
+     */
     const drawnOver = (at: number, y: number, bandHeight: number) => {
-      if (!screenPane) return null;
-      const scale = screenPane.height / (screenPane.region.h || 1);
-      void scale;
+      const pane = paneAt(y);
+      // A band that straddles the seam is two pictures; nothing useful to compare.
+      if (!pane || y + bandHeight > pane.top + pane.height) return null;
       const rendered = frame(file, at, box(width * 0.1, y, width * 0.8, bandHeight), 80, 12);
       // The same band of the pane, rebuilt from the source: crop the whole pane, then
       // take the band out of it, so the geometry is the renderer's own.
       const expected = pixels(["-ss", String(sourceAt(map, at, item.clip.start)), "-i", media.file, "-frames:v", "1",
-        "-vf", `${regionFilter(screenPane.region, { width, height: screenPane.height })},${box(width * 0.1, y - screenPane.top, width * 0.8, bandHeight)},scale=80:12`,
+        "-vf", `${regionFilter(pane.region, { width, height: pane.height })},${box(width * 0.1, y - pane.top, width * 0.8, bandHeight)},scale=80:12`,
         "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
       return meanAbs(rendered, expected);
     };
 
     if (hook) {
-      const share = (at: number) => whiteShare(frame(file, at, box(width * 0.2, height * 0.1, width * 0.6, height * 0.03), 60, 10));
-      const drawn = [from + 0.2, (from + to) / 2, to - 0.3].map((at) => ({ at, over: drawnOver(at, height * 0.1, height * 0.03), white: share(at) }));
-      check(drawn.every((d) => (d.over === null ? d.white > 0.4 : d.over > 30)),
-        `the hook card holds across the body: ${drawn.map((d) => (d.over === null ? `${Math.round(d.white * 100)}% white` : `${d.over.toFixed(0)}/255 over the footage`)).join(", ")}`);
+      // A hook is held for the whole video or shown for a few seconds at the start, and
+      // the template says which. Checking the first against a video that asked for the
+      // second passes for the wrong reason, so the hook's own span decides the question.
+      const hookFrom = hook.from / fps;
+      const hookTo = (hook.from + hook.duration) / fps;
+      // Where the template put it: a card at the top, a line in the middle, a band at
+      // the bottom. Looking at the top for a hook the template centred finds nothing.
+      const placed = hook.item.clip.edits.find((e): e is Extract<typeof e, { type: "text" }> => e.type === "text");
+      const y = placed?.position === "center" ? height * 0.42 : placed?.position === "bottom" ? height * 0.76 : height * 0.08;
+      const bandHeight = height * 0.1;
+      const band = (at: number) => drawnOver(at, y, bandHeight);
+      const share = (at: number) => whiteShare(frame(file, at, box(width * 0.2, y + bandHeight * 0.2, width * 0.6, bandHeight * 0.3), 60, 10));
+      const present = (at: number) => { const over = band(at); return over === null ? share(at) > 0.4 : over > 20; };
+      const sticky = hookTo - hookFrom > (to - from) * 0.9;
+      if (sticky) {
+        const seen = [from + 0.2, (from + to) / 2, to - 0.3].map((at) => ({ at, over: band(at) }));
+        check(seen.every((s) => (s.over === null ? share(s.at) > 0.4 : s.over > 20)),
+          `the hook holds across the body: ${seen.map((s) => (s.over === null ? "white" : `${s.over.toFixed(0)}/255 over the footage`)).join(", ")}`);
+      } else {
+        const middle = (hookFrom + hookTo) / 2;
+        const after = Math.min(to - 0.3, hookTo + 1.5);
+        check(present(middle), `the opening hook is on screen at ${middle.toFixed(1)}s, for the ${(hookTo - hookFrom).toFixed(1)}s the template gives it`);
+        check(after > hookTo + 0.5 ? !present(after) : true, `and gone by ${after.toFixed(1)}s`);
+      }
       if (outro) check(share(outro.from / fps + 1) < 0.2, "and is off the end card");
     }
 
@@ -166,10 +193,13 @@ async function main() {
       const spoken = words
         .filter((w) => outAt(map, w.t) > from + 1 && outAt(map, w.t) < to - 1)
         .sort((a, b) => b.w.length - a.w.length)[0];
+      // A moment with nothing on the caption track, decided the way the renderer decides
+      // it: a line reader holds the whole line across the gaps inside it, so the gap
+      // between two words is not a moment with no captions on screen.
+      const lines = toLines(mapWords(map, words), item.clip.captions.maxWordsPerLine);
       let quiet: number | null = null;
-      for (let i = 1; i < words.length && quiet === null; i++) {
-        const gap = words[i].t - (words[i - 1].t + words[i - 1].d);
-        if (gap > 0.25) quiet = outAt(map, words[i - 1].t + words[i - 1].d + gap / 2);
+      for (let at = from + 0.5; at < to - 0.5 && quiet === null; at += 0.1) {
+        if (!lineAt(lines, at - from)) quiet = at;
       }
       if (spoken && quiet !== null) {
         const top = item.clip.captions.positionY * height;

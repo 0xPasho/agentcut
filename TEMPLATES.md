@@ -466,7 +466,12 @@ pnpm exec tsx scripts/style-audit.ts PROJECT_ID
 ```
 
 Every claim a template makes is checkable against the export and none of them are
-checkable by reading the project. This rebuilds each pane from the footage — cropped and
+checkable by reading the project. The checks read each video's own template rather than
+one look: a band is compared against the half of the split it is actually in, a hook held
+for the whole video is checked across the body while one given three seconds is checked
+at its own middle and again after it should be gone, and the moment with no caption on
+screen is found the way the renderer finds it — a line reader holds its whole line across
+the gaps inside it, so the gap between two words is not one. This rebuilds each pane from the footage — cropped and
 scaled the way the layout says, at the moment the cuts say — and compares it with the
 pane that was exported; then it checks the hook card is on screen across the body and off
 the end card, that a word being spoken lights the caption band while a gap does not, and
