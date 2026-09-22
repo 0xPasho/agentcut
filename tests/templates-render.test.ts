@@ -289,7 +289,12 @@ test("the whole stream look, read back out of the pixels: hook, one word at a ti
   const spoken = srcToOut(map, words[3].t + 0.2);
   const quiet = srcToOut(map, words[0].t - 0.6);
   assert.ok(band(spoken) > band(quiet) + 6, `a spoken word belongs in the caption band: ${band(spoken)} vs ${band(quiet)} when nobody is talking`);
-  assert.ok(band(body + 2) < band(spoken), "and there are no captions over the end card");
+  // The end card is brighter than the footage, so brightness says nothing there: what
+  // says it is that the whole band is the card's own colour, with no white in it.
+  for (const x of [200, 400, 540, 700, 880]) {
+    assert.ok(near(pixel(file, body + 2, x, 1200), [30, 158, 74], 45),
+      `the end card carries no captions, saw ${pixel(file, body + 2, x, 1200)} at x=${x}`);
+  }
 
   // The pause between the two runs of words was cut out of the video.
   assert.ok(map.duration < 19, `dead air was removed: ${map.duration}s of 20`);
