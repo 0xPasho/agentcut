@@ -388,12 +388,25 @@ export async function countPools(slots: Record<string, SlotValue>): Promise<{ si
 }
 
 /** Plan only: no network, no writes. Both interfaces show this before committing. */
-/** The template as it applies to this video: overrides merged, then the aspect variant, look and brand resolved. */
+/**
+ * The template as it applies to this video: overrides merged, then the aspect variant,
+ * look and brand resolved.
+ *
+ * A template that declares an `output` normally sets the shape of the video it is
+ * applied to — that is how a 16:9 import becomes a vertical short. A video *derived*
+ * into another shape is the exception: deriving it was the decision, and applying the
+ * template again turned every square copy back into a tall one, silently, which is the
+ * opposite of what the variant for that shape is for. So a derived video keeps its own
+ * shape and is matched against the variant for it.
+ */
 async function templateFor(edl: ReturnType<typeof readEditor>["edl"], request: TemplateRequest): Promise<VideoTemplate> {
   const merged = mergeTemplate(await getTemplate(request.templateId), request.overrides);
   const { sequenceId, promotes } = resolveTarget(edl, request);
   const sequence = (promotes ? promoteClipToSequence(edl, sequenceId) : edl).sequences.find((s) => s.id === sequenceId)!;
-  return resolveTemplate(merged, { aspect: aspectOf(merged.output ?? sequence.output) });
+  const derived = Boolean(sequence.plan.reasons?.derivedFrom);
+  const output = derived ? sequence.output : merged.output ?? sequence.output;
+  const resolved = resolveTemplate(merged, { aspect: aspectOf(output) });
+  return derived ? { ...resolved, output: { ...sequence.output } } : resolved;
 }
 
 export async function previewTemplate(projectId: string, raw: unknown): Promise<TemplatePlan> {

@@ -67,7 +67,11 @@ it decides which one the material wants.
 - **`variants`**: per-aspect overrides keyed `9:16`, `4:5`, `1:1`, `16:9`, merged when the
   template is applied to a video of that shape. `sequence.derive` copies a video into
   another aspect as its own editable sequence (crops recentred, plan carried, status
-  pending, linked through `plan.reasons.derivedFrom`).
+  pending, linked through `plan.reasons.derivedFrom`). A template's own `output` sets the
+  shape of an ordinary video — that is how a 16:9 import becomes a vertical short — but
+  **not** of a derived one: deriving it was the decision, and applying the template again
+  turned every square copy back into a tall one. A derived video keeps its shape and is
+  matched against the variant for it.
 - **Sound**: a template can carry its own sound design. `rhythm.punch.sfx` plays a sound on
   every punch-in; `sound.transitions` plays one on every cut between shots; `sound.opener`
   plays one on the first frame; `music` is the bed. Each takes `enabled`, then a `slot`, an

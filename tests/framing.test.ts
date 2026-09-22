@@ -424,3 +424,29 @@ test("a rectangle that loses a third of itself to the shape of its half says so"
   const shipped = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "stream-short", sequenceId }) as import("../src/lib/templates/plan").TemplatePlan;
   assert.ok(!shipped.warnings.some((w) => w.includes("cropped away")), shipped.warnings.join(" | "));
 });
+
+test("a video derived into another shape keeps that shape when the template is applied again", async () => {
+  await registry.saveTemplate({ ...SPLIT, id: "square-aware",
+    output: { width: 1080, height: 1920, fps: 30 },
+    variants: { "1:1": { layout: { cameraPct: 50 } } } });
+  const { id, sequenceId } = await project("Derived");
+  await tools.executeEditorTool(id, { tool: "template.apply", templateId: "square-aware", sequenceId, expectedRevision: store.readEditor(id).revision });
+
+  const derived = await tools.executeEditorTool(id, { tool: "sequence.derive", sequenceId, aspect: "1:1", expectedRevision: store.readEditor(id).revision }) as { sequenceId: string; revision: number };
+  const square = store.readEditor(id).edl.sequences.find((s) => s.id === derived.sequenceId)!;
+  assert.deepEqual({ width: square.output.width, height: square.output.height }, { width: 1080, height: 1080 });
+  assert.equal(square.items.find((i) => i.mediaId)!.clip.layout.type, "split", "the framing came across");
+
+  // Applying the template to the square copy must not turn it back into a tall video.
+  await tools.executeEditorTool(id, { tool: "template.apply", templateId: "square-aware", sequenceId: derived.sequenceId, expectedRevision: store.readEditor(id).revision });
+  const after = store.readEditor(id).edl.sequences.find((s) => s.id === derived.sequenceId)!;
+  assert.deepEqual({ width: after.output.width, height: after.output.height }, { width: 1080, height: 1080 },
+    "a derived video keeps the shape it was derived into");
+  const framed = after.items.find((i) => i.mediaId)!;
+  assert.ok(framed.clip.layout.type === "split" && framed.clip.layout.topPct === 50,
+    `and the 1:1 variant decided its framing, saw ${framed.clip.layout.type === "split" ? framed.clip.layout.topPct : "no split"}`);
+  // The original is untouched and still tall.
+  const original = store.readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!;
+  assert.deepEqual({ width: original.output.width, height: original.output.height }, { width: 1080, height: 1920 });
+  assert.ok(original.items.find((i) => i.mediaId)!.clip.layout.type === "split");
+});
