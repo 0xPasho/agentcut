@@ -83,19 +83,28 @@ export const LOUDNESS_STEP_SEC = 0.5;
  * the length of source this is for. Half-second frames are 6MB for the same file, and
  * nothing downstream wants a reaction located to the millisecond.
  */
-export async function loudnessCurve(src: string): Promise<Array<{ t: number; db: number }>> {
+export async function loudnessCurve(
+  src: string,
+  /** Only this stretch, in seconds of the source. The readings still carry its own clock. */
+  span?: { start?: number; duration?: number },
+): Promise<Array<{ t: number; db: number }>> {
   // Resample first so the frame size is a known number of samples whatever the source is.
   const samples = Math.round(48000 * LOUDNESS_STEP_SEC);
+  const seek = span?.start ? ["-ss", String(span.start)] : [];
+  const length = span?.duration ? ["-t", String(span.duration)] : [];
   const { stderr } = await run(FFMPEG, [
-    "-i", src,
+    ...seek, "-i", src, ...length,
     "-filter:a", `aresample=48000,asetnsamples=n=${samples}:p=0,astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level`,
     "-f", "null", "-",
   ]);
   const out: Array<{ t: number; db: number }> = [];
   const re = /pts_time:([0-9.]+)[\s\S]*?RMS_level=(-?[0-9.]+|-inf)/g;
+  // Seeking restarts the clock at zero, so a span's readings are put back on the
+  // source's own timeline: every caller that has one is asking about a place in a file.
+  const offset = span?.start ?? 0;
   for (const m of stderr.matchAll(re)) {
     const db = m[2] === "-inf" ? -100 : Number(m[2]);
-    out.push({ t: Number(m[1]), db });
+    out.push({ t: Number(m[1]) + offset, db });
   }
   return out;
 }

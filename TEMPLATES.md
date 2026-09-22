@@ -109,6 +109,24 @@ it decides which one the material wants.
   opens on an intro would otherwise read the sting and level the whole timeline to it. A
   shot whose volume is a fade somebody drew keeps its fade — a fixed value would never be
   seen, and one hand-drawn fade is not a reason to throw away the rest of the apply.
+- **Room noise the transcript talks over.** Dead air is normally found in the transcript:
+  the gap between one word ending and the next beginning. That works until the recogniser
+  is wrong about the clock. A clip from a real stream came out with four and a half
+  seconds of room noise in the middle of twenty-one, captioned the whole way — amplify
+  that stretch by twenty decibels and transcribe it again and it says nothing, while the
+  three seconds *after* it say the very words the transcript placed over the silence.
+  Faced with a long pause, a speech model spreads the next phrase's word timings
+  backwards across it.
+
+  The dry run says so: how long the stretch is, where it starts, and the first words the
+  transcript claims are being said there. It does not cut it. Cutting would take the
+  captions for speech that is still in the video, and putting the words back where the
+  sound is needs a forced alignment, not a threshold — so the reading goes to the person,
+  who can trim the clip, move its start, or choose another moment. A stretch counts when
+  it sits thirteen decibels under the clip's own speech for more than a second and a
+  half and the words claim most of it. Measured across eight clips of two streams, that
+  is one clip and three stretches; the other seven say nothing.
+
 - **False starts.** A stumble is a run of words said twice with only a breath between
   them, and the first run is what goes. The breath the template leaves before the second
   try comes out of the silence between the two and only out of that: a stumble often has

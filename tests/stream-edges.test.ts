@@ -727,3 +727,62 @@ test("a template that would extend itself the long way round is refused before i
   await registry.saveTemplate({ id: "cuatro", name: "Cuatro", extends: "tres" });
   assert.equal((await registry.getTemplate("cuatro")).extends, "tres");
 });
+
+test("room noise the transcript talks over is reported, not quietly cut", async () => {
+  const { deadAir, MIN_DEAD_SEC } = await import("../src/lib/templates/quiet");
+  const step = 0.5;
+  // Loud, then a hole, then loud: what a microphone left on sounds like.
+  const envelope = Array.from({ length: 40 }, (_, i) => ({ t: i * step, db: i >= 10 && i < 20 ? -48 : -22 }));
+  const clip = (words: Array<{ t: number; d: number; w: string }>) => ({ start: 0, end: 20, words });
+
+  const spoken = [
+    { t: 5.2, d: 0.6, w: "ey" }, { t: 6.0, d: 0.8, w: "¿cómo" }, { t: 7.0, d: 0.7, w: "que?" },
+    { t: 8.0, d: 0.9, w: "¿ya" }, { t: 9.0, d: 0.8, w: "hay" },
+  ];
+  const [run] = deadAir(envelope, clip(spoken), step);
+  assert.ok(run, "five seconds of room noise with words over it is worth saying");
+  assert.ok(Math.abs(run.t - 5) < step + 0.01 && Math.abs(run.d - 5) < step * 2, `${run.t}..${run.t + run.d}`);
+  assert.deepEqual(run.words, ["ey", "¿cómo", "que?", "¿ya", "hay"]);
+
+  // The same hole with nothing claiming it is an ordinary pause: the dead-air pass
+  // already cuts it, and saying so twice would be noise.
+  assert.deepEqual(deadAir(envelope, clip([{ t: 1, d: 0.5, w: "hola" }, { t: 11, d: 0.5, w: "adiós" }]), step), []);
+  // A breath is not a problem.
+  const blink = Array.from({ length: 40 }, (_, i) => ({ t: i * step, db: i === 10 ? -48 : -22 }));
+  assert.deepEqual(deadAir(blink, clip(spoken), step), []);
+  assert.ok(MIN_DEAD_SEC > step, "a single reading can never be a run on its own");
+  // Nothing to compare: a tone, a hold, silence throughout.
+  assert.deepEqual(deadAir(Array.from({ length: 40 }, (_, i) => ({ t: i * step, db: -22 })), clip(spoken), step), []);
+  assert.deepEqual(deadAir([], clip(spoken), step), []);
+});
+
+test("a dry run hears the hole in the footage before anything is rendered", async () => {
+  // A recording that is loud, silent, then loud again, with a transcript that claims
+  // somebody is talking the whole way — which is what a recogniser writes when it is
+  // given a long silence and spreads the next phrase back across it.
+  const holed = path.join(workspace, "holed.mp4");
+  const tone = "0.35*sin(2*PI*220*t)*(lt(t\\,6)+gt(t\\,12))+0.002*sin(2*PI*3000*t)";
+  const made = spawnSync(FFMPEG, ["-y", "-f", "lavfi", "-i", "color=0x102040:size=1728x1116:rate=15:duration=20",
+    "-f", "lavfi", "-i", `aevalsrc=${tone}:d=20`,
+    "-map", "0:v", "-map", "1:a", "-pix_fmt", "yuv420p", "-shortest", "-c:a", "aac", holed], { encoding: "utf8" });
+  assert.equal(made.status, 0, made.stderr);
+
+  await registry.saveTemplate({ id: "holed", extends: "stream-short", name: "Holed", outro: { enabled: false }, ...STREAM_OVERRIDES });
+  const words = Array.from({ length: 30 }, (_, i) => ({ t: 1 + i * 0.6, d: 0.45, w: `palabra${i}` }));
+  const { id, sequenceId } = await project(holed, words, 19);
+  const dry = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "holed", sequenceId }) as import("../src/lib/templates/plan").TemplatePlan;
+  const said = dry.warnings.filter((w) => w.includes("room noise"));
+  assert.equal(said.length, 1, dry.warnings.join(" | "));
+  assert.match(said[0], /is room noise, but the transcript has \d+ words over it/);
+  assert.match(said[0], /Trim the clip past it/);
+
+  // And it is a warning, not an edit: the cuts are still the ones the transcript asked for.
+  await tools.executeEditorTool(id, { tool: "template.apply", templateId: "holed", sequenceId,
+    expectedRevision: store.readEditor(id).revision });
+  const clip = store.readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!.items.find((i) => i.mediaId)!.clip;
+  const { buildTimeMap } = await import("../src/lib/timeline");
+  const map = buildTimeMap(clip);
+  const kept = (w: { t: number; d: number }) => map.spans.reduce((total, span) =>
+    total + Math.max(0, Math.min(w.t + w.d, span.srcEnd) - Math.max(w.t, span.srcStart)), 0);
+  for (const word of clip.words) assert.ok(kept(word) > word.d - 0.02, `"${word.w}" was cut away by a warning`);
+});

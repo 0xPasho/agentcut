@@ -5,7 +5,7 @@ import { q, type AssetRow } from "../db";
 import { kindFor } from "../assets";
 import { localPath, importLocalAsset } from "../editor/local-assets";
 import { promoteClipToSequence } from "../editor/editable-timeline";
-import { MediaSource, type SequenceItem } from "../edl";
+import { MediaSource, type Edl, type SequenceItem } from "../edl";
 import type { Bookend } from "./plan";
 import { editProject, readEditor, RevisionConflict } from "../editor/store";
 import { adoptAudioHit, adoptHit, brandHit, findBrand, resolveQueryDetailed, searchAudio, type AudioKind } from "../search";
@@ -13,6 +13,7 @@ import { getTemplate } from "./registry";
 import { aspectOf, resolveTemplate } from "./resolve";
 import type { VideoTemplate } from "./schema";
 import type { ImageCue, Subject } from "./script";
+import type { Envelope } from "./quiet";
 import {
   isBookendTitle, mergeTemplate, planTemplate, requireFraming, slotFilled, templateOperations, TemplateRequest, resolveTarget,
   type PlannedItem, type ResolvedImage, type SlotValue, type TemplatePlan,
@@ -453,12 +454,40 @@ async function templateFor(edl: ReturnType<typeof readEditor>["edl"], request: T
   return derived ? { ...resolved, output: { ...sequence.output } } : resolved;
 }
 
+/**
+ * How loud each shot's own footage is over time, for the shots a template would cut.
+ *
+ * Only the stretch a clip uses is read — the loudness of a four-hour stream says nothing
+ * about the forty seconds being taken out of it, and decoding the whole of it costs a
+ * minute per clip — and only for shots that have words, because a shot with nothing to
+ * caption has nothing this changes. A source that cannot be read leaves its shot to the
+ * transcript, which is where every clip was before this.
+ */
+async function envelopesFor(edl: Edl, sequenceId: string): Promise<Map<string, Envelope>> {
+  const sequence = edl.sequences.find((s) => s.id === sequenceId);
+  const envelopes = new Map<string, Envelope>();
+  if (!sequence) return envelopes;
+  const { loudnessCurve } = await import("../media");
+  for (const item of sequence.items) {
+    if (!item.mediaId || !item.clip.words.length || envelopes.has(item.mediaId)) continue;
+    const media = edl.media.find((m) => m.id === item.mediaId);
+    if (!media) continue;
+    const curve = await loudnessCurve(media.file, {
+      start: item.clip.start,
+      duration: Math.max(1, item.clip.end - item.clip.start),
+    }).catch(() => [] as Envelope);
+    if (curve.length) envelopes.set(item.mediaId, curve);
+  }
+  return envelopes;
+}
+
 export async function previewTemplate(projectId: string, raw: unknown): Promise<TemplatePlan> {
   const request = TemplateRequest.parse(raw);
   const { edl } = readEditor(projectId);
   const template = await templateFor(edl, request);
   const { sizes, unreadable } = await countPools(request.slots);
-  const plan = await planTemplate(edl, template, request, sizes);
+  const { sequenceId } = resolveTarget(edl, request);
+  const plan = await planTemplate(edl, template, request, sizes, await envelopesFor(edl, sequenceId));
   for (const folder of unreadable) plan.warnings.unshift(`${folder} could not be read, so it counts as no pictures.`);
   return plan;
 }
@@ -479,7 +508,9 @@ export async function applyTemplate(
   requireSlots(template, request.slots);
   requireFraming(template);
   const { sizes } = await countPools(request.slots);
-  const plan = await planTemplate(current.edl, template, request, sizes);
+  const target = resolveTarget(current.edl, request);
+  const heard = await envelopesFor(target.promotes ? promoteClipToSequence(current.edl, target.sequenceId) : current.edl, target.sequenceId);
+  const plan = await planTemplate(current.edl, template, request, sizes, heard);
   const pools = await buildPools(template, request.slots);
 
   // Resolution runs against the timeline the operations will produce, not the one on

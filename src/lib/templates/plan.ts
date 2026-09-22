@@ -3,7 +3,9 @@ import { Clip, type Layout, type MediaSource, DEFAULT_ITEM_TRANSFORM, type Edl, 
 import { applyOperations, type EditorOperation } from "../editor/operations";
 import { promoteClipToSequence } from "../editor/editable-timeline";
 import { animatedFields } from "../keyframes";
+import { LOUDNESS_STEP_SEC } from "../media";
 import { sequenceFrames } from "../sequences";
+import { deadAir, type Envelope } from "./quiet";
 import { brandsInText, transcriptCasing, type Casing } from "../search/brand";
 import { VideoTemplate, type TemplateRegion } from "./schema";
 import {
@@ -279,6 +281,13 @@ export async function planTemplate(
   template: VideoTemplate,
   request: { sequenceId?: string; clipId?: string; hookText?: string; slots?: Record<string, SlotValue> },
   poolSizes: Record<string, number> = {},
+  /**
+   * How loud each shot's own footage is over time, by media id, in seconds of that
+   * source. Optional: without it the dead air is whatever the transcript says it is,
+   * which is what every caller did before and is still right when there is no sound to
+   * read — a dry run in a test, a canvas scene, a shot with no media behind it.
+   */
+  envelopes: Map<string, Envelope> = new Map(),
 ): Promise<TemplatePlan> {
   const { sequenceId, promotes } = resolveTarget(edl, request);
   const working = promotes ? promoteClipToSequence(edl, sequenceId) : edl;
@@ -340,6 +349,22 @@ export async function planTemplate(
     }),
     { sentences: 0, images: 0, silences: 0, redundancies: 0, punches: 0, emphasis: 0 },
   );
+  // Room noise the transcript claims as speech. Nothing here can fix it — the words are
+  // real and their clock is wrong — but a person choosing whether to publish this clip
+  // can, and only if they are told before they render it.
+  for (const item of sequence.items) {
+    if (!item.mediaId || !envelopes.has(item.mediaId)) continue;
+    for (const run of deadAir(envelopes.get(item.mediaId)!, item.clip, LOUDNESS_STEP_SEC)) {
+      warnings.push(
+        `${run.d.toFixed(1)}s from ${run.t.toFixed(1)}s into “${item.clip.title}” is room noise, `
+        + `but the transcript has ${run.words.length} words over it (“${run.words.slice(0, 6).join(" ")}`
+        + `${run.words.length > 6 ? "…" : ""}”). A recogniser given a long silence spreads the next `
+        + `phrase's timings back across it, so the captions there are on nothing and the words arrive later. `
+        + `Trim the clip past it, or move its start.`,
+      );
+    }
+  }
+
   // A card at the bottom of the frame occupies the caption band. The dry run can see
   // that coming from the template and the shot's own caption settings.
   const captionedItems = sequence.items.filter((entry) =>
