@@ -37,6 +37,9 @@ export async function applyPlan(projectId: string, raw: unknown, expectedRevisio
   const resolved = resolveRules(rules.filter((r) => wanted.has(r.id)));
   const ignored = [...wanted].filter((id) => !rules.some((r) => r.id === id && r.enabled));
 
+  // The rules' own inputs count when measuring which template fits: a template whose
+  // required slot a matched rule fills is not a template that cannot be applied.
+  const ruleSlots = { ...resolved.slots, ...request.slots };
   let templateId = local?.template ?? null;
   let templateFrom: RuleApplyResult["templateFrom"] = "request";
   if (!templateId && project.template) { templateId = project.template; templateFrom = "request"; }
@@ -47,7 +50,7 @@ export async function applyPlan(projectId: string, raw: unknown, expectedRevisio
   }
   if (!templateId) {
     const { suggestTemplates } = await import("../templates/suggest");
-    const best = (await suggestTemplates(current.edl, target, request.slots)).suggestions[0];
+    const best = (await suggestTemplates(current.edl, target, ruleSlots)).suggestions[0];
     if (!best) throw new Error("No template to apply this plan with.");
     templateId = best.templateId; templateFrom = "suggested";
   }
@@ -62,8 +65,14 @@ export async function applyPlan(projectId: string, raw: unknown, expectedRevisio
   const ruleIds = resolved.rules.map((r) => r.id);
   const author = `template:${templateId}/plan${ruleIds.length ? `/rule:${ruleIds.join(",")}` : ""}`;
 
+  // A matched rule brings its own inputs — the card this channel ends on — the same way
+  // it brings its overrides. Reading one and not the other applied the rule's template
+  // without the rule's end card, and said nothing about it. The caller is more specific,
+  // so what it passes still wins.
+  const slots = ruleSlots;
+
   const result = await applyTemplate(projectId, {
-    templateId, ...target, hookText: request.hookText, slots: request.slots, providers: request.providers, overrides,
+    templateId, ...target, hookText: request.hookText, slots, providers: request.providers, overrides,
   }, expectedRevision, { author });
   // The video has now been edited by its plan; say so unless someone already approved it.
   const after = readEditor(projectId);

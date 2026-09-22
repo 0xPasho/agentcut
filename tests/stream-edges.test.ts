@@ -262,3 +262,23 @@ test("a file name is never the hook, and a video with no hook at all says so", a
   const dotted = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "edge-split", sequenceId }) as import("../src/lib/templates/plan").TemplatePlan;
   assert.equal(dotted.hook?.text, "Next.js y el editor");
 });
+
+test("a plan that names a rule brings the rule's inputs with it, not only its overrides", async () => {
+  const card = await endCard("plan-card.mp4");
+  await registry.saveTemplate({ id: "plan-short", extends: "stream-short", name: "Plan short",
+    outro: { enabled: true, slot: "endcard" }, ...STREAM_OVERRIDES });
+  await rules.saveRule({ id: "plan-outro", name: "Plan outro", when: "the clip is from a stream", stage: "edit",
+    then: { template: "plan-short", slots: { endcard: { assetId: card.id } }, overrides: { hook: { mode: "sticky" } } } });
+
+  const { id, sequenceId } = await project();
+  // The plan names the rule, the way the home screen writes it — and nothing else.
+  store.editProject(id, { expectedRevision: store.readEditor(id).revision, operations: [
+    { type: "plan.patch", patch: { rules: ["plan-outro"] } },
+  ] });
+  const applied = await tools.executeEditorTool(id, { tool: "plan.apply", sequenceId, expectedRevision: store.readEditor(id).revision }) as { templateId: string };
+  assert.equal(applied.templateId, "plan-short");
+  const sequence = store.readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!;
+  const outro = sequence.items.find((i) => i.clip.title === "Outro");
+  assert.ok(outro, "the rule's end card is on the timeline, not silently left off");
+  assert.equal(store.readEditor(id).edl.media.find((m) => m.id === outro!.mediaId)!.file, assets.toAbs(card.path));
+});

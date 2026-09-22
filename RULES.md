@@ -89,6 +89,10 @@ command read and write the same files.
 | `glossary.get`, `glossary.save` | The merged glossary; save writes one level |
 | `preferences.get`, `preferences.set` | Both levels' text; set writes one level |
 
+A rule's inputs travel with it wherever the rule is executed: `rules.apply`, and the plan
+path (`plan.apply`, and `all: true` across a project), which reads the matched rules for
+their template and their overrides and would otherwise apply the one without the other.
+
 `rules.apply` needs a template to apply overrides to. It takes the matched rules' choice,
 then `templateId` from the request, then the template already on the video, then the
 best-scoring suggestion. Rules that only add a prompt change nothing on the timeline and
