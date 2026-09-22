@@ -27,6 +27,12 @@ export type SequenceSignals = {
   hasPool: boolean;
   durationSec: number;
   casing: "mixed" | "upper" | "lower";
+  /**
+   * The shape of the footage, widest first. A template that stacks a screen above a
+   * person needs a frame with both in it; a video already shot upright has no screen
+   * beside the speaker to stack, and a split of it is two crops of the same face.
+   */
+  sourceAspect: number | null;
 };
 
 export async function sequenceSignals(
@@ -60,6 +66,12 @@ export async function sequenceSignals(
     brandShare: sentences ? withBrand / sentences : 0,
     subjectShare: sentences ? withSubject / sentences : 0,
     hasFootage: sequence.items.some((item) => item.mediaId !== null),
+    sourceAspect: sequence.items.reduce((widest: number | null, item) => {
+      const media = item.mediaId ? working.media.find((m) => m.id === item.mediaId) : null;
+      if (!media?.width || !media.height) return widest;
+      const aspect = media.width / media.height;
+      return widest === null ? aspect : Math.max(widest, aspect);
+    }, null),
     hasPool: Object.values(slots).some((value) => slotFilled(value) && (value.folder || value.assetIds?.length)),
     durationSec,
     casing,
@@ -149,6 +161,20 @@ function score(template: TemplateRecord, signals: SequenceSignals, slots: Record
   if (sources.includes("frame")) {
     if (signals.hasFootage) { points += 10; why.push("can cut stills out of the footage itself"); }
     else { points -= 20; why.push("wants stills from footage this video does not have"); }
+  }
+  // Framing is the loudest thing a template does to a video, and the only one that can
+  // be wrong on evidence rather than on taste: a split needs a frame with a screen and
+  // a person in it.
+  if (template.layout.mode === "split") {
+    if (!signals.hasFootage) { points -= 40; why.push("stacks a screen above a speaker, and this video has no footage"); }
+    else if (signals.sourceAspect === null) { points -= 5; why.push("stacks a screen above a speaker, and the shape of this footage is unknown"); }
+    else if (signals.sourceAspect < 1.2) {
+      points -= 35;
+      why.push("this footage is already upright, so there is no screen beside the speaker to stack");
+    } else {
+      points += 25;
+      why.push("this footage is a wide screen with room for a speaker in a corner of it, which is what a split is for");
+    }
   }
   if (signals.casing !== "mixed" && wantsPictures && !sources.includes("slot")) {
     points -= 10;

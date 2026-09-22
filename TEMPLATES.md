@@ -142,6 +142,12 @@ because the planner is what will actually run. A second model of the same rule d
 from it silently, and did — it predicted pictures for a template whose sources could not
 place one. The planner's own warnings are carried through as reasons for the same reason.
 
+Framing is scored on evidence rather than taste, because it is the loudest thing a
+template does and the one thing that can be plainly wrong: a template that stacks a
+screen above a speaker needs a frame with both in it, so it is argued for on a wide
+screen-share recording and argued against on a video shot upright, where a split is two
+crops of the same face.
+
 Each suggestion carries its reasons, because a ranking you cannot argue with is not
 useful. It also catches a mistake that is invisible in a template document: resolution
 stops at the first source that answers, and a frame over real footage always answers, so

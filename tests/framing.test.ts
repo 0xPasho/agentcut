@@ -363,3 +363,42 @@ test("the pace of a finished video is measurable, and the settings that reproduc
   assert.ok(fit.profile.perMinute > 0, "and the pauses the finished video keeps survive it");
   assert.ok(fit.distance < pace.fitSilence(target, material).distance + 0.001, "the search is deterministic");
 });
+
+test("a split is suggested for a screen with a person in the corner of it, and argued against for a phone video", async () => {
+  const upright = path.join(workspace, "upright.mp4");
+  const made = spawnSync(FFMPEG, ["-y", "-f", "lavfi", "-i", "color=maroon:size=1080x1920:rate=15:duration=10",
+    "-f", "lavfi", "-i", "sine=frequency=210:duration=10", "-pix_fmt", "yuv420p", "-shortest", upright], { encoding: "utf8" });
+  assert.equal(made.status, 0, made.stderr);
+
+  const { suggestTemplates } = await import("../src/lib/templates/suggest");
+  const wide = await project("Wide source");
+  const wideSuggestions = await suggestTemplates(store.readEditor(wide.id).edl, { sequenceId: wide.sequenceId });
+  assert.ok(Math.abs(wideSuggestions.signals.sourceAspect! - 1728 / 1116) < 0.01);
+  const streamOnWide = wideSuggestions.suggestions.find((s) => s.templateId === "stream-short")!;
+  assert.ok(streamOnWide.why.some((w) => w.includes("wide screen")), streamOnWide.why.join(" | "));
+
+  const { id } = await mediaService.createVideoProject("Phone video", [{ file: upright }]);
+  const snapshot = store.readEditor(id);
+  store.editProject(id, { expectedRevision: snapshot.revision, operations: [
+    { type: "item.patch", sequenceId: snapshot.edl.sequences[0].id, itemId: snapshot.edl.sequences[0].items[0].id,
+      patch: { title: "Phone", start: 0, end: 10, words: speak(SCRIPT) } },
+  ] });
+  const tallSuggestions = await suggestTemplates(store.readEditor(id).edl, { sequenceId: snapshot.edl.sequences[0].id });
+  assert.ok(Math.abs(tallSuggestions.signals.sourceAspect! - 1080 / 1920) < 0.01);
+  const streamOnTall = tallSuggestions.suggestions.find((s) => s.templateId === "stream-short")!;
+  assert.ok(streamOnTall.why.some((w) => w.includes("already upright")), streamOnTall.why.join(" | "));
+  assert.ok(streamOnTall.fit < streamOnWide.fit, `a phone video should not be offered a split first: ${streamOnTall.fit} vs ${streamOnWide.fit}`);
+  assert.notEqual(tallSuggestions.suggestions[0].templateId, "stream-short", "and it should not win on an upright video");
+
+  // A video with no footage at all cannot be split either.
+  const { id: blank } = await mediaService.createVideoProject("Canvas", [{ file: upright }]);
+  const blankSnapshot = store.readEditor(blank);
+  store.editProject(blank, { expectedRevision: blankSnapshot.revision, operations: [
+    { type: "item.remove", sequenceId: blankSnapshot.edl.sequences[0].id, itemId: blankSnapshot.edl.sequences[0].items[0].id },
+    { type: "item.add", sequenceId: blankSnapshot.edl.sequences[0].id, item: { id: "i_only", mediaId: null, layer: 0,
+      clip: { id: "i_only", title: "Scene", start: 0, end: 4, words: speak(SCRIPT.slice(0, 2)) } } },
+  ] });
+  const blankSuggestions = await suggestTemplates(store.readEditor(blank).edl, { sequenceId: blankSnapshot.edl.sequences[0].id });
+  const streamOnBlank = blankSuggestions.suggestions.find((s) => s.templateId === "stream-short")!;
+  assert.ok(streamOnBlank.why.some((w) => w.includes("no footage")), streamOnBlank.why.join(" | "));
+});
