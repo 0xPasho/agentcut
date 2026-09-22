@@ -34,7 +34,10 @@ Nothing in a pack is code. Templates are the same documents as in `workspace/tem
 
 **Settings → Packs → Read it** takes a folder path or a URL to `pack.json` and shows
 everything the pack carries before anything is installed: template names, every rule
-with its full text, quick actions, assets, glossary. A pack from anyone else is untrusted
+with its full text, quick actions, assets, glossary. A template that builds on one this
+machine does not have — and that the pack does not bring either — is called out there,
+because installing it would be refused and the reason would arrive as a failure rather
+than as a warning. A pack from anyone else is untrusted
 text an agent will follow, which is why the rules are shown in full and marked.
 
 **Install** copies it in: assets into the library (source `pack:<id>`, ids remapped so

@@ -193,3 +193,55 @@ test("a kit travels whole: the end card, the template that has a slot for it, an
   assert.equal(framed.clip.layout.type, "split", "the framing came with the template it extends");
   await packs.removePack("stream-kit");
 });
+
+test("a pack whose template builds on one this machine does not have says so before it is installed", async () => {
+  // Written by hand, the way it arrives: this workspace refuses to save a template
+  // whose parent is missing, so an orphan can only ever come from somewhere else.
+  const dir = path.join(workspace, "orphan-kit");
+  await fs.mkdir(path.join(dir, "templates"), { recursive: true });
+  await fs.writeFile(path.join(dir, "pack.json"), JSON.stringify({ id: "orphan-kit", name: "Orphan kit", templates: ["orphan-child"] }));
+  await fs.writeFile(path.join(dir, "templates", "orphan-child.json"),
+    JSON.stringify({ id: "orphan-child", extends: "a-template-nobody-has", name: "Orphan" }));
+  const exported = { dir };
+
+  const preview = await packs.inspectPack(exported.dir);
+  assert.equal(preview.templates[0].missingParent, "a-template-nobody-has");
+
+  // Installing it is refused rather than half-done: the same validation the panel and
+  // the agent write through, which is what keeps a pack from leaving debris behind.
+  await assert.rejects(packs.importPack(exported.dir), /a-template-nobody-has/);
+  assert.ok(!(await registry.listTemplates()).some((t) => t.id === "orphan-child"), "nothing was left behind");
+
+  // With the parent here first, the same pack installs and the child is a template.
+  await registry.saveTemplate({ id: "a-template-nobody-has", extends: "talking-head", name: "The parent" });
+  const fixed = await packs.inspectPack(exported.dir);
+  assert.equal(fixed.templates[0].missingParent, undefined);
+  await packs.importPack(exported.dir);
+  assert.equal((await registry.getTemplate("orphan-child")).name, "Orphan");
+  await packs.removePack("orphan-kit");
+  await registry.deleteTemplate("a-template-nobody-has");
+});
+
+test("a pack's own templates count as present for each other, and a rule pointing outside the pack is left to find it", async () => {
+  await registry.saveTemplate({ id: "kit-base", extends: "talking-head", name: "Kit base" });
+  await registry.saveTemplate({ id: "kit-child", extends: "kit-base", name: "Kit child" });
+  await rules.saveRule({ id: "kit-rule", name: "Kit rule", when: "always", then: { template: "not-in-this-pack" } });
+  const exported = await packs.exportPack({ id: "pair-kit", name: "Pair kit", templates: ["kit-base", "kit-child"], rules: ["kit-rule"] });
+  await registry.deleteTemplate("kit-child");
+  await registry.deleteTemplate("kit-base");
+  await rules.deleteRule("kit-rule");
+
+  const preview = await packs.inspectPack(exported.dir);
+  assert.ok(preview.templates.every((t) => !t.missingParent), "a parent that travels in the same pack is not missing");
+  await packs.importPack(exported.dir);
+  assert.equal((await registry.getTemplate("kit-child")).name, "Kit child");
+
+  // The rule installs and is only refused when it is run, naming what it cannot find.
+  const { id } = await mediaService.createVideoProject("Pointing out", [{ file: source }]);
+  const sequenceId = store.readEditor(id).edl.sequences[0].id;
+  await assert.rejects(
+    tools.executeEditorTool(id, { tool: "rules.apply", ruleIds: ["kit-rule"], sequenceId, expectedRevision: store.readEditor(id).revision }),
+    /not-in-this-pack/,
+  );
+  await packs.removePack("pair-kit");
+});

@@ -46,7 +46,7 @@ export type PackPreview = {
   manifest: PackManifest;
   source: string;
   hash: string;
-  templates: Array<{ id: string; name: string; description: string; extends?: string; exists: boolean }>;
+  templates: Array<{ id: string; name: string; description: string; extends?: string; exists: boolean; missingParent?: string }>;
   /** Rules with their full text, because the text is what an agent will be told. */
   rules: Array<{ id: string; name: string; when: string; stage: string; prompt: string; exists: boolean }>;
   assets: Array<{ file: string; kind: string; name: string }>;
@@ -63,10 +63,16 @@ export async function inspectPack(sourceText: string): Promise<PackPreview> {
   const hash = createHash("sha256").update(raw).digest("hex");
   const existingTemplates = new Set((await listTemplates()).filter((t) => !t.builtin).map((t) => t.id));
   const existingRules = new Set((await listRules()).map((r) => r.id));
-  const templates = [];
+  const templates: PackPreview["templates"] = [];
   for (const id of manifest.templates) {
     const doc = VideoTemplate.pick({ id: true, name: true, description: true, extends: true }).parse(JSON.parse((await readEntry(source, `templates/${id}.json`)).toString("utf8")));
     templates.push({ id: doc.id, name: doc.name, description: doc.description, extends: doc.extends, exists: existingTemplates.has(doc.id) });
+  }
+  // A template that extends one nobody here has is not an error at install time — it is
+  // simply hidden afterwards, which looks like the pack installing nothing. Say it first.
+  const here = new Set([...(await listTemplates()).map((t) => t.id), ...templates.map((t) => t.id)]);
+  for (const template of templates) {
+    if (template.extends && !here.has(template.extends)) template.missingParent = template.extends;
   }
   const rules = [];
   for (const id of manifest.rules) {
