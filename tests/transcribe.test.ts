@@ -602,3 +602,35 @@ test("an old EDL neither carries the record nor gains one by being read", async 
   // It reads as "nobody has listened to this yet", not as a video with no speech.
   assert.equal(mediaState(id)[0].status, "none");
 });
+
+test("a transcript is measured against the sound under it, and a shift nobody can see is not one", async () => {
+  const { readSync, speechMask } = await import("../src/lib/transcribe/sync");
+  const step = 0.02;
+  // Ten seconds of 20ms windows: speech between 1–2s and 3–4.5s, silence either side.
+  const loud = (from: number, to: number) => (index: number) => index * step >= from && index * step < to;
+  const spans = [loud(1, 2), loud(3, 4.5)];
+  const db = Array.from({ length: 500 }, (_, index) => (spans.some((inside) => inside(index)) ? -20 : -60));
+  const mask = speechMask(db);
+  assert.equal(mask.filter(Boolean).length, Math.round((1 + 1.5) / step), "the mask is the loud part");
+
+  const onTime = [{ t: 1, d: 1, w: "uno" }, { t: 3, d: 1.5, w: "dos" }];
+  const exact = readSync(onTime, mask, step);
+  assert.equal(exact.shiftSec, 0, "words on the sound need no shift");
+  assert.ok(exact.agreement > 0.99, `${exact.agreement}`);
+  assert.ok(Math.abs(exact.wordShare - 0.25) < 0.01);
+  assert.ok(Math.abs(exact.speechShare - 0.25) < 0.01);
+
+  // The same words a fifth of a second early: the reading says so, and says which way.
+  const early = onTime.map((word) => ({ ...word, t: word.t - 0.2 }));
+  const late = readSync(early, mask, step);
+  assert.ok(Math.abs(late.shiftSec - 0.2) < 0.021, `expected about +200ms, got ${late.shiftSec}`);
+  assert.ok(late.agreement > late.unshifted, "and shifting them agrees better than leaving them");
+
+  // Silence has no ceiling to threshold against, so none of it is called speech.
+  assert.deepEqual(speechMask(Array.from({ length: 100 }, () => -60)).filter(Boolean), []);
+  assert.deepEqual(speechMask([]), []);
+  // Nothing said at all is not a shift either.
+  const empty = readSync([], mask, step);
+  assert.equal(empty.shiftSec, 0);
+  assert.equal(empty.wordShare, 0);
+});
