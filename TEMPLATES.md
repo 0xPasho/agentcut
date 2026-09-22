@@ -614,7 +614,9 @@ the card and plays whole. No cut lands on a word in either VOD — every one cle
 nearest word by 150ms — and the pace lands at 20.3 and 19.9 pauses over a third of a
 second per minute against the reference's 20.5, on two bodies of material, which is what
 says the setting was measured rather than fitted to one of them. The captions sit on the
-speech: `scripts/caption-sync.ts` reads an average shift of 5ms across the eight.
+speech: `scripts/caption-sync.ts` reads an average shift of 5ms across the eight, and the
+eight exports land between -18.0 and -20.2 LUFS with peaks between -1.0 and -2.1dB, which
+is the loudness of the channel's own published short without a limiter anywhere.
 
 The sound was measured the same way. The channel's own published short reads -18.1 LUFS
 with peaks at -0.6dB; what this produced read -21.8 with peaks at -1.1, which in a feed

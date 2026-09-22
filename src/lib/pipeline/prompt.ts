@@ -49,6 +49,12 @@ Pick **${i.targetClipCount}** clips, each **${i.minSec}–${i.maxSec} seconds**.
 
 A good clip:
 - opens on a hook in the first 2 seconds — a claim, a question, a number, a contradiction
+
+The clip's \`hook\` is that line as a card holds it, because that is what it becomes: a
+template writes it onto a white card and holds it on screen, often for the whole video.
+Ten words at most, in the language being spoken, a question or a claim — not the first
+sentence transcribed. A sentence that has to be cut to fit loses its ending, and the
+ending is usually the point.
 - is self-contained: it makes sense to someone who has not seen the rest
 - starts and ends on a sentence boundary — use the word timestamps, never cut mid-word
 - resolves. A setup with no payoff is not a clip.
@@ -126,7 +132,7 @@ Write **\`clips.json\`** in your working directory. Nothing else. Exactly this s
   "clips": [
     {
       "title": "short, specific, no clickbait punctuation",
-      "hook": "the first sentence spoken in the clip",
+      "hook": "the line the video opens on, as a card holds it",
       "reason": "one line: why this works as a short",
       "score": 0,
       "start": 0.0,
