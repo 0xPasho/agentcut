@@ -137,7 +137,9 @@ test("an intro and an outro are placed on the main track from image slots, shift
   assert.equal(intro.clip.edits[0].by, "template:bookended");
   assert.equal((intro.clip.edits[0] as { widthPct: number }).widthPct, 100);
   const hook = sequence.items.find((i) => i.clip.title === "Hook")!;
-  assert.ok(hook && (hook.at ?? 0) === 0, "the hook still opens the video");
+  // The intro card is a composition of its own: the hook opens the body, not the video.
+  assert.ok(hook && Math.abs((hook.at ?? 0) - 1.5) < 0.05, `the hook opens the body, after the intro: ${hook.at}`);
+  assert.ok(hook.clip.end <= start("Outro") - (hook.at ?? 0) + 0.05, "and it is gone by the time the outro plays");
 
   await tools.executeEditorTool(id, { tool: "template.apply", templateId: "bookended", sequenceId, expectedRevision: first.revision, slots: { cover: { assetId: asset.id } } });
   sequence = store.readEditor(id).edl.sequences[0];
