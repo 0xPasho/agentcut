@@ -245,3 +245,29 @@ test("a pack's own templates count as present for each other, and a rule pointin
   );
   await packs.removePack("pair-kit");
 });
+
+test("installing the same pack twice brings its assets once", async () => {
+  const sting = path.join(workspace, "twice-card.mp4");
+  const made = spawnSync(FFMPEG, ["-y", "-f", "lavfi", "-i", "color=0x4040A0:size=240x426:rate=15:duration=2",
+    "-f", "lavfi", "-i", "sine=frequency=300:duration=2", "-pix_fmt", "yuv420p", "-shortest", sting], { encoding: "utf8" });
+  assert.equal(made.status, 0, made.stderr);
+  const card = await assets.uploadLibraryAsset("twice-card.mp4", await fs.readFile(sting));
+  const exported = await packs.exportPack({ id: "twice-kit", name: "Twice kit", assetIds: [card.id] });
+
+  const first = await packs.importPack(exported.dir);
+  const afterFirst = database.q.listAssets("video").filter((a) => a.name === "twice-card.mp4").length;
+  const second = await packs.importPack(exported.dir);
+  const afterSecond = database.q.listAssets("video").filter((a) => a.name === "twice-card.mp4");
+  assert.equal(afterSecond.length, afterFirst, "the second install reuses what the first brought");
+  assert.equal(second.assets[card.id], first.assets[card.id], "and the id it maps to does not move under whatever names it");
+
+  // A pack that has genuinely changed its asset brings the new one.
+  const bigger = path.join(workspace, "twice-card-bigger.mp4");
+  const remade = spawnSync(FFMPEG, ["-y", "-f", "lavfi", "-i", "color=0x40A040:size=240x426:rate=15:duration=4",
+    "-f", "lavfi", "-i", "sine=frequency=300:duration=4", "-pix_fmt", "yuv420p", "-shortest", bigger], { encoding: "utf8" });
+  assert.equal(remade.status, 0, remade.stderr);
+  await fs.copyFile(bigger, path.join(exported.dir, `assets/${card.id}.mp4`));
+  const third = await packs.importPack(exported.dir);
+  assert.notEqual(third.assets[card.id], first.assets[card.id], "different bytes are a different asset");
+  await packs.removePack("twice-kit");
+});

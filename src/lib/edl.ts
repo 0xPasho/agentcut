@@ -52,6 +52,12 @@ export const CaptionStyle = z.object({
   fontSizePct: z.number().min(1).max(30).default(5.5), // % of output height
   color: z.string().default("#ffffff"),
   highlight: z.string().default("#ffe600"),
+  /**
+   * The black outline behind the letters, in pixels of a 1080x1920 frame — the shape
+   * every short is — and scaled with the frame anywhere else, because the letters are a
+   * share of the height and an outline that is not would double in weight on a square
+   * derive and disappear on a wide one.
+   */
   strokeWidth: z.number().default(8),
   /**
    * Top edge of the caption block, 0 = top of frame. Anchored at the top rather

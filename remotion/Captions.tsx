@@ -46,6 +46,10 @@ export const Captions: React.FC<Props> = ({ words, style, emphasis }) => {
   const popline = style.preset === "popline";
 
   const fontSize = (style.fontSizePct / 100) * height;
+  // The stroke is written in pixels of a 1080x1920 frame, which is what every short is,
+  // and scaled with the frame everywhere else: the letters are a share of the height, so
+  // a stroke that is not would double in weight on a square derive and vanish on a wall.
+  const strokeWidth = (style.strokeWidth * height) / 1920;
   // Each emphasised word keeps the colour the edit that emphasised it asked for. The
   // edit has carried one since the beginning and nothing read it, so a template whose
   // accent was not the caption highlight quietly got the highlight instead.
@@ -96,7 +100,7 @@ export const Captions: React.FC<Props> = ({ words, style, emphasis }) => {
                 fontWeight: style.fontWeight,
                 fontSize,
                 color,
-                WebkitTextStroke: boxed ? undefined : `${style.strokeWidth}px #000`,
+                WebkitTextStroke: boxed ? undefined : `${strokeWidth}px #000`,
                 paintOrder: "stroke fill",
                 transform: `scale(${scale})`,
                 textShadow: boxed ? undefined : "0 4px 14px rgba(0,0,0,0.55)",
