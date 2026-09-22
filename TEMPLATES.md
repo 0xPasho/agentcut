@@ -350,6 +350,15 @@ each adopted asset and reported by `template.apply`.
   Its text comes from `hookText`, then the template's own `hook.text`, then a hook written
   on any shot, then a footage shot's title — never a canvas layer's title, whatever order
   the layers happen to sit in. `{{hook}}`, `{{title}}` and `{{slot:<id>}}` are substituted.
+- `hook.maxWords` is the length a card holds, and it is no longer a knife. A hook is
+  written in sentences — by a person, or by the agent that picked the clip — so a line
+  over the limit is cut where a sentence lets go: **the question in it**, if it has one,
+  because the rest is the lead-up and the question is what hooks; otherwise the last
+  clause boundary that fits, unless that gives back almost nothing; and a line only a
+  little over is kept whole, because a card holds it and mangling it costs more than the
+  length. A word-count cut with an ellipsis is the last resort. The dry run reports
+  `hook.shortened` and says what it will read instead, so the line can be rewritten
+  rather than discovered in the export.
 - `cards` pin a title card to a fraction of the finished timeline. Keep them off
   `position: "bottom"` while captions are on — that is the caption band, and a card
   there hides the line being spoken under it. The dry run warns when a template does. A card is placed by

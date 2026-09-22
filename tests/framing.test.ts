@@ -263,3 +263,45 @@ test("an aspect variant can reframe: the same template, a different shape, its o
   // The rectangles survive the merge rather than being replaced by the patch's absence.
   assert.equal(resolveTemplate(template, { aspect: "1:1" }).layout.camera.w, SPLIT.layout.camera.w);
 });
+
+test("a hook too long for its card is cut where a sentence lets go, not mid-thought", () => {
+  const cut = (text: string, max = 10) => planner.shortenHook(text, max);
+  // The question is the hook; the line around it is the lead-up.
+  assert.equal(cut("Voy en el primer semestre. ¿Aún recomiendas aprender a programar o ya que lo haga la IA?").text,
+    "¿Aún recomiendas aprender a programar o ya que lo haga la IA?");
+  // A clause boundary, when there is no question to prefer.
+  assert.deepEqual(cut("Realmente es difícil, yo que estoy construyendo eso, a veces notar cosas que son IA y cosas que no."),
+    { text: "Realmente es difícil, yo que estoy construyendo eso", shortened: true });
+  // A line a little over the limit reads fine on a card; mangling it does not.
+  assert.deepEqual(cut("¿Notas alguna diferencia entre hacer prompts en inglés y en español?"),
+    { text: "¿Notas alguna diferencia entre hacer prompts en inglés y en español?", shortened: false });
+  // A line under the limit is left alone, minus a trailing comma.
+  assert.deepEqual(cut("¿Qué es un Harness?"), { text: "¿Qué es un Harness?", shortened: false });
+  assert.deepEqual(cut("Una cosa muy buena,"), { text: "Una cosa muy buena", shortened: false });
+  // Nothing to cut at, and far too long: the word, with a mark saying so.
+  const long = cut("uno dos tres cuatro cinco seis siete ocho nueve diez once doce trece catorce quince dieciséis");
+  assert.equal(long.text, "uno dos tres cuatro cinco seis siete ocho nueve diez…");
+  assert.equal(long.shortened, true);
+  // A first clause that gives back one word is not a hook; the rest of the rules decide.
+  assert.equal(cut("Mira, te voy a dar el contexto de cómo eligen a alguien en Big Tech.").text,
+    "Mira, te voy a dar el contexto de cómo eligen a alguien en Big Tech");
+  assert.deepEqual(cut(""), { text: "", shortened: false });
+  assert.deepEqual(cut("   uno   dos   tres  ", 1), { text: "uno…", shortened: true });
+  // One word over a one-word limit still reads on a card, so it is left whole.
+  assert.deepEqual(cut("uno dos", 1), { text: "uno dos", shortened: false });
+});
+
+test("the dry run says when the hook it will draw is not the hook that was written", async () => {
+  const { id, sequenceId, itemId } = await project("Long hook");
+  store.editProject(id, { expectedRevision: store.readEditor(id).revision, operations: [
+    { type: "item.patch", sequenceId, itemId, patch: { hook: "Realmente es difícil, yo que estoy construyendo eso, a veces notar cosas que son de IA y cosas que no." } },
+  ] });
+  const dry = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "stream-split", sequenceId }) as import("../src/lib/templates/plan").TemplatePlan;
+  assert.equal(dry.hook?.shortened, true);
+  assert.equal(dry.hook?.text, "Realmente es difícil, yo que estoy construyendo eso");
+  assert.ok(dry.warnings.some((w) => w.includes("longer than the")), dry.warnings.join(" | "));
+
+  const short = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "stream-split", sequenceId, hookText: "¿Y si no era IA?" }) as import("../src/lib/templates/plan").TemplatePlan;
+  assert.equal(short.hook?.shortened, false);
+  assert.ok(!short.warnings.some((w) => w.includes("longer than the")));
+});

@@ -95,7 +95,7 @@ export type TemplatePlan = {
   /** True when applying will promote a generated clip into a timeline first. */
   promotes: boolean;
   output: VideoSequence["output"];
-  hook: { text: string; seconds: number | null; position: string; style: string } | null;
+  hook: { text: string; seconds: number | null; position: string; style: string; shortened: boolean } | null;
   cards: Array<{ id: string; text: string; atFraction: number; seconds: number }>;
   items: PlannedItem[];
   /**
@@ -369,6 +369,10 @@ export async function planTemplate(
   }
 
   const hookText = hookLine(template, sequence, request.hookText, request.slots);
+  const hookRaw = hookSource(template, sequence, request.hookText, request.slots);
+  const hookCut = shortenHook(hookRaw, template.hook.maxWords).shortened;
+  if (hookCut && template.hook.mode !== "off")
+    warnings.push(`The hook is longer than the ${template.hook.maxWords} words this template holds, so it reads "${hookText}". Write a shorter one to choose what it says.`);
   return {
     templateId: template.id,
     templateName: template.name,
@@ -380,6 +384,7 @@ export async function planTemplate(
       seconds: template.hook.mode === "sticky" ? null : template.hook.seconds ?? 3,
       position: template.hook.position,
       style: template.hook.style,
+      shortened: hookCut,
     },
     // A card whose text is entirely an unfilled slot is not a blank card, it is no
     // card. Structure the template offers and the author declined to fill.
@@ -402,19 +407,65 @@ function substitute(text: string, values: { hook: string; title: string }, slots
 }
 
 /** The hook is the one line that has to be right; take the most specific source available. */
-export function hookLine(template: VideoTemplate, sequence: VideoSequence, override?: string, slots?: Record<string, SlotValue>): string {
+/**
+ * A hook at the length a card can hold.
+ *
+ * `maxWords` used to be a knife: the first N words of whatever was written, mid-clause,
+ * mid-thought — "Realmente es dificil, yo que estoy construyendo eso, a veces" — which
+ * is worse than a line that is one word long. A hook is written by a person or by the
+ * agent that picked the clip, and both write sentences, so this cuts where a sentence
+ * lets go: at the last clause boundary that fits, then at nothing at all if the line is
+ * only a little long, and only as a last resort at the word.
+ */
+export function shortenHook(raw: string, maxWords: number): { text: string; shortened: boolean } {
+  const words = (text: string) => text.split(/\s+/).filter(Boolean).length;
+  const line = raw.trim().replace(/\s+/g, " ");
+  // "Shortened" is about what was lost, not about which branch answered: a line that
+  // came back whole was not shortened, whichever rule let it through.
+  const answer = (text: string): { text: string; shortened: boolean } => {
+    const tidy = text.replace(/[.,;:]$/, "");
+    return { text: tidy, shortened: words(tidy) < words(line) };
+  };
+  if (!line || words(line) <= maxWords) return answer(line);
+
+  // A hook that has to be cut and contains a question: the question is the hook. The
+  // line around it is the lead-up — "Voy en el primer semestre. ¿Aun recomiendas
+  // aprender a programar?" — and keeping the lead-up throws away the part that hooks.
+  const sentences = line.split(/(?<=[.!?…])\s+/);
+  const asked = sentences.filter((part) => /[?]\s*$/.test(part) && words(part) <= Math.ceil(maxWords * 1.5));
+  if (asked.length) return answer(asked[asked.length - 1]);
+
+  // Clauses, punctuation kept: "a, b. c" -> ["a,", "b.", "c"].
+  const clauses = line.split(/(?<=[.,;:!?…])\s+/);
+  let kept = "";
+  for (const clause of clauses) {
+    const next = kept ? `${kept} ${clause}` : clause;
+    if (words(next) > maxWords) break;
+    kept = next;
+  }
+  // A clause that gives back almost nothing is not a hook, it is a word. Fall through.
+  if (kept && words(kept) >= Math.max(2, Math.ceil(maxWords * 0.4))) return answer(kept);
+  // A line a little over the limit reads fine on a card; mangling it does not.
+  if (words(line) <= Math.ceil(maxWords * 1.5)) return answer(line);
+  return { text: `${line.split(/\s+/).slice(0, maxWords).join(" ").replace(/[.,;:]$/, "")}…`, shortened: true };
+}
+
+/** The line the hook is made from, before it is cut to length. */
+export function hookSource(template: VideoTemplate, sequence: VideoSequence, override?: string, slots?: Record<string, SlotValue>): string {
   // A hook someone wrote beats any title; a shot's title beats a canvas layer's. Array
   // order is not meaning: after a few edits, a hand-placed title can sit first in it.
   const hooked = sequence.items.find((item) => item.clip.hook.trim());
   const shot = sequence.items.find((item) => item.mediaId !== null && item.clip.title.trim()) ?? sequence.items.find((item) => item.clip.title.trim());
-  const raw = (override ?? "").trim()
+  return (override ?? "").trim()
     || substitute(template.hook.text, { hook: "", title: sequence.title }, slots).trim()
     || (hooked?.clip.hook ?? "").trim()
     || (shot?.clip.title ?? "").trim()
     || sequence.title.trim();
-  const words = raw.split(/\s+/).filter(Boolean).slice(0, template.hook.maxWords);
-  const line = words.join(" ").replace(/[.,;:]$/, "");
-  return template.hook.uppercase ? line.toUpperCase() : line;
+}
+
+export function hookLine(template: VideoTemplate, sequence: VideoSequence, override?: string, slots?: Record<string, SlotValue>): string {
+  const { text } = shortenHook(hookSource(template, sequence, override, slots), template.hook.maxWords);
+  return template.hook.uppercase ? text.toUpperCase() : text;
 }
 
 export const templateAuthor = (templateId: string) => `template:${templateId}`;
