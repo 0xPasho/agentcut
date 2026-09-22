@@ -31,6 +31,8 @@ export type ResolvedRules = {
   templateId?: string;
   /** Every matched rule's overrides, merged in priority order (later wins on a field). */
   overrides: Record<string, unknown>;
+  /** Slot values the matched rules supply, merged the same way. The caller's win over these. */
+  slots: Record<string, SlotValue>;
   /** Constraint text from every matched rule, in priority order. */
   prompts: string[];
   rules: RuleRecord[];
@@ -39,14 +41,17 @@ export type ResolvedRules = {
 export function resolveRules(matched: RuleRecord[]): ResolvedRules {
   const ordered = [...matched].filter((r) => r.enabled).sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id));
   let overrides: Record<string, unknown> = {};
+  const slots: Record<string, SlotValue> = {};
   const prompts: string[] = [];
   let templateId: string | undefined;
   for (const rule of ordered) {
     if (rule.then.template && !templateId) templateId = rule.then.template;
     overrides = mergeOverrides(overrides, rule.then.overrides);
+    // A slot is one value, not a patch: the later rule replaces it whole.
+    for (const [id, value] of Object.entries(rule.then.slots ?? {})) slots[id] = value;
     if (rule.promptText.trim()) prompts.push(rule.promptText.trim());
   }
-  return { templateId, overrides, prompts, rules: ordered };
+  return { templateId, overrides, slots, prompts, rules: ordered };
 }
 
 /**
@@ -120,16 +125,18 @@ export async function applyRules(projectId: string, raw: unknown, expectedRevisi
 
   const { edl } = readEditor(projectId);
   const target = { sequenceId: request.sequenceId, clipId: request.clipId };
-  const chosen = await chooseTemplate(edl, target, resolved.templateId, request.templateId, request.slots);
+  // The caller is more specific than the rule that suggested a default, so its slots win.
+  const slots = { ...resolved.slots, ...request.slots };
+  const chosen = await chooseTemplate(edl, target, resolved.templateId, request.templateId, slots);
   const { templateId, templateFrom } = chosen;
 
   // A rule that only adds a constraint sentence changes nothing on the timeline.
-  if (!matched.some((r) => r.then.template || r.then.overrides)) {
+  if (!matched.some((r) => r.then.template || r.then.overrides || r.then.slots)) {
     return { revision: expectedRevision, templateId, templateFrom, overrides: {}, prompts: resolved.prompts, applied: null, plan: null, ignored };
   }
 
   const result = await applyTemplate(projectId, {
-    templateId, ...target, hookText: request.hookText, slots: request.slots, providers: request.providers,
+    templateId, ...target, hookText: request.hookText, slots, providers: request.providers,
     overrides: resolved.overrides,
   }, expectedRevision, { author: ruleAuthor(templateId, resolved.rules.map((r) => r.id)) });
   return { revision: result.revision, templateId, templateFrom, overrides: resolved.overrides, prompts: resolved.prompts, applied: result.applied, plan: result.plan, ignored };

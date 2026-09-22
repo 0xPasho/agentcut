@@ -35,14 +35,29 @@ command read and write the same files.
 - **`stage`** says where it applies. `select` rules shape which clips the selection agent
   picks; `edit` rules shape how a video is edited; `both` do both.
 - **`then`** is structured and needs no model. `template` names the template to apply;
-  `overrides` is the same field-level patch `template.apply` takes; `prompt` (or
-  `promptFile`, a markdown file in the same folder) is a standing instruction for the
-  agent. Anything that changes the timeline goes through `template.apply`, so a rule is an
+  `overrides` is the same field-level patch `template.apply` takes; `slots` fills that
+  template's named inputs — the end card this channel finishes on, the bed it plays
+  under everything — so a rule can name *your* asset rather than only someone else's;
+  `prompt` (or `promptFile`, a markdown file in the same folder) is a standing
+  instruction for the agent. Anything that changes the timeline goes through `template.apply`, so a rule is an
   ordinary template application with the rules that chose it in its `by` marker:
   `template:talking-head/rule:gameplay-clean,stream-outro`. Re-applying a template or
   the rules replaces that work and leaves hand edits alone, exactly as before.
 - **Conflicts:** lower `priority` runs first. The first matched rule naming a template
-  wins; every matched rule's overrides merge in that order; prompts accumulate.
+  wins; every matched rule's overrides merge in that order; prompts accumulate. A slot
+  is one value rather than a patch, so a later rule replaces it whole, and a slot the
+  caller passes to `rules.apply` wins over every rule's — the caller is the more
+  specific of the two. A rule that only fills a slot still changes the timeline.
+
+```json
+{
+  "id": "stream-outro",
+  "name": "Every clip ends on the stream card",
+  "when": "the clip was cut from a stream",
+  "then": { "template": "stream-short", "slots": { "endcard": { "assetId": "a_1234abcd" } } }
+}
+```
+
 - **`subject`** is optional and names a glossary entry the rule is about.
 
 ### When rules run
@@ -148,9 +163,10 @@ nothing returns the key itself, to the page or to an agent, and nothing puts one
 
 ## Not yet
 
-Adding an asset at the start or end of a video from a rule (an outro, a sting) waits for
-video in the library. Project-level tags set by hand, the plan artifact, the observation
-bank and packs are the next milestones in [AGENT-FIRST.md](./AGENT-FIRST.md).
+Project-level tags set by hand are still the next milestone in
+[AGENT-FIRST.md](./AGENT-FIRST.md). Adding an asset at the start or end of a video from
+a rule — an outro, a sting — is done: it is a template bookend, and the rule either
+overrides `outro` directly or fills the `video` slot the template declares.
 
 Two gaps the settings home did not close. A subject has no assets of its own: a library
 image named after it is still found by name, which is how the picture search has always

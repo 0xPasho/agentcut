@@ -99,3 +99,62 @@ test("a template outro can be a library video: it becomes media and a shot at th
   assert.ok(result.applied);
   assert.ok(store.readEditor(other).edl.sequences[0].items.some((i) => i.clip.title === "Outro" && i.mediaId), "the rule placed the sting");
 });
+
+test("a shared template ends on *your* card: a video slot, filled by a rule, refused when it is missing", async () => {
+  const second = path.join(workspace, "sting-b.mp4");
+  const r = spawnSync(FFMPEG, ["-y", "-f", "lavfi", "-i", "color=green:size=320x180:rate=15:duration=3", "-f", "lavfi", "-i", "sine=frequency=200:duration=3", "-pix_fmt", "yuv420p", "-shortest", second], { encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  const mine = await assets.uploadLibraryAsset("my-card.mp4", await fs.readFile(sting));
+  const theirs = await assets.uploadLibraryAsset("their-card.mp4", await fs.readFile(second));
+
+  // The template names no asset at all — it is the shape of the video, not the content.
+  await registry.saveTemplate({
+    id: "channel-look", extends: "talking-head", name: "Channel look",
+    outro: { enabled: true, slot: "endcard" },
+    slots: [{ id: "endcard", label: "Your end card", kind: "video", required: true }],
+  });
+
+  const { id } = await mediaService.createVideoProject("Slotted", [{ file: source }]);
+  const sequenceId = store.readEditor(id).edl.sequences[0].id;
+  await assert.rejects(
+    tools.executeEditorTool(id, { tool: "template.apply", templateId: "channel-look", sequenceId, expectedRevision: store.readEditor(id).revision }),
+    /Your end card/,
+    "a required slot is a refusal, not a video that quietly ends early",
+  );
+
+  const { saveRule } = await import("../src/lib/rules/registry");
+  const { applyRules, resolveRules } = await import("../src/lib/rules/apply");
+  const { listRules } = await import("../src/lib/rules/registry");
+  await saveRule({ id: "my-end-card", name: "My end card", when: "always", priority: 20,
+    then: { template: "channel-look", slots: { endcard: { assetId: mine.id } } } });
+
+  const applied = await applyRules(id, { ruleIds: ["my-end-card"], sequenceId }, store.readEditor(id).revision);
+  assert.ok(applied.applied, "the rule filled the slot the template declared");
+  let edl = store.readEditor(id).edl;
+  const card = edl.sequences[0].items.find((i) => i.clip.title === "Outro")!;
+  assert.ok(card, "the end card is on the timeline");
+  assert.equal(edl.media.find((m) => m.id === card.mediaId)!.file, assets.toAbs(mine.path), "and it is mine, not the template author's");
+  assert.ok(Math.abs(card.clip.end - 2) < 0.2, "played whole");
+
+  // The caller is more specific than the rule that suggested a default.
+  const over = await applyRules(id, { ruleIds: ["my-end-card"], sequenceId, slots: { endcard: { assetId: theirs.id } } }, store.readEditor(id).revision);
+  assert.ok(over.applied);
+  edl = store.readEditor(id).edl;
+  const swapped = edl.sequences[0].items.find((i) => i.clip.title === "Outro")!;
+  assert.equal(edl.media.find((m) => m.id === swapped.mediaId)!.file, assets.toAbs(theirs.path), "the request's slot wins over the rule's");
+  assert.equal(edl.sequences[0].items.filter((i) => i.clip.title === "Outro").length, 1, "and replaces rather than stacking");
+
+  // Two rules naming the same slot: the higher-priority one runs first and the later replaces it whole.
+  await saveRule({ id: "their-end-card", name: "Their end card", when: "always", priority: 90, then: { slots: { endcard: { assetId: theirs.id } } } });
+  const rules = await listRules(id);
+  const resolved = resolveRules(rules.filter((rule) => ["my-end-card", "their-end-card"].includes(rule.id)));
+  assert.deepEqual(resolved.slots, { endcard: { assetId: theirs.id } });
+  assert.equal(resolved.templateId, "channel-look", "the template still comes from the first rule that names one");
+
+  // A rule that only fills a slot still changes the timeline, so it is not treated as prompt-only.
+  const { id: bare } = await mediaService.createVideoProject("Bare", [{ file: source }]);
+  const bareSeq = store.readEditor(bare).edl.sequences[0].id;
+  const onlySlots = await applyRules(bare, { ruleIds: ["their-end-card"], sequenceId: bareSeq, templateId: "channel-look" }, store.readEditor(bare).revision);
+  assert.ok(onlySlots.applied, "a slot-only rule is an edit, not a constraint sentence");
+  assert.ok(store.readEditor(bare).edl.sequences[0].items.some((i) => i.clip.title === "Outro"));
+});

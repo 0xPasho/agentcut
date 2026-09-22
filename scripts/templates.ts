@@ -10,7 +10,7 @@ const USAGE = `usage:
   templates apply <projectId> <templateId> [same options]
 
   --slot fills an image-pool slot from a folder; --text fills a text slot (a card's
-  line); --asset fills an image or audio slot (a logo, a music bed) with an asset id.`;
+  line); --asset fills an image, video or audio slot (a logo, an end card, a music bed) with an asset id.`;
 
 type Slot = { folder?: string; text?: string; assetId?: string };
 type Options = { sequenceId?: string; hookText?: string; slots: Record<string, Slot> };

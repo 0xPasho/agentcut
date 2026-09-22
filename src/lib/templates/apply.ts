@@ -49,6 +49,19 @@ async function folderImages(folder: string): Promise<{ root: string; files: stri
 type PoolEntry = { id: string } | { file: string };
 type Pool = { entries: PoolEntry[]; cursor: number };
 
+/**
+ * A required slot is a refusal, not a warning. Only pools enforced it, so a template
+ * that required an end card or a music bed applied happily without one and the missing
+ * input showed up as a video that was simply missing its ending. Checked before
+ * anything is imported, so a request that will be refused costs nothing.
+ */
+function requireSlots(template: VideoTemplate, slots: Record<string, SlotValue>) {
+  for (const slot of template.slots) {
+    if (!slot.required || slotFilled(slots[slot.id])) continue;
+    throw new Error(`This template needs "${slot.label}". Fill the "${slot.id}" slot.`);
+  }
+}
+
 async function buildPools(template: VideoTemplate, slots: Record<string, SlotValue>) {
   const pools = new Map<string, Pool>();
   for (const slot of template.slots) {
@@ -395,6 +408,7 @@ export async function applyTemplate(
   // Plan on a count first, so a request that is going to be refused — an ambiguous
   // target, a missing required slot — is refused before a folder of two hundred
   // pictures has been copied into the project on its behalf.
+  requireSlots(template, request.slots);
   const { sizes } = await countPools(request.slots);
   const plan = await planTemplate(current.edl, template, request, sizes);
   const pools = await buildPools(template, request.slots);

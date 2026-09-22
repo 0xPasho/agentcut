@@ -17,9 +17,11 @@ export const TemplateSlot = z.object({
   /**
    * `imagePool` is an ordered set of pictures consumed one at a time — a folder of
    * chat screenshots is the case this exists for. The others are a single asset or
-   * a line of text the template interpolates.
+   * a line of text the template interpolates. `video` is a whole clip the template
+   * plays — the outro card a channel ends every video on — which is what lets one
+   * shared template end on *your* card rather than on the author's.
    */
-  kind: z.enum(["imagePool", "image", "audio", "text"]),
+  kind: z.enum(["imagePool", "image", "video", "audio", "text"]),
   description: z.string().default(""),
   required: z.boolean().default(false),
 });
@@ -235,8 +237,9 @@ export type BrandKit = z.infer<typeof BrandKit>;
 
 /**
  * An intro or outro: a picture held full-frame at the start or the end, on the main
- * track, so everything else shifts to make room. Video bookends arrive with video in
- * the library. Placed as an ordinary canvas item the author can move or remove.
+ * track, so everything else shifts to make room — or a video played whole, which is
+ * what an end card is. Point `slot` at a `video` slot and the card is the owner's own;
+ * `assetId` names one directly. Placed as an ordinary shot the author can move or remove.
  */
 export const TemplateBookend = z.object({
   enabled: z.boolean().default(false),

@@ -7,6 +7,8 @@ import type { SlotValue, TemplatePlan } from "@/lib/templates/plan";
 import type { DroppedBeat, TemplateApplyResult } from "@/lib/templates/apply";
 import type { TemplateSuggestion } from "@/lib/templates/suggest";
 import { Button } from "./ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Disclosure } from "@/components/ui/disclosure";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Slider } from "./ui/slider";
@@ -100,7 +102,7 @@ export function TemplatePanel({ projectId, sequenceId, beforeApply, afterApply, 
   };
   useEffect(() => { void load().catch((e) => setError((e as Error).message)); }, [projectId]);
   useEffect(() => {
-    void Promise.all(["image", "audio"].map((kind) => api.editorTool<AssetSummary[]>(projectId, { tool: "assets.list", kind })))
+    void Promise.all(["image", "audio", "video"].map((kind) => api.editorTool<AssetSummary[]>(projectId, { tool: "assets.list", kind })))
       .then((lists) => setAssets(lists.flat()))
       .catch(() => setAssets([]));
   }, [projectId]);
@@ -294,15 +296,14 @@ export function TemplatePanel({ projectId, sequenceId, beforeApply, afterApply, 
             <fieldset className="space-y-1.5">
               <legend className="text-xs text-muted-foreground">Where pictures come from, in order</legend>
               {ALL_SOURCES.map((source) => (
-                <label key={source} className="flex items-center gap-2 text-xs">
-                  <input type="checkbox" className="size-3.5 accent-primary" checked={chosenSources.has(source)}
-                    onChange={(e) => setImages({ sources: e.target.checked
-                      // Order is the whole point of this list, so a source comes back to
-                      // the place the template gave it, not to the end of the line.
-                      ? sourceOrder.filter((s) => s === source || chosenSources.has(s.split(":")[0]))
-                      : overrides.images.sources.filter((s) => s.split(":")[0] !== source) })} />
+                <Checkbox key={source} className="min-h-8 text-xs" checked={chosenSources.has(source)}
+                  onCheckedChange={(on) => setImages({ sources: on
+                    // Order is the whole point of this list, so a source comes back to
+                    // the place the template gave it, not to the end of the line.
+                    ? sourceOrder.filter((s) => s === source || chosenSources.has(s.split(":")[0]))
+                    : overrides.images.sources.filter((s) => s.split(":")[0] !== source) })}>
                   {SOURCE_LABELS[source]}
-                </label>
+                </Checkbox>
               ))}
             </fieldset>
           </>}
@@ -312,8 +313,8 @@ export function TemplatePanel({ projectId, sequenceId, beforeApply, afterApply, 
           <Separator />
           <div className="flex flex-col gap-3">
             {template.slots.map((slot) => {
-              const kind = slot.kind === "audio" ? "audio" : "image";
-              const choices = slot.kind === "audio" || slot.kind === "image"
+              const kind = slot.kind === "audio" ? "audio" : slot.kind === "video" ? "video" : "image";
+              const choices = slot.kind === "audio" || slot.kind === "image" || slot.kind === "video"
                 ? assets.filter((asset) => asset.kind === kind)
                 : [];
               return (
@@ -347,10 +348,10 @@ export function TemplatePanel({ projectId, sequenceId, beforeApply, afterApply, 
         <Separator />
 
         <div className="flex flex-col gap-2 text-xs">
-          <label className="flex items-center gap-2"><input type="checkbox" className="size-3.5 accent-primary" checked={overrides.rhythm.silence.enabled}
-            onChange={(e) => setOverrides({ ...overrides, rhythm: { ...overrides.rhythm, silence: { enabled: e.target.checked } } })} />Cut dead air</label>
-          <label className="flex items-center gap-2"><input type="checkbox" className="size-3.5 accent-primary" checked={overrides.rhythm.punch.enabled}
-            onChange={(e) => setOverrides({ ...overrides, rhythm: { ...overrides.rhythm, punch: { ...overrides.rhythm.punch, enabled: e.target.checked } } })} />Punch in on the line that lands</label>
+          <Checkbox className="min-h-8 text-xs" checked={overrides.rhythm.silence.enabled}
+            onCheckedChange={(enabled) => setOverrides({ ...overrides, rhythm: { ...overrides.rhythm, silence: { enabled } } })}>Cut dead air</Checkbox>
+          <Checkbox className="min-h-8 text-xs" checked={overrides.rhythm.punch.enabled}
+            onCheckedChange={(enabled) => setOverrides({ ...overrides, rhythm: { ...overrides.rhythm, punch: { ...overrides.rhythm.punch, enabled } } })}>Punch in on the line that lands</Checkbox>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -392,10 +393,9 @@ export function TemplatePanel({ projectId, sequenceId, beforeApply, afterApply, 
       </>}
 
       {dropped.length > 0 && (
-        <details className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-2 text-[11px]">
-          <summary className="cursor-pointer text-amber-300">
-            {dropped.length} beat{dropped.length === 1 ? "" : "s"} wanted a picture and found none
-          </summary>
+        <Disclosure variant="plain" className="rounded-2xl bg-amber-500/8 p-1 text-[11px] ring-1 ring-amber-500/25"
+          summaryClassName="text-amber-300 hover:text-amber-200"
+          summary={`${dropped.length} beat${dropped.length === 1 ? "" : "s"} wanted a picture and found none`}>
           {/* Which beats came back empty, and what each source said, is the only way to
               tell a template that needs tuning from a script that names nothing. */}
           <ul className="mt-2 space-y-1.5">
@@ -408,7 +408,7 @@ export function TemplatePanel({ projectId, sequenceId, beforeApply, afterApply, 
               </li>
             ))}
           </ul>
-        </details>
+        </Disclosure>
       )}
 
       {error && <p role="alert" className="text-xs text-destructive">{error}</p>}

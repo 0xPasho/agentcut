@@ -46,9 +46,10 @@ it decides which one the material wants.
   it has none). A glossary subject can carry a `brand` too; a project whose plan names
   that subject inherits it when the plan is applied.
 - **`intro` / `outro`**: a picture held full-frame for `seconds` at the start or the end,
-  on the main track, from an `image` slot or an asset id. The intro shifts every shot after
-  it; both are ordinary canvas items and converge on re-apply. Video bookends arrive with
-  video in the library.
+  on the main track, from an `image` slot or an asset id — or a whole video played to its
+  end, which is what a channel's end card is. The intro shifts every shot after it; both
+  are ordinary items and converge on re-apply. Point `slot` at a `video` slot to keep the
+  template free of asset ids.
 - **`variants`**: per-aspect overrides keyed `9:16`, `4:5`, `1:1`, `16:9`, merged when the
   template is applied to a video of that shape. `sequence.derive` copies a video into
   another aspect as its own editable sequence (crops recentred, plan carried, status
@@ -325,10 +326,16 @@ each adopted asset and reported by `template.apply`.
   no bed, which is not an error.
 - A slot key that is present but empty — `{}`, a blank path, an empty list — counts as
   unfilled everywhere, rather than reading as supplied and failing later as an empty pool.
-- `slots` declare inputs. `imagePool`, `image`, `audio` and `text` are supported, and the
-  Templates panel renders each kind: a folder path for a pool, a line of text for `text`,
-  a picker of the project's own assets for `image` and `audio`. `required: true` makes
-  applying fail rather than silently producing less.
+- `slots` declare inputs. `imagePool`, `image`, `video`, `audio` and `text` are supported,
+  and the Templates panel renders each kind: a folder path for a pool, a line of text for
+  `text`, a picker of the project's own assets for `image`, `video` and `audio`.
+  `required: true` makes applying fail rather than silently producing less — checked for
+  every kind, before anything is imported, so a template that requires an end card never
+  produces a video that quietly ends without one.
+  A `video` slot is what lets a *shared* template end on **your** card: the document names
+  the shape (`"outro": {"enabled": true, "slot": "endcard"}`) and never an asset id, which
+  is machine-specific and would travel as a dangling reference. The person applying it, a
+  rule's `then.slots`, or a pack that ships the file and remaps its id, supplies the card.
 
 `templates.schema` is the authority for every field and range.
 

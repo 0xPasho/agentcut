@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SlotValue } from "../templates/plan";
 
 /**
  * A rule is a judgement plus an action. `when` is a sentence an agent reads against
@@ -15,6 +16,14 @@ export const RuleAction = z.object({
   template: z.string().min(1).optional(),
   /** A field-level patch over whichever template ends up applied. Merged across matched rules in priority order. */
   overrides: z.record(z.string(), z.unknown()).optional(),
+  /**
+   * Named inputs the rule supplies to that template: the end card this channel
+   * finishes on, the bed it plays under everything. A rule that can name a template
+   * but not fill its slots can only ever choose *someone else's* assets, which is why
+   * "end every clip on my outro" could not be written as a rule before. A slot the
+   * caller fills wins, and a pack remaps these ids when it is installed.
+   */
+  slots: z.record(z.string(), SlotValue).optional(),
   /** Free text handed to the agent as a constraint when this rule matches. */
   prompt: z.string().optional(),
   /** Same, read from a markdown file next to the rule. Resolved at load; wins over `prompt`. */
