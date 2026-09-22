@@ -162,9 +162,11 @@ const strip = (r: RuleRecord | (Rule & Partial<RuleRecord>)): Rule => {
 };
 
 function describe(rule: Rule, templates: TemplateOption[]): string {
+  const slots = Object.keys(rule.then.slots ?? {}).length;
   const parts = [
     rule.then.template && `uses the ${templates.find((t) => t.id === rule.then.template)?.name ?? rule.then.template} template`,
     rule.then.overrides && Object.keys(rule.then.overrides).length ? "changes template settings" : "",
+    slots ? `gives it ${slots === 1 ? "an input of its own" : `${slots} inputs of its own`}` : "",
     (rule.then.prompt || rule.then.promptFile) && "tells the agent something",
   ].filter(Boolean);
   return parts.length ? `Then it ${parts.join(", ")}.` : "It does nothing yet — open it and say what should happen.";
