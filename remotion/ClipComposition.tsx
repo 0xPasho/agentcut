@@ -96,6 +96,8 @@ export const ClipComposition: React.FC<ClipProps> = ({
   const images = clip.edits.filter((e): e is Extract<Edit, { type: "image" }> => e.type === "image");
   const sfx = clip.edits.filter((e): e is Extract<Edit, { type: "sfx" }> => e.type === "sfx");
   const music = clip.edits.filter((e): e is Extract<Edit, { type: "music" }> => e.type === "music");
+  /** The shot's own length in source seconds, the clock every edit's `t` and `d` are written on. */
+  const clipSec = clip.end - clip.start;
 
   // Words are already mapped to output time, which is the timebase the ducking
   // envelope is sampled in.
@@ -194,8 +196,13 @@ export const ClipComposition: React.FC<ClipProps> = ({
         const start = srcToOut(map, im.t);
         const end = srcToOut(map, im.t + im.d);
         if (t < start || t > end) return null;
-        // Ease in and out so it lands rather than blinks.
-        const appear = interpolate(
+        // A picture that lands inside a shot eases in and out so it arrives rather than blinks.
+        // A picture that fills its shot IS the shot: the cut in and out of it is its entrance,
+        // and easing that leaves its first and last frames empty — a blink in the export, and
+        // in the editor the very frame the playhead parks on when the picture is added, where
+        // an author sees the selection box around nothing at all.
+        const fills = im.t <= 0.001 && im.d >= clipSec - 0.001;
+        const appear = fills ? 1 : interpolate(
           t,
           [start, start + 0.25, Math.max(start + 0.3, end - 0.25), end],
           [0, 1, 1, 0],

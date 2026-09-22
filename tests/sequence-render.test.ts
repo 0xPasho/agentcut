@@ -112,6 +112,34 @@ test("a source-free canvas segment exports its title, image and music with no fo
   await assert.rejects(renderProject(id, { only: ["broken"] }));
 });
 
+test("a picture that fills its scene is there on the scene's first frame", { timeout: 180_000 }, async () => {
+  const { createVideoProject } = await import("../src/lib/editor/media");
+  const { readEditor, editProject } = await import("../src/lib/editor/store");
+  const { executeEditorTool } = await import("../src/lib/editor/tools");
+  const { renderProject } = await import("../src/lib/editor/render");
+  const { assetEdit } = await import("../src/lib/editor/asset-edit");
+  const image = path.join(workspace, "picture.png");
+  const made = spawnSync(FFMPEG, ["-y", "-f", "lavfi", "-i", "color=blue:size=320x180", "-frames:v", "1", image], { encoding: "utf8" });
+  assert.equal(made.status, 0, made.stderr);
+  const { id } = await createVideoProject("Picture scene");
+  const initial = readEditor(id), seq = initial.edl.sequences[0];
+  const picture = await executeEditorTool(id, { tool: "assets.importLocal", file: image }) as { id: string };
+  // Exactly what the Image button places: a scene as long as the picture, and the picture on it.
+  const state = editProject(id, { expectedRevision: initial.revision, operations: [
+    { type: "sequence.patch", sequenceId: seq.id, output: { width: 640, height: 360, fps: 10 } },
+    { type: "item.add", sequenceId: seq.id, item: { id: "picture", mediaId: null, at: 0, clip: {
+      id: "picture", title: "Image", start: 0, end: 2, captions: { preset: "none" },
+      edits: [assetEdit({ id: picture.id, kind: "image" }, 0, 2)] } } },
+  ] });
+  const output = await renderProject(id, { only: [seq.id], expectedRevision: state.revision });
+  // The frame the playhead lands on when the picture is added: a fade from nothing here
+  // leaves an author looking at the selection box around an empty canvas.
+  const first = pixel(output.outputs[0].file, 0, CENTRE);
+  assert.ok(first[2] > first[0] + 80, `the picture is on its own first frame: ${first}`);
+  const last = pixel(output.outputs[0].file, 1.9, CENTRE);
+  assert.ok(last[2] > last[0] + 80, `and on its last: ${last}`);
+});
+
 test("separated audio still sounds, and the picture it came from does not show", { timeout: 180_000 }, async () => {
   const { createVideoProject } = await import("../src/lib/editor/media");
   const { readEditor, editProject } = await import("../src/lib/editor/store");
