@@ -158,3 +158,55 @@ test("a shared template ends on *your* card: a video slot, filled by a rule, ref
   assert.ok(onlySlots.applied, "a slot-only rule is an edit, not a constraint sentence");
   assert.ok(store.readEditor(bare).edl.sequences[0].items.some((i) => i.clip.title === "Outro"));
 });
+
+test("the end card is the end: the hook, the card and the mark hold across the body and stop where it begins", async () => {
+  const logo = path.join(workspace, "mark.png");
+  const made = spawnSync(FFMPEG, ["-y", "-f", "lavfi", "-i", "color=0xF032E6:size=64x64", "-frames:v", "1", logo], { encoding: "utf8" });
+  assert.equal(made.status, 0, made.stderr);
+  const mark = await assets.uploadLibraryAsset("mark.png", await fs.readFile(logo));
+  const music = path.join(workspace, "bed.mp3");
+  const bed = spawnSync(FFMPEG, ["-y", "-f", "lavfi", "-i", "sine=frequency=180:duration=4", music], { encoding: "utf8" });
+  assert.equal(bed.status, 0, bed.stderr);
+  const bedAsset = await assets.uploadLibraryAsset("bed.mp3", await fs.readFile(music));
+  const card = database.q.listAssets("video").find((a) => a.name === "sting.mp4")!;
+
+  await registry.saveTemplate({
+    id: "bookended", extends: "talking-head", name: "Bookended",
+    hook: { mode: "sticky", text: "Sticky hook" },
+    cards: [{ id: "cta", atFraction: 1, text: "Follow", seconds: 1.5, position: "center" }],
+    watermark: { enabled: true, slot: "mark", widthPct: 12 },
+    music: { enabled: true, slot: "bed" },
+    intro: { enabled: true, slot: "card" },
+    outro: { enabled: true, slot: "card" },
+    slots: [
+      { id: "card", label: "Card", kind: "video" },
+      { id: "mark", label: "Mark", kind: "image" },
+      { id: "bed", label: "Bed", kind: "audio" },
+    ],
+  });
+
+  const { id } = await mediaService.createVideoProject("Bookended", [{ file: source }]);
+  const sequenceId = store.readEditor(id).edl.sequences[0].id;
+  await tools.executeEditorTool(id, { tool: "template.apply", templateId: "bookended", sequenceId,
+    expectedRevision: store.readEditor(id).revision,
+    slots: { card: { assetId: card.id }, mark: { assetId: mark.id }, bed: { assetId: bedAsset.id } } });
+
+  const { sequenceFrames } = await import("../src/lib/sequences");
+  const sequence = store.readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!;
+  const frames = sequenceFrames(sequence);
+  const fps = sequence.output.fps;
+  const at = (title: string) => {
+    const found = frames.items.find((entry) => entry.item.clip.title === title);
+    assert.ok(found, `${title} is on the timeline`);
+    return { from: found!.from / fps, to: (found!.from + found!.duration) / fps };
+  };
+  const intro = at("Intro"), outro = at("Outro"), hook = at("Hook"), cta = at("Card: cta"), watermark = at("Watermark"), bedItem = at("Music bed");
+
+  assert.ok(Math.abs(intro.from) < 0.01, "the intro opens the video");
+  assert.ok(Math.abs(hook.from - intro.to) < 0.05, `the hook starts when the intro ends, saw ${hook.from} vs ${intro.to}`);
+  assert.ok(Math.abs(hook.to - outro.from) < 0.05, `the hook ends where the end card starts, saw ${hook.to} vs ${outro.from}`);
+  assert.ok(cta.to <= outro.from + 0.05, `a card at the end lands before the end card, not on it: ${cta.to} vs ${outro.from}`);
+  assert.ok(Math.abs(watermark.from - intro.to) < 0.05 && Math.abs(watermark.to - outro.from) < 0.05, "the corner mark holds across the body only");
+  assert.ok(Math.abs(bedItem.from) < 0.01, "the bed plays under the intro too");
+  assert.ok(Math.abs(bedItem.to - outro.from) < 0.05, `the bed stops at the end card, which has its own sound: ${bedItem.to} vs ${outro.from}`);
+});

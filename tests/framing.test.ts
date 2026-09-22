@@ -187,3 +187,25 @@ test("a template that says nothing about framing leaves a hand-made split exactl
   const after = store.readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!.items.find((i) => i.id === itemId)!;
   assert.deepEqual(after.clip.layout, mine, "a caption-and-cuts template has no opinion about framing");
 });
+
+test("a webcam that would show up inside the screen pane as well is called out", async () => {
+  const { VideoTemplate } = schema;
+  const output = { width: 1080, height: 1920 };
+  const media = { width: 1728, height: 1116 };
+  // The whole frame as the screen: the crop keeps its middle, which reaches the camera.
+  const whole = VideoTemplate.parse({ ...SPLIT, id: "whole-screen", layout: { ...SPLIT.layout, screen: { x: 0, y: 0, w: 1, h: 1 } } });
+  assert.equal(planner.cameraShowsTwice(whole, media, output), true);
+  // Stopping the screen where the camera starts is the fix, and it is the built-in's default.
+  const narrowed = VideoTemplate.parse({ ...SPLIT, id: "narrow-screen", layout: { ...SPLIT.layout, screen: { x: 0, y: 0, w: 0.694, h: 1 } } });
+  assert.equal(planner.cameraShowsTwice(narrowed, media, output), false);
+  const builtIn = await registry.getTemplate("stream-short");
+  assert.equal(planner.cameraShowsTwice(builtIn, media, output), false, "the shipped template does not fire its own warning");
+  // A camera on the far side of a wide frame never reaches the middle either.
+  const far = VideoTemplate.parse({ ...SPLIT, id: "far-camera", layout: { ...SPLIT.layout, screen: { x: 0, y: 0, w: 1, h: 1 }, camera: { x: 0, y: 0.8, w: 0.14, h: 0.2 } } });
+  assert.equal(planner.cameraShowsTwice(far, media, output), false);
+
+  await registry.saveTemplate({ ...SPLIT, id: "twice", layout: { ...SPLIT.layout, screen: { x: 0, y: 0, w: 1, h: 1 } } });
+  const { id, sequenceId } = await project("Twice");
+  const dry = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "twice", sequenceId }) as import("../src/lib/templates/plan").TemplatePlan;
+  assert.ok(dry.warnings.some((w) => w.includes("appears twice")), dry.warnings.join(" | "));
+});

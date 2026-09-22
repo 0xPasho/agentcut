@@ -293,7 +293,8 @@ const DEFINITIONS: unknown[] = [
     images: { mode: "off" },
     layout: {
       mode: "split", cameraPosition: "bottom", cameraPct: 32,
-      screen: { x: 0, y: 0, w: 1, h: 1 },
+      // The screen stops where the camera starts, so the person is not on screen twice.
+      screen: { x: 0, y: 0, w: 0.68, h: 1 },
       // Where a webcam sits in most scenes, and the one setting worth checking against
       // your own before the first render: nothing can read it off a document.
       camera: { x: 0.68, y: 0.72, w: 0.32, h: 0.28 },

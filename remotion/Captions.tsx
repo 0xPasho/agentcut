@@ -46,11 +46,14 @@ export const Captions: React.FC<Props> = ({ words, style, emphasis }) => {
   const popline = style.preset === "popline";
 
   const fontSize = (style.fontSizePct / 100) * height;
-  const emphasized = new Set(
-    emphasis
-      .filter((e) => t >= e.t - 0.5 && t <= e.t + e.d + 0.5)
-      .flatMap((e) => e.words.map(spoken)),
-  );
+  // Each emphasised word keeps the colour the edit that emphasised it asked for. The
+  // edit has carried one since the beginning and nothing read it, so a template whose
+  // accent was not the caption highlight quietly got the highlight instead.
+  const emphasized = new Map<string, string>();
+  for (const e of emphasis) {
+    if (t < e.t - 0.5 || t > e.t + e.d + 0.5) continue;
+    for (const word of e.words) emphasized.set(spoken(word), e.color || style.highlight);
+  }
 
   return (
     <div
@@ -69,8 +72,11 @@ export const Captions: React.FC<Props> = ({ words, style, emphasis }) => {
         {shown.map((w, i) => {
           const active = popline || line.words.indexOf(w) === activeIndex;
           const key = spoken(w.w);
-          const isEmphasis = emphasized.has(key);
-          const color = active || isEmphasis ? style.highlight : style.color;
+          // An emphasised word keeps its own accent even while it is the spoken one:
+          // one word at a time means every word is the spoken one, and a look whose
+          // highlight is its ordinary colour would otherwise never show an accent.
+          const accent = emphasized.get(key);
+          const color = accent ?? (active ? style.highlight : style.color);
           const label = style.uppercase ? w.w.toUpperCase() : w.w;
           // One word at a time has nothing around it to give it rhythm, so it pops
           // in on its own start. Frame-driven only: CSS transitions depend on render

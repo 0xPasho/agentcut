@@ -16,8 +16,11 @@ export const CAPTION_LOOKS: Record<string, { label: string; description: string;
     style: { preset: "boxed", fontFamily: "Inter", fontWeight: 800, fontSizePct: 5.2, color: "#ffffff", highlight: "#ffe600", strokeWidth: 0, maxWordsPerLine: 3, uppercase: false } },
   "pop": { label: "Pop", description: "One or two words at a time, large. For fast talkers and reactions.",
     style: { preset: "popline", fontFamily: "Inter", fontWeight: 900, fontSizePct: 7, color: "#ffffff", highlight: "#ffe600", strokeWidth: 8, maxWordsPerLine: 2, uppercase: true } },
-  "stream-pop": { label: "Stream pop", description: "One word at a time, heavy, in the speaker's own case, thick black outline. Reads over a screen share.",
-    style: { preset: "popline", fontFamily: "Inter", fontWeight: 900, fontSizePct: 5.4, color: "#ffffff", highlight: "#ffe600", strokeWidth: 10, maxWordsPerLine: 1, uppercase: false } },
+  "stream-pop": { label: "Stream pop", description: "One word at a time, heavy, white with a thick black outline, in the speaker's own case. The accent is the emphasis, not every word.",
+    // One word at a time means every word on screen is the spoken one, so a yellow
+    // highlight paints the whole video yellow. White here leaves the accent to the
+    // emphasis beats, which is where it means something.
+    style: { preset: "popline", fontFamily: "Inter", fontWeight: 900, fontSizePct: 5.4, color: "#ffffff", highlight: "#ffffff", strokeWidth: 10, maxWordsPerLine: 1, uppercase: false } },
   "minimal": { label: "Minimal", description: "Small, lower on the frame, no highlight. When the picture matters more than the words.",
     style: { preset: "karaoke", fontFamily: "Inter", fontWeight: 600, fontSizePct: 4, color: "#ffffff", highlight: "#ffffff", strokeWidth: 3, maxWordsPerLine: 5, uppercase: false, positionY: 0.8 } },
 };

@@ -159,6 +159,56 @@ function evenCues(item: SequenceItem, template: VideoTemplate, budget: number): 
   }).filter((cue) => cue.d >= 0.2);
 }
 
+/**
+ * Whether the webcam will appear inside the screen pane as well as in its own.
+ *
+ * Each pane is cropped to fill its half, so a screen rectangle left at the whole frame
+ * keeps its middle — and on a scene whose camera sits in a corner of the screen, that
+ * middle often reaches the camera. The person is then on screen twice, once small and
+ * once large, which is the mistake nobody catches until the first render.
+ */
+export function cameraShowsTwice(
+  template: VideoTemplate,
+  media: { width: number; height: number },
+  output: { width: number; height: number },
+): boolean {
+  const { layout } = template;
+  if (layout.mode !== "split" || !layout.camera.w || !layout.camera.h) return false;
+  // Whichever half the camera is in, the screen gets the rest.
+  const screenShare = (100 - layout.cameraPct) / 100;
+  const paneWidth = output.width;
+  const paneHeight = output.height * screenShare;
+  const region = {
+    x: layout.screen.x * media.width,
+    y: layout.screen.y * media.height,
+    w: (layout.screen.w || 1) * media.width,
+    h: (layout.screen.h || 1) * media.height,
+  };
+  const scale = Math.max(paneWidth / region.w, paneHeight / region.h);
+  // What survives the crop: the centre of the region, in source pixels.
+  const visible = {
+    w: Math.min(region.w, paneWidth / scale),
+    h: Math.min(region.h, paneHeight / scale),
+  };
+  const shown = {
+    x: region.x + (region.w - visible.w) / 2,
+    y: region.y + (region.h - visible.h) / 2,
+    w: visible.w,
+    h: visible.h,
+  };
+  const camera = {
+    x: layout.camera.x * media.width,
+    y: layout.camera.y * media.height,
+    w: layout.camera.w * media.width,
+    h: layout.camera.h * media.height,
+  };
+  const overlap =
+    Math.max(0, Math.min(shown.x + shown.w, camera.x + camera.w) - Math.max(shown.x, camera.x)) *
+    Math.max(0, Math.min(shown.y + shown.h, camera.y + camera.h) - Math.max(shown.y, camera.y));
+  // A sliver is a sliver; a fifth of the webcam showing through is the person twice.
+  return overlap > 0.2 * camera.w * camera.h;
+}
+
 /** Two framings are the same framing. Field by field, because key order is not meaning. */
 function sameLayout(a: Layout, b: Layout): boolean {
   if (a.type !== b.type) return false;
@@ -299,6 +349,10 @@ export async function planTemplate(
   const split = template.layout.mode === "split";
   const seam = split ? (template.layout.cameraPosition === "top" ? template.layout.cameraPct : 100 - template.layout.cameraPct) / 100 : null;
   if (split && (!template.layout.camera.w || !template.layout.camera.h)) warnings.push(CAMERA_NEEDED);
+  const framed = sequence.items.find((entry) => entry.mediaId && working.media.some((m) => m.id === entry.mediaId));
+  const framedMedia = framed ? working.media.find((m) => m.id === framed.mediaId) : undefined;
+  if (split && framedMedia && cameraShowsTwice(template, framedMedia, template.output ?? sequence.output))
+    warnings.push("The webcam is inside the part of the screen that will be shown, so the speaker appears twice — small in the screen pane and large in their own. Narrow the screen rectangle so it stops where the camera starts.");
   if (split && sequence.items.some((entry) => entry.mediaId && entry.clip.words.length)) {
     // The caption block grows downward from its top edge. A block that reaches across
     // the seam is read half on the screen and half on the speaker, which is the one
@@ -508,12 +562,31 @@ export function templateOperations(
   if (bookends.outro && !kept.has("Outro")) push(...bookend("Outro", bookends.outro));
 
   const sequence = sequenceOf();
-  const duration = sequenceFrames(sequence).duration / sequence.output.fps;
+  const frames = sequenceFrames(sequence);
+  const duration = frames.duration / sequence.output.fps;
   const topLayer = sequence.items.reduce((highest, item) => Math.max(highest, item.layer ?? 0), 0);
+
+  /**
+   * The body: the video between its bookends. A bookend is a composition of its own —
+   * an end card says when the stream is, and holding the hook, a call to action and a
+   * corner mark over it is exactly the work a person then undoes by hand. So the layers
+   * the template holds across the video hold across the body instead, and `atFraction: 1`
+   * means the last frame before the end card rather than a card on top of it.
+   *
+   * The music bed is the one that starts at the very first frame: an intro card plays
+   * under the bed like any other shot. It still stops at the end card, which arrives
+   * with its own sound.
+   */
+  const spanOf = (title: string) => frames.items.find((entry) => (entry.item.layer ?? 0) === 0 && entry.item.clip.title === title);
+  const introSpan = bookends.intro ? spanOf("Intro") : undefined;
+  const outroSpan = bookends.outro ? spanOf("Outro") : undefined;
+  const bodyStart = introSpan ? (introSpan.from + introSpan.duration) / sequence.output.fps : 0;
+  const bodyEnd = outroSpan ? outroSpan.from / sequence.output.fps : duration;
+  const body = Math.max(0.2, bodyEnd - bodyStart);
 
   const canvasItem = (layer: number, at: number, seconds: number, title: string, text: string, position: "top" | "center" | "bottom", style: "card" | "plain") => {
     const id = newId("i");
-    const length = Math.max(0.2, Math.min(seconds, duration - at));
+    const length = Math.max(0.2, Math.min(seconds, bodyEnd - at));
     return {
       type: "item.add" as const,
       sequenceId: plan.sequenceId,
@@ -527,13 +600,13 @@ export function templateOperations(
     };
   };
 
-  if (plan.hook && !kept.has("Hook")) push(canvasItem(topLayer + 1, 0, plan.hook.seconds ?? duration, "Hook", plan.hook.text, template.hook.position, template.hook.style));
+  if (plan.hook && !kept.has("Hook")) push(canvasItem(topLayer + 1, bodyStart, plan.hook.seconds ?? body, "Hook", plan.hook.text, template.hook.position, template.hook.style));
   for (const card of plan.cards) {
     if (kept.has(`Card: ${card.id}`)) continue;
     // A card is pinned by its start until that would push its end past the video;
     // from there it backs off, so `atFraction: 1` means "ends on the last frame"
     // rather than "starts after it" and a late card is never squeezed to nothing.
-    const at = Math.max(0, Math.min(card.atFraction * duration, duration - card.seconds));
+    const at = bodyStart + Math.max(0, Math.min(card.atFraction * body, body - card.seconds));
     const definition = template.cards.find((candidate) => candidate.id === card.id)!;
     push(canvasItem(topLayer + 2, at, card.seconds, `Card: ${card.id}`, card.text, definition.position, definition.style));
   }
@@ -552,13 +625,13 @@ export function templateOperations(
       item: {
         id,
         mediaId: null,
-        at: 0,
+        at: bodyStart,
         layer: topLayer + 4,
         transform: { ...DEFAULT_ITEM_TRANSFORM, opacity: mark.opacity },
         clip: Clip.parse({
-          id, title: "Watermark", start: 0, end: duration, captions: { preset: "none" },
+          id, title: "Watermark", start: 0, end: body, captions: { preset: "none" },
           edits: [{
-            type: "image", t: 0, d: duration, src: watermark.src, query: "", credit: "",
+            type: "image", t: 0, d: body, src: watermark.src, query: "", credit: "",
             x: mark.corner.endsWith("left") ? margin + halfWidth : 1 - margin - halfWidth,
             y: mark.corner.startsWith("top") ? margin + halfHeight : 1 - margin - halfHeight,
             // Boxed to the square the corner maths assumed, so a tall mark is
@@ -578,8 +651,8 @@ export function templateOperations(
         id,
         mediaId: null,
         clip: Clip.parse({
-          id, title: "Music bed", start: 0, end: duration, captions: { preset: "none" },
-          edits: [{ type: "music", t: 0, d: duration, src: music.src, gain: template.music.gain, duck: template.music.duck, loop: template.music.loop, by }],
+          id, title: "Music bed", start: 0, end: bodyEnd, captions: { preset: "none" },
+          edits: [{ type: "music", t: 0, d: bodyEnd, src: music.src, gain: template.music.gain, duck: template.music.duck, loop: template.music.loop, by }],
         }),
         at: 0,
         layer: topLayer + 3,

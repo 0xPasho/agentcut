@@ -45,6 +45,13 @@ it decides which one the material wants.
   colour, background), `fonts.captions`, `logo` (asset or slot, lent to the watermark when
   it has none). A glossary subject can carry a `brand` too; a project whose plan names
   that subject inherits it when the plan is applied.
+- **The body**: a bookend is a composition of its own, so the layers a template holds
+  across the video hold across what is *between* the bookends — the hook, the cards and
+  the watermark start when an intro ends and stop where an end card begins, and
+  `atFraction: 1` means the last frame before that card rather than a call to action on
+  top of it. The music bed is the exception at one end: it plays from the first frame,
+  under an intro like any other shot, and still stops at the end card, which arrives
+  with its own sound.
 - **`intro` / `outro`**: a picture held full-frame for `seconds` at the start or the end,
   on the main track, from an `image` slot or an asset id — or a whole video played to its
   end, which is what a channel's end card is. The intro shifts every shot after it; both
@@ -109,9 +116,11 @@ rectangles that matter instead:
   converges and a project that was already framed this way is not touched. A template
   whose `mode` is `source` leaves a hand-made split exactly as it is.
 - `template.plan` reports `framing`: the mode, which half the camera is in, and where
-  the seam falls as a share of height. Captions that start above the seam and run past
-  it are called out there too — a two-row line cut in half by the boundary is the one
-  framing mistake that reads as a bug rather than a taste.
+  the seam falls as a share of height. Two more mistakes are called out there, because
+  both are invisible until the first render: captions that start above the seam and run
+  past it, and a screen rectangle wide enough that the webcam shows through it — the
+  speaker then appears twice, small in the screen pane and large in their own. Stop the
+  screen where the camera starts, which is what the built-in does.
 
 ## Choosing one
 
@@ -326,7 +335,11 @@ each adopted asset and reported by `template.apply`.
 
 - `captions` is a patch: omitted fields keep the video's current caption settings. Any
   preset applies — `karaoke` lights the spoken word, `popline` shows one word at a time,
-  `boxed` sets the line on a plate, `none` turns captions off.
+  `boxed` sets the line on a plate, `none` turns captions off. With `popline`, every word
+  on screen *is* the spoken word, so `highlight` paints the whole video: leave it equal to
+  `color` and let `rhythm.emphasis` carry the accent, which is what `stream-pop` does.
+  An emphasised word is drawn in the colour its own emphasis beat asks for
+  (`rhythm.emphasis.color`), not in the caption highlight.
 - `rhythm.redundancy` cuts a phrase said twice in a row — the false start a stream is full
   of, "y entonces yo… y entonces yo creo que". There is no silence in it, so the dead-air
   pass cannot see it; what marks it is the repetition. The stumble goes and the run that
