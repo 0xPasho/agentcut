@@ -616,6 +616,13 @@ second per minute against the reference's 20.5, on two bodies of material, which
 says the setting was measured rather than fitted to one of them. The captions sit on the
 speech: `scripts/caption-sync.ts` reads an average shift of 5ms across the eight.
 
+The sound was measured the same way. The channel's own published short reads -18.1 LUFS
+with peaks at -0.6dB; what this produced read -21.8 with peaks at -1.1, which in a feed
+that normalises to about -14 is the difference between being heard and being scrolled
+past. With `audio.targetLufs` the same clip exports at -20.1 and still peaks at -1.1 —
+the rest of the gap is a microphone with no compressor on it, and a limiter to close it
+is not something a template should do without being asked.
+
 `story-arc` was rendered with both cards filled: the hook holds at the top, the turn card
 sits in the middle of the frame, and the closing card lands in its own band with the last
 spoken line still readable beneath it.
