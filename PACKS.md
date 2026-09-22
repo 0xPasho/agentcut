@@ -59,6 +59,10 @@ checks, none failed — each framed as the pack's template says, each holding th
 hook across its body, each ending on the pack's own card at the loudness of the video in
 front of it. Nothing about the look was typed on that machine.
 
+Then again, from nothing, on a different recording: three more shorts, eighteen more
+checks, none failed. The agent judged the pack's rule to hold on every clip both times,
+which is what a rule written as a sentence is for.
+
 ## Export
 
 **Export** writes `workspace/exports/packs/<id>/` from what is in this workspace: chosen
