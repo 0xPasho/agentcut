@@ -86,6 +86,19 @@ function rect(x: number, y: number, w: number, h: number) {
   return `crop=${round(w)}:${round(h)}:${round(x)}:${round(y)}`;
 }
 
+/**
+ * One region of a source, cropped and scaled to fill a box exactly the way the renderer
+ * fills it. Exported because a poster is not the only thing that has to agree with the
+ * renderer about what a layout means: `scripts/style-audit.ts` rebuilds a finished
+ * video's panes from its source and compares them pixel for pixel.
+ */
+export function regionFilter(
+  region: { x: number; y: number; w: number; h: number },
+  box: { width: number; height: number },
+): string {
+  return `${rect(region.x, region.y, region.w, region.h)},scale=${box.width}:${box.height}:force_original_aspect_ratio=increase,crop=${box.width}:${box.height}`;
+}
+
 function buildFilter(source: ThumbSource, clip: Clip, { w: W, h: H }: { w: number; h: number }): string {
   if (clip.layout.type === "split") {
     const topH = Math.round((H * clip.layout.topPct) / 100);
@@ -93,8 +106,8 @@ function buildFilter(source: ThumbSource, clip: Clip, { w: W, h: H }: { w: numbe
     const b = clip.layout.bottom;
     return (
       `[0:v]split=2[a][b];` +
-      `[a]${rect(t.x, t.y, t.w, t.h)},scale=${W}:${topH}:force_original_aspect_ratio=increase,crop=${W}:${topH}[top];` +
-      `[b]${rect(b.x, b.y, b.w, b.h)},scale=${W}:${H - topH}:force_original_aspect_ratio=increase,crop=${W}:${H - topH}[bot];` +
+      `[a]${regionFilter(t, { width: W, height: topH })}[top];` +
+      `[b]${regionFilter(b, { width: W, height: H - topH })}[bot];` +
       `[top][bot]vstack=inputs=2`
     );
   }

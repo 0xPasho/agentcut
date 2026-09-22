@@ -450,6 +450,28 @@ each adopted asset and reported by `template.apply`.
 
 `templates.schema` is the authority for every field and range.
 
+## Reading a finished video back
+
+```bash
+pnpm exec tsx scripts/style-audit.ts PROJECT_ID
+```
+
+Every claim a template makes is checkable against the export and none of them are
+checkable by reading the project. This rebuilds each pane from the footage — cropped and
+scaled the way the layout says, at the moment the cuts say — and compares it with the
+pane that was exported; then it checks the hook card is on screen across the body and off
+the end card, that a word being spoken lights the caption band while a gap does not, and
+that the end card is the card itself and plays whole.
+
+On two shorts cut from a three-hour stream it reads:
+
+```
+the bottom pane is the footage framed as the layout says: worst 3.0/255 over 4 moments ✓
+the hook card holds across the body: 53%, 53%, 53% white ✓
+a word lights the caption band: 39 on "Es" against 24 in a gap ✓
+the end card is the card itself: 0.6/255 ✓
+```
+
 ## Headless
 
 ```bash
