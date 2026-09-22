@@ -106,6 +106,15 @@ it decides which one the material wants.
   opens on an intro would otherwise read the sting and level the whole timeline to it. A
   shot whose volume is a fade somebody drew keeps its fade — a fixed value would never be
   seen, and one hand-drawn fade is not a reason to throw away the rest of the apply.
+- **False starts.** A stumble is a run of words said twice with only a breath between
+  them, and the first run is what goes. The breath the template leaves before the second
+  try comes out of the silence between the two and only out of that: a stumble often has
+  no silence in it at all — the words run straight into their own repetition — and taking
+  a tenth of a second off the front of the second copy left a tenth of a second of the
+  *first* one behind, the tail of a word, which is heard as a stutter. Found by running
+  three hundred generated transcripts through the whole pass and asking the one thing a
+  cut must never do: every word is either entirely there or entirely gone.
+
 - **Framing across recordings.** Rectangles are fractions so a template survives a change
   of resolution — the same OBS scene is 1920x1080 on one machine and 1728x1116 on another
   — not so it survives a change of *shape*. `stream-short` carries the rectangles of the

@@ -584,3 +584,96 @@ test("how wide a line is, decided without measuring it", async () => {
   assert.equal(fitScaleAll(["corto", long], box), fitScale(long, box));
   assert.equal(fitScaleAll([], box), 1);
 });
+
+test("three hundred transcripts, and nothing a template writes lands inside a word", async () => {
+  // Real recordings are not tidy. These are: long pauses, none at all, words that touch,
+  // a gap at the very start, a gap at the very end, a phrase said twice, a stumble. The
+  // properties that have to hold on all of them are the ones that are invisible until an
+  // export: a cut that eats a syllable, two cuts over each other, a cut off the end of
+  // the clip, or a push-in left with no time to happen in.
+  const { buildTimeMap, srcToOut } = await import("../src/lib/timeline");
+  await registry.saveTemplate({ id: "cuts", extends: "stream-short", name: "Cuts", outro: { enabled: false }, ...STREAM_OVERRIDES });
+
+  // A generator that repeats: a failure here is a failure anybody can run again.
+  let seed = 20260922;
+  const random = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  const pick = <T,>(list: T[]) => list[Math.floor(random() * list.length)];
+  const VOCAB = ["hoy", "vamos", "a", "conectar", "el", "editor", "con", "agente", "porque", "eso",
+    "es", "lo", "que", "nadie", "dice", "y", "entonces", "te", "atoras", "mira", "aquí", "está"];
+
+  let cuts = 0, punches = 0, checked = 0;
+  for (let run = 0; run < 300; run++) {
+    const words: Array<{ t: number; d: number; w: string }> = [];
+    let t = random() * 3; // sometimes silence before the first word, sometimes none
+    const count = 6 + Math.floor(random() * 60);
+    // The source is twenty seconds long, and a clip cannot run off the end of it.
+    for (let i = 0; i < count && t < 16.5; i++) {
+      const d = 0.08 + random() * 0.6;
+      words.push({ t: Number(t.toFixed(3)), d: Number(d.toFixed(3)), w: pick(VOCAB) });
+      // Touching words, ordinary breaths, and the long pause a stream is full of.
+      const gap = random() < 0.25 ? 0 : random() < 0.75 ? random() * 0.5 : random() * 6;
+      t += d + gap;
+    }
+    if (words.length < 6) continue;
+    // A phrase said twice, which is what the redundancy pass is for.
+    const last = words[words.length - 1];
+    if (random() < 0.4 && words.length > 8 && last.t + last.d < 15) {
+      const at = 2 + Math.floor(random() * (words.length - 6));
+      const run3 = words.slice(at, at + 3).map((w) => w.w);
+      let back = words[at + 3].t;
+      const said = run3.map((w) => { const said = { t: Number(back.toFixed(3)), d: 0.25, w }; back += 0.3; return said; });
+      words.splice(at + 3, 0, ...said);
+      for (let i = at + 6; i < words.length; i++) words[i].t = Number((words[i].t + 0.9).toFixed(3));
+    }
+    const spoken = words[words.length - 1];
+    const end = Number(Math.min(19.5, spoken.t + spoken.d + random() * 4).toFixed(3));
+    if (end <= spoken.t + spoken.d) continue;
+
+    for (let i = 1; i < words.length; i++)
+      assert.ok(words[i].t >= words[i - 1].t + words[i - 1].d - 0.005,
+        `run ${run}: the transcript itself is out of order at ${i}: "${words[i - 1].w}" ${words[i - 1].t}+${words[i - 1].d} then "${words[i].w}" ${words[i].t}`);
+    const { id, sequenceId, itemId } = await project(source, words, end);
+    await tools.executeEditorTool(id, { tool: "template.apply", templateId: "cuts", sequenceId,
+      expectedRevision: store.readEditor(id).revision });
+    const item = store.readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!.items.find((i) => i.id === itemId)!;
+    const clip = item.clip;
+    const spans = clip.edits.filter((e) => e.type === "silence")
+      .map((e) => ({ t: (e as { t: number }).t, d: (e as { d: number }).d }))
+      .sort((a, b) => a.t - b.t);
+    cuts += spans.length;
+
+    const duration = clip.end - clip.start;
+    for (const span of spans) {
+      assert.ok(span.d > 0, `run ${run}: a cut of ${span.d}s`);
+      assert.ok(span.t >= 0 && span.t + span.d <= duration + 0.001,
+        `run ${run}: a cut at ${span.t}..${(span.t + span.d).toFixed(3)} of a ${duration}s clip`);
+    }
+
+    // The one thing a cut must never do: take half a word. Dead air is cut between
+    // words and a false start is cut whole, so every word is either entirely there or
+    // entirely gone — a cut through the middle of one is the syllable a viewer hears
+    // disappear. Cuts may overlap each other, and the time map merges them, so this is
+    // asked of the timeline they produce rather than of any one edit.
+    const map = buildTimeMap(clip);
+    const kept = (from: number, to: number) => map.spans.reduce((total, span) =>
+      total + Math.max(0, Math.min(to, span.srcEnd) - Math.max(from, span.srcStart)), 0);
+    for (const word of clip.words) {
+      const left = kept(word.t, word.t + word.d);
+      assert.ok(left < 0.02 || left > word.d - 0.02,
+        `run ${run}: "${word.w}" at ${word.t} for ${word.d}s is half cut — ${left.toFixed(3)}s of it survives`);
+    }
+
+    // A push-in shortened by the cuts underneath it still has time to happen in: a
+    // degenerate one crashed a real export with a non-monotonic interpolation range.
+    for (const punch of clip.edits.filter((e) => e.type === "punch") as Array<{ t: number; d: number }>) {
+      punches += 1;
+      const from = srcToOut(map, punch.t), to = srcToOut(map, punch.t + punch.d);
+      assert.ok(to >= from, `run ${run}: a push-in from ${from} to ${to} runs backwards`);
+    }
+    checked += 1;
+    database.q.deleteProject(id);
+  }
+  assert.ok(checked > 250, `${checked} of the three hundred were usable transcripts`);
+  assert.ok(cuts > 300, `the run has to actually cut something: ${cuts} cuts over ${checked} transcripts`);
+  assert.ok(punches > 0, `and push in somewhere: ${punches}`);
+});

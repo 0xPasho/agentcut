@@ -291,7 +291,13 @@ export function redundancyCuts(words: Word[], rhythm: TemplateRhythm["redundancy
       // emphasis out of the one line the clip was chosen for.
       if (/[.!?…]["'»)]?$/.test(words[i + n - 1].w.trim())) continue;
       const t = words[i].t;
-      const d = secondStart - rhythm.keepSec - t;
+      // The breath left before the second try comes out of the silence between the two,
+      // and only out of that. A stumble often has no silence in it at all — the words run
+      // straight into their own repetition — and taking a tenth of a second off the front
+      // of the second copy meant leaving a tenth of a second of the *first* one behind:
+      // the tail of a word, eighty milliseconds long, which is heard as a stutter.
+      const breath = Math.min(rhythm.keepSec, Math.max(0, secondStart - firstEnd));
+      const d = secondStart - breath - t;
       if (d < 0.1 || t < 0 || t + d > clipDuration) continue;
       cuts.push({ type: "silence", t, d });
       taken = n;
