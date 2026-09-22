@@ -282,3 +282,55 @@ test("a plan that names a rule brings the rule's inputs with it, not only its ov
   assert.ok(outro, "the rule's end card is on the timeline, not silently left off");
   assert.equal(store.readEditor(id).edl.media.find((m) => m.id === outro!.mediaId)!.file, assets.toAbs(card.path));
 });
+
+test("footage with no sound at all still takes the whole look, end card included", async () => {
+  const silent = path.join(workspace, "silent.mp4");
+  const made = spawnSync(FFMPEG, ["-y", "-f", "lavfi", "-i", "color=0x203040:size=1728x1116:rate=15:duration=10",
+    "-pix_fmt", "yuv420p", silent], { encoding: "utf8" });
+  assert.equal(made.status, 0, made.stderr);
+  const card = await endCard("silent-card.mp4");
+  await registry.saveTemplate({ id: "silent-ok", extends: "stream-short", name: "Silent ok",
+    outro: { enabled: true, slot: "endcard" }, ...STREAM_OVERRIDES });
+
+  const { id, sequenceId } = await project(silent, speak(SCRIPT), 8);
+  const applied = await tools.executeEditorTool(id, { tool: "template.apply", templateId: "silent-ok", sequenceId,
+    expectedRevision: store.readEditor(id).revision, slots: { endcard: { assetId: card.id } } }) as { plan: { framing: unknown } };
+  assert.deepEqual(applied.plan.framing, { mode: "split", seam: 0.68, camera: "bottom" });
+
+  const sequence = store.readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!;
+  const outro = sequence.items.find((i) => i.clip.title === "Outro")!;
+  assert.ok(outro, "the end card is there");
+  // Nothing to measure against, so the card plays as it was mixed rather than at a
+  // gain computed from silence.
+  assert.equal(outro.volume, undefined, "a video with no sound gives the card no level to meet");
+  assert.ok(sequence.items.some((i) => i.mediaId && i.clip.layout.type === "split"), "and it is still framed");
+});
+
+test("switching a video from one template to another replaces the first one's work", async () => {
+  const card = await endCard("switch-card.mp4");
+  await registry.saveTemplate({ id: "look-a", extends: "stream-short", name: "Look A",
+    captions: { preset: "popline", positionY: 0.6, maxWordsPerLine: 1 },
+    outro: { enabled: true, slot: "endcard" }, ...STREAM_OVERRIDES });
+  await registry.saveTemplate({ id: "look-b", extends: "stream-short", name: "Look B",
+    captions: { preset: "karaoke", positionY: 0.8, maxWordsPerLine: 3, uppercase: true },
+    hook: { mode: "off" }, outro: { enabled: false },
+    layout: { mode: "split", cameraPosition: "top", cameraPct: 40, camera: STREAM_OVERRIDES.layout.camera, screen: STREAM_OVERRIDES.layout.screen } });
+
+  const { id, sequenceId, itemId } = await project();
+  await tools.executeEditorTool(id, { tool: "template.apply", templateId: "look-a", sequenceId,
+    expectedRevision: store.readEditor(id).revision, slots: { endcard: { assetId: card.id } } });
+  const first = store.readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!;
+  assert.ok(first.items.some((i) => i.clip.title === "Hook"));
+  assert.ok(first.items.some((i) => i.clip.title === "Outro"));
+
+  await tools.executeEditorTool(id, { tool: "template.apply", templateId: "look-b", sequenceId, expectedRevision: store.readEditor(id).revision });
+  const second = store.readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!;
+  const shot = second.items.find((i) => i.id === itemId)!;
+  assert.equal(shot.clip.captions.preset, "karaoke", "the new look's captions");
+  assert.equal(shot.clip.captions.positionY, 0.8);
+  assert.ok(shot.clip.layout.type === "split" && shot.clip.layout.camera === "top" && shot.clip.layout.topPct === 40, "the new look's framing");
+  assert.ok(!second.items.some((i) => i.clip.title === "Hook"), "the first template's hook went with it");
+  assert.ok(!second.items.some((i) => i.clip.title === "Outro"), "and so did its end card");
+  assert.ok(shot.clip.edits.every((e) => !e.by.startsWith("template:look-a")), "no edit of the first template is left");
+  assert.ok(shot.clip.edits.some((e) => e.by.startsWith("template:look-b")), "and the second wrote its own");
+});
