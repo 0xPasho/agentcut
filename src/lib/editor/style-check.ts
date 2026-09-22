@@ -126,12 +126,12 @@ export async function auditStyle(projectId: string, only?: string): Promise<Styl
      * camera-on-top video sits in the screen's half, and comparing it with the other half
      * says a difference that is only the two halves being different.
      */
-    const drawnOver = (at: number, y: number, bandHeight: number) => {
+    const drawnOver = (at: number, y: number, bandHeight: number, x = width * 0.1, bandWidth = width * 0.8) => {
       const pane = paneAt(y);
       if (!pane || y + bandHeight > pane.top + pane.height) return null;
-      const rendered = frame(file, at, box(width * 0.1, y, width * 0.8, bandHeight), 80, 12);
+      const rendered = frame(file, at, box(x, y, bandWidth, bandHeight), 80, 12);
       const expected = pixels(["-ss", String(sourceAt(map, at, item.clip.start)), "-i", media.file, "-frames:v", "1",
-        "-vf", `${regionFilter(pane.region, { width, height: pane.height })},${box(width * 0.1, y - pane.top, width * 0.8, bandHeight)},scale=80:12`,
+        "-vf", `${regionFilter(pane.region, { width, height: pane.height })},${box(x, y - pane.top, bandWidth, bandHeight)},scale=80:12`,
         "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
       return meanAbs(rendered, expected);
     };
@@ -199,6 +199,16 @@ export async function auditStyle(projectId: string, only?: string): Promise<Styl
           const lit = band(outAt(map, spoken.t) + 0.08);
           const dark = band(quiet);
           check("captions", lit > dark + 4, `a word lights the caption band: ${lit.toFixed(0)} on "${spoken.w}" against ${dark.toFixed(0)} in a gap`);
+        }
+        // And it is inside the frame. A caption wraps between words, so a word wider than
+        // the band has nowhere to go and runs off both edges with its ends cut off by the
+        // picture — which a check on the middle of the band cannot see.
+        const margin = width * 0.06;
+        const edges = [0, width - margin].map((x) => drawnOver(outAt(map, spoken.t) + 0.08, top, bandHeight, x, margin));
+        if (edges.every((edge) => edge !== null)) {
+          const worst = Math.max(...(edges as number[]));
+          check("captions inside the frame", worst < 10,
+            `the longest word, "${spoken.w}", stops before the edges: ${worst.toFixed(0)}/255 drawn into the outer ${Math.round(margin)}px`);
         }
       }
     }

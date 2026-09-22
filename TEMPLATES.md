@@ -41,6 +41,20 @@ it decides which one the material wants.
 - **`captionLook`** names a caption look (`templates.looks`: bold-yellow, clean-white,
   boxed-dark, pop, stream-pop, minimal). The look supplies what the template's own `captions` do
   not set.
+
+  `fontSizePct` is the size a look **asks** for, not always the size it gets. A caption
+  line wraps between its words, so a word wider than the band has nowhere to go: it runs
+  off both edges of the frame with its ends cut off by the picture. Real transcripts
+  produce them — `internacionalización` is twenty letters, a spoken URL is thirty-two, and
+  a Japanese phrase arrives as one token — and at 5.4% of 1920 a twenty-letter word is
+  wider than 86% of 1080. The line that contains one is drawn smaller instead, by enough
+  to fit and no more, so one word at a time stays one word on one line rather than two
+  rows of letters reaching down onto the speaker's face. The width is estimated from the
+  characters rather than measured, because the preview, the export and a test have to
+  agree and measuring depends on a font having finished loading. Past the point where
+  shrinking would make it unreadable the word wraps inside itself instead. The same
+  applies to a hook card. `style.audit` reads the outer 6% of the caption band and says
+  whether anything was drawn there.
 - **`brand`** is a brand kit: `palette` (primary → caption highlight, text → caption
   colour, background), `fonts.captions`, `logo` (asset or slot, lent to the watermark when
   it has none). A glossary subject can carry a `brand` too; a project whose plan names

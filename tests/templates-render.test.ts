@@ -16,7 +16,9 @@ before(async () => {
 after(async () => { database.db.close(); await fs.rm(workspace, { recursive: true, force: true }); });
 
 function ffmpeg(args: string[]) {
-  const result = spawnSync(FFMPEG, ["-v", "error", ...args]);
+  // A whole band of a 1080-wide frame is megabytes of raw pixels, which is past the
+  // default a child process may hand back.
+  const result = spawnSync(FFMPEG, ["-v", "error", ...args], { maxBuffer: 1 << 28 });
   assert.equal(result.status, 0, result.stderr.toString());
   return result.stdout;
 }
@@ -298,4 +300,82 @@ test("the whole stream look, read back out of the pixels: hook, one word at a ti
 
   // The pause between the two runs of words was cut out of the video.
   assert.ok(map.duration < 19, `dead air was removed: ${map.duration}s of 20`);
+});
+
+test("a word too long for the frame is drawn smaller, not drawn outside it", { timeout: 420_000 }, async () => {
+  const { createVideoProject } = await import("../src/lib/editor/media");
+  const { readEditor, editProject } = await import("../src/lib/editor/store");
+  const { executeEditorTool } = await import("../src/lib/editor/tools");
+  const { renderProject } = await import("../src/lib/editor/render");
+  const { saveTemplate } = await import("../src/lib/templates/registry");
+
+  // Black footage, so every bright pixel in the frame is something that was drawn on it.
+  const source = path.join(workspace, "long-words.mp4");
+  ffmpeg(["-y", "-f", "lavfi", "-i", "color=black:size=1728x1116:rate=12:duration=12",
+    "-f", "lavfi", "-i", "sine=frequency=300:duration=12", "-shortest", "-pix_fmt", "yuv420p", "-c:a", "aac", source]);
+
+  // Words a real transcript produces: a twenty-letter Spanish one, a spoken URL, and a
+  // Japanese phrase that arrives as a single token.
+  const words = [
+    { t: 0.0, d: 1.2, w: "internacionalización" },
+    { t: 1.4, d: 1.2, w: "https://github.com/pashoai/deska" },
+    { t: 2.8, d: 1.2, w: "電気通信事業者協会" },
+    { t: 4.2, d: 1.2, w: "corto" },
+  ];
+  const { id } = await createVideoProject("Long words", [{ file: source }]);
+  const snapshot = readEditor(id);
+  const sequenceId = snapshot.edl.sequences[0].id;
+  const saved = editProject(id, { expectedRevision: snapshot.revision, operations: [{
+    type: "item.patch", sequenceId, itemId: snapshot.edl.sequences[0].items[0].id,
+    patch: { title: "Palabras largas", hook: "https://github.com/pashoai/deska", start: 0, end: 8, words },
+  }] });
+  await saveTemplate({ id: "long-words", extends: "stream-short", name: "Long words", outro: { enabled: false },
+    output: { width: 1080, height: 1920, fps: 12 },
+    layout: { camera: { x: 0.69, y: 0.72, w: 0.31, h: 0.28 }, screen: { x: 0, y: 0, w: 0.69, h: 1 } } });
+  await executeEditorTool(id, { tool: "template.apply", templateId: "long-words", sequenceId, expectedRevision: saved.revision });
+  await renderProject(id, { only: [sequenceId] });
+  const rendered = JSON.parse(await fs.readFile(path.join(workspace, "projects", id, "rendered.json"), "utf8"));
+  const file = path.join(workspace, "projects", id, "clips", rendered[sequenceId].file);
+
+  /** The leftmost and rightmost drawn pixel inside a band of the frame. */
+  const ink = (sec: number, top: number, bottom: number) => {
+    const W = 1080, height = bottom - top;
+    const data = ffmpeg(["-ss", String(sec), "-i", file, "-frames:v", "1",
+      "-vf", `crop=${W}:${height}:0:${top}`, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
+    let left = W, right = -1, first = -1, last = -1;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < W; x++) {
+        const i = (W * y + x) * 3;
+        if (data[i] > 140 && data[i + 1] > 140 && data[i + 2] > 140) {
+          if (x < left) left = x;
+          if (x > right) right = x;
+          if (first < 0) first = y;
+          last = y;
+        }
+      }
+    }
+    return { left, right, top: top + first, bottom: top + last, tall: last - first };
+  };
+
+  // The caption band sits at 60% of the frame; the seam is at 68% of it, and the look
+  // asks for letters 5.4% of the height tall.
+  const seam = Math.round(1920 * 0.68);
+  const lineHeight = 1920 * 0.054;
+  for (const word of words) {
+    const band = ink(word.t + word.d / 2, 1100, 1920);
+    assert.ok(band.right >= 0, `${word.w}: nothing was drawn at all`);
+    // Inside the frame, and inside the margin the look asks for rather than at its edge.
+    assert.ok(band.left > 40 && band.right < 1040,
+      `${word.w}: drawn from ${band.left} to ${band.right} of 1080`);
+    // One word at a time is one line, whatever the word is: a word broken across two of
+    // them is a second row of letters reaching down towards the speaker's face, which is
+    // what shrinking the line buys over letting it wrap inside itself.
+    assert.ok(band.tall < lineHeight * 1.35,
+      `${word.w}: its letters span ${band.tall}px, more than the one line of ${Math.round(lineHeight)}px it asked for`);
+    assert.ok(band.bottom < seam, `${word.w}: it reaches ${band.bottom}, past the seam at ${seam}`);
+  }
+
+  // The hook card holds the same URL and stays inside the frame too.
+  const hook = ink(2, 120, 520);
+  assert.ok(hook.left > 40 && hook.right < 1040, `the hook card runs from ${hook.left} to ${hook.right} of 1080`);
 });

@@ -3,6 +3,7 @@ import { interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 import type { CaptionStyle, Edit } from "../src/lib/edl";
 import type { Word } from "../src/lib/transcript";
 import { activeWordIndex, lineAt, toLines, visibleWords } from "../src/lib/timeline";
+import { fitScaleAll } from "../src/lib/text-fit";
 import { loadFont } from "@remotion/google-fonts/Inter";
 
 const { fontFamily: inter } = loadFont("normal", {
@@ -27,7 +28,7 @@ type Props = {
 /** Karaoke: the whole line stays readable, the spoken word lights up. */
 export const Captions: React.FC<Props> = ({ words, style, emphasis }) => {
   const frame = useCurrentFrame();
-  const { fps, height } = useVideoConfig();
+  const { fps, width, height } = useVideoConfig();
   // Frame centre, not frame start: a word beginning mid-frame otherwise lights up
   // a whole frame late, which at 30fps is the 30ms of lag that reads as "off".
   const t = (frame + 0.5) / fps - style.syncOffsetMs / 1000;
@@ -45,7 +46,14 @@ export const Captions: React.FC<Props> = ({ words, style, emphasis }) => {
   const boxed = style.preset === "boxed";
   const popline = style.preset === "popline";
 
-  const fontSize = (style.fontSizePct / 100) * height;
+  const asked = (style.fontSizePct / 100) * height;
+  // A line wraps between words, so a word wider than the band has nowhere to go and
+  // spills past the edge of the frame with its ends cut off. Twenty-letter Spanish
+  // words, a spoken URL and a Japanese phrase all do it at the size a look asks for, so
+  // the line that contains one is drawn smaller instead of drawn outside the picture.
+  const labels = shown.map((w) => (style.uppercase ? w.w.toUpperCase() : w.w));
+  const band = (width * 0.86) / asked - (boxed ? 0.9 : 0);
+  const fontSize = asked * fitScaleAll(labels, band);
   // The stroke is written in pixels of a 1080x1920 frame, which is what every short is,
   // and scaled with the frame everywhere else: the letters are a share of the height, so
   // a stroke that is not would double in weight on a square derive and vanish on a wall.
@@ -94,7 +102,7 @@ export const Captions: React.FC<Props> = ({ words, style, emphasis }) => {
           return (
             <span
               key={`${i}-${w.t}`}
-              className="inline-block leading-[1.15]"
+              className="inline-block leading-[1.15] [overflow-wrap:anywhere]"
               style={{
                 fontFamily: style.fontFamily === "Inter" ? inter : style.fontFamily,
                 fontWeight: style.fontWeight,

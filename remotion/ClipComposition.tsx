@@ -5,6 +5,7 @@ import { buildTimeMap, mapCrop, mapWindow, mapWords, srcToOut } from "../src/lib
 import { duckedVolume, speechSpans } from "../src/lib/ducking";
 import { crossfadeGain, type AudioFade } from "../src/lib/sequences";
 import { Captions } from "./Captions";
+import { emWidth, fitScale } from "../src/lib/text-fit";
 import { VideoRegion } from "./VideoRegion";
 
 /** Seconds a punch-in takes to reach full scale, and to come back. */
@@ -63,6 +64,18 @@ function cropAt(keys: CropKeyframe[], t: number, fallback: CropKeyframe): CropKe
     h: a.h + (b.h - a.h) * p,
   };
 }
+
+/**
+ * A hook card is one word wider than its card when somebody says a URL, and the letters
+ * at the ends are then cut off by the frame. The card is drawn smaller rather than drawn
+ * outside the picture, on the same estimate the captions use.
+ */
+const TITLE_PX = 64;
+const CARD_PADDING_PX = 80;
+const titleFit = (text: string, width: number, carded: boolean) => {
+  const longest = text.split(/\s+/).reduce((a, b) => (emWidth(b) > emWidth(a) ? b : a), "");
+  return fitScale(longest, (width * 0.86 - (carded ? CARD_PADDING_PX : 0)) / TITLE_PX);
+};
 
 export const ClipComposition: React.FC<ClipProps> = ({
   clip,
@@ -312,7 +325,9 @@ export const ClipComposition: React.FC<ClipProps> = ({
           : undefined;
         return (
           <div key={`tx-${i}`} className={`absolute ${free ? (tx.x !== null ? "" : "inset-x-0") : `inset-x-0 ${place}`} flex justify-center ${free && tx.x !== null ? "" : "px-[7%]"}`} style={freeStyle}>
-            <span data-canvas-title data-canvas-edit={clip.edits.indexOf(tx)} className={`text-center text-[64px] font-black leading-[1.12] tracking-tight ${card}`}>
+            <span data-canvas-title data-canvas-edit={clip.edits.indexOf(tx)}
+              className={`text-center font-black leading-[1.12] tracking-tight [overflow-wrap:anywhere] ${card}`}
+              style={{ fontSize: TITLE_PX * titleFit(tx.text, width, tx.style === "card") }}>
               {tx.text}
             </span>
           </div>

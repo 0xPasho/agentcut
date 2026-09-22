@@ -555,3 +555,32 @@ test("a hook somebody typed is used as typed, even when it looks like a file nam
     assert.ok(!dry.warnings.some((w) => w.toLowerCase().includes("hook")), dry.warnings.join(" | "));
   }
 });
+
+test("how wide a line is, decided without measuring it", async () => {
+  const { emWidth, fitScale, fitScaleAll, MIN_FIT } = await import("../src/lib/text-fit");
+
+  // A rough width is enough, but it has to be rough in the safe direction: capitals and
+  // wide letters cost more than an average one, thin ones less, and a CJK character a
+  // whole em.
+  assert.ok(emWidth("MMMM") > emWidth("iiii") * 2, "capitals are not the width of an i");
+  assert.ok(emWidth("電気通信") > emWidth("abcd"), "a kanji is wider than a letter");
+  assert.equal(emWidth(""), 0);
+
+  // A line that fits is left alone, whatever the box.
+  assert.equal(fitScale("corto", 12), 1);
+  assert.equal(fitScale("", 12), 1);
+  // One that does not is shrunk exactly enough to fit, and never past the floor.
+  const box = 9;
+  const long = "internacionalización";
+  const scale = fitScale(long, box);
+  assert.ok(scale < 1 && scale > MIN_FIT, `${scale}`);
+  assert.ok(emWidth(long) * scale <= box, "and what comes out fits the box it was given");
+  assert.equal(fitScale("x".repeat(400), box), MIN_FIT, "a word nothing could shrink into the box stops at the floor");
+  // A box with no room at all is not a division by zero.
+  assert.equal(fitScale("hola", 0), 1);
+  assert.equal(fitScale("hola", -3), 1);
+
+  // A caption line wraps between its words, so the widest one decides for all of them.
+  assert.equal(fitScaleAll(["corto", long], box), fitScale(long, box));
+  assert.equal(fitScaleAll([], box), 1);
+});
