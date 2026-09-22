@@ -109,6 +109,12 @@ it decides which one the material wants.
   opens on an intro would otherwise read the sting and level the whole timeline to it. A
   shot whose volume is a fade somebody drew keeps its fade — a fixed value would never be
   seen, and one hand-drawn fade is not a reason to throw away the rest of the apply.
+- **An accent that lost its sentence.** An emphasis is written in source seconds over the
+  sentence it belongs to. Cut that sentence away — a false start, a repeated phrase — and
+  the span maps to no length at the cut's edge, and the half second either side that makes
+  an accent land on its own word then coloured whatever was said there instead: the wrong
+  word, in a colour nobody asked for. Nothing was emphasised, so nothing is.
+
 - **Room noise the transcript talks over.** Dead air is normally found in the transcript:
   the gap between one word ending and the next beginning. That works until the recogniser
   is wrong about the clock. A clip from a real stream came out with four and a half

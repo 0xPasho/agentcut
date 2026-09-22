@@ -470,3 +470,81 @@ test("a square derive is its own video: its own seam, its own captions, the same
   const tall = readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!;
   assert.deepEqual({ w: tall.output.width, h: tall.output.height }, { w: 1080, h: 1920 });
 });
+
+test("a video made of two shots with a blend between them holds one hook across all of it", { timeout: 420_000 }, async () => {
+  // The hook is the thing this look is for: it stays up for the whole video. A video is
+  // not always one shot, and a hook that spanned the first one and stopped would look
+  // right in the panel — the layer is there, the text is right — and be wrong in the
+  // export, which is the only place anybody watches it.
+  const { createVideoProject } = await import("../src/lib/editor/media");
+  const { readEditor, editProject } = await import("../src/lib/editor/store");
+  const { executeEditorTool } = await import("../src/lib/editor/tools");
+  const { renderProject } = await import("../src/lib/editor/render");
+  const { uploadLibraryAsset } = await import("../src/lib/assets");
+
+  // Two scenes shaped like a stream, in different colours, so which one is on screen is
+  // a pixel rather than a guess.
+  const shots = [
+    { file: path.join(workspace, "two-a.mp4"), screen: "0x102040", camera: "0xE08020" },
+    { file: path.join(workspace, "two-b.mp4"), screen: "0x401020", camera: "0x20A0E0" },
+  ];
+  for (const shot of shots) {
+    ffmpeg(["-y", "-f", "lavfi", "-i", `color=${shot.screen}:size=1728x1116:rate=12:duration=14`,
+      "-f", "lavfi", "-i", "sine=frequency=220:duration=14", "-shortest", "-pix_fmt", "yuv420p", "-c:a", "aac",
+      "-vf", `drawbox=x=1200:y=806:w=528:h=310:color=${shot.camera}@1:t=fill`, shot.file]);
+  }
+  const cardFile = path.join(workspace, "two-card.mp4");
+  ffmpeg(["-y", "-f", "lavfi", "-i", "color=0x1E9E4A:size=480x854:rate=12:duration=3",
+    "-f", "lavfi", "-i", "sine=frequency=500:duration=3", "-shortest", "-pix_fmt", "yuv420p", "-c:a", "aac", cardFile]);
+  const card = await uploadLibraryAsset("two-card.mp4", await fs.readFile(cardFile));
+
+  const { id } = await createVideoProject("Two shots", shots.map((shot) => ({ file: shot.file })));
+  let snapshot = readEditor(id);
+  const sequenceId = snapshot.edl.sequences[0].id;
+  const [one, two] = snapshot.edl.sequences[0].items;
+  assert.ok(two, `two sources make two shots: ${snapshot.edl.sequences[0].items.length}`);
+  const words = (from: number) => ["hoy", "vamos", "a", "conectar", "el", "editor"].map((w, i) => ({ t: from + i * 0.6, d: 0.45, w }));
+  snapshot = editProject(id, { expectedRevision: snapshot.revision, operations: [
+    { type: "item.patch", sequenceId, itemId: one.id, patch: { title: "Uno", hook: "¿Y si el editor y el agente fueran el mismo?", start: 0, end: 8, words: words(1) } },
+    { type: "item.patch", sequenceId, itemId: two.id, patch: { title: "Dos", start: 0, end: 8, words: words(1) } },
+    // And a blend between them, which is a place a layer can end early without anybody noticing.
+    { type: "item.transition", sequenceId, itemId: two.id, transition: { kind: "dissolve", durationSec: 0.8 } },
+  ] });
+
+  await executeEditorTool(id, {
+    tool: "template.apply", templateId: "stream-short", sequenceId, expectedRevision: snapshot.revision,
+    slots: { endcard: { assetId: card.id } },
+    overrides: { output: { width: 1080, height: 1920, fps: 12 },
+      layout: { camera: { x: 1200 / 1728, y: 806 / 1116, w: 528 / 1728, h: 310 / 1116 }, screen: { x: 0, y: 0, w: 1200 / 1728, h: 1 } } },
+  });
+
+  const saved = readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!;
+  const { sequenceFrames } = await import("../src/lib/sequences");
+  const frames = sequenceFrames(saved);
+  const fps = saved.output.fps;
+  const outro = frames.items.find((e) => e.item.clip.title === "Outro")!;
+  const hook = frames.items.find((e) => e.item.clip.title === "Hook")!;
+  const body = outro.from / fps;
+  assert.ok(Math.abs((hook.from + hook.duration) / fps - body) < 0.1,
+    `the hook layer spans the whole body: ${(hook.from / fps).toFixed(2)}..${((hook.from + hook.duration) / fps).toFixed(2)} of ${body.toFixed(2)}s`);
+
+  const { outputs } = await renderProject(id, { only: [sequenceId] });
+  const file = outputs[0].file;
+
+  // Both shots are framed, and which one is on screen changes where it should.
+  const seam = Math.round(1920 * 0.68);
+  const shotTwoStarts = frames.items.find((e) => e.item.id === two.id)!.from / fps;
+  assert.ok(near(pixel(file, 1, 120, seam + 60), [224, 128, 32]), `the first speaker, saw ${pixel(file, 1, 120, seam + 60)}`);
+  assert.ok(near(pixel(file, shotTwoStarts + 1.5, 120, seam + 60), [32, 160, 224]),
+    `the second speaker after the blend, saw ${pixel(file, shotTwoStarts + 1.5, 120, seam + 60)}`);
+  assert.ok(near(pixel(file, shotTwoStarts + 1.5, 120, seam - 60), [64, 16, 32]), "and the second screen above the seam");
+
+  // The hook is on screen throughout: in the first shot, across the blend, in the second,
+  // and at the last frame before the card.
+  for (const at of [0.3, shotTwoStarts - 0.2, shotTwoStarts + 0.1, shotTwoStarts + 2, body - 0.3]) {
+    const seen = pixel(file, at, 540, 200);
+    assert.ok(seen.every((c) => c > 200), `the hook card should be up at ${at.toFixed(2)}s, saw ${seen}`);
+  }
+  assert.ok(!pixel(file, body + 1.5, 540, 200).every((c) => c > 200), "and gone on the end card");
+  assert.ok(near(pixel(file, body + 1.5, 540, 960), [30, 158, 74], 45), "which is the card itself");
+});

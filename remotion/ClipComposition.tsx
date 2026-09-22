@@ -104,7 +104,12 @@ export const ClipComposition: React.FC<ClipProps> = ({
   // other edit, and a clip with cuts in it coloured the wrong line.
   const emphasis = clip.edits
     .filter((e): e is Extract<Edit, { type: "emphasis" }> => e.type === "emphasis")
-    .map((e) => ({ ...e, ...mapWindow(map, e.t, e.d) }));
+    .map((e) => ({ ...e, ...mapWindow(map, e.t, e.d) }))
+    // A sentence the cuts removed entirely maps to a window of no length at the cut's
+    // edge — and the half-second either side that makes an accent land on its word would
+    // then colour whatever happens to be said there instead. Nothing was emphasised, so
+    // nothing is.
+    .filter((e) => e.d > 0.02);
   const texts = clip.edits.filter((e): e is Extract<Edit, { type: "text" }> => e.type === "text");
   const images = clip.edits.filter((e): e is Extract<Edit, { type: "image" }> => e.type === "image");
   const sfx = clip.edits.filter((e): e is Extract<Edit, { type: "sfx" }> => e.type === "sfx");

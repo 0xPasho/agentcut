@@ -451,3 +451,56 @@ test("the loudness a template asks for is in the exported audio, not only in the
   assert.ok(loud > soft * 1.2, `the exported audio is louder: ${loud.toFixed(4)} against ${soft.toFixed(4)}`);
   assert.ok(Math.abs(loud / soft - asked.volume!) < 0.15, `and by the gain the template chose: ${(loud / soft).toFixed(2)} against ${asked.volume!.toFixed(2)}`);
 });
+
+test("an accent on a sentence the cuts removed does not land on the words that replace it", { timeout: 300_000 }, async () => {
+  // An emphasis is written in source seconds over the sentence it belongs to. Cut that
+  // sentence away and the span maps to no length at the cut's edge — and the half second
+  // either side that makes an accent land on its own word would then colour whatever is
+  // said there instead, in a colour nobody asked for, on a word nobody chose.
+  const { createVideoProject } = await import("../src/lib/editor/media");
+  const { readEditor, editProject } = await import("../src/lib/editor/store");
+  const { renderProject } = await import("../src/lib/editor/render");
+
+  const source = path.join(workspace, "accent-cut.mp4");
+  ffmpeg(["-y", "-f", "lavfi", "-i", "color=black:size=1080x1920:rate=12:duration=12",
+    "-f", "lavfi", "-i", "sine=frequency=300:duration=12", "-shortest", "-pix_fmt", "yuv420p", "-c:a", "aac", source]);
+
+  // "Nvidia" is said twice: once in the sentence that gets cut, once in the one that stays.
+  const words = [
+    { t: 0.5, d: 0.4, w: "Nvidia" }, { t: 1.0, d: 0.4, w: "vende" }, { t: 1.5, d: 0.4, w: "chips." },
+    // Straight after the cut, which is where the half second either side reaches.
+    { t: 2.7, d: 0.4, w: "Nvidia" }, { t: 3.2, d: 0.4, w: "también" }, { t: 3.7, d: 0.4, w: "gana." },
+  ];
+  const { id } = await createVideoProject("Accent cut", [{ file: source }]);
+  const snapshot = readEditor(id);
+  const sequenceId = snapshot.edl.sequences[0].id;
+  const itemId = snapshot.edl.sequences[0].items[0].id;
+  editProject(id, { expectedRevision: snapshot.revision, operations: [{
+    type: "item.patch", sequenceId, itemId,
+    patch: {
+      title: "Acento", start: 0, end: 8, words,
+      captions: { preset: "karaoke", positionY: 0.6, fontSizePct: 5, maxWordsPerLine: 3, color: "#ffffff", highlight: "#ffffff" },
+      edits: [
+        // The first sentence goes, and with it the accent that belonged to it.
+        { type: "silence", t: 0.4, d: 2.2, by: "" },
+        { type: "emphasis", t: 0.5, d: 1.4, words: ["Nvidia"], color: "#ff0000", by: "" },
+      ],
+    },
+  }] });
+
+  const { outputs } = await renderProject(id, { only: [sequenceId] });
+  const file = outputs[0].file;
+  const { buildTimeMap, srcToOut } = await import("../src/lib/timeline");
+  const map = buildTimeMap(readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!.items.find((i) => i.id === itemId)!.clip);
+  const at = srcToOut(map, 2.9);
+
+  /** The reddest pixel in the caption band: an accent in red would show up as one. */
+  const band = ffmpeg(["-ss", String(at), "-i", file, "-frames:v", "1",
+    "-vf", "crop=1080:200:0:1130", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
+  let reddest = 0;
+  for (let i = 0; i + 2 < band.length; i += 3) {
+    const red = band[i] - Math.max(band[i + 1], band[i + 2]);
+    if (band[i] > 100 && red > reddest) reddest = red;
+  }
+  assert.ok(reddest < 40, `the surviving "Nvidia" is not accented: ${reddest}/255 of red over the other channels`);
+});
