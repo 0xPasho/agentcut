@@ -209,3 +209,57 @@ test("a webcam that would show up inside the screen pane as well is called out",
   const dry = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "twice", sequenceId }) as import("../src/lib/templates/plan").TemplatePlan;
   assert.ok(dry.warnings.some((w) => w.includes("appears twice")), dry.warnings.join(" | "));
 });
+
+test("every shot is framed against its own footage, whatever each one was recorded at", async () => {
+  const second = path.join(workspace, "other.mp4");
+  const made = spawnSync(FFMPEG, ["-y", "-f", "lavfi", "-i", "color=green:size=1920x1080:rate=15:duration=8",
+    "-f", "lavfi", "-i", "sine=frequency=200:duration=8", "-pix_fmt", "yuv420p", "-shortest", second], { encoding: "utf8" });
+  assert.equal(made.status, 0, made.stderr);
+
+  const { id, sequenceId } = await project("Two sources");
+  const imported = await tools.executeEditorTool(id, { tool: "media.import", file: second,
+    expectedRevision: store.readEditor(id).revision, place: { sequenceId, at: null, layer: 0 } }) as { revision: number };
+  await tools.executeEditorTool(id, { tool: "template.apply", templateId: "stream-split", sequenceId, expectedRevision: imported.revision });
+
+  const items = store.readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!.items.filter((i) => i.mediaId);
+  assert.equal(items.length, 2);
+  const widths = items.map((i) => (i.clip.layout.type === "split" ? i.clip.layout.bottom.w : 0));
+  assert.deepEqual(widths, [553, 614], "each shot's camera rectangle is in its own source's pixels");
+  assert.ok(items.every((i) => i.clip.layout.type === "split" && i.clip.layout.topPct === 68));
+});
+
+test("the camera share has ends, and a rectangle pushed off the frame still has a rectangle", () => {
+  const { VideoTemplate } = schema;
+  for (const cameraPct of [15, 85]) {
+    const layout = planner.layoutFor(VideoTemplate.parse({ ...SPLIT, id: "ends", layout: { ...SPLIT.layout, cameraPct } }), { width: 1728, height: 1116 })!;
+    assert.equal(layout.type, "split");
+    if (layout.type !== "split") continue;
+    assert.equal(layout.topPct, 100 - cameraPct);
+  }
+  assert.throws(() => VideoTemplate.parse({ ...SPLIT, id: "too-small", layout: { ...SPLIT.layout, cameraPct: 14 } }));
+  assert.throws(() => VideoTemplate.parse({ ...SPLIT, id: "too-big", layout: { ...SPLIT.layout, cameraPct: 86 } }));
+  assert.throws(() => VideoTemplate.parse({ ...SPLIT, id: "off-frame", layout: { ...SPLIT.layout, camera: { x: 1.2, y: 0, w: 0.3, h: 0.3 } } }));
+
+  // A camera rectangle that fills the frame is legal and stays inside it.
+  const whole = planner.layoutFor(VideoTemplate.parse({ ...SPLIT, id: "whole", layout: { ...SPLIT.layout, camera: { x: 0, y: 0, w: 1, h: 1 } } }), { width: 640, height: 360 })!;
+  if (whole.type !== "split") return assert.fail("split");
+  assert.deepEqual(whole.bottom, { x: 0, y: 0, w: 640, h: 360 });
+
+  // A frame smaller than the rounding: every rectangle keeps at least two pixels.
+  const tiny = planner.layoutFor(VideoTemplate.parse({ ...SPLIT, id: "tiny", layout: { ...SPLIT.layout, camera: { x: 0.9, y: 0.9, w: 0.01, h: 0.01 } } }), { width: 100, height: 100 })!;
+  if (tiny.type !== "split") return assert.fail("split");
+  assert.ok(tiny.bottom.w >= 2 && tiny.bottom.h >= 2, JSON.stringify(tiny.bottom));
+  assert.ok(tiny.bottom.x + tiny.bottom.w <= 100 && tiny.bottom.y + tiny.bottom.h <= 100, "and stays inside the frame");
+});
+
+test("an aspect variant can reframe: the same template, a different shape, its own split", async () => {
+  await registry.saveTemplate({ ...SPLIT, id: "variant-split",
+    variants: { "1:1": { layout: { cameraPct: 45 } }, "16:9": { layout: { mode: "crop" } } } });
+  const { resolveTemplate } = await import("../src/lib/templates/resolve");
+  const template = await registry.getTemplate("variant-split");
+  assert.equal(resolveTemplate(template, { aspect: "9:16" }).layout.cameraPct, 32);
+  assert.equal(resolveTemplate(template, { aspect: "1:1" }).layout.cameraPct, 45, "a square frame gives the person more of it");
+  assert.equal(resolveTemplate(template, { aspect: "16:9" }).layout.mode, "crop", "a wide frame does not need a split at all");
+  // The rectangles survive the merge rather than being replaced by the patch's absence.
+  assert.equal(resolveTemplate(template, { aspect: "1:1" }).layout.camera.w, SPLIT.layout.camera.w);
+});

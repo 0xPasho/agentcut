@@ -146,3 +146,50 @@ test("a punch-in can carry a sound from an audio slot, placed on every punch and
   assert.equal(edits.filter((e) => e.type === "sfx").length, sfx.length, "re-applying replaces the sounds rather than stacking them");
   await assert.rejects(tools.executeEditorTool(id, { tool: "template.apply", templateId: "punchy", sequenceId, expectedRevision: store.readEditor(id).revision, slots: { whoosh: { assetId: "a_nope" } } }), /Punch sound/);
 });
+
+test("a kit travels whole: the end card, the template that has a slot for it, and the rule that fills it", async () => {
+  const sting = path.join(workspace, "kit-card.mp4");
+  const made = spawnSync(FFMPEG, ["-y", "-f", "lavfi", "-i", "color=0x20A040:size=240x426:rate=15:duration=3",
+    "-f", "lavfi", "-i", "sine=frequency=400:duration=3", "-pix_fmt", "yuv420p", "-shortest", sting], { encoding: "utf8" });
+  assert.equal(made.status, 0, made.stderr);
+  const card = await assets.uploadLibraryAsset("kit-card.mp4", await fs.readFile(sting));
+
+  // The template names no asset: it says a video belongs at the end, and which slot holds it.
+  await registry.saveTemplate({
+    id: "kit-short", extends: "stream-short", name: "Kit short",
+    outro: { enabled: true, slot: "endcard" },
+    slots: [{ id: "endcard", label: "Your end card", kind: "video" }],
+  });
+  await rules.saveRule({ id: "kit-outro", name: "Kit outro", when: "the clip is from a stream",
+    then: { template: "kit-short", slots: { endcard: { assetId: card.id } } } });
+  const exported = await packs.exportPack({ id: "stream-kit", name: "Stream kit", author: "tests",
+    templates: ["kit-short"], rules: ["kit-outro"], assetIds: [card.id] });
+  assert.ok(exported.manifest.assets.some((a) => a.kind === "video" && a.id === card.id), "the card travels with the pack");
+
+  // Another machine: none of it exists here, and the asset will be given a different id.
+  await registry.deleteTemplate("kit-short");
+  await rules.deleteRule("kit-outro");
+  database.q.deleteAsset(card.id);
+  await fs.rm(assets.toAbs(card.path), { force: true });
+
+  const installed = await packs.importPack(exported.dir);
+  const landed = database.q.listAssets("video").find((a) => a.name === "kit-card.mp4")!;
+  assert.ok(landed && landed.id !== card.id, "the same bytes, a different id on this machine");
+  assert.equal(installed.assets[card.id], landed.id);
+  const rule = await rules.getRule("kit-outro");
+  assert.equal(rule.then.slots?.endcard.assetId, landed.id, "the rule points at this machine's copy");
+
+  // And it edits: the rule chooses the template, fills its slot, and the card is on the timeline.
+  const { id } = await mediaService.createVideoProject("Imported kit", [{ file: source }]);
+  const sequenceId = store.readEditor(id).edl.sequences[0].id;
+  const applied = await tools.executeEditorTool(id, { tool: "rules.apply", ruleIds: ["kit-outro"], sequenceId,
+    expectedRevision: store.readEditor(id).revision }) as import("../src/lib/rules/apply").RuleApplyResult;
+  assert.equal(applied.templateId, "kit-short");
+  const edl = store.readEditor(id).edl;
+  const outro = edl.sequences.find((s) => s.id === sequenceId)!.items.find((i) => i.clip.title === "Outro")!;
+  assert.ok(outro, "the end card is the last shot");
+  assert.equal(edl.media.find((m) => m.id === outro.mediaId)!.file, assets.toAbs(landed.path));
+  const framed = edl.sequences.find((s) => s.id === sequenceId)!.items.find((i) => i.clip.title !== "Outro" && i.mediaId)!;
+  assert.equal(framed.clip.layout.type, "split", "the framing came with the template it extends");
+  await packs.removePack("stream-kit");
+});
