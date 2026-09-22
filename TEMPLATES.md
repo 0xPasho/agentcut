@@ -112,7 +112,10 @@ rectangles that matter instead:
   shared content lurch on every emphasis beat.
 - Each rectangle is cropped to fill its half, so their aspect ratios need not match, and
   a wide screen loses its edges rather than its middle. Narrow `screen` to the window the
-  clip is actually about when the whole desktop is too much.
+  clip is actually about when the whole desktop is too much. A pane always loses a little
+  this way; when a rectangle loses more than a third of itself the dry run says so, and
+  says what does show, because otherwise "the left two thirds of my screen" quietly
+  becomes the middle of that and only a render shows it.
 - `mode` is `source` (leave each shot's own framing alone — what every template did
   before this and what a captions-and-cuts template should keep doing), `crop` (centre
   crop, for a talking head) or `split`.

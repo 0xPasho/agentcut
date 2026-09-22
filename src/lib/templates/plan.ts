@@ -167,6 +167,33 @@ function evenCues(item: SequenceItem, template: VideoTemplate, budget: number): 
  * middle often reaches the camera. The person is then on screen twice, once small and
  * once large, which is the mistake nobody catches until the first render.
  */
+/**
+ * What a pane actually shows of the rectangle it was given. Each pane is cropped to
+ * fill its half, so a rectangle whose shape is not the pane's loses its edges — and an
+ * author who wrote "the left two thirds of my screen" gets the middle of that.
+ */
+export function paneCrop(
+  region: { x: number; y: number; w: number; h: number },
+  media: { width: number; height: number },
+  pane: { width: number; height: number },
+): { x: number; y: number; w: number; h: number; share: number } {
+  const source = {
+    x: region.x * media.width,
+    y: region.y * media.height,
+    w: (region.w || 1) * media.width,
+    h: (region.h || 1) * media.height,
+  };
+  const scale = Math.max(pane.width / source.w, pane.height / source.h);
+  const visible = { w: Math.min(source.w, pane.width / scale), h: Math.min(source.h, pane.height / scale) };
+  return {
+    x: source.x + (source.w - visible.w) / 2,
+    y: source.y + (source.h - visible.h) / 2,
+    w: visible.w,
+    h: visible.h,
+    share: (visible.w * visible.h) / (source.w * source.h),
+  };
+}
+
 export function cameraShowsTwice(
   template: VideoTemplate,
   media: { width: number; height: number },
@@ -176,26 +203,7 @@ export function cameraShowsTwice(
   if (layout.mode !== "split" || !layout.camera.w || !layout.camera.h) return false;
   // Whichever half the camera is in, the screen gets the rest.
   const screenShare = (100 - layout.cameraPct) / 100;
-  const paneWidth = output.width;
-  const paneHeight = output.height * screenShare;
-  const region = {
-    x: layout.screen.x * media.width,
-    y: layout.screen.y * media.height,
-    w: (layout.screen.w || 1) * media.width,
-    h: (layout.screen.h || 1) * media.height,
-  };
-  const scale = Math.max(paneWidth / region.w, paneHeight / region.h);
-  // What survives the crop: the centre of the region, in source pixels.
-  const visible = {
-    w: Math.min(region.w, paneWidth / scale),
-    h: Math.min(region.h, paneHeight / scale),
-  };
-  const shown = {
-    x: region.x + (region.w - visible.w) / 2,
-    y: region.y + (region.h - visible.h) / 2,
-    w: visible.w,
-    h: visible.h,
-  };
+  const shown = paneCrop(layout.screen, media, { width: output.width, height: output.height * screenShare });
   const camera = {
     x: layout.camera.x * media.width,
     y: layout.camera.y * media.height,
@@ -353,6 +361,23 @@ export async function planTemplate(
   const framedMedia = framed ? working.media.find((m) => m.id === framed.mediaId) : undefined;
   if (split && framedMedia && cameraShowsTwice(template, framedMedia, template.output ?? sequence.output))
     warnings.push("The webcam is inside the part of the screen that will be shown, so the speaker appears twice — small in the screen pane and large in their own. Narrow the screen rectangle so it stops where the camera starts.");
+  if (split && framedMedia) {
+    // A pane fills its half, so a rectangle shaped unlike the pane loses its edges. An
+    // author who wrote "the left two thirds of my screen" and gets the middle of that
+    // has no way to see it happen except by rendering.
+    const out = template.output ?? sequence.output;
+    const panes = [
+      { name: "screen", region: template.layout.screen, height: out.height * (100 - template.layout.cameraPct) / 100 },
+      { name: "webcam", region: template.layout.camera, height: out.height * template.layout.cameraPct / 100 },
+    ];
+    for (const pane of panes) {
+      if (!pane.region.w || !pane.region.h) continue;
+      const crop = paneCrop(pane.region, framedMedia, { width: out.width, height: pane.height });
+      // A pane always loses a little; a third of the rectangle is a different matter.
+      if (crop.share < 0.7)
+        warnings.push(`The ${pane.name} rectangle is a different shape from the half it fills, so ${Math.round((1 - crop.share) * 100)}% of it is cropped away — what shows is its middle ${Math.round(crop.w)}x${Math.round(crop.h)} pixels. Give it the shape of its half to choose what is lost.`);
+    }
+  }
   if (split && sequence.items.some((entry) => entry.mediaId && entry.clip.words.length)) {
     // The caption block grows downward from its top edge. A block that reaches across
     // the seam is read half on the screen and half on the speaker, which is the one

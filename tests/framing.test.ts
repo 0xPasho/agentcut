@@ -402,3 +402,25 @@ test("a split is suggested for a screen with a person in the corner of it, and a
   const streamOnBlank = blankSuggestions.suggestions.find((s) => s.templateId === "stream-short")!;
   assert.ok(streamOnBlank.why.some((w) => w.includes("no footage")), streamOnBlank.why.join(" | "));
 });
+
+test("a rectangle that loses a third of itself to the shape of its half says so", async () => {
+  const { paneCrop } = planner;
+  const media = { width: 1728, height: 1116 };
+  // The whole frame into the screen half of a 9:16 video: the sides go.
+  const whole = paneCrop({ x: 0, y: 0, w: 1, h: 1 }, media, { width: 1080, height: 1306 });
+  assert.ok(Math.abs(whole.w - 923) < 2 && Math.abs(whole.h - 1116) < 2, JSON.stringify(whole));
+  assert.ok(whole.share > 0.5 && whole.share < 0.55, `${whole.share}`);
+  // A rectangle already the shape of its half keeps all of itself.
+  const shaped = paneCrop({ x: 0, y: 0, w: 923 / 1728, h: 1 }, media, { width: 1080, height: 1306 });
+  assert.ok(shaped.share > 0.99, `${shaped.share}`);
+
+  await registry.saveTemplate({ ...SPLIT, id: "wide-screen", layout: { ...SPLIT.layout, screen: { x: 0, y: 0, w: 1, h: 1 }, camera: { x: 0, y: 0.8, w: 0.12, h: 0.2 } } });
+  const { id, sequenceId } = await project("Wide rect");
+  const dry = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "wide-screen", sequenceId }) as import("../src/lib/templates/plan").TemplatePlan;
+  assert.ok(dry.warnings.some((w) => w.includes("cropped away")), dry.warnings.join(" | "));
+
+  // The built-in, whose screen stops where the camera starts, loses little enough to
+  // say nothing about — a pane always loses a little.
+  const shipped = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "stream-short", sequenceId }) as import("../src/lib/templates/plan").TemplatePlan;
+  assert.ok(!shipped.warnings.some((w) => w.includes("cropped away")), shipped.warnings.join(" | "));
+});
