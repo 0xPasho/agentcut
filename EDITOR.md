@@ -131,6 +131,13 @@ playhead marks, the ruler's slider value and the lit transcript word follow it.
   **Stop and unlock**)
 - `transcript.resync` (re-recognise the source and refresh every clip's words)
 - `assets.list` (library plus project assets), `assets.capture` (source seconds)
+- `assets.delete` (take one out of the library, the panel's own button). Refused while a
+  template's bookend or a rule's slot still names it, saying which: removing one they name
+  does not fail here, it fails later in the middle of a batch as "Asset not found" on a
+  clip nobody was watching, and the rule written to put a card on every video quietly
+  stops putting one anywhere. The file stays on disk — this is a listing, not a
+  wastebasket, and the library keys an asset by its bytes, so dropping it back in
+  `library/` brings the same asset back.
 - `assets.search`, `assets.adopt` (select a returned provider/ID for a query)
 - `assets.searchAudio`, `assets.adoptAudio` (the same two steps for sound: free-licence audio
   search, then download into the project with its licence and credit). A handful of starter

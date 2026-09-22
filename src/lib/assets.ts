@@ -202,3 +202,35 @@ export async function uploadLibraryAsset(name: string, bytes: Uint8Array): Promi
   await fs.writeFile(file, bytes);
   return registerAsset({ file, kind, scope: "library", name: path.basename(name), source: "upload" });
 }
+
+/**
+ * Take an asset out of the library, unless something still names it.
+ *
+ * A template's end card and a rule's slot both hold an asset by id. Removing one they
+ * name does not fail: it fails later, in the middle of a batch, as "Asset not found" on
+ * a clip nobody was watching — and the rule that was written to put a card on every
+ * video quietly stops putting one anywhere. So the templates and rules are read first
+ * and the removal is refused by name.
+ *
+ * The file itself stays on disk. This is a library listing, not a wastebasket: a project
+ * that already used the asset keeps playing, and dropping the file back into `library/`
+ * brings it back.
+ */
+export async function removeLibraryAsset(id: string): Promise<{ deleted: boolean }> {
+  const { q } = await import("./db");
+  const asset = q.getAsset(id);
+  if (!asset) throw new Error(`No asset with id ${id}. Use assets.list to see what is there.`);
+  const [{ listTemplates }, { listRules }] = await Promise.all([
+    import("./templates/registry"),
+    import("./rules/registry"),
+  ]);
+  const [templates, rules] = await Promise.all([listTemplates(), listRules()]);
+  const named = [
+    ...templates.filter((template) => JSON.stringify(template).includes(`"${id}"`)).map((t) => `template ${t.id}`),
+    ...rules.filter((rule) => JSON.stringify(rule.then).includes(`"${id}"`)).map((r) => `rule ${r.id}`),
+  ];
+  if (named.length)
+    throw new Error(`“${asset.name}” is still used by ${named.join(", ")}. Change ${named.length > 1 ? "those" : "that"} first, or they will ask for an asset that is not there.`);
+  q.deleteAsset(id);
+  return { deleted: true };
+}

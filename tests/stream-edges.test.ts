@@ -868,3 +868,36 @@ test("a rule naming something its template has not got is saved, and said", asyn
     then: { template: "arrives-with-a-pack", slots: { whatever: { text: "x" } } } });
   assert.equal(later.warnings, undefined);
 });
+
+test("taking an asset out of the library is the agent's to do, and is refused while something names it", async () => {
+  // Its own length, twice over: the library keys an asset by its bytes, so a card the
+  // same in every way as another test's is that other test's card — which is exactly
+  // why something naming it has to be looked for before it goes.
+  const card = await endCard("library-card.mp4", 3.3);
+  const { id } = await project();
+
+  // Parity first: the panel has always had this, and an agent that imported the wrong
+  // file could only ask somebody else to remove it.
+  const spare = await endCard("spare-card.mp4", 1.7);
+  assert.deepEqual(await tools.executeEditorTool(id, { tool: "assets.delete", id: spare.id }), { deleted: true });
+  assert.ok(!(await tools.executeEditorTool(id, { tool: "assets.list", kind: "video" }) as Array<{ id: string }>)
+    .some((a) => a.id === spare.id), "and it is gone from the list both interfaces read");
+
+  // A template that ends on it.
+  await registry.saveTemplate({ id: "ends-on-it", extends: "stream-short", name: "Ends on it",
+    outro: { enabled: true, assetId: card.id }, ...STREAM_OVERRIDES });
+  await assert.rejects(() => tools.executeEditorTool(id, { tool: "assets.delete", id: card.id }),
+    /still used by template ends-on-it/);
+
+  // A rule that fills a slot with it — which is how "end every clip on my card" is written.
+  await registry.deleteTemplate("ends-on-it");
+  await rules.saveRule({ id: "always-card", name: "Always the card", enabled: true, when: "siempre",
+    stage: "edit", priority: 10, then: { template: "stream-short", slots: { endcard: { assetId: card.id } } } });
+  await assert.rejects(() => tools.executeEditorTool(id, { tool: "assets.delete", id: card.id }),
+    /still used by rule always-card/);
+
+  // With nothing naming it, it goes.
+  await rules.deleteRule("always-card");
+  assert.deepEqual(await tools.executeEditorTool(id, { tool: "assets.delete", id: card.id }), { deleted: true });
+  await assert.rejects(() => tools.executeEditorTool(id, { tool: "assets.delete", id: card.id }), /No asset with id/);
+});

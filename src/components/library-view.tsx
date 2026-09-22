@@ -54,8 +54,15 @@ export function LibraryView() {
   };
 
   const remove = async (id: string) => {
-    await api.deleteAsset(id);
-    setAssets((prev) => prev.filter((a) => a.id !== id));
+    // Refused when a template or a rule still names it, which is a sentence worth
+    // reading rather than a row that stays put for no visible reason.
+    try {
+      await api.deleteAsset(id);
+      setError(null);
+      setAssets((prev) => prev.filter((a) => a.id !== id));
+    } catch (e) {
+      setError((e as Error).message);
+    }
   };
 
   return (

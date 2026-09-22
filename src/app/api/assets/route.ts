@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { q } from "@/lib/db";
-import { uploadLibraryAsset, ensureLibrary, scanLibrary, kindFor } from "@/lib/assets";
+import { uploadLibraryAsset, ensureLibrary, scanLibrary, kindFor, removeLibraryAsset } from "@/lib/assets";
 
 export const runtime = "nodejs";
 
@@ -28,6 +28,10 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const id = req.nextUrl.searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
-  q.deleteAsset(id);
-  return NextResponse.json({ ok: true });
+  try {
+    await removeLibraryAsset(id);
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json({ error: (error as Error).message }, { status: 409 });
+  }
 }

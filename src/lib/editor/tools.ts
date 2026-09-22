@@ -40,6 +40,9 @@ export const EditorToolCall = z.discriminatedUnion("tool", [
   z.object({ tool: z.literal("assets.browseLocal"), folder: z.string().optional(), offset: z.number().int().nonnegative().default(0), limit: z.number().int().positive().max(5000).default(100) }),
   z.object({ tool: z.literal("assets.importLocal"), file: z.string().min(1) }),
   z.object({ tool: z.literal("assets.list"), kind: z.enum(["image", "audio", "video"]) }),
+  // The panel has always had a way to take something out of the library. An agent that
+  // imported the wrong file could only ask somebody else to remove it.
+  z.object({ tool: z.literal("assets.delete"), id: z.string().min(1) }),
   z.object({ tool: z.literal("assets.capture"), atSec: z.number().nonnegative(), mediaId: z.string().optional() }),
   z.object({ tool: z.literal("assets.search"), query: z.string().trim().min(1), providers: z.array(z.string()).optional() }),
   z.object({ tool: z.literal("assets.providers") }),
@@ -210,6 +213,7 @@ export async function executeEditorTool(projectId: string, raw: unknown, onActiv
       return importLocalAsset(projectId, call.file);
     }
     case "assets.list": await scanLibrary(); return q.listAssets(call.kind, projectId);
+    case "assets.delete": { const { removeLibraryAsset } = await import("../assets"); return removeLibraryAsset(call.id); }
     case "assets.capture": return captureAsset(projectId, call.atSec, call.mediaId);
     case "assets.search": return searchImages(call.query, 12, call.providers);
     case "assets.searchAudio": return searchAudio(call.query, 12, call.kind);
