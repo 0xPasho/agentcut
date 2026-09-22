@@ -49,6 +49,16 @@ Nothing stays linked: offline rendering keeps working and updates are a re-impor
 
 Removing a pack removes its templates and rules. Assets stay, because projects may use them.
 
+## What installing one is worth
+
+The whole path was run from nothing on a machine that had never seen the pack: an empty
+workspace, the pack read from a folder, a recording ingested and transcribed, clips chosen
+by the selection agent, the owner's rule judged to hold on each of them, executed the way
+a batch executes them, rendered, and read back out of the pixels. Three shorts, eighteen
+checks, none failed — each framed as the pack's template says, each holding the pack's
+hook across its body, each ending on the pack's own card at the loudness of the video in
+front of it. Nothing about the look was typed on that machine.
+
 ## Export
 
 **Export** writes `workspace/exports/packs/<id>/` from what is in this workspace: chosen
