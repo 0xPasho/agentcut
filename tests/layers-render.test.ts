@@ -409,3 +409,45 @@ test("a push-in shortened by the cut underneath it still renders", { timeout: 30
   };
   assert.ok(box(at) < box(0.2), `the punch zooms: box edge at ${box(at)} during it, ${box(0.2)} before it`);
 });
+
+test("the loudness a template asks for is in the exported audio, not only in the timeline", { timeout: 300_000 }, async () => {
+  const { createVideoProject } = await import("../src/lib/editor/media");
+  const { readEditor, editProject } = await import("../src/lib/editor/store");
+  const { executeEditorTool } = await import("../src/lib/editor/tools");
+  const { renderProject } = await import("../src/lib/editor/render");
+  const { saveTemplate } = await import("../src/lib/templates/registry");
+
+  // Quiet footage with room to grow: a tone at a fifth of full scale.
+  const quiet = path.join(workspace, "quiet-level.mp4");
+  ffmpeg(["-y", "-f", "lavfi", "-i", "color=0x203040:size=320x568:rate=12:duration=6",
+    "-f", "lavfi", "-i", "sine=frequency=1000:duration=6", "-af", "volume=0.2",
+    "-shortest", "-pix_fmt", "yuv420p", "-c:a", "aac", quiet]);
+
+  const words = ["uno", "dos", "tres", "cuatro"].map((w, i) => ({ t: 0.5 + i * 0.6, d: 0.4, w }));
+  const make = async (templateId: string, targetLufs: number | null) => {
+    await saveTemplate({ id: templateId, extends: "talking-head", name: templateId,
+      captions: { preset: "none" }, hook: { mode: "off" }, images: { mode: "off" },
+      rhythm: { silence: { enabled: false }, punch: { enabled: false }, emphasis: { enabled: false } },
+      output: { width: 320, height: 568, fps: 12 }, audio: { targetLufs } });
+    const { id } = await createVideoProject(`Level ${templateId}`, [{ file: quiet }]);
+    const start = readEditor(id);
+    const sequenceId = start.edl.sequences[0].id;
+    editProject(id, { expectedRevision: start.revision, operations: [
+      { type: "item.patch", sequenceId, itemId: start.edl.sequences[0].items[0].id, patch: { start: 0, end: 6, words } },
+    ] });
+    await executeEditorTool(id, { tool: "template.apply", templateId, sequenceId, expectedRevision: readEditor(id).revision });
+    const { outputs } = await renderProject(id, { only: [sequenceId] });
+    return { file: outputs[0].file, volume: readEditor(id).edl.sequences[0].items[0].volume };
+  };
+
+  const asked = await make("levelled-render", -20);
+  const left = await make("unlevelled-render", null);
+  assert.ok(asked.volume !== undefined && asked.volume > 1.2, `the timeline says it is turned up: ${asked.volume}`);
+  assert.equal(left.volume, undefined, "and the other is left alone");
+
+  // What the sample values say, which is the only claim that matters.
+  const loud = rms(asked.file, 1);
+  const soft = rms(left.file, 1);
+  assert.ok(loud > soft * 1.2, `the exported audio is louder: ${loud.toFixed(4)} against ${soft.toFixed(4)}`);
+  assert.ok(Math.abs(loud / soft - asked.volume!) < 0.15, `and by the gain the template chose: ${(loud / soft).toFixed(2)} against ${asked.volume!.toFixed(2)}`);
+});
