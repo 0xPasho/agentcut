@@ -353,7 +353,9 @@ export async function planTemplate(
   if (!totals.sentences && template.images.mode !== "off" && !hasPool)
     warnings.push("No transcript on this video, so there is nothing to place pictures against. Fill an image pool slot, or add transcript words in scene properties.");
 
-  // Framing, and the two ways a template can get it wrong without rendering anything.
+  // Framing, and the four ways a template can be wrong about it that a dry run can see:
+  // no camera rectangle, a webcam that shows through the screen as well, a rectangle
+  // most of which its own half crops away, and captions on the wrong side of the seam.
   const split = template.layout.mode === "split";
   const seam = split ? (template.layout.cameraPosition === "top" ? template.layout.cameraPct : 100 - template.layout.cameraPct) / 100 : null;
   if (split && (!template.layout.camera.w || !template.layout.camera.h)) warnings.push(CAMERA_NEEDED);
@@ -393,8 +395,8 @@ export async function planTemplate(
         : (top: number) => top >= seam!;
       if (captions.positionY < seam! && bottom > seam!)
         warnings.push(`The captions start at ${(captions.positionY * 100).toFixed(0)}% and run past the seam at ${(seam! * 100).toFixed(0)}%, so a two-row line is cut in half by it. Move them clear of it.`);
-      // Or they cleared it on the wrong side. A variant that moves the seam and not the
-      // captions leaves them over the speaker's face, which is what this caught.
+      // Or they cleared it on the wrong side, which is what a variant that moves the
+      // seam and not the captions produces: a line of text across the speaker's face.
       else if (cameraSide(captions.positionY) && cameraSide(bottom))
         warnings.push(`The captions sit over the person rather than over the screen — they start at ${(captions.positionY * 100).toFixed(0)}% and the seam is at ${(seam! * 100).toFixed(0)}%. Move them to the other side of it, or say so on purpose.`);
     }
