@@ -137,3 +137,70 @@ test("a template renders its pictures, in pool order, only on the beats it plann
   assert.ok(!near(pixel(file, map.duration / 2, 120, 1774), [240, 50, 230], 50), "it belongs in one corner, not across the bottom");
   assert.ok(!near(pixel(file, map.duration / 2, 968, 137), [240, 50, 230], 50), "and not in the corner the sticky hook uses");
 });
+
+test("a split template puts the screen above the person, and pushes in on the person only", { timeout: 300_000 }, async () => {
+  const { createVideoProject } = await import("../src/lib/editor/media");
+  const { readEditor, editProject } = await import("../src/lib/editor/store");
+  const { executeEditorTool } = await import("../src/lib/editor/tools");
+  const { renderProject } = await import("../src/lib/editor/render");
+  const { saveTemplate } = await import("../src/lib/templates/registry");
+
+  // A stream's own shape, with the two things a split is about drawn into it: a band
+  // across the top of the screen, and a webcam in the bottom-right corner with a band
+  // across the top of *it*. Where each band lands in the output is the whole test.
+  const source = path.join(workspace, "stream.mp4");
+  ffmpeg(["-y", "-f", "lavfi", "-i", "color=0x102040:size=1728x1116:rate=12:duration=12",
+    "-f", "lavfi", "-i", "sine=frequency=220:duration=12", "-shortest", "-pix_fmt", "yuv420p", "-c:a", "aac",
+    "-vf", "drawbox=x=0:y=0:w=1728:h=279:color=0x8020A0@1:t=fill,drawbox=x=1200:y=806:w=528:h=310:color=0xE08020@1:t=fill,drawbox=x=1200:y=806:w=528:h=78:color=0x20A040@1:t=fill",
+    source]);
+
+  await saveTemplate({
+    id: "render-split", name: "Render split", captions: { preset: "none" }, hook: { mode: "off" },
+    images: { mode: "off" }, rhythm: { silence: { enabled: false }, punch: { enabled: false } },
+    output: { width: 1080, height: 1920, fps: 12 },
+    layout: { mode: "split", cameraPosition: "bottom", cameraPct: 32,
+      screen: { x: 0, y: 0, w: 1, h: 1 }, camera: { x: 1200 / 1728, y: 806 / 1116, w: 528 / 1728, h: 310 / 1116 } },
+  });
+
+  const { id } = await createVideoProject("Split render", [{ file: source }]);
+  const start = readEditor(id);
+  const sequenceId = start.edl.sequences[0].id;
+  const itemId = start.edl.sequences[0].items[0].id;
+  await executeEditorTool(id, { tool: "template.apply", templateId: "render-split", sequenceId, expectedRevision: start.revision });
+
+  // A push-in beat placed by hand, so the test does not depend on what the planner
+  // would pick: the question is which pane moves, not which second it moves on.
+  const framed = readEditor(id);
+  editProject(id, { expectedRevision: framed.revision, operations: [{ type: "item.patch", sequenceId, itemId,
+    patch: { edits: [{ type: "punch", t: 6, d: 2, scale: 1.3, by: "" }] } }] });
+
+  const { outputs } = await renderProject(id, { only: [sequenceId] });
+  const file = outputs[0].file;
+
+  // Seam at 68% of 1920 = 1306. Above it the screen, below it the camera.
+  assert.ok(near(pixel(file, 2, 540, 150), [128, 32, 160]), `the screen's own top band belongs at the top, saw ${pixel(file, 2, 540, 150)}`);
+  assert.ok(near(pixel(file, 2, 540, 800), [16, 32, 64]), `the screen fills the rest of the top pane, saw ${pixel(file, 2, 540, 800)}`);
+  assert.ok(near(pixel(file, 2, 540, 1380), [32, 160, 64]), `the camera's band sits just under the seam, saw ${pixel(file, 2, 540, 1380)}`);
+  assert.ok(near(pixel(file, 2, 540, 1700), [224, 128, 32]), `the person fills the bottom pane, saw ${pixel(file, 2, 540, 1700)}`);
+  // The seam itself: one row either side of 1306 is a different pane.
+  assert.ok(near(pixel(file, 2, 540, 1290), [16, 32, 64]), "the last rows above the seam are still the screen");
+  assert.ok(near(pixel(file, 2, 540, 1312), [32, 160, 64]), "and the first rows below it are already the camera");
+
+  /** Where the green band ends, in output rows, inside a pane. */
+  const bandEnds = (sec: number, from: number, to: number) => {
+    let last = from;
+    for (let y = from; y < to; y += 4) if (near(pixel(file, sec, 540, y), [32, 160, 64])) last = y;
+    return last;
+  };
+  const still = bandEnds(2, 1310, 1600);
+  const pushed = bandEnds(7, 1310, 1600);
+  assert.ok(pushed < still - 20, `the push-in should be a move on the person: band ended at ${still} still, ${pushed} pushed`);
+
+  // And the screen must hold: zooming the shared content lurches on every beat.
+  const screenBand = (sec: number) => {
+    let last = 0;
+    for (let y = 4; y < 900; y += 4) if (near(pixel(file, sec, 540, y), [128, 32, 160])) last = y;
+    return last;
+  };
+  assert.ok(Math.abs(screenBand(7) - screenBand(2)) <= 8, `the screen pane should not move, saw ${screenBand(2)} then ${screenBand(7)}`);
+});

@@ -39,7 +39,7 @@ it decides which one the material wants.
   parent flows through. Chains are fine; a cycle or a missing parent hides only the
   templates involved.
 - **`captionLook`** names a caption look (`templates.looks`: bold-yellow, clean-white,
-  boxed-dark, pop, minimal). The look supplies what the template's own `captions` do
+  boxed-dark, pop, stream-pop, minimal). The look supplies what the template's own `captions` do
   not set.
 - **`brand`** is a brand kit: `palette` (primary → caption highlight, text → caption
   colour, background), `fonts.captions`, `logo` (asset or slot, lent to the watermark when
@@ -73,6 +73,45 @@ it decides which one the material wants.
 - **Preview**: `templates.preview` and `GET /api/templates/<id>/preview?aspect=9:16` return
   a schematic SVG of the layout — hook, caption band in the template's colours, picture
   plate, watermark corner, cards, bookends. A schematic, not a render.
+
+## Framing: the screen and the person
+
+A stream is a screen with a person in the corner of it. A single crop of that frame is
+mostly wallpaper with the speaker sliced off at an edge, so `layout` stacks the two
+rectangles that matter instead:
+
+```json
+"layout": {
+  "mode": "split",
+  "screen": { "x": 0, "y": 0, "w": 1, "h": 1 },
+  "camera": { "x": 0.69, "y": 0.72, "w": 0.31, "h": 0.28 },
+  "cameraPct": 32,
+  "cameraPosition": "bottom"
+}
+```
+
+- Both rectangles are **shares of the source frame**, not pixels, because a template
+  outlives the recording it was written on: the same scene comes out 1920x1080 on one
+  machine and 1728x1116 on another, and pixels would frame the wrong thing on the second.
+- `cameraPct` is the share of output height the person gets; `cameraPosition` says which
+  half they are in. **The push-in follows them** — zooming the screen instead makes the
+  shared content lurch on every emphasis beat.
+- Each rectangle is cropped to fill its half, so their aspect ratios need not match, and
+  a wide screen loses its edges rather than its middle. Narrow `screen` to the window the
+  clip is actually about when the whole desktop is too much.
+- `mode` is `source` (leave each shot's own framing alone — what every template did
+  before this and what a captions-and-cuts template should keep doing), `crop` (centre
+  crop, for a talking head) or `split`.
+- The camera rectangle has no sane default: nothing can read it off a document. A split
+  without one is refused, and the dry run says so before anything is applied.
+- The framing is written onto every shot that has footage, including one with no
+  transcript, and only when it differs from what is already there — so re-applying
+  converges and a project that was already framed this way is not touched. A template
+  whose `mode` is `source` leaves a hand-made split exactly as it is.
+- `template.plan` reports `framing`: the mode, which half the camera is in, and where
+  the seam falls as a share of height. Captions that start above the seam and run past
+  it are called out there too — a two-row line cut in half by the boundary is the one
+  framing mistake that reads as a bug rather than a taste.
 
 ## Choosing one
 
@@ -385,6 +424,7 @@ because a shortlist is a decision already made.
 | `how-to-steps` | A ding and a push-in on every step, illustrated from your screenshots or from the footage, with a closing recap card |
 | `news-brief` | Company marks and lit numbers, captions low, an impact on each cut and a riser to open |
 | `music-montage` | Footage with nobody talking: no captions, a bed across the whole thing, a whoosh on every cut. The one that needs no transcript |
+| `stream-short` | A short cut from a screen-share stream: the screen on top, the person below, a hook held for the whole video, one word at a time above the seam, and the card you end every video on |
 
 The last five carry a sound design out of the box, built from the sounds that ship with the
 app — so they work with no network and nothing to fill in. The first six are silent unless

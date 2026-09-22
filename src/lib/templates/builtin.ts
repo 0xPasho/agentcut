@@ -280,6 +280,39 @@ const DEFINITIONS: unknown[] = [
     ],
   },
   {
+    id: "stream-short",
+    name: "Stream short — screen and camera",
+    description:
+      "A vertical short cut from a screen-share stream: the screen on top, you underneath, the hook held for the whole video and one word at a time above the seam. Set the two rectangles to match your own scene, and give it the card you end every video on.",
+    tags: ["vertical", "stream", "split", "captions", "screen-share"],
+    output: VERTICAL,
+    captionLook: "stream-pop",
+    captions: { positionY: 0.6 },
+    hook: { mode: "sticky", position: "top", style: "card", maxWords: 10 },
+    // The screen is the b-roll. A picture over it would cover the thing being talked about.
+    images: { mode: "off" },
+    layout: {
+      mode: "split", cameraPosition: "bottom", cameraPct: 32,
+      screen: { x: 0, y: 0, w: 1, h: 1 },
+      // Where a webcam sits in most scenes, and the one setting worth checking against
+      // your own before the first render: nothing can read it off a document.
+      camera: { x: 0.68, y: 0.72, w: 0.32, h: 0.28 },
+    },
+    rhythm: {
+      // A stream is mostly pauses and false starts. Both go; the rhetorical pause stays.
+      silence: { enabled: true, minGapSec: 0.35, keepSec: 0.1 },
+      redundancy: { enabled: true, minWords: 2, maxGapSec: 1.5 },
+      punch: { enabled: true, perMinute: 3, scale: 1.1 },
+      emphasis: { enabled: true, targets: ["numbers", "brands"] },
+    },
+    outro: { enabled: true, slot: "endcard" },
+    slots: [
+      { id: "endcard", label: "Your end card", kind: "video",
+        description: "Optional. The clip you end every video on — the schedule card, the subscribe sting. Played whole after the last word." },
+      { id: "music", label: "Music bed", kind: "audio", description: "Optional. Ducked under the voice automatically." },
+    ],
+  },
+  {
     id: "music-montage",
     name: "Montage, no talking",
     description:
