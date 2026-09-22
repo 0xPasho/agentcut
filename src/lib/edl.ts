@@ -24,7 +24,12 @@ export type Region = z.infer<typeof Region>;
 /**
  * Screen-share streams break a single crop: the centre of the frame is usually
  * wallpaper, and the speaker sits in a small corner. Split stacks the two regions
- * that actually matter — face on top, the content being shown underneath.
+ * that actually matter — the person and the content being shown — one above the other.
+ *
+ * Which half holds the person is a fact about the composition, not a matter of taste:
+ * the punch-in is a move on the speaker, and zooming the shared screen instead makes
+ * the content lurch on every emphasis beat. `camera` says which half to push in on, and
+ * defaults to `top`, which is where every clip written before this put the face.
  */
 export const SplitLayout = z.object({
   type: z.literal("split"),
@@ -32,6 +37,7 @@ export const SplitLayout = z.object({
   bottom: Region,
   /** Share of output height given to the top region. */
   topPct: z.number().min(15).max(85).default(40),
+  camera: z.enum(["top", "bottom"]).default("top"),
 });
 
 export const CropLayout = z.object({ type: z.literal("crop") });

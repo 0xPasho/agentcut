@@ -136,15 +136,23 @@ export const ClipComposition: React.FC<ClipProps> = ({
     video = null;
   } else if (clip.layout.type === "split") {
     const topHeight = Math.round((height * clip.layout.topPct) / 100);
+    // The punch is a move on the speaker. Zooming the screen pane too makes the shared
+    // content lurch on every beat, so only the half holding the camera is pushed in —
+    // whichever half that is. Both panes are the same file, so only one carries sound.
+    const cameraOnTop = clip.layout.camera !== "bottom";
     video = (
       <div className="flex h-full w-full flex-col">
-        <VideoRegion {...shared} region={clip.layout.top} boxWidth={width} boxHeight={topHeight} />
-        {/* The punch is for the speaker. Zooming the screen pane too makes the
-            shared content lurch on every beat. */}
+        <VideoRegion
+          {...shared}
+          zoom={cameraOnTop ? zoom : 1}
+          region={clip.layout.top}
+          boxWidth={width}
+          boxHeight={topHeight}
+        />
         <VideoRegion
           {...shared}
           muted
-          zoom={1}
+          zoom={cameraOnTop ? 1 : zoom}
           region={clip.layout.bottom}
           boxWidth={width}
           boxHeight={height - topHeight}

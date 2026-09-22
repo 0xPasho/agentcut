@@ -1,10 +1,10 @@
 import { z } from "zod";
-import { Clip, type MediaSource, DEFAULT_ITEM_TRANSFORM, type Edl, type SequenceItem, type VideoSequence } from "../edl";
+import { Clip, type Layout, type MediaSource, DEFAULT_ITEM_TRANSFORM, type Edl, type Region, type SequenceItem, type VideoSequence } from "../edl";
 import { applyOperations, type EditorOperation } from "../editor/operations";
 import { promoteClipToSequence } from "../editor/editable-timeline";
 import { sequenceFrames } from "../sequences";
 import { brandsInText, transcriptCasing, type Casing } from "../search/brand";
-import { VideoTemplate } from "./schema";
+import { VideoTemplate, type TemplateRegion } from "./schema";
 import {
   analyzeSentences, emphasisBeats, punchBeats, redundancyCuts, selectImageCues, silenceCuts, toSentences,
   type BrandMention, type ImageCue, type SentenceAnalysis,
@@ -98,6 +98,12 @@ export type TemplatePlan = {
   hook: { text: string; seconds: number | null; position: string; style: string } | null;
   cards: Array<{ id: string; text: string; atFraction: number; seconds: number }>;
   items: PlannedItem[];
+  /**
+   * How the source will fill the frame, and where the seam falls as a share of output
+   * height. `null` seam means there is none: the shot keeps its own framing, or is
+   * centre-cropped. The dry run answers "what will this look like" with it.
+   */
+  framing: { mode: "source" | "crop" | "split"; seam: number | null; camera: "top" | "bottom" };
   totals: { sentences: number; images: number; silences: number; redundancies: number; punches: number; emphasis: number };
   warnings: string[];
 };
@@ -151,6 +157,54 @@ function evenCues(item: SequenceItem, template: VideoTemplate, budget: number): 
       salience: 0,
     };
   }).filter((cue) => cue.d >= 0.2);
+}
+
+/** Two framings are the same framing. Field by field, because key order is not meaning. */
+function sameLayout(a: Layout, b: Layout): boolean {
+  if (a.type !== b.type) return false;
+  if (a.type !== "split" || b.type !== "split") return true;
+  const same = (x: Region, y: Region) => x.x === y.x && x.y === y.y && x.w === y.w && x.h === y.h;
+  return same(a.top, b.top) && same(a.bottom, b.bottom) && a.topPct === b.topPct && a.camera === b.camera;
+}
+
+/** The camera rectangle is the one thing a split cannot be guessed from. */
+export const CAMERA_NEEDED =
+  "A split layout needs the camera rectangle: where the webcam sits in the source frame, as fractions of it (x, y, w, h between 0 and 1).";
+
+/**
+ * The template's framing for one shot, in the source pixels the EDL stores. Fractions
+ * are resolved against this shot's own footage, so the same template frames a 1920x1080
+ * recording and a 1728x1116 one identically.
+ *
+ * `null` means the template has nothing to say about framing and the shot keeps its own —
+ * a hand-placed crop, or the split an agent read off the frames.
+ */
+export function layoutFor(template: VideoTemplate, media?: { width: number; height: number } | null): Layout | null {
+  const layout = template.layout;
+  if (layout.mode === "source") return null;
+  if (layout.mode === "crop") return { type: "crop" };
+  if (!media || !media.width || !media.height) return null;
+  const pixels = (region: TemplateRegion): Region => {
+    const w = Math.max(2, Math.round((region.w || 1) * media.width));
+    const h = Math.max(2, Math.round((region.h || 1) * media.height));
+    return {
+      x: Math.min(Math.max(0, Math.round(region.x * media.width)), Math.max(0, media.width - w)),
+      y: Math.min(Math.max(0, Math.round(region.y * media.height)), Math.max(0, media.height - h)),
+      w: Math.min(w, media.width),
+      h: Math.min(h, media.height),
+    };
+  };
+  if (!layout.camera.w || !layout.camera.h) throw new Error(CAMERA_NEEDED);
+  const camera = pixels(layout.camera);
+  const screen = pixels(layout.screen);
+  const cameraOnTop = layout.cameraPosition === "top";
+  return {
+    type: "split",
+    top: cameraOnTop ? camera : screen,
+    bottom: cameraOnTop ? screen : camera,
+    topPct: cameraOnTop ? layout.cameraPct : 100 - layout.cameraPct,
+    camera: layout.cameraPosition,
+  };
 }
 
 export async function planTemplate(
@@ -241,6 +295,25 @@ export async function planTemplate(
   if (!totals.sentences && template.images.mode !== "off" && !hasPool)
     warnings.push("No transcript on this video, so there is nothing to place pictures against. Fill an image pool slot, or add transcript words in scene properties.");
 
+  // Framing, and the two ways a template can get it wrong without rendering anything.
+  const split = template.layout.mode === "split";
+  const seam = split ? (template.layout.cameraPosition === "top" ? template.layout.cameraPct : 100 - template.layout.cameraPct) / 100 : null;
+  if (split && (!template.layout.camera.w || !template.layout.camera.h)) warnings.push(CAMERA_NEEDED);
+  if (split && sequence.items.some((entry) => entry.mediaId && entry.clip.words.length)) {
+    // The caption block grows downward from its top edge. A block that reaches across
+    // the seam is read half on the screen and half on the speaker, which is the one
+    // framing mistake that looks like a bug rather than a taste.
+    const captions = { ...sequence.items.find((entry) => entry.mediaId)!.clip.captions, ...(template.captions ?? {}) };
+    if (captions.preset !== "none") {
+      // One word at a time is one row, always. Anything else wraps to two on the line
+      // that happens to be long, and the warning is about the worst line, not the first.
+      const rows = captions.preset === "popline" || captions.maxWordsPerLine === 1 ? 1 : 2;
+      const bottom = captions.positionY + (captions.fontSizePct / 100) * 1.25 * rows;
+      if (captions.positionY < seam! && bottom > seam!)
+        warnings.push(`The captions start at ${(captions.positionY * 100).toFixed(0)}% and run past the seam at ${(seam! * 100).toFixed(0)}%, so a two-row line is cut in half by it. Move them clear of it.`);
+    }
+  }
+
   const hookText = hookLine(template, sequence, request.hookText, request.slots);
   return {
     templateId: template.id,
@@ -261,6 +334,7 @@ export async function planTemplate(
       return text ? [{ id: card.id, text, atFraction: card.atFraction, seconds: card.seconds }] : [];
     }),
     items,
+    framing: { mode: template.layout.mode, seam, camera: template.layout.cameraPosition },
     totals,
     warnings,
   };
@@ -370,10 +444,16 @@ export function templateOperations(
   for (const planned of plan.items) {
     const item = sequenceOf().items.find((candidate) => candidate.id === planned.itemId);
     if (!item) continue;
+    // Framing is the one thing a template says about a shot with nothing in it to
+    // caption: a screen share is framed wrongly by a centre crop whether or not anyone
+    // is talking over it.
+    const media = item.mediaId ? working.media.find((entry) => entry.id === item.mediaId) : null;
+    const layout = layoutFor(template, media);
+    const reframes = !!layout && !sameLayout(layout, item.clip.layout);
     // A layer the template has nothing to say about — a title someone placed by hand,
     // a shot with no transcript — is left exactly as it is rather than restyled with
     // caption settings that have no words to apply to. Its own past output still goes.
-    if (!planned.sentences && !planned.cues.length && !item.clip.edits.some(isTemplateEdit)) continue;
+    if (!reframes && !planned.sentences && !planned.cues.length && !item.clip.edits.some(isTemplateEdit)) continue;
     const images = planned.cues.flatMap((cue, index) =>
       (resolved.get(`${planned.itemId}:${index}`) ?? []).map((image) => ({
         type: "image" as const,
@@ -403,8 +483,9 @@ export function templateOperations(
     const edits = [...kept, ...generated];
     const captions = template.captions ?? {};
     // An unchanged shot is not worth a revision entry or a conflict surface.
-    if (!generated.length && !Object.keys(captions).length && kept.length === item.clip.edits.length) continue;
-    push({ type: "item.patch", sequenceId: plan.sequenceId, itemId: planned.itemId, patch: { edits, ...(Object.keys(captions).length ? { captions } : {}) } });
+    if (!generated.length && !reframes && !Object.keys(captions).length && kept.length === item.clip.edits.length) continue;
+    push({ type: "item.patch", sequenceId: plan.sequenceId, itemId: planned.itemId,
+      patch: { edits, ...(Object.keys(captions).length ? { captions } : {}), ...(reframes ? { layout } : {}) } });
   }
 
   // Bookends sit on the main track, so they go in before anything is measured: an

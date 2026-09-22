@@ -249,6 +249,41 @@ export const TemplateBookend = z.object({
 });
 export type TemplateBookend = z.infer<typeof TemplateBookend>;
 
+/**
+ * A rectangle as a share of the source frame rather than in pixels, because a template
+ * outlives the recording it was written on: the same OBS scene comes out 1920x1080 on
+ * one machine and 1728x1116 on another, and a rectangle in pixels would frame the wrong
+ * thing on the second one.
+ */
+export const TemplateRegion = z.object({
+  x: z.number().min(0).max(1).default(0),
+  y: z.number().min(0).max(1).default(0),
+  w: z.number().min(0).max(1).default(0),
+  h: z.number().min(0).max(1).default(0),
+}).strict();
+export type TemplateRegion = z.infer<typeof TemplateRegion>;
+
+/**
+ * How the source fills a vertical frame. A screen-share stream is the case this exists
+ * for: a single crop of it is mostly wallpaper with the speaker sliced off at an edge,
+ * so the two rectangles that matter are stacked instead — the screen and the person.
+ *
+ * `source` leaves each shot's own framing alone, which is what every template did before
+ * this and what a template about captions and pictures should keep doing.
+ */
+export const TemplateLayout = z.object({
+  mode: z.enum(["source", "crop", "split"]).default("source"),
+  /** The part of the screen the clip is actually about. Empty means the whole frame. */
+  screen: TemplateRegion.prefault({}),
+  /** Where the webcam sits in the source frame. A split needs this; there is no sane default for it. */
+  camera: TemplateRegion.prefault({}),
+  /** Share of output height the camera pane takes. */
+  cameraPct: z.number().min(15).max(85).default(35),
+  /** Which half the person is in. The push-in follows them. */
+  cameraPosition: z.enum(["top", "bottom"]).default("top"),
+}).strict();
+export type TemplateLayout = z.infer<typeof TemplateLayout>;
+
 export const TemplateCard = z.object({
   id: z.string().regex(/^[a-zA-Z0-9_-]+$/),
   /** 0 = first frame, 1 = last frame, measured on the finished timeline. */
@@ -277,6 +312,8 @@ export const VideoTemplate = z.object({
     fps: z.number().positive(),
   }).optional(),
   captions: TemplateCaptions.default({}),
+  /** How the source fills the frame: left alone, centre-cropped, or split. */
+  layout: TemplateLayout.prefault({}),
   /** A named caption look (see looks.ts). Explicit `captions` fields win over it. */
   captionLook: z.string().default(""),
   brand: BrandKit.prefault({}),
