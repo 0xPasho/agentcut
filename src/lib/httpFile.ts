@@ -84,12 +84,27 @@ export async function fileResponse(filePath: string, headers: Headers | null): P
   const m = rangeHeader && !stale ? /bytes=(\d*)-(\d*)/.exec(rangeHeader) : null;
 
   if (m) {
-    const start = m[1] ? Number(m[1]) : 0;
+    // "bytes=-N" is not "from zero to N": it asks for the LAST N bytes, which is how a
+    // player reaches the index of an mp4 that was not written for streaming — and this
+    // answered it with the opening of the file, so the reader had to go looking again.
+    const suffix = !m[1] && Boolean(m[2]);
     // An open-ended range ("bytes=0-") is what <video> sends first. Answering it
     // with the whole file means a 1.3GB response before playback can start, which
     // is what made seeking in the editor take tens of seconds. Cap the chunk and
-    // let the browser ask for more.
-    const end = m[2] ? Number(m[2]) : Math.min(stat.size - 1, start + CHUNK - 1);
+    // let the browser ask for more. A suffix range is capped from its own end, so
+    // what comes back is still the tail the reader asked for, just less of it.
+    const start = suffix
+      ? Math.max(0, stat.size - Math.min(Number(m[2]), CHUNK))
+      : m[1] ? Number(m[1]) : 0;
+    const end = suffix ? stat.size - 1 : Math.min(stat.size - 1, m[2] ? Number(m[2]) : start + CHUNK - 1);
+    // A range that starts past the end, or ends before it starts, has no bytes to send.
+    // Saying so is a 416 with the real length; reading it was a stream error and a 500.
+    if (!Number.isFinite(start) || start < 0 || start >= stat.size || end < start) {
+      return new Response("range not satisfiable", {
+        status: 416,
+        headers: { "Content-Range": `bytes */${stat.size}`, ...validators, ...guard },
+      });
+    }
     const stream = fs.createReadStream(filePath, { start, end });
     return new Response(Readable.toWeb(stream) as ReadableStream, {
       status: 206,

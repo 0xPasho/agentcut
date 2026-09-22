@@ -50,3 +50,18 @@ test("a range asked against the file it was cached from is still a range", async
   assert.equal(res.headers.get("content-range"), "bytes 100-199/9000");
   await res.arrayBuffer();
 });
+
+test("the last N bytes means the last N bytes, which is where an mp4 keeps its index", async () => {
+  const res = await fileResponse(file, head({ range: "bytes=-500" }));
+  assert.equal(res.status, 206);
+  assert.equal(res.headers.get("content-range"), "bytes 8500-8999/9000", "a suffix range served from byte zero sends the reader looking again");
+  assert.equal((await res.arrayBuffer()).byteLength, 500);
+});
+
+test("a range with no bytes in it is said to be unsatisfiable rather than crashing", async () => {
+  for (const range of ["bytes=9000-9100", "bytes=500-100"]) {
+    const res = await fileResponse(file, head({ range }));
+    assert.equal(res.status, 416, range);
+    assert.equal(res.headers.get("content-range"), "bytes */9000");
+  }
+});
