@@ -53,11 +53,14 @@ it decides which one the material wants.
   characters rather than measured, because the preview, the export and a test have to
   agree and measuring depends on a font having finished loading. Past the point where
   shrinking would make it unreadable the word wraps inside itself instead. The same
-  applies to a hook card. `style.audit` reads the outer 6% of the caption band and says
-  whether anything was drawn there — against the strip directly above it in the same
-  frame, because reading a band against the source compares two resamplings and how far
-  apart they land depends on the picture: a screen share full of small text reads eight
-  of 255 with nothing drawn on it at all.
+  applies to a hook card. `style.audit` checked the outer 6% of the caption band for a
+  while and no longer does: reading a strip against the source compares two resamplings,
+  and on a screen recording full of small text two strips of the same frame land twenty
+  of 255 apart with nothing drawn on either. It failed on "definitivamente" — the
+  extracted band shows it running from x 140 to 930 of 1080 — and passed a fifty-two
+  letter word. It also had nothing left to catch, because a line that cannot be shrunk
+  into its band wraps inside itself instead of reaching the edge. The render test holds
+  that property, on footage where ink is not a chat window.
 - **`brand`** is a brand kit: `palette` (primary → caption highlight, text → caption
   colour, background), `fonts.captions`, `logo` (asset or slot, lent to the watermark when
   it has none). A glossary subject can carry a `brand` too; a project whose plan names
@@ -168,6 +171,12 @@ it decides which one the material wants.
   because h264 with 4:2:0 chroma cannot encode one: the encoder rounds it down silently
   and the project would otherwise go on computing every caption position, seam and audit
   crop against a frame a pixel wider than the file.
+
+- **At the scale it is for.** Four hours and twenty-three minutes of stream, from a pack
+  installed on an empty workspace: transcribed in 12.8 minutes (29,191 words), signals in
+  another 5, eight clips chosen by 22, the owner's rule judged to hold on every one of
+  them, each framed and hooked and ended on the card, rendered, and read back out of the
+  pixels — 48 checks, none failed.
 
 - **Framing across recordings.** Rectangles are fractions so a template survives a change
   of resolution — the same OBS scene is 1920x1080 on one machine and 1728x1116 on another

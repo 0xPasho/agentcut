@@ -182,11 +182,9 @@ export async function auditStyle(projectId: string, only?: string): Promise<Styl
     const words: Word[] = item.clip.words;
     if (words.length && item.clip.captions.preset !== "none") {
       const band = (at: number) => mean(frame(file, at, box(width * 0.1, item.clip.captions.positionY * height, width * 0.8, height * 0.07), 60, 10));
-      const inside = words.filter((w) => outAt(map, w.t) > from + 1 && outAt(map, w.t) < to - 1);
-      const spoken = [...inside].sort((a, b) => b.w.length - a.w.length)[0];
-      // The longest word that is also on screen with no push-in under it: what the edge
-      // reading needs is a frame whose footage is where the source says it is.
-      const still = [...inside].filter((w) => clear(outAt(map, w.t) + 0.08)).sort((a, b) => b.w.length - a.w.length)[0];
+      const spoken = words
+        .filter((w) => outAt(map, w.t) > from + 1 && outAt(map, w.t) < to - 1)
+        .sort((a, b) => b.w.length - a.w.length)[0];
       const lines = toLines(mapWords(map, words), item.clip.captions.maxWordsPerLine);
       let quiet: number | null = null;
       for (let at = from + 0.5; at < to - 0.5 && quiet === null; at += 0.1) {
@@ -205,29 +203,16 @@ export async function auditStyle(projectId: string, only?: string): Promise<Styl
           const dark = band(quiet);
           check("captions", lit > dark + 4, `a word lights the caption band: ${lit.toFixed(0)} on "${spoken.w}" against ${dark.toFixed(0)} in a gap`);
         }
-        // And it is inside the frame. A caption wraps between words, so a word wider than
-        // the band has nowhere to go and runs off both edges with its ends cut off by the
-        // picture — which a check on the middle of the band cannot see. Read the same way
-        // as the band itself: against the same strip with no caption on it, because a
-        // push-in moves the footage under the whole band and that is not ink.
-        // The baseline comes from the same frame rather than from a quiet moment of it:
-        // reading a band against the source is a comparison of two resamplings, and how
-        // far apart they land depends on what is in the picture. A screen share full of
-        // small text reads eight of 255 with nothing drawn on it at all, and a different
-        // second of the same video reads one. The control is the strip of the same size
-        // directly above the caption band, in the same half, at the same instant.
-        const margin = width * 0.06;
-        const edge = (at: number, y: number) => {
-          const sides = [0, width - margin].map((x) => drawnOver(at, y, bandHeight, x, margin));
-          return sides.every((side) => side !== null) ? Math.max(...(sides as number[])) : null;
-        };
-        const lit = still ? outAt(map, still.t) + 0.08 : null;
-        const edgeLit = lit === null ? null : edge(lit, top);
-        const edgeControl = lit === null ? null : edge(lit, top - bandHeight);
-        if (still && edgeLit !== null && edgeControl !== null) {
-          check("captions inside the frame", edgeLit - edgeControl < 6,
-            `the longest word, "${still.w}", stops before the edges: ${edgeLit.toFixed(0)}/255 in the outer ${Math.round(margin)}px against ${edgeControl.toFixed(0)} in the strip above it`);
-        }
+        // Whether the longest word stops before the edges of the frame was checked here
+        // for a while, and the instrument does not work. Reading a strip against the
+        // source compares two resamplings, and how far apart they land depends on what is
+        // in the picture: on a screen recording full of small text, two strips of the
+        // same frame land twenty of 255 apart with nothing drawn on either. It failed on
+        // "definitivamente", which the extracted band shows running from x 140 to 930 of
+        // 1080, and it passed a fifty-two letter word. It also has nothing left to catch:
+        // a line is drawn small enough to fit its band and wraps inside itself past that,
+        // so it cannot reach the edge — which the render test proves on footage where ink
+        // is not a chat window.
       }
     }
 

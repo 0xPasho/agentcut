@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { rmSync } from "node:fs";
 import path from "node:path";
 import { bundle } from "@remotion/bundler";
 import { renderMedia, selectComposition } from "@remotion/renderer";
@@ -25,6 +26,25 @@ export type RenderProgress = {
 
 let cachedBundle: Promise<string> | null = null;
 
+/**
+ * The bundle is written to a fresh temporary directory and nobody was removing it.
+ *
+ * One per process that renders anything — the server, the CLI, a test — about thirty
+ * megabytes each, kept until the operating system decides to sweep its temp folder,
+ * which on a Mac can be never. A day of restarting a dev server and running the render
+ * tests left three hundred and fifty of them on this machine: ten gigabytes of webpack
+ * output for a bundle that is rebuilt every time anyway.
+ *
+ * Removed when this process ends. Best effort by nature — a process that is killed
+ * outright leaves its directory behind — and safe because the directory belongs to this
+ * process alone, which is the whole reason `enableCaching` is off.
+ */
+function removeWhenThisProcessEnds(dir: string) {
+  const sweep = () => { try { rmSync(dir, { recursive: true, force: true }); } catch { /* the temp folder is not ours to insist on */ } };
+  process.once("exit", sweep);
+  for (const signal of ["SIGINT", "SIGTERM"] as const) process.once(signal, () => { sweep(); process.exit(0); });
+}
+
 export async function getBundle() {
   if (cachedBundle) return cachedBundle;
   cachedBundle = bundle({
@@ -34,7 +54,8 @@ export async function getBundle() {
     // bundle, but do not let independent renderers share a mutable disk cache.
     enableCaching: false,
     webpackOverride: enableTailwind,
-  }).catch(error => { cachedBundle = null; throw error; });
+  }).then((dir) => { removeWhenThisProcessEnds(dir); return dir; })
+    .catch(error => { cachedBundle = null; throw error; });
   return cachedBundle;
 }
 
