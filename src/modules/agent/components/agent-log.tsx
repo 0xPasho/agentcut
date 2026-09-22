@@ -4,18 +4,8 @@ import { useEffect, useState } from "react";
 import { ArrowDown } from "lucide-react";
 import { useStickToBottom } from "@/common/hooks/use-stick-to-bottom";
 import type { LogEvent } from "@/common/api/client";
-
-const STYLES: Record<string, string> = {
-  tool: "text-muted-foreground",
-  text: "text-foreground",
-  stage: "text-primary font-medium",
-  error: "text-destructive",
-  result: "text-foreground",
-  editor: "text-muted-foreground",
-  log: "text-muted-foreground/70",
-};
-
-const time = (at: number) => new Date(at).toTimeString().slice(0, 8);
+import { STYLES } from "../data";
+import { time, isActivity } from "../lib/agent-log";
 
 /**
  * One step of the run. A `Grep` whose pattern is cut off at the panel's edge says
@@ -84,12 +74,6 @@ export function AgentLog({ events, className = "h-64" }: { events: LogEvent[]; c
     </div>
   );
 }
-
-/**
- * Provider stderr and unnamed log lines are noise in a progress line: what the run
- * is doing is its tool calls, its stages, what it says and what failed.
- */
-export const isActivity = (e: LogEvent) => e.kind !== "log" || !!e.name;
 
 /** The last few lines of the run, the way a terminal shows the tail of a task. */
 export function ActivityTail({ events, lines = 4 }: { events: LogEvent[]; lines?: number }) {

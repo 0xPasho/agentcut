@@ -8,18 +8,9 @@ import { Label } from "@/common/ui/label";
 import { ColorField } from "@/common/ui/color-field";
 import { Popover, PopoverContent, PopoverTrigger } from "@/common/ui/popover";
 import { shotName } from "@/modules/editor/lib/canvas";
-import type { Clip, Edit, SequenceItem } from "@/modules/editor/types";
+import type { Clip, Edit, SequenceItem, TextEdit } from "@/modules/editor/types";
+import { DEFAULT_PALETTE, POSITION_LABELS } from "../data";
 
-type TextEdit = Extract<Edit, { type: "text" }>;
-
-/** When a template carries no brand kit, these are the colours a hook and a caption reach for. */
-export const DEFAULT_PALETTE = ["#ffe600", "#ffffff", "#000000", "#ff4d4d", "#4dd4ff", "#7cff6b"];
-
-/** Where the hook sits on the frame, in the words the panel shows rather than the schema's. */
-const POSITION_LABELS = { top: "Top", center: "Middle", bottom: "Bottom" } as const;
-
-/** The bar keeps its height with nothing selected, so picking a clip never resizes the frame. */
-export const TOOLBAR_ROW = "flex min-h-11 shrink-0 items-center justify-center";
 
 /**
  * The selected clip's own actions: the hook, the colours, mute, separate audio, split,

@@ -6,10 +6,10 @@ import { projectDir } from "../../../common/server/config";
 import { grabFrame } from "../../media/server/ffmpeg";
 import { scanLibrary, registerAsset, uploadLibraryAsset } from "../../media/server/assets";
 import { searchImages, adoptHit, listProviders, searchAudio, adoptAudioHit } from "../../media/server/search";
-import { TemplateRequest } from "../../templates/lib/plan";
-import { RuleApplyRequest } from "../../rules/lib/apply";
+import { TemplateRequest } from "../../templates/server/plan";
+import { RuleApplyRequest } from "../../rules/server/apply";
 import { RuleLevel, RuleStage } from "../../rules/types";
-import { PlanApplyRequest } from "../../plan/lib/apply";
+import { PlanApplyRequest } from "../../plan/server/apply";
 import { DeriveRequest } from "./derive";
 import { EditRequest, EditorOperation } from "../lib/operations";
 import { editProject, readEditor } from "./store";
@@ -290,7 +290,7 @@ export async function executeEditorTool(projectId: string, raw: unknown, onActiv
     case "templates.looks": { const { listCaptionLooks } = await import("../../templates/data/looks"); return listCaptionLooks(); }
     case "templates.preview": {
       const [{ getTemplate }, { templatePreviewSvg }, { aspectOf }] = await Promise.all([
-        import("../../templates/server/registry"), import("../../templates/lib/preview"), import("../../templates/lib/resolve"),
+        import("../../templates/server/registry"), import("../../templates/server/preview"), import("../../templates/lib/resolve"),
       ]);
       const sequence = call.sequenceId ? readEditor(projectId).edl.sequences.find((s) => s.id === call.sequenceId) : undefined;
       const aspect = call.aspect ?? (sequence ? aspectOf(sequence.output) : "9:16");
@@ -302,9 +302,9 @@ export async function executeEditorTool(projectId: string, raw: unknown, onActiv
       return deriveSequence(projectId, request, expectedRevision);
     }
     case "templates.suggest": {
-      const { suggestTemplates } = await import("../../templates/lib/suggest");
+      const { suggestTemplates } = await import("../../templates/server/suggest");
       const { readEditor } = await import("./store");
-      const { SlotValue } = await import("../../templates/lib/plan");
+      const { SlotValue } = await import("../../templates/server/plan");
       const slots = Object.fromEntries(Object.entries(call.slots ?? {}).map(([id, value]) => [id, SlotValue.parse(value)]));
       return suggestTemplates(readEditor(projectId).edl, { sequenceId: call.sequenceId, clipId: call.clipId }, slots);
     }
@@ -337,7 +337,7 @@ export async function executeEditorTool(projectId: string, raw: unknown, onActiv
       return evaluateRules(projectId, { sequenceId: call.sequenceId, clipId: call.clipId }, { stage: call.stage, ...effectiveSelection(projectId, {}, "judging"), onEvent: (e) => { if (e.kind !== "log") report(e.text.slice(0, 2000), e.kind); } });
     }
     case "rules.apply": {
-      const { applyRules } = await import("../../rules/lib/apply");
+      const { applyRules } = await import("../../rules/server/apply");
       const { tool, expectedRevision, ...request } = call; void tool;
       return applyRules(projectId, request, expectedRevision);
     }
@@ -352,7 +352,7 @@ export async function executeEditorTool(projectId: string, raw: unknown, onActiv
       return call.scope === "project" ? generateProjectPlan(projectId, watch) : generateSequencePlan(projectId, { sequenceId: call.sequenceId, clipId: call.clipId }, watch);
     }
     case "plan.apply": {
-      const { applyPlan, applyProjectPlan } = await import("../../plan/lib/apply");
+      const { applyPlan, applyProjectPlan } = await import("../../plan/server/apply");
       const { tool, expectedRevision, all, ...request } = call; void tool;
       return all ? applyProjectPlan(projectId, expectedRevision, { slots: request.slots, providers: request.providers }) : applyPlan(projectId, request, expectedRevision);
     }

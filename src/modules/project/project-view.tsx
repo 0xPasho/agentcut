@@ -28,7 +28,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/common/ui/textarea";
 import { AgentPicker } from "@/modules/agent/components/agent-picker";
 import { Glass, ScrollEdge } from "@/common/ui/glass";
-import { ClipList, STATUS, StatusDot } from "@/modules/project/components/clip-list";
+import { ClipList, StatusDot } from "@/modules/project/components/clip-list";
+import { STATUS } from "@/modules/project/data";
 import { VideoPreview } from "@/modules/editor/components/video-preview";
 import { useEditor } from "@/modules/editor/hooks/use-editor";
 import { EditorStatus } from "../editor/components/editor-status";
@@ -40,13 +41,8 @@ import { useProjectStream } from "@/common/hooks/use-project-stream";
 import { count, runtime } from "@/common/lib/format";
 import { projectVideos, SORTS, sortVideos, statusCounts, type ProjectVideo, type VideoSort } from "@/modules/project/lib/overview";
 import type { Edit } from "@/modules/editor/types";
-
-const BUSY = new Set(["download", "probe", "transcribe", "signals", "agent", "rendering", "bundling"]);
-const STATUSES: SequenceStatus[] = ["pending", "edited", "approved", "rendered"];
-const FILTERS: Array<{ value: SequenceStatus | "all"; label: string }> = [
-  { value: "all", label: "All" },
-  ...STATUSES.map((value) => ({ value, label: STATUS[value].label })),
-];
+import { BUSY, STATUSES, FILTERS } from "./data";
+import { editHref } from "./lib/project-view";
 
 export function ProjectView({ initial }: { initial: ProjectDetail }) {
   const router = useRouter();
@@ -464,10 +460,6 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
     </main>
   );
 }
-
-const editHref = (projectId: string, video: ProjectVideo) =>
-  video.kind === "sequence" ? `/p/${projectId}/edit?sequence=${video.id}` : `/p/${projectId}/c/${video.id}`;
-
 
 function MenuItem({
   children,

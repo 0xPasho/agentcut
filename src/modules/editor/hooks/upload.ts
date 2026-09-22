@@ -1,10 +1,8 @@
 "use client";
 import { api, type AssetSummary } from "../../../common/api/client";
-import type { Edl, MediaSource } from "../types";
+import type { Edl } from "../types";
 import { classifyFile, type DragKind } from "../lib/dnd";
-
-/** What one ingested file became, ready to place on a timeline. */
-export type Imported = { kind: DragKind; media?: MediaSource; asset?: AssetSummary; name: string };
+import { type Imported } from "../types";
 
 /**
  * One ingestion path for the Import button, a desktop drop on the timeline, and a drop on

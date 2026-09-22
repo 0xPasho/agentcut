@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { GlossaryTerm } from "../rules/server/glossary";
+import { GlossaryTerm } from "../rules/types";
 
 /**
  * A pack is the unit that travels: templates, rules, glossary entries, assets and

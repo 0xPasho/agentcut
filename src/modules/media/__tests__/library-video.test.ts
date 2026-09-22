@@ -93,7 +93,7 @@ test("a template outro can be a library video: it becomes media and a shot at th
   // A rule can ask for the same thing through overrides: the "add an asset at the end" action is an outro.
   const { saveRule } = await import("../../rules/server/registry");
   await saveRule({ id: "stream-sting", name: "Stream sting", when: "the clip is from a stream", then: { overrides: { outro: { enabled: true, assetId: stingAsset.id } } } });
-  const { applyRules } = await import("../../rules/lib/apply");
+  const { applyRules } = await import("../../rules/server/apply");
   const { id: other } = await mediaService.createVideoProject("Ruled", [{ file: source }]);
   const result = await applyRules(other, { ruleIds: ["stream-sting"], sequenceId: store.readEditor(other).edl.sequences[0].id, templateId: "talking-head" }, store.readEditor(other).revision);
   assert.ok(result.applied);
@@ -123,7 +123,7 @@ test("a shared template ends on *your* card: a video slot, filled by a rule, ref
   );
 
   const { saveRule } = await import("../../rules/server/registry");
-  const { applyRules, resolveRules } = await import("../../rules/lib/apply");
+  const { applyRules, resolveRules } = await import("../../rules/server/apply");
   const { listRules } = await import("../../rules/server/registry");
   await saveRule({ id: "my-end-card", name: "My end card", when: "always", priority: 20,
     then: { template: "channel-look", slots: { endcard: { assetId: mine.id } } } });

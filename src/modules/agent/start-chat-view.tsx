@@ -3,29 +3,16 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Check, ChevronDown, ListChecks, Scissors, Wand2, X } from "lucide-react";
 import { AgentcutIcon } from "@/common/components/agentcut-mark";
-import { useStartChat, type StartOptions } from "@/modules/agent/hooks/use-chat";
+import { useStartChat } from "@/modules/agent/hooks/use-chat";
+import { type StartOptions } from "@/modules/agent/types";
 import { Chat } from "./components/chat";
 import { Button } from "../../common/ui/button";
 import { Input } from "../../common/ui/input";
 import { Glass } from "../../common/ui/glass";
 import { Popover, PopoverContent, PopoverTrigger } from "../../common/ui/popover";
 import { cn } from "cn";
-
-/**
- * A project does not have to start from footage.
- *
- * Say what you want and this makes the project and hands the sentence to the agent;
- * drop a video and it starts from that; paste a link and it clips it. All three land
- * in the same editor with the conversation already open, because the first thing
- * somebody says is the most useful thing they will ever say about a video.
- */
-const SUGGESTIONS = [
-  { label: "Explain something", text: "Make a 30-second explainer about " },
-  { label: "From a link", text: "Find the best clips in https://" },
-  { label: "A title card", text: "Start me a 9:16 video with a bold title card that says " },
-];
-
-type TemplateSummary = { id: string; name: string; description: string; tags: string[]; builtin: boolean };
+import { SUGGESTIONS, SHAPES } from "./data";
+import { type TemplateSummary } from "./types";
 
 /**
  * The look the project is made in, chosen before it exists.
@@ -148,15 +135,6 @@ function TemplateChip({ value, onChange }: { value: string[]; onChange: (ids: st
     </div>
   );
 }
-
-/** The shapes on offer. A video's frame is the one decision that is awkward to change later. */
-const SHAPES = [
-  { id: "", label: "Blank", note: "16:9", w: 32, h: 18 },
-  { id: "9:16", label: "Vertical", note: "9:16", w: 18, h: 32 },
-  { id: "4:5", label: "Portrait", note: "4:5", w: 24, h: 30 },
-  { id: "1:1", label: "Square", note: "1:1", w: 28, h: 28 },
-  { id: "16:9", label: "Wide", note: "16:9", w: 32, h: 18 },
-];
 
 function StartFrom({ value, onChange, onClips }: { value: string; onChange: (aspect: string) => void; onClips: () => void }) {
   const [open, setOpen] = useState(true);

@@ -5,13 +5,13 @@ import { promoteClipToSequence } from "../../editor/lib/editable-timeline";
 import { animatedFields } from "../../editor/lib/keyframes";
 import { LOUDNESS_STEP_SEC } from "../../media/server/ffmpeg";
 import { sequenceFrames } from "../../editor/lib/sequences";
-import { coarsen, deadAir } from "./quiet";
+import { coarsen, deadAir } from "../lib/quiet";
 import { brandsInText, transcriptCasing, type Casing } from "../../media/server/search/brand";
 import { VideoTemplate, type TemplateRegion } from "../types";
 import {
   analyzeSentences, emphasisBeats, punchBeats, redundancyCuts, selectImageCues, silenceCuts, toSentences,
   type BrandMention, type Heard, type ImageCue, type SentenceAnalysis,
-} from "./script";
+} from "../lib/script";
 
 /**
  * Planning is separated from applying on purpose. A plan needs no network, writes
@@ -20,47 +20,11 @@ import {
  * that plan before a template touches the project.
  */
 
-export const SlotValue = z.object({
-  /** A folder on this machine whose images become an ordered pool. */
-  folder: z.string().optional(),
-  /** Asset ids, in the order they should be used. */
-  assetIds: z.array(z.string()).optional(),
-  assetId: z.string().optional(),
-  text: z.string().optional(),
-}).strict();
-export type SlotValue = z.infer<typeof SlotValue>;
-
-/**
- * A slot key that is present but empty — `{}`, or a blank path — is not a filled slot.
- * Checking the key alone says "filled" for something that supplies nothing, and the
- * failure then surfaces much later as an empty pool instead of a missing input.
- */
-export const slotFilled = (value: SlotValue | undefined): boolean =>
-  !!value && !!(value.folder?.trim() || value.assetIds?.length || value.assetId?.trim() || value.text?.trim());
-
-export const TemplateTarget = z.object({
-  sequenceId: z.string().optional(),
-  /** A generated clip. It is promoted in place, keeping its id and edits. */
-  clipId: z.string().optional(),
-}).strict();
-
-export const TemplateRequest = z.object({
-  templateId: z.string().min(1),
-  ...TemplateTarget.shape,
-  /** Overrides the hook line the template would otherwise derive from the clip. */
-  hookText: z.string().optional(),
-  slots: z.record(z.string(), SlotValue).default({}),
-  /** A deep patch over the stored template, for a one-off change without saving one. */
-  overrides: z.record(z.string(), z.unknown()).optional(),
-  /** Restrict web image search to these providers. */
-  providers: z.array(z.string()).optional(),
-  /**
-   * The chat message to open on, by its id in the chat database, or `"none"` for no
-   * comment. Omitted, a template that opens on one finds it from what the clip says.
-   */
-  commentId: z.union([z.number().int().nonnegative(), z.literal("none")]).optional(),
-});
-export type TemplateRequest = z.infer<typeof TemplateRequest>;
+// The request's model lives in the module's types; re-exported for the server callers.
+export { SlotValue, TemplateRequest, TemplateTarget } from "../types";
+export { slotFilled } from "../lib/slots";
+import { SlotValue, TemplateRequest } from "../types";
+import { slotFilled } from "../lib/slots";
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);

@@ -4,26 +4,12 @@ import { ArrowDown, ChevronRight, Loader2 } from "lucide-react";
 import { useStickToBottom } from "@/common/hooks/use-stick-to-bottom";
 import { assetFileUrl, type LogEvent, type Message } from "@/common/api/client";
 import { buildThread } from "@/modules/agent/lib/thread";
-import { AgentLog, ActivityTail, isActivity } from "./agent-log";
+import { AgentLog, ActivityTail } from "./agent-log";
+import { isActivity } from "../lib/agent-log";
 import { Button } from "../../../common/ui/button";
 import { Progress } from "../../../common/ui/progress";
-
-/**
- * The project's conversation as a conversation.
- *
- * One thread, read top to bottom: what was asked, what the run did to answer it,
- * what it replied. The steps belong inside the turn that produced them — a separate
- * log panel makes the reader correlate two lists by eye, and nobody does that. Every
- * interface writes to this same thread, so a turn typed in a terminal over MCP shows
- * up here with its own steps.
- */
-const SOURCE_LABELS: Record<string, string> = { cli: "you · cli", mcp: "terminal agent", brief: "brief" };
-
-const formatElapsed = (seconds: number) => {
-  if (seconds >= 3600) return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-};
-const took = (events: LogEvent[]) => Math.max(0, Math.round((events[events.length - 1].at - events[0].at) / 1000));
+import { SOURCE_LABELS } from "../data";
+import { formatElapsed, took } from "../lib/agent-thread";
 
 function UserMessage({ message }: { message: Message }) {
   const label = SOURCE_LABELS[message.source];

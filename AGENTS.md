@@ -68,11 +68,12 @@ remotion/                 the render bundle's own entry — compositions only
    module only through its `types.ts`, `lib`, `server/` entry points or components.
 7. **Pages are thin.** A page calls a loader from `module/server/pages.ts` (or the module's
    own server code) and renders one view. No SQL, no parsing, no JSX layout in `src/app`.
-8. **Imports inside `src/modules`, `src/common` non-UI code and `remotion/` are relative**,
-   because the Remotion bundle does not resolve `@/`. UI files may use `@/`.
+8. **`.ts` files in `src/modules` and `src/common`, and everything in `remotion/`, import
+   relatively**, because the Remotion bundle does not resolve `@/`. `.tsx` UI files may use `@/`.
 9. Early returns over nested `if/else`; no nested ternaries in JSX.
 
-`src/modules/__tests__/architecture.test.ts` enforces rules 1, 5 and 7.
+`src/modules/__tests__/architecture.test.ts` enforces rules 1, 5 and 7 (and that nothing
+is left in `src/lib` or `src/components`), as part of `pnpm test`.
 
 ## Shared-editor requirement
 

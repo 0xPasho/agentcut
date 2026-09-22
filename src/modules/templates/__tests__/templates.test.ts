@@ -14,7 +14,7 @@ let mediaService: typeof import("../../media/server/media-import");
 let tools: typeof import("../../editor/server/tools");
 let database: typeof import("../../../common/server/db");
 let script: typeof import("../lib/script");
-let planner: typeof import("../lib/plan");
+let planner: typeof import("../server/plan");
 let registry: typeof import("../server/registry");
 let operations: typeof import("../../editor/lib/operations");
 let edlSchema: typeof import("../../editor/types");
@@ -49,7 +49,7 @@ before(async () => {
   process.env.AGENTCUT_WORKSPACE = workspace;
   [store, mediaService, tools, database, script, planner, registry, operations, edlSchema] = await Promise.all([
     import("../../editor/server/store"), import("../../media/server/media-import"), import("../../editor/server/tools"),
-    import("../../../common/server/db"), import("../lib/script"), import("../lib/plan"),
+    import("../../../common/server/db"), import("../lib/script"), import("../server/plan"),
     import("../server/registry"), import("../../editor/lib/operations"), import("../../editor/types"),
   ]);
   // Seed the brand cache so these tests never depend on a network round trip.
@@ -141,7 +141,7 @@ test("applying a template edits the project through the shared operations, from 
   const plan = await tools.executeEditorTool(id, {
     tool: "template.plan", templateId: "explainer-broll", sequenceId,
     overrides: { images: { sources: ["slot"] } }, slots: { screenshots: { folder: screenshots } },
-  }) as import("../lib/plan").TemplatePlan;
+  }) as import("../server/plan").TemplatePlan;
   assert.equal(plan.sequenceId, sequenceId);
   assert.equal(plan.hook?.text, "How ranking really works");
   assert.ok(plan.totals.images >= 2 && plan.totals.silences >= 1 && plan.totals.punches >= 1);
@@ -324,7 +324,7 @@ test("a transcript with no usable capitalisation still finds brands, and says wh
   }] });
   const plan = await tools.executeEditorTool(id, {
     tool: "template.plan", templateId: "explainer-broll", sequenceId,
-  }) as import("../lib/plan").TemplatePlan;
+  }) as import("../server/plan").TemplatePlan;
   assert.ok(plan.warnings.some(w => /no capitalisation/.test(w)), `expected a casing warning, got ${JSON.stringify(plan.warnings)}`);
   assert.ok(plan.totals.images >= 2, "the brand names were still found");
   const queries = plan.items[0].cues.map(c => c.query.toLowerCase());
@@ -407,7 +407,7 @@ test("suggestion ranks templates on the material, by their settings rather than 
   const { id, sequenceId } = await projectWithScript();
   const suggest = (slots?: Record<string, unknown>) => tools.executeEditorTool(id, {
     tool: "templates.suggest", sequenceId, ...(slots ? { slots } : {}),
-  }) as Promise<{ signals: import("../lib/suggest").SequenceSignals; suggestions: import("../lib/suggest").TemplateSuggestion[] }>;
+  }) as Promise<{ signals: import("../server/suggest").SequenceSignals; suggestions: import("../server/suggest").TemplateSuggestion[] }>;
 
   const { signals, suggestions } = await suggest();
   assert.equal(signals.sentences, SCRIPT.length);
@@ -440,7 +440,7 @@ test("suggestion ranks templates on the material, by their settings rather than 
     const plan = await tools.executeEditorTool(id, {
       tool: "template.plan", templateId: suggestion.templateId, sequenceId,
       slots: { screenshots: { folder: screenshots } },
-    }).catch(() => null) as import("../lib/plan").TemplatePlan | null;
+    }).catch(() => null) as import("../server/plan").TemplatePlan | null;
     if (plan) assert.equal(suggestion.expectedImages, plan.totals.images,
       `${suggestion.templateId} promised ${suggestion.expectedImages} pictures but plans ${plan.totals.images}`);
   }
@@ -557,7 +557,7 @@ test("a template applied to a generated clip promotes it in place, keeping its i
   assert.equal(before.edl.clips.length, 1);
   assert.equal(before.edl.sequences.length, 0);
 
-  const plan = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "product-demo", clipId }) as import("../lib/plan").TemplatePlan;
+  const plan = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "product-demo", clipId }) as import("../server/plan").TemplatePlan;
   assert.equal(plan.promotes, true);
   assert.equal(plan.sequenceId, clipId);
   assert.ok(plan.totals.images >= 1);
@@ -770,8 +770,8 @@ test("suggestion and folder import work on a project that has no footage at all"
   assert.equal(snapshot.edl.sequences[0].items.length, 0);
 
   const { signals, suggestions } = await tools.executeEditorTool(id, { tool: "templates.suggest" }) as {
-    signals: import("../lib/suggest").SequenceSignals;
-    suggestions: import("../lib/suggest").TemplateSuggestion[];
+    signals: import("../server/suggest").SequenceSignals;
+    suggestions: import("../server/suggest").TemplateSuggestion[];
   };
   assert.equal(signals.sentences, 0);
   assert.equal(signals.hasFootage, false);
@@ -791,7 +791,7 @@ test("suggestion and folder import work on a project that has no footage at all"
   // supplied — and nothing claims it can.
   const withPool = await tools.executeEditorTool(id, {
     tool: "templates.suggest", slots: { screenshots: { folder: screenshots } },
-  }) as { suggestions: import("../lib/suggest").TemplateSuggestion[] };
+  }) as { suggestions: import("../server/suggest").TemplateSuggestion[] };
   const chat = withPool.suggestions.find(s => s.templateId === "chat-story")!;
   assert.deepEqual(chat.missingSlots, [], "the slot is filled, so it is no longer blocked");
   for (const suggestion of withPool.suggestions) assert.equal(suggestion.expectedImages, 0);
@@ -800,7 +800,7 @@ test("suggestion and folder import work on a project that has no footage at all"
   const { id: silent } = await mediaService.createVideoProject("No transcript", [{ file: source }]);
   const pooled = await tools.executeEditorTool(silent, {
     tool: "templates.suggest", slots: { screenshots: { folder: screenshots } },
-  }) as { signals: import("../lib/suggest").SequenceSignals; suggestions: import("../lib/suggest").TemplateSuggestion[] };
+  }) as { signals: import("../server/suggest").SequenceSignals; suggestions: import("../server/suggest").TemplateSuggestion[] };
   assert.equal(pooled.signals.sentences, 0);
   assert.ok(pooled.signals.hasFootage);
   const pooledChat = pooled.suggestions.find(s => s.templateId === "chat-story")!;
@@ -901,7 +901,7 @@ test("a card at the bottom of the frame is called out, because that is where the
     cards: [{ id: "cta", atFraction: 1, text: "Follow for part two", seconds: 2, position: "bottom" }],
     images: { mode: "off" },
   });
-  const warned = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "bottom-card", sequenceId }) as import("../lib/plan").TemplatePlan;
+  const warned = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "bottom-card", sequenceId }) as import("../server/plan").TemplatePlan;
   assert.ok(warned.warnings.some(w => /where the captions are/.test(w)), `warnings were ${JSON.stringify(warned.warnings)}`);
 
   // A shot whose captions are genuinely off has no conflict to report.
@@ -910,14 +910,14 @@ test("a card at the bottom of the frame is called out, because that is where the
     cards: [{ id: "cta", atFraction: 1, text: "Follow", seconds: 2, position: "bottom" }],
   });
   assert.equal(noCaptions.captions.preset, undefined, "a template that says nothing about captions changes nothing");
-  const silent = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "bottom-quiet", sequenceId }) as import("../lib/plan").TemplatePlan;
+  const silent = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "bottom-quiet", sequenceId }) as import("../server/plan").TemplatePlan;
   assert.ok(!silent.warnings.some(w => /where the captions are/.test(w)));
   await registry.deleteTemplate("bottom-quiet");
 
   // Turning the captions off removes the conflict, so it removes the warning.
   const quiet = await tools.executeEditorTool(id, {
     tool: "template.plan", templateId: "bottom-card", sequenceId, overrides: { captions: { preset: "none" } },
-  }) as import("../lib/plan").TemplatePlan;
+  }) as import("../server/plan").TemplatePlan;
   assert.ok(!quiet.warnings.some(w => /where the captions are/.test(w)));
   await registry.deleteTemplate("bottom-card");
 
@@ -928,7 +928,7 @@ test("a card at the bottom of the frame is called out, because that is where the
   const plan = await tools.executeEditorTool(id, {
     tool: "template.plan", templateId: "story-arc", sequenceId,
     slots: { cta: { text: "Follow for part two" } },
-  }) as import("../lib/plan").TemplatePlan;
+  }) as import("../server/plan").TemplatePlan;
   assert.ok(!plan.warnings.some(w => /where the captions are/.test(w)));
   assert.equal(plan.cards.length, 1, "only the filled card is planned");
 });
@@ -976,7 +976,7 @@ test("a source that needs no subject does not need the script to name one", asyn
   // A still comes out of the footage in front of you: it needs a moment, not a name.
   const captured = await tools.executeEditorTool(id, {
     tool: "template.plan", templateId: "product-demo", sequenceId,
-  }) as import("../lib/plan").TemplatePlan;
+  }) as import("../server/plan").TemplatePlan;
   assert.ok(captured.totals.images >= 1, "product-demo could never illustrate a walkthrough otherwise");
   assert.ok(captured.items[0].cues.every(c => c.query === ""), "and it looks for nothing");
   assert.ok(!captured.warnings.some(w => /earns a picture/.test(w)));
@@ -985,7 +985,7 @@ test("a source that needs no subject does not need the script to name one", asyn
   const searched = await tools.executeEditorTool(id, {
     tool: "template.plan", templateId: "product-demo", sequenceId,
     overrides: { images: { sources: ["brand", "web"] } },
-  }) as import("../lib/plan").TemplatePlan;
+  }) as import("../server/plan").TemplatePlan;
   assert.equal(searched.totals.images, 0);
   assert.ok(searched.warnings.some(w => /need the script to name something/.test(w)),
     `warnings were ${JSON.stringify(searched.warnings)}`);
@@ -994,7 +994,7 @@ test("a source that needs no subject does not need the script to name one", asyn
   const pooled = await tools.executeEditorTool(id, {
     tool: "template.plan", templateId: "explainer-broll", sequenceId,
     slots: { screenshots: { folder: screenshots } },
-  }) as import("../lib/plan").TemplatePlan;
+  }) as import("../server/plan").TemplatePlan;
   assert.ok(pooled.totals.images >= 1);
 
   // Applying it really does capture stills, one per planned beat.
@@ -1035,8 +1035,8 @@ test("saving a variation merges it the same way applying it would", async () => 
   assert.equal(saved.hook.mode, "intro");
 
   // And the saved template plans identically to applying the overrides to the original.
-  const viaSaved = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "my-dense", sequenceId }) as import("../lib/plan").TemplatePlan;
-  const viaOverrides = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "explainer-broll", sequenceId, overrides }) as import("../lib/plan").TemplatePlan;
+  const viaSaved = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "my-dense", sequenceId }) as import("../server/plan").TemplatePlan;
+  const viaOverrides = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "explainer-broll", sequenceId, overrides }) as import("../server/plan").TemplatePlan;
   assert.deepEqual(viaSaved.totals, viaOverrides.totals);
   assert.deepEqual(viaSaved.items[0].cues.map(c => c.t), viaOverrides.items[0].cues.map(c => c.t));
 
@@ -1060,7 +1060,7 @@ test("a dry run counts the folder it is given rather than assuming it is full", 
     tool: "template.plan", templateId: "chat-story", sequenceId,
     slots: { screenshots: { folder: sparse } },
     overrides: { images: { minSentenceGap: 1, minGapSec: 0 } },
-  }) as import("../lib/plan").TemplatePlan;
+  }) as import("../server/plan").TemplatePlan;
   assert.ok(plan.totals.images > 2, `wanted more than two beats, planned ${plan.totals.images}`);
   const shortfall = plan.warnings.find(w => /beats want a picture/.test(w));
   assert.ok(shortfall, `warnings were ${JSON.stringify(plan.warnings)}`);
@@ -1082,7 +1082,7 @@ test("a dry run counts the folder it is given rather than assuming it is full", 
   const missing = await tools.executeEditorTool(id, {
     tool: "template.plan", templateId: "chat-story", sequenceId,
     slots: { screenshots: { folder: path.join(workspace, "no-such-folder") } },
-  }) as import("../lib/plan").TemplatePlan;
+  }) as import("../server/plan").TemplatePlan;
   assert.ok(missing.warnings.some(w => /could not be read/.test(w)), `warnings were ${JSON.stringify(missing.warnings)}`);
 });
 
@@ -1120,7 +1120,7 @@ test("every built-in template actually does something on a video it suits", asyn
 
     const plan = await tools.executeEditorTool(id, {
       tool: "template.plan", templateId: template.id, sequenceId, slots,
-    }) as import("../lib/plan").TemplatePlan;
+    }) as import("../server/plan").TemplatePlan;
 
     assert.ok(!plan.warnings.some(w => /required and was not filled/.test(w)),
       `${template.id}: a slot read as unfilled although every one was given a value`);
@@ -1171,7 +1171,7 @@ test("a slot key that supplies nothing is not a filled slot", async () => {
   for (const empty of [{}, { folder: "   " }, { text: "" }, { assetIds: [] }]) {
     const plan = await tools.executeEditorTool(id, {
       tool: "template.plan", templateId: "chat-story", sequenceId, slots: { screenshots: empty },
-    }) as import("../lib/plan").TemplatePlan;
+    }) as import("../server/plan").TemplatePlan;
     assert.ok(plan.warnings.some(w => /required and was not filled/.test(w)),
       `${JSON.stringify(empty)} was read as a filled slot`);
 
@@ -1184,7 +1184,7 @@ test("a slot key that supplies nothing is not a filled slot", async () => {
   // The suggestion agrees with the plan about what is missing.
   const { suggestions } = await tools.executeEditorTool(id, {
     tool: "templates.suggest", sequenceId, slots: { screenshots: {} },
-  }) as { suggestions: import("../lib/suggest").TemplateSuggestion[] };
+  }) as { suggestions: import("../server/suggest").TemplateSuggestion[] };
   assert.deepEqual(suggestions.find(s => s.templateId === "chat-story")!.missingSlots, ["Screenshots folder"]);
 });
 
@@ -1197,14 +1197,14 @@ test("the hook comes from a shot's own hook or title, never from whichever layer
       clip: edlSchema.Clip.parse({ id: "i_first", title: "Lower third", start: 0, end: 2,
         edits: [{ type: "text", t: 0, d: 2, text: "Lower third", position: "bottom", style: "plain" }] }) } },
   ] });
-  const withHook = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "explainer-broll", sequenceId }) as import("../lib/plan").TemplatePlan;
+  const withHook = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "explainer-broll", sequenceId }) as import("../server/plan").TemplatePlan;
   assert.equal(withHook.hook?.text, "How ranking really works", "the shot's written hook wins");
 
   // With no hook written anywhere, the shot's title wins over the canvas layer's.
   store.editProject(id, { expectedRevision: store.readEditor(id).revision, operations: [
     { type: "item.patch", sequenceId, itemId, patch: { hook: "" } },
   ] });
-  const withTitle = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "explainer-broll", sequenceId }) as import("../lib/plan").TemplatePlan;
+  const withTitle = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "explainer-broll", sequenceId }) as import("../server/plan").TemplatePlan;
   assert.equal(withTitle.hook?.text, "Ranking", `got "${withTitle.hook?.text}" — the canvas layer's title was taken for the hook`);
 });
 
@@ -1247,7 +1247,7 @@ test("a suggestion counts the folder the same way the dry run does", async () =>
   assert.equal(spawnSync(FFMPEG, ["-y", "-v", "error", "-f", "lavfi", "-i", "color=red:size=300x400", "-frames:v", "1", path.join(sparse, "only.png")], { encoding: "utf8" }).status, 0);
   const { suggestions } = await tools.executeEditorTool(id, {
     tool: "templates.suggest", sequenceId, slots: { screenshots: { folder: sparse } },
-  }) as { suggestions: import("../lib/suggest").TemplateSuggestion[] };
+  }) as { suggestions: import("../server/suggest").TemplateSuggestion[] };
   const chat = suggestions.find(s => s.templateId === "chat-story")!;
   assert.ok(chat.expectedImages > 1, `chat-story should want more than the one picture supplied, wanted ${chat.expectedImages}`);
   assert.ok(chat.why.some(w => /only 1 were supplied/.test(w)),
@@ -1494,7 +1494,7 @@ test("a shortlist of templates narrows what is suggested, and one of them settle
   ] });
 
   const { suggestions } = await tools.executeEditorTool(id, { tool: "templates.suggest", sequenceId }) as {
-    suggestions: import("../lib/suggest").TemplateSuggestion[];
+    suggestions: import("../server/suggest").TemplateSuggestion[];
   };
   assert.deepEqual(suggestions.map(s => s.templateId).sort(), [...shortlist].sort(),
     "a shortlist is a decision already made; ranking anything else answers a question nobody asked");

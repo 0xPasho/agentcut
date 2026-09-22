@@ -6,10 +6,8 @@ import { Slider } from "@/common/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/common/ui/select";
 import { ColorField } from "@/common/ui/color-field";
 import type { CaptionStyle } from "@/modules/editor/types";
-
-const asNumber = (v: number | readonly number[]) => (Array.isArray(v) ? v[0] : (v as number));
-
-const PRESETS: CaptionStyle["preset"][] = ["karaoke", "popline", "boxed", "none"];
+import { asNumber } from "../lib/caption-controls";
+import { PRESETS } from "../data";
 
 export function CaptionControls({
   value,

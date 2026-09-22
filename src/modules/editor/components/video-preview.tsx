@@ -9,21 +9,8 @@ import { sequenceFrames } from "@/modules/editor/lib/sequences";
 import { buildTimeMap, clipFrames } from "@/modules/editor/lib/timeline";
 import type { Edl } from "@/modules/editor/types";
 import type { ProjectVideo } from "@/modules/project/lib/overview";
-
-const FRAME = "mx-auto w-full overflow-hidden rounded-3xl bg-black ring-1 ring-foreground/10";
-
-/**
- * A 9:16 preview filling a 340px rail is 600px tall — taller than the panel beside
- * it and taller than most windows. Cap the tall ones by height and centre them.
- */
-const MAX_HEIGHT = 460;
-function frameStyle(output: { width: number; height: number }): React.CSSProperties {
-  return {
-    width: "100%",
-    aspectRatio: `${output.width} / ${output.height}`,
-    maxWidth: output.height > output.width ? `${Math.round((MAX_HEIGHT * output.width) / output.height)}px` : undefined,
-  };
-}
+import { FRAME } from "../data";
+import { frameStyle } from "../lib/video-preview";
 
 /**
  * The selected output, playing, whichever side of `clip.promote` it is on.

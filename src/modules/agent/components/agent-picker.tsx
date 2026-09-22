@@ -3,37 +3,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Loader2, RefreshCw, Star, Terminal } from "lucide-react";
 import { cn } from "cn";
 import { useAgents } from "@/modules/agent/hooks/agent-store";
-import { catalogNote, chipLabel, chipParts, favKeyFor, favoriteRows, filterRows, harnessRows, shortReason, type ModelRow } from "@/modules/agent/lib/model-rows";
+import { catalogNote, chipLabel, chipParts, favoriteRows, filterRows, harnessRows, shortReason, type ModelRow } from "@/modules/agent/lib/model-rows";
 import type { HarnessStatus } from "@/modules/agent/server/detect";
 import { HARNESS_MARKS } from "../../../common/components/brand-marks";
 import { Button } from "../../../common/ui/button";
 import { Input } from "../../../common/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "../../../common/ui/popover";
 import { ScrollArea } from "../../../common/ui/scroll-area";
-
-/**
- * Pick the harness and the model, in one control, anywhere a prompt is typed.
- *
- * A rail of harnesses on the left, wearing their own brand marks, and that
- * harness's models on the right. Both halves are one decision: choosing a model
- * while browsing another harness switches the harness too, because "run this on
- * Sonnet" is not a sentence about Claude Code, it is a sentence about the next
- * message.
- *
- * Unavailable harnesses render DISABLED, never hidden. A missing row reads as
- * "Cursor is not a thing here", which is a different and wrong story from
- * "Cursor is installed but signed out" or "you cannot switch mid-run" — and each
- * of those three has a different fix, so each one says which it is.
- */
-const FAVOURITES = "*favourites*";
-const FAV_KEY = "agentcut:favourite-models";
-/** Enough rows to be worth a shortcut; past nine the digits run out anyway. */
-const SHORTCUT_ROWS = 9;
-
-const readFavourites = (): Record<string, string> => {
-  try { return JSON.parse(localStorage.getItem(FAV_KEY) ?? "{}") as Record<string, string>; }
-  catch { return {}; }
-};
+import { FAVOURITES, FAV_KEY, SHORTCUT_ROWS } from "../data";
+import { readFavourites } from "../lib/agent-picker";
 
 /** The mark a harness wears, with a terminal glyph for anything unrecognised. */
 function HarnessMark({ id, className }: { id: string; className?: string }) {

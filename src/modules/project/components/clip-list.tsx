@@ -9,30 +9,13 @@ import { clipUrl, thumbUrl } from "@/common/api/client";
 import { count, runtime } from "@/common/lib/format";
 import type { ProjectVideo } from "@/modules/project/lib/overview";
 import type { SequenceStatus } from "@/modules/plan/types";
-
-/**
- * Status reads as a dot plus its word, never as a colour on its own: four states
- * told apart by hue alone are four states nobody can tell apart.
- */
-export const STATUS: Record<SequenceStatus, { label: string; dot: string }> = {
-  pending: { label: "Pending", dot: "bg-transparent ring-1 ring-inset ring-muted-foreground" },
-  edited: { label: "Edited", dot: "bg-muted-foreground" },
-  approved: { label: "Approved", dot: "bg-primary" },
-  rendered: { label: "Rendered", dot: "bg-primary" },
-};
+import { STATUS } from "../data";
+import { type ClipListHandlers } from "../types";
 
 export function StatusDot({ status }: { status: SequenceStatus }) {
   if (status === "rendered") return <Check aria-hidden className="size-3 text-primary" />;
   return <span aria-hidden className={cn("size-2 rounded-full", STATUS[status].dot)} />;
 }
-
-export type ClipListHandlers = {
-  onSelect: (id: string) => void;
-  onOpen: (video: ProjectVideo) => (event: React.MouseEvent) => void;
-  onApprove: (video: ProjectVideo) => void;
-  onDelete: (video: ProjectVideo) => void;
-  href: (video: ProjectVideo) => string;
-};
 
 /**
  * Forty candidates, ranked.

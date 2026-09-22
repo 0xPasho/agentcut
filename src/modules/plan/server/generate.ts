@@ -3,10 +3,10 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { projectDir } from "../../../common/server/config";
-import { resolveProvider, type AgentEvent, type AgentProvider } from "../../agent/lib/providers";
+import { resolveProvider, type AgentEvent, type AgentProvider } from "../../agent/server/providers";
 import { editProject, readEditor, RevisionConflict } from "../../editor/server/store";
 import { promoteClipToSequence } from "../../editor/lib/editable-timeline";
-import { resolveTarget } from "../../templates/lib/plan";
+import { resolveTarget } from "../../templates/server/plan";
 import { toSentences } from "../../templates/lib/script";
 import { listRules } from "../../rules/server/registry";
 import { candidateRules } from "../../rules/server/evaluate";
@@ -98,7 +98,7 @@ export async function generateSequencePlan(projectId: string, target: { sequence
   const dir = path.join(projectDir(projectId), "plan-runs", randomUUID());
   await fs.mkdir(dir, { recursive: true });
   const { rules, preferences } = await writeContext(dir, projectId, start.edl);
-  const { suggestTemplates } = await import("../../templates/lib/suggest");
+  const { suggestTemplates } = await import("../../templates/server/suggest");
   const suggestions = (await suggestTemplates(start.edl, target).catch(() => ({ suggestions: [] }))).suggestions
     .slice(0, 5).map((s) => ({ id: s.templateId, name: s.name, fit: Number(s.fit.toFixed(2)), why: s.why, missingSlots: s.missingSlots }));
   await Promise.all([

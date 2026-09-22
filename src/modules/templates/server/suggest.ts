@@ -1,8 +1,8 @@
 import type { Edl } from "../../editor/types";
 import { transcriptCasing } from "../../media/server/search/brand";
-import { listTemplates } from "../server/registry";
+import { listTemplates } from "./registry";
 import type { TemplateRecord, VideoTemplate } from "../types";
-import { analyzeSentences, toSentences } from "./script";
+import { analyzeSentences, toSentences } from "../lib/script";
 import { brandMentions, planTemplate, resolveTarget, slotFilled, type SlotValue, type TemplatePlan } from "./plan";
 import { promoteClipToSequence } from "../../editor/lib/editable-timeline";
 
@@ -211,7 +211,7 @@ export async function suggestTemplates(
   const suggestions: TemplateSuggestion[] = [];
   // Counted once, the same way the dry run and the apply path count; a folder is
   // never assumed full here either, or a suggestion's shortfall warning could not fire.
-  const { countPools } = await import("../server/apply");
+  const { countPools } = await import("./apply");
   const { sizes } = await countPools(slots);
   // A shortlist is a decision already made: ranking templates outside it would be
   // answering a question nobody asked.

@@ -1,9 +1,10 @@
 "use client";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
-import { HARNESSES } from "@/modules/agent/lib/registry";
+
 import { SETTINGS_SECTIONS } from "./data";
-import { useWorkspaceSettings, type WorkspaceSettings } from "./hooks";
+import { useWorkspaceSettings } from "./hooks";
+import { summarise } from "./lib";
 
 /**
  * The front page of settings: what each section holds right now, so the answer to
@@ -51,38 +52,4 @@ export function SettingsOverview() {
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     </section>
   );
-}
-
-const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
-
-function summarise(id: string, data: WorkspaceSettings): string {
-  switch (id) {
-    case "rules": {
-      const workspace = data.rules.filter((r) => r.level === "workspace");
-      if (!workspace.length) return "none yet";
-      const off = workspace.filter((r) => !r.enabled).length;
-      return off ? `${count(workspace.length, "rule")}, ${off} off` : count(workspace.length, "rule");
-    }
-    case "glossary":
-      return data.glossary.terms.length ? count(data.glossary.terms.length, "term") : "none yet";
-    case "subjects": {
-      const subjects = data.glossary.terms.filter((t) => t.brand);
-      return subjects.length ? count(subjects.length, "subject") : "none yet";
-    }
-    case "preferences": {
-      if (!data.preferences.trim()) return "nothing written yet";
-      const lines = data.preferences.split("\n").filter((l) => l.trim() && !l.trim().startsWith("<!--")).length;
-      return count(lines, "line");
-    }
-    case "agents": {
-      const chosen = data.workspaceDefault?.provider;
-      const label = chosen ? (HARNESSES.find((h) => h.id === chosen)?.label ?? chosen) : "first one installed";
-      const tasks = data.tasks.filter((t) => t.own?.provider).length;
-      return tasks ? `${label}, ${count(tasks, "task")} set apart` : label;
-    }
-    case "packs":
-      return data.packs.length ? count(data.packs.length, "pack") : "none installed";
-    default:
-      return "";
-  }
 }

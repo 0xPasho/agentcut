@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
-import { DEFAULT_ITEM_TRANSFORM, type Clip, type SequenceItem, type TransformKeyframe, type VideoSequence } from "@/modules/editor/types";
+import { type Clip, type SequenceItem, type VideoSequence } from "@/modules/editor/types";
 import { sequenceFrames } from "@/modules/editor/lib/sequences";
 import { animatedAt } from "@/modules/editor/lib/keyframes";
 import type { EditorOperation } from "@/modules/editor/lib/operations";
@@ -8,15 +8,9 @@ import { PLACEMENT_FIELDS, setKeyframe } from "@/modules/editor/lib/motion";
 import { snapAxis } from "@/modules/editor/lib/snapping";
 import { moveOverlay, overlayLabel, type Box, type OverlayTarget } from "@/modules/editor/lib/canvas";
 import { usePlayhead } from "@/modules/editor/hooks/playhead";
-
-type Transform = typeof DEFAULT_ITEM_TRANSFORM;
-const SNAP_PX = 8;
-/** Enough of the resize handle stays inside the frame to be grabbed at any size. */
-const HANDLE_PX = 16;
-export type CanvasPreview = { id: string; transform?: Transform; clip?: Clip; keyframes?: TransformKeyframe[] } | null;
-type Inner = { key: string; target: OverlayTarget; box: Box };
-const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
-const sameBox = (a: Box, b: Box) => (Object.keys(a) as (keyof Box)[]).every(key => Math.abs(a[key] - b[key]) < .1);
+import { type Transform, type CanvasPreview, type Inner } from "../types";
+import { SNAP_PX, HANDLE_PX, ARROWS } from "../data";
+import { sameBox } from "../lib/canvas-selection";
 
 /**
  * A grid over the frame while something is being dragged: thirds and the centre read as the

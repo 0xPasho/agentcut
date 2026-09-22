@@ -231,3 +231,11 @@ export function toLines(words: Word[], maxWords: number, pauseGap = 0.6): Captio
   flush();
   return lines;
 }
+
+
+/** Ruler ticks read better without centiseconds. */
+export const clock = (sec: number) => {
+  const m = Math.floor(sec / 60);
+  const r = Math.round(sec % 60);
+  return `${m}:${String(r).padStart(2, "0")}`;
+};

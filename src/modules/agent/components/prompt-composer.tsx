@@ -6,20 +6,7 @@ import { assetFileUrl, type Attachment } from "@/common/api/client";
 import { AgentPicker } from "./agent-picker";
 import { Button } from "../../../common/ui/button";
 import { Textarea } from "../../../common/ui/textarea";
-
-/**
- * Every place the app asks the user to write a prompt.
- *
- * The harness picker is part of this component rather than something each
- * surface remembers to add, which is the whole point: a new prompt surface gets
- * the choice for free, and there is no second place where a prompt can be sent
- * to whichever CLI happened to be first on PATH.
- *
- * The composer does not know what the prompt means. It hands `onSend` the text
- * and gets out of the way — which harness runs it is already saved server-side,
- * so the caller does not have to thread the selection through either.
- */
-export type PromptComposerHandle = { focus: () => void };
+import { type PromptComposerHandle } from "../types";
 
 export const PromptComposer = forwardRef<PromptComposerHandle, {
   value: string;

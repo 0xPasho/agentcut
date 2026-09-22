@@ -104,7 +104,7 @@ test("a template that opens on the comment finds it, draws it, and holds the hoo
   await registry.saveTemplate({ id: "chat-open", extends: "stream-short", name: "Chat open", outro: { enabled: false },
     layout: { mode: "crop" }, comment: { enabled: true, seconds: 3 } });
   const { id, sequenceId } = await project();
-  const plan = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "chat-open", sequenceId }) as import("../../templates/lib/plan").TemplatePlan;
+  const plan = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "chat-open", sequenceId }) as import("../../templates/server/plan").TemplatePlan;
   assert.equal(plan.comment?.name, "evvvaaan", "the dry run says which comment it would open on");
 
   await tools.executeEditorTool(id, { tool: "template.apply", templateId: "chat-open", sequenceId, expectedRevision: store.readEditor(id).revision });
@@ -126,7 +126,7 @@ test("a template that opens on the comment finds it, draws it, and holds the hoo
 
 test("a clip nobody asked about opens on its hook, and says why", async () => {
   const { id, sequenceId } = await project(speak("Hoy vamos a hablar de bases de datos y de índices."));
-  const result = await tools.executeEditorTool(id, { tool: "template.apply", templateId: "chat-open", sequenceId, expectedRevision: store.readEditor(id).revision }) as { plan: import("../../templates/lib/plan").TemplatePlan };
+  const result = await tools.executeEditorTool(id, { tool: "template.apply", templateId: "chat-open", sequenceId, expectedRevision: store.readEditor(id).revision }) as { plan: import("../../templates/server/plan").TemplatePlan };
   assert.equal(layers(id, sequenceId).some((item) => item.clip.title === "Comment"), false);
   assert.equal(hookStart(id, sequenceId), 0);
   assert.ok(result.plan.warnings.some((w) => /No comment to open on/.test(w)), result.plan.warnings.join(" | "));

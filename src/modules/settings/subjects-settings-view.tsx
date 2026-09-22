@@ -12,25 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/common/ui/dialog";
 import { Empty, SectionHeader } from "./components/section-header";
 import { useWorkspaceSettings } from "./hooks";
-
-/**
- * Subjects (decision 48): the things you talk about often — a game, a channel, a
- * person, a product. A subject is a glossary term that has been given a look, which
- * is why it is not a second list to keep in step: the spelling, the mishearings and
- * the one line of what it is are the glossary's, and this page adds the brand kit.
- *
- * A project whose plan names the subject inherits that kit when the plan is applied,
- * under any override the project or a rule sets. A rule can say it is about the
- * subject, and those rules are listed here so a subject reads as one thing.
- *
- * Not modelled yet: assets that belong to a subject. A library image named after it
- * is still found by name, which is how the picture search has always worked.
- */
-const EMPTY_KIT: NonNullable<GlossaryTerm["brand"]> = {
-  palette: { primary: "", secondary: "", text: "", background: "" },
-  fonts: { captions: "", titles: "" },
-  logo: { slot: "", assetId: "" },
-};
+import { EMPTY_KIT } from "./data";
 
 export function SubjectsSettings() {
   const { data, error, pending, run, setError } = useWorkspaceSettings();

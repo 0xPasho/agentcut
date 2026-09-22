@@ -1,5 +1,5 @@
 import type { VideoTemplate } from "../types";
-import { resolveTemplate } from "./resolve";
+import { resolveTemplate } from "../lib/resolve";
 import { ASPECTS } from "../../editor/server/derive";
 
 /**

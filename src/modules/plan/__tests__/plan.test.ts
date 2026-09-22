@@ -5,7 +5,7 @@ import path from "node:path";
 import os from "node:os";
 import { spawnSync } from "node:child_process";
 import { FFMPEG } from "../../../common/server/bin";
-import type { AgentProvider } from "../../agent/lib/providers";
+import type { AgentProvider } from "../../agent/server/providers";
 
 let workspace: string;
 let source: string;
@@ -16,7 +16,7 @@ let database: typeof import("../../../common/server/db");
 let operations: typeof import("../../editor/lib/operations");
 let history: typeof import("../../editor/lib/history");
 let registry: typeof import("../../rules/server/registry");
-let planApply: typeof import("../lib/apply");
+let planApply: typeof import("../server/apply");
 let generate: typeof import("../server/generate");
 
 function speak(sentences: string[], gap = 0.5) {
@@ -43,7 +43,7 @@ before(async () => {
   [store, mediaService, tools, database, operations, history, registry, planApply, generate] = await Promise.all([
     import("../../editor/server/store"), import("../../media/server/media-import"), import("../../editor/server/tools"), import("../../../common/server/db"),
     import("../../editor/lib/operations"), import("../../editor/lib/history"), import("../../rules/server/registry"),
-    import("../lib/apply"), import("../server/generate"),
+    import("../server/apply"), import("../server/generate"),
   ]);
   const { resetBrandIndex, brandIndex } = await import("../../media/server/search/brand");
   resetBrandIndex();
@@ -155,7 +155,7 @@ test("applying a plan is one template application with the plan's choices, and m
     { type: "sequence.plan.patch", sequenceId, patch: { template: "talking-head", overrides: { hook: { mode: "off" } } } },
   ] });
   const revision = store.readEditor(id).revision;
-  const result = await tools.executeEditorTool(id, { tool: "plan.apply", sequenceId, expectedRevision: revision }) as import("../lib/apply").PlanApplyResult;
+  const result = await tools.executeEditorTool(id, { tool: "plan.apply", sequenceId, expectedRevision: revision }) as import("../server/apply").PlanApplyResult;
   assert.equal(result.templateId, "talking-head", "the sequence plan overrides the project's template");
   assert.deepEqual(result.overrides, { images: { mode: "off" }, hook: { mode: "off" }, rhythm: { punch: { enabled: false } } }, "overrides stack project, sequence, rules");
   assert.equal(result.plan!.hook, null);

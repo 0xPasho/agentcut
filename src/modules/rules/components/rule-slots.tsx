@@ -1,25 +1,12 @@
 "use client";
 import { useId } from "react";
-import type { SlotValue } from "@/modules/templates/lib/plan";
+import type { SlotValue } from "@/modules/templates/server/plan";
 import type { TemplateSlot } from "@/modules/templates/types";
 import { Input } from "../../../common/ui/input";
 import { Label } from "../../../common/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../common/ui/select";
-
-/**
- * The inputs a rule hands to the template it applies.
- *
- * A rule that can name a template but not fill its slots can only ever choose somebody
- * else's assets, which is why "end every clip on my stream card" could not be written as
- * a rule. The agent can write these; so must this, or the two interfaces are not the
- * same editor.
- *
- * Only what is in the library is offered: a rule outlives the project it was written in,
- * and an asset that belongs to one project would be a dangling reference everywhere else.
- */
-export type SlotAsset = { id: string; name: string; kind: string };
-
-const KIND_LABEL: Record<string, string> = { image: "picture", video: "video", audio: "sound" };
+import { type SlotAsset } from "../types";
+import { KIND_LABEL } from "../data";
 
 export function RuleSlots({ slots, assets, value, onChange }: {
   slots: TemplateSlot[];

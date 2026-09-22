@@ -7,8 +7,7 @@ import { Badge } from "../../../common/ui/badge";
 import { Button } from "../../../common/ui/button";
 import { Input } from "../../../common/ui/input";
 import { Label } from "../../../common/ui/label";
-
-const PLATFORMS: Record<string, string> = { tiktok: "TikTok", twitch: "Twitch", youtube: "YouTube", kick: "Kick" };
+import { PLATFORMS } from "../data";
 
 /**
  * The viewer comment a stream video opens on. The list is the chat around the clip,

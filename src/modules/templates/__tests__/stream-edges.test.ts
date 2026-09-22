@@ -23,7 +23,7 @@ let database: typeof import("../../../common/server/db");
 let registry: typeof import("../server/registry");
 let rules: typeof import("../../rules/server/registry");
 let assets: typeof import("../../media/server/assets");
-let planner: typeof import("../lib/plan");
+let planner: typeof import("../server/plan");
 
 const video = (file: string, size: string, seconds: number, fps = 30, colour = "navy") => {
   const result = spawnSync(FFMPEG, ["-y", "-f", "lavfi", "-i", `color=${colour}:size=${size}:rate=${fps}:duration=${seconds}`,
@@ -49,7 +49,7 @@ before(async () => {
   [store, mediaService, tools, database, registry, rules, assets, planner] = await Promise.all([
     import("../../editor/server/store"), import("../../media/server/media-import"), import("../../editor/server/tools"),
     import("../../../common/server/db"), import("../server/registry"), import("../../rules/server/registry"),
-    import("../../media/server/assets"), import("../lib/plan"),
+    import("../../media/server/assets"), import("../server/plan"),
   ]);
   const { resetBrandIndex, brandIndex } = await import("../../media/server/search/brand");
   resetBrandIndex();
@@ -115,7 +115,7 @@ test("a recording at another frame rate, and one four times the size, are framed
 
 test("a transcript of one word, and a shot of one frame, are planned without anything dividing by zero", async () => {
   const { id, sequenceId } = await project(source, [{ t: 0.2, d: 0.3, w: "hola" }], 4);
-  const plan = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "edge-split", sequenceId }) as import("../lib/plan").TemplatePlan;
+  const plan = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "edge-split", sequenceId }) as import("../server/plan").TemplatePlan;
   assert.equal(plan.totals.sentences, 1);
   assert.equal(plan.totals.silences, 0, "one word has no gap in it");
   assert.ok(plan.hook, "and the hook is whatever the shot says");
@@ -126,7 +126,7 @@ test("a transcript of one word, and a shot of one frame, are planned without any
   await assert.rejects(project(source, [{ t: -1, d: 0.2, w: "uno" }], 6), /nonnegative/);
   // Words out of order are not a crash: the planner reads what it was given.
   const odd = await project(source, [{ t: 1, d: 0.2, w: "uno" }, { t: 0.5, d: 0.2, w: "dos" }, { t: 3, d: 0.2, w: "tres" }], 6);
-  const oddPlan = await tools.executeEditorTool(odd.id, { tool: "template.plan", templateId: "edge-split", sequenceId: odd.sequenceId }) as import("../lib/plan").TemplatePlan;
+  const oddPlan = await tools.executeEditorTool(odd.id, { tool: "template.plan", templateId: "edge-split", sequenceId: odd.sequenceId }) as import("../server/plan").TemplatePlan;
   assert.ok(oddPlan.totals.sentences >= 1);
   assert.ok(oddPlan.items.every((item) => item.silences.every((cut) => cut.d > 0 && cut.t >= 0)), "no cut of negative length");
 });
@@ -163,14 +163,14 @@ test("a rule that points at something that is not there says which one", async (
   // written for a template it is only sometimes applied with.
   await rules.saveRule({ id: "stray-slot", name: "Stray slot", when: "always",
     then: { template: "edge-split", slots: { nothing: { text: "unused" } } } });
-  const applied = await tools.executeEditorTool(id, { tool: "rules.apply", ruleIds: ["stray-slot"], sequenceId, expectedRevision: store.readEditor(id).revision }) as import("../../rules/lib/apply").RuleApplyResult;
+  const applied = await tools.executeEditorTool(id, { tool: "rules.apply", ruleIds: ["stray-slot"], sequenceId, expectedRevision: store.readEditor(id).revision }) as import("../../rules/server/apply").RuleApplyResult;
   assert.ok(applied.applied, "the rule still edited the video");
 });
 
 test("a disabled rule is not applied, and a rule that only fills a slot for a template with none changes nothing on the timeline", async () => {
   const { id, sequenceId } = await project();
   await rules.saveRule({ id: "switched-off", name: "Off", when: "always", enabled: false, then: { template: "edge-split" } });
-  const result = await tools.executeEditorTool(id, { tool: "rules.apply", ruleIds: ["switched-off", "stray-slot"], sequenceId, expectedRevision: store.readEditor(id).revision }) as import("../../rules/lib/apply").RuleApplyResult;
+  const result = await tools.executeEditorTool(id, { tool: "rules.apply", ruleIds: ["switched-off", "stray-slot"], sequenceId, expectedRevision: store.readEditor(id).revision }) as import("../../rules/server/apply").RuleApplyResult;
   assert.deepEqual(result.ignored, ["switched-off"]);
   assert.equal(result.templateId, "edge-split", "the rule that is still on decides");
 });
@@ -232,19 +232,19 @@ test("a file name is never the hook, and a video with no hook at all says so", a
     { type: "item.patch", sequenceId, itemId: snapshot.edl.sequences[0].items[0].id, patch: { start: 0, end: 8, words: speak(SCRIPT) } },
   ] });
 
-  const bare = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "edge-split", sequenceId }) as import("../lib/plan").TemplatePlan;
+  const bare = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "edge-split", sequenceId }) as import("../server/plan").TemplatePlan;
   assert.equal(bare.hook, null, "a file name is not held on screen for the whole video");
   assert.ok(bare.warnings.some((w) => w.includes("no hook line")), bare.warnings.join(" | "));
 
   // A hook written on the shot, or handed in with the request, is used as it always was.
-  const asked = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "edge-split", sequenceId, hookText: "¿Y si nadie lo dice?" }) as import("../lib/plan").TemplatePlan;
+  const asked = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "edge-split", sequenceId, hookText: "¿Y si nadie lo dice?" }) as import("../server/plan").TemplatePlan;
   assert.equal(asked.hook?.text, "¿Y si nadie lo dice?");
   assert.ok(!asked.warnings.some((w) => w.includes("no hook line")));
 
   store.editProject(id, { expectedRevision: store.readEditor(id).revision, operations: [
     { type: "item.patch", sequenceId, itemId: snapshot.edl.sequences[0].items[0].id, patch: { hook: "Lo que nadie te dice" } },
   ] });
-  const written = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "edge-split", sequenceId }) as import("../lib/plan").TemplatePlan;
+  const written = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "edge-split", sequenceId }) as import("../server/plan").TemplatePlan;
   assert.equal(written.hook?.text, "Lo que nadie te dice");
 
   // A timeline someone has actually named is a hook again.
@@ -252,14 +252,14 @@ test("a file name is never the hook, and a video with no hook at all says so", a
     { type: "item.patch", sequenceId, itemId: snapshot.edl.sequences[0].items[0].id, patch: { hook: "" } },
     { type: "sequence.patch", sequenceId, title: "Lo que aprendí del bug" },
   ] });
-  const named = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "edge-split", sequenceId }) as import("../lib/plan").TemplatePlan;
+  const named = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "edge-split", sequenceId }) as import("../server/plan").TemplatePlan;
   assert.equal(named.hook?.text, "Lo que aprendí del bug");
 
   // And a title that merely contains a dot is still a title.
   store.editProject(id, { expectedRevision: store.readEditor(id).revision, operations: [
     { type: "item.patch", sequenceId, itemId: snapshot.edl.sequences[0].items[0].id, patch: { hook: "", title: "Next.js y el editor" } },
   ] });
-  const dotted = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "edge-split", sequenceId }) as import("../lib/plan").TemplatePlan;
+  const dotted = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "edge-split", sequenceId }) as import("../server/plan").TemplatePlan;
   assert.equal(dotted.hook?.text, "Next.js y el editor");
 });
 
@@ -517,7 +517,7 @@ test("the seam check reads the captions of the shot that has words, not of the c
     { type: "item.add", sequenceId, index: 0, item: { id: "i_sting", mediaId: media, clip: { id: "c_sting", title: "Sting", start: 0, end: 2, captions: { preset: "none" } } } },
   ] });
 
-  const dry = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "bare-split", sequenceId }) as import("../lib/plan").TemplatePlan;
+  const dry = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "bare-split", sequenceId }) as import("../server/plan").TemplatePlan;
   assert.ok(dry.warnings.some((w) => w.includes("over the person")), dry.warnings.join(" | "));
 });
 
@@ -550,7 +550,7 @@ test("a hook somebody typed is used as typed, even when it looks like a file nam
   await registry.saveTemplate({ id: "hooked", extends: "stream-short", name: "Hooked", ...STREAM_OVERRIDES });
   const { id, sequenceId } = await project();
   for (const written of ["main video", "dia-169.mp4"]) {
-    const dry = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "hooked", sequenceId, hookText: written }) as import("../lib/plan").TemplatePlan;
+    const dry = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "hooked", sequenceId, hookText: written }) as import("../server/plan").TemplatePlan;
     assert.equal(dry.hook?.text, written, `the line the author wrote is the hook: ${written}`);
     assert.ok(!dry.warnings.some((w) => w.toLowerCase().includes("hook")), dry.warnings.join(" | "));
   }
@@ -777,7 +777,7 @@ test("a dry run hears the hole in the footage before anything is rendered", asyn
   await registry.saveTemplate({ id: "holed", extends: "stream-short", name: "Holed", outro: { enabled: false }, ...STREAM_OVERRIDES });
   const words = Array.from({ length: 30 }, (_, i) => ({ t: 1 + i * 0.6, d: 0.45, w: `palabra${i}` }));
   const { id, sequenceId } = await project(holed, words, 19);
-  const dry = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "holed", sequenceId }) as import("../lib/plan").TemplatePlan;
+  const dry = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "holed", sequenceId }) as import("../server/plan").TemplatePlan;
   const said = dry.warnings.filter((w) => w.includes("room noise"));
   assert.equal(said.length, 1, dry.warnings.join(" | "));
   assert.match(said[0], /is room noise, but the transcript has \d+ words over it/);

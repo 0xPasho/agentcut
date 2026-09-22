@@ -1,5 +1,5 @@
-import { harnessBinary, spawnable } from "../server/binary";
-import { spawnStream, makeEvent } from "../server/spawn";
+import { harnessBinary, spawnable } from "./binary";
+import { spawnStream, makeEvent } from "./spawn";
 import { describeAgentToolInput } from "../../project/lib/activity";
 import type { AgentEvent, AgentProvider, AgentResult, AgentRunOptions } from "../types";
 

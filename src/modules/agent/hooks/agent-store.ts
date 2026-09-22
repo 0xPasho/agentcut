@@ -1,35 +1,8 @@
 "use client";
 import { useCallback, useSyncExternalStore } from "react";
 import type { HarnessStatus } from "../server/detect";
-import type { ResolvedSelection, Selection, taskSelections } from "../server/selection";
-
-/** One kind of work, what it resolves to today, and whether that is its own choice. */
-export type TaskSelection = ReturnType<typeof taskSelections>[number];
-
-/**
- * One copy of "which harnesses exist and which one is picked", shared by every
- * prompt surface in the app.
- *
- * A module-level store rather than a context provider, deliberately. The picker
- * has to be droppable into any composer — the editor chat, the onboarding
- * interview, the welcome screen, a rules panel — and requiring each of those to
- * be wrapped in a provider is how you end up with two of them out of sync, or
- * with a surface that silently cannot show the picker at all. Here, mounting
- * the component is the whole integration.
- *
- * Detection spawns nothing on the client; it is one GET. But it is one GET per
- * scope, cached, so five composers on a page cost one request.
- */
-export type AgentsSnapshot = {
-  harnesses: HarnessStatus[];
-  selection: ResolvedSelection;
-  override: Selection | null;
-  workspaceDefault: Selection | null;
-  /** Model per task (decision 50). Workspace-wide, so it is the same list in every scope. */
-  tasks: TaskSelection[];
-  loading: boolean;
-  error: string;
-};
+import type { ResolvedSelection, Selection } from "../server/selection";
+import { type TaskSelection, type AgentsSnapshot } from "../types";
 
 const EMPTY: AgentsSnapshot = {
   harnesses: [],

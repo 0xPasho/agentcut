@@ -3,7 +3,7 @@ import { z } from "zod";
 import { centerCrop, type Edl, type SequenceItem } from "../types";
 import { editProject, readEditor, RevisionConflict } from "./store";
 import { promoteClipToSequence } from "../lib/editable-timeline";
-import { resolveTarget } from "../../templates/lib/plan";
+import { resolveTarget } from "../../templates/server/plan";
 import type { EditorOperation } from "../lib/operations";
 
 /**

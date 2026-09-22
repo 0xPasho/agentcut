@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { ChatController } from "@/modules/agent/hooks/use-chat";
+import { type ChatController } from "@/modules/agent/types";
 import { AgentThread } from "./agent-thread";
-import { PromptComposer, type PromptComposerHandle } from "./prompt-composer";
+import { PromptComposer } from "./prompt-composer";
+import { type PromptComposerHandle } from "../types";
 
 /**
  * The chat, wherever it is.

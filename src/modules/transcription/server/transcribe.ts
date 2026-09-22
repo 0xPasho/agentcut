@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { extractAudio } from "../../media/server/ffmpeg";
 import { Transcript } from "../lib/transcript";
-import type { AgentEvent } from "../../agent/lib/providers";
+import type { AgentEvent } from "../../agent/server/providers";
 import { available as whisperAvailable, engineId, transcribe } from "./whispercpp";
 import { polishTranscript } from "./polish";
 import { readGlossary, glossaryWhisperPrompt, glossaryBrief, applyGlossary } from "../../rules/server/glossary";

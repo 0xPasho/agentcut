@@ -1,6 +1,6 @@
 import type { Edl, SequenceItem } from "../../editor/types";
 import { probe } from "../../media/server/ffmpeg";
-import type { PlannedComment } from "../../templates/lib/plan";
+import type { PlannedComment } from "../../templates/server/plan";
 import type { VideoTemplate } from "../../templates/types";
 import { answers, chatSource, chatWindow, commentById, rankComments, readComments, type ChatComment, type RankedComment } from "./comments";
 

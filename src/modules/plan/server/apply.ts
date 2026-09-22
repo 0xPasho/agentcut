@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { editProject, readEditor } from "../../editor/server/store";
-import { resolveTarget, TemplateTarget, SlotValue } from "../../templates/lib/plan";
+import { resolveTarget, TemplateTarget, SlotValue } from "../../templates/server/plan";
 import { applyTemplate } from "../../templates/server/apply";
 import { listRules } from "../../rules/server/registry";
-import { appliedTemplate, mergeOverrides, resolveRules } from "../../rules/lib/apply";
-import type { RuleApplyResult } from "../../rules/lib/apply";
+import { appliedTemplate, mergeOverrides, resolveRules } from "../../rules/server/apply";
+import type { RuleApplyResult } from "../../rules/server/apply";
 
 /**
  * Applying a plan is deterministic: the template comes from the sequence plan, then
@@ -49,7 +49,7 @@ export async function applyPlan(projectId: string, raw: unknown, expectedRevisio
     if (applied) { templateId = applied; templateFrom = "applied"; }
   }
   if (!templateId) {
-    const { suggestTemplates } = await import("../../templates/lib/suggest");
+    const { suggestTemplates } = await import("../../templates/server/suggest");
     const best = (await suggestTemplates(current.edl, target, ruleSlots)).suggestions[0];
     if (!best) throw new Error("No template to apply this plan with.");
     templateId = best.templateId; templateFrom = "suggested";

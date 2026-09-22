@@ -4,10 +4,10 @@ import { Loader2, Plus, Trash2, Wand2 } from "lucide-react";
 import { api } from "@/common/api/client";
 import type { Rule, RuleRecord, RuleLevel } from "@/modules/rules/types";
 import type { RuleEvaluation } from "@/modules/rules/server/evaluate";
-import type { RuleApplyResult } from "@/modules/rules/lib/apply";
+import type { RuleApplyResult } from "@/modules/rules/server/apply";
 import type { Glossary } from "@/modules/rules/server/glossary";
 import type { Proposals, Observation } from "@/modules/rules/server/observations";
-import type { TemplateSlot } from "@/modules/templates/types";
+
 import type { AssetSummary } from "@/common/api/client";
 import { RuleSlots } from "./rule-slots";
 import { Badge } from "../../../common/ui/badge";
@@ -20,23 +20,9 @@ import { Textarea } from "../../../common/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../common/ui/select";
 import { Separator } from "../../../common/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../../common/ui/tabs";
-
-/**
- * Rules, glossary and preferences for the video you have open: the project level,
- * beside the subject it is about. Every button calls the same project tool an agent
- * calls, so nothing here is a second way to write these files.
- *
- * The workspace level — the rules, names and preferences that apply to every project
- * — has its own home at /settings and its own editors. This panel still reads and
- * writes both levels, because a project rule is edited next to the workspace rules
- * it inherits, and because the workspace route runs exactly the same functions.
- */
-
-type TemplateOption = { id: string; name: string; builtin: boolean; slots: TemplateSlot[] };
-type Loaded = { rules: RuleRecord[]; glossary: Glossary; preferences: { workspace: string; project: string }; templates: TemplateOption[]; assets: AssetSummary[]; observations: Observation[] };
-
-const EMPTY_RULE: Rule = { id: "", name: "", description: "", when: "", stage: "both", priority: 100, enabled: true, then: {} };
-const STAGE_LABELS: Record<string, string> = { select: "Choosing clips", edit: "Editing", both: "Both" };
+import { type TemplateOption, type Loaded } from "../types";
+import { EMPTY_RULE, STAGE_LABELS } from "../data";
+import { stripRecord } from "../lib/rules-panel";
 
 export function RulesPanel({ projectId, sequenceId, beforeApply, afterApply }: {
   projectId?: string;
@@ -218,11 +204,6 @@ function RuleList({ rules, templates, assets, canProject, pending, onSave, onDel
     </div>
   );
 }
-
-const stripRecord = (r: RuleRecord): Rule => {
-  const { level, file, promptText, ...rule } = r; void level; void file; void promptText;
-  return rule;
-};
 
 function RuleForm({ initial, level: initialLevel, templates, assets, canProject, pending, onSave, onCancel }: {
   initial: Rule; level: RuleLevel; templates: TemplateOption[]; assets: AssetSummary[]; canProject: boolean; pending: boolean;

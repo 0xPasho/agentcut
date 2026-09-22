@@ -2,7 +2,7 @@ import { applyOperations, type EditorOperation } from "../../editor/lib/operatio
 import { editProject, readEditor, RevisionConflict } from "../../editor/server/store";
 import type { Edit, Edl } from "../../editor/types";
 import { sequenceFrames } from "../../editor/lib/sequences";
-import { COMMENT_TITLE, commentItem, isBookendTitle, resolveTarget, type PlannedComment } from "../../templates/lib/plan";
+import { COMMENT_TITLE, commentItem, isBookendTitle, resolveTarget, type PlannedComment } from "../../templates/server/plan";
 import { TemplateComment } from "../../templates/types";
 import { commentCardAsset } from "./card";
 import { answers, chatSource, commentById } from "./comments";

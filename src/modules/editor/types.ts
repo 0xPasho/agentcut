@@ -1,6 +1,15 @@
 import { z } from "zod";
 import { ProjectPlan, SequencePlan } from "../plan/types";
 import { Word } from "../transcription/lib/transcript";
+import type { OverlayTarget, Box } from "./lib/canvas";
+import type { seed } from "./lib/editor-properties";
+import type { SnapPoint } from "./lib/snapping";
+import type { Lane } from "./lib/tracks";
+import type { DragPayload } from "./lib/dnd";
+import type { DragKind } from "./lib/dnd";
+import type { AssetSummary } from "../../common/api/client";
+
+
 
 /** Crop window in SOURCE pixel space, sampled at time `t`. Renderer interpolates between keyframes. */
 export const CropKeyframe = z.object({
@@ -137,6 +146,7 @@ export const TextEdit = z.object({
   style: z.enum(["card", "plain"]).default("card"),
   by: EditAuthor,
 });
+export type TextEdit = z.infer<typeof TextEdit>;
 
 /**
  * An image alongside the captions.
@@ -179,6 +189,7 @@ export const ImageEdit = z.object({
   caption: z.string().default(""),
   by: EditAuthor,
 });
+export type ImageEdit = z.infer<typeof ImageEdit>;
 
 /** A one-shot sound tied to a beat — a whoosh on a punch-in, a ding on a number. */
 export const SfxEdit = z.object({
@@ -442,3 +453,74 @@ export function centerCrop(srcW: number, srcH: number, outW: number, outH: numbe
   }
   return { t: 0, x: Math.round((srcW - w) / 2), y: Math.round((srcH - h) / 2), w: Math.round(w), h: Math.round(h) };
 }
+
+
+/** A template as this screen needs it: a name to pick by, and the colours it edits in. */
+export type TemplateOption = { id: string; name: string; brand?: { palette?: Partial<Record<"primary"|"secondary"|"text"|"background", string>> } };
+
+
+export type Transform = typeof DEFAULT_ITEM_TRANSFORM;
+
+
+export type CanvasPreview = { id: string; transform?: Transform; clip?: Clip; keyframes?: TransformKeyframe[] } | null;
+
+
+export type Inner = { key: string; target: OverlayTarget; box: Box };
+
+
+// Generated from the SAME schema exposed to agents: new supported fields remain editable.
+export type Schema = { type?: string; default?: unknown; const?: unknown; enum?: unknown[]; minimum?: number; maximum?: number; properties?: Record<string, Schema>; items?: Schema; anyOf?: Schema[]; oneOf?: Schema[] };
+
+
+/** Where a transition can go, and what is there now. `null` when this shot opens its track. */
+export type PropertyJoint = { sequenceId: string; itemId: string; previousTitle: string; maxSeconds: number; current: Transition | null };
+
+
+/** The layer's motion: the keyframes on it now, and what a new one should start as. */
+export type PropertyMotion = { sequenceId: string; itemId: string; seconds: number; current: TransformKeyframe[] | null; seed: Record<string, number> };
+
+
+export type Drag = { id: string; kind: "move" | "start" | "end" | "effect" | "effect-start" | "effect-end"; x: number; y: number; at: number; duration: number; layer: number; index?: number; moved: boolean; snapshot: VideoSequence; scrollLeft: number };
+
+
+export type Ghost = { id: string; at: number; duration: number; layer: number; index?: number; delta: number; kind: Drag["kind"]; guide?: SnapPoint | null; shift?: number; lift?: number };
+
+
+/** Where an incoming drag is pointing: the track under the pointer, and what it carries. */
+export type Hover = { clientX: number; metaKey: boolean; ctrlKey: boolean; layer: number; kind: Lane["kind"]; payload: DragPayload | null; files: boolean };
+
+
+export type ExternalDrop = { layer: number; at: number; guide: SnapPoint | null; payload: DragPayload | null; files: boolean; replace?: { itemId: string; at: number; duration: number } };
+
+
+/**
+ * Where the preview is, shared without re-rendering the editor.
+ *
+ * The player reports a new frame thirty times a second. Held in React state that
+ * re-rendered the whole editor on every frame — asset browser, panels, timeline,
+ * transcript — which took tens of milliseconds and left the player's own playback
+ * loop no time to keep picture and sound together: the preview stuttered and the
+ * audio jumped back over words it had already played. So the playhead lives here
+ * instead. Handlers read it without subscribing, and only the few small parts that
+ * draw it re-render as it moves.
+ */
+export type PlayheadStore = {
+  /** Position in output seconds. Safe to call from an event handler. */
+  get: () => number;
+  set: (seconds: number) => void;
+  subscribe: (listener: () => void) => () => void;
+};
+
+
+/** What one ingested file became, ready to place on a timeline. */
+export type Imported = { kind: DragKind; media?: MediaSource; asset?: AssetSummary; name: string };
+
+
+/**
+ * Peaks for one of a project's own sources, computed by ffmpeg on this machine.
+ *
+ * A library sound is a small file the browser can decode; a source video is not, so
+ * these arrive already reduced from `/api/projects/<id>/media/<mediaId>/peaks` and are
+ * cached here for the same reason the decoded ones are.
+ */
+export type MediaPeaks = { rate: number; peaks: number[] };

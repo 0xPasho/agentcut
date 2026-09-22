@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { grabFrame, type Probe } from "../../media/server/ffmpeg";
 import { toAgentText, wordsForClip, type Transcript } from "../../transcription/lib/transcript";
 import { AgentClipProposals, CaptionStyle, Edl, centerCrop, type Clip, SELECTION_AUTHOR } from "../../editor/types";
-import { resolveProvider, type AgentEvent } from "../../agent/lib/providers";
+import { resolveProvider, type AgentEvent } from "../../agent/server/providers";
 import { trim } from "../../editor/lib/operations";
 import { resolveQuery } from "../../media/server/search";
 import { buildSelectPrompt } from "../lib/prompt";

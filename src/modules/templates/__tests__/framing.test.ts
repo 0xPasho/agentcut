@@ -19,7 +19,7 @@ let store: typeof import("../../editor/server/store");
 let mediaService: typeof import("../../media/server/media-import");
 let tools: typeof import("../../editor/server/tools");
 let database: typeof import("../../../common/server/db");
-let planner: typeof import("../lib/plan");
+let planner: typeof import("../server/plan");
 let registry: typeof import("../server/registry");
 let schema: typeof import("../types");
 
@@ -44,7 +44,7 @@ before(async () => {
   process.env.AGENTCUT_WORKSPACE = workspace;
   [store, mediaService, tools, database, planner, registry, schema] = await Promise.all([
     import("../../editor/server/store"), import("../../media/server/media-import"), import("../../editor/server/tools"),
-    import("../../../common/server/db"), import("../lib/plan"), import("../server/registry"),
+    import("../../../common/server/db"), import("../server/plan"), import("../server/registry"),
     import("../types"),
   ]);
   const { brandIndex, resetBrandIndex } = await import("../../media/server/search/brand");
@@ -121,7 +121,7 @@ test("a rectangle given as a share of the frame becomes the pixels of whatever w
 test("a split template frames every shot it is applied to, and applying it again changes nothing", async () => {
   await registry.saveTemplate(SPLIT);
   const { id, sequenceId, itemId } = await project();
-  const first = await tools.executeEditorTool(id, { tool: "template.apply", templateId: "stream-split", sequenceId, expectedRevision: store.readEditor(id).revision }) as { revision: number; plan: import("../lib/plan").TemplatePlan };
+  const first = await tools.executeEditorTool(id, { tool: "template.apply", templateId: "stream-split", sequenceId, expectedRevision: store.readEditor(id).revision }) as { revision: number; plan: import("../server/plan").TemplatePlan };
   assert.deepEqual(first.plan.framing, { mode: "split", seam: 0.68, camera: "bottom" });
   const framed = store.readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!.items.find((i) => i.id === itemId)!;
   assert.equal(framed.clip.layout.type, "split");
@@ -160,7 +160,7 @@ test("a shot with no words is still framed, and a scene with no footage is left 
 test("a split with no camera rectangle is refused, and said in the dry run before it is", async () => {
   await registry.saveTemplate({ ...SPLIT, id: "no-camera", layout: { ...SPLIT.layout, camera: { x: 0.1, y: 0.1, w: 0, h: 0 } } });
   const { id, sequenceId } = await project("No camera");
-  const dry = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "no-camera", sequenceId }) as import("../lib/plan").TemplatePlan;
+  const dry = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "no-camera", sequenceId }) as import("../server/plan").TemplatePlan;
   assert.ok(dry.warnings.some((w) => w.includes("camera rectangle")), dry.warnings.join(" | "));
   await assert.rejects(
     tools.executeEditorTool(id, { tool: "template.apply", templateId: "no-camera", sequenceId, expectedRevision: store.readEditor(id).revision }),
@@ -171,10 +171,10 @@ test("a split with no camera rectangle is refused, and said in the dry run befor
 test("captions that would be cut in half by the seam are called out before anything is rendered", async () => {
   await registry.saveTemplate({ ...SPLIT, id: "seam-captions", captions: { preset: "karaoke", positionY: 0.6, fontSizePct: 6, maxWordsPerLine: 3 } });
   const { id, sequenceId } = await project("Seam");
-  const dry = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "seam-captions", sequenceId }) as import("../lib/plan").TemplatePlan;
+  const dry = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "seam-captions", sequenceId }) as import("../server/plan").TemplatePlan;
   assert.ok(dry.warnings.some((w) => w.includes("seam")), dry.warnings.join(" | "));
 
-  const clear = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "stream-split", sequenceId }) as import("../lib/plan").TemplatePlan;
+  const clear = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "stream-split", sequenceId }) as import("../server/plan").TemplatePlan;
   assert.ok(!clear.warnings.some((w) => w.includes("seam")), clear.warnings.join(" | "));
 });
 
@@ -206,7 +206,7 @@ test("a webcam that would show up inside the screen pane as well is called out",
 
   await registry.saveTemplate({ ...SPLIT, id: "twice", layout: { ...SPLIT.layout, screen: { x: 0, y: 0, w: 1, h: 1 } } });
   const { id, sequenceId } = await project("Twice");
-  const dry = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "twice", sequenceId }) as import("../lib/plan").TemplatePlan;
+  const dry = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "twice", sequenceId }) as import("../server/plan").TemplatePlan;
   assert.ok(dry.warnings.some((w) => w.includes("appears twice")), dry.warnings.join(" | "));
 });
 
@@ -296,12 +296,12 @@ test("the dry run says when the hook it will draw is not the hook that was writt
   store.editProject(id, { expectedRevision: store.readEditor(id).revision, operations: [
     { type: "item.patch", sequenceId, itemId, patch: { hook: "Realmente es difícil, yo que estoy construyendo eso, a veces notar cosas que son de IA y cosas que no." } },
   ] });
-  const dry = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "stream-split", sequenceId }) as import("../lib/plan").TemplatePlan;
+  const dry = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "stream-split", sequenceId }) as import("../server/plan").TemplatePlan;
   assert.equal(dry.hook?.shortened, true);
   assert.equal(dry.hook?.text, "Realmente es difícil, yo que estoy construyendo eso");
   assert.ok(dry.warnings.some((w) => w.includes("longer than the")), dry.warnings.join(" | "));
 
-  const short = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "stream-split", sequenceId, hookText: "¿Y si no era IA?" }) as import("../lib/plan").TemplatePlan;
+  const short = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "stream-split", sequenceId, hookText: "¿Y si no era IA?" }) as import("../server/plan").TemplatePlan;
   assert.equal(short.hook?.shortened, false);
   assert.ok(!short.warnings.some((w) => w.includes("longer than the")));
 });
@@ -370,7 +370,7 @@ test("a split is suggested for a screen with a person in the corner of it, and a
     "-f", "lavfi", "-i", "sine=frequency=210:duration=10", "-pix_fmt", "yuv420p", "-shortest", upright], { encoding: "utf8" });
   assert.equal(made.status, 0, made.stderr);
 
-  const { suggestTemplates } = await import("../lib/suggest");
+  const { suggestTemplates } = await import("../server/suggest");
   const wide = await project("Wide source");
   const wideSuggestions = await suggestTemplates(store.readEditor(wide.id).edl, { sequenceId: wide.sequenceId });
   assert.ok(Math.abs(wideSuggestions.signals.sourceAspect! - 1728 / 1116) < 0.01);
@@ -416,12 +416,12 @@ test("a rectangle that loses a third of itself to the shape of its half says so"
 
   await registry.saveTemplate({ ...SPLIT, id: "wide-screen", layout: { ...SPLIT.layout, screen: { x: 0, y: 0, w: 1, h: 1 }, camera: { x: 0, y: 0.8, w: 0.12, h: 0.2 } } });
   const { id, sequenceId } = await project("Wide rect");
-  const dry = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "wide-screen", sequenceId }) as import("../lib/plan").TemplatePlan;
+  const dry = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "wide-screen", sequenceId }) as import("../server/plan").TemplatePlan;
   assert.ok(dry.warnings.some((w) => w.includes("cropped away")), dry.warnings.join(" | "));
 
   // The built-in, whose screen stops where the camera starts, loses little enough to
   // say nothing about — a pane always loses a little.
-  const shipped = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "stream-short", sequenceId }) as import("../lib/plan").TemplatePlan;
+  const shipped = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "stream-short", sequenceId }) as import("../server/plan").TemplatePlan;
   assert.ok(!shipped.warnings.some((w) => w.includes("cropped away")), shipped.warnings.join(" | "));
 
   // On a differently shaped recording the same rectangles do not fit, and that is what
@@ -470,13 +470,13 @@ test("captions that clear the seam on the wrong side are called out too", async 
   // variant that moved the seam and not the captions leaves them.
   await registry.saveTemplate({ ...SPLIT, id: "on-the-face", captions: { preset: "popline", positionY: 0.8, fontSizePct: 5, maxWordsPerLine: 1 } });
   const { id, sequenceId } = await project("On the face");
-  const dry = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "on-the-face", sequenceId }) as import("../lib/plan").TemplatePlan;
+  const dry = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "on-the-face", sequenceId }) as import("../server/plan").TemplatePlan;
   assert.ok(dry.warnings.some((w) => w.includes("over the person")), dry.warnings.join(" | "));
 
   // With the person on top, the same position is over the screen and says nothing.
   await registry.saveTemplate({ ...SPLIT, id: "person-on-top", captions: { preset: "popline", positionY: 0.8, fontSizePct: 5, maxWordsPerLine: 1 },
     layout: { ...SPLIT.layout, cameraPosition: "top", cameraPct: 40 } });
-  const flipped = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "person-on-top", sequenceId }) as import("../lib/plan").TemplatePlan;
+  const flipped = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "person-on-top", sequenceId }) as import("../server/plan").TemplatePlan;
   assert.ok(!flipped.warnings.some((w) => w.includes("over the person")), flipped.warnings.join(" | "));
 
   // And the built-in's own variants keep the captions on the screen in every shape.

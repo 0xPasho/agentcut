@@ -10,26 +10,9 @@ import { Slider } from "@/common/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/common/ui/select";
 import { api, assetUrl, type AssetSummary } from "@/common/api/client";
 import type { Clip, Edit } from "@/modules/editor/types";
-
-type SfxEdit = Extract<Edit, { type: "sfx" }>;
-type MusicEdit = Extract<Edit, { type: "music" }>;
-/** One hit from `assets.searchAudio`. Adopted into the project before it can be placed. */
-type AudioHit = { provider: string; id: string; title: string; durationSec: number; license: string };
-
-const num = (v: number | readonly number[]) => (Array.isArray(v) ? v[0] : (v as number));
-const soundName = (name: string) => name.replace(/\.[a-z0-9]+$/i, "");
-
-/** Listen before placing. One element for the whole panel: two sounds at once tell you nothing. */
-function useAudition() {
-  const [playing, setPlaying] = useState<HTMLAudioElement | null>(null);
-  useEffect(() => () => playing?.pause(), [playing]);
-  return (url: string) => {
-    playing?.pause();
-    const element = new Audio(url);
-    setPlaying(element);
-    void element.play().catch(() => {});
-  };
-}
+import { type SfxEdit, type MusicEdit, type AudioHit } from "../types";
+import { num, soundName } from "../lib";
+import { useAudition } from "../hooks";
 
 /**
  * Finding a sound online, through the same `assets.searchAudio` / `assets.adoptAudio`

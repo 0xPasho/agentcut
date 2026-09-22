@@ -12,25 +12,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/common/ui/dialog";
 import { Empty, SectionHeader } from "./components/section-header";
 import { Toggle } from "./components/toggle";
-import { useWorkspaceSettings, type AssetOption, type TemplateOption } from "./hooks";
+import { useWorkspaceSettings } from "./hooks";
+import { type AssetOption, type TemplateOption } from "./types";
 import { RuleSlots } from "@/modules/rules/components/rule-slots";
-
-/**
- * Rules for every project, with the whole story in one place: what each one judges,
- * what it does about it, whether it is on, and the order they run in. Rules about
- * one project or one video stay in the editor, beside the video they are about.
- *
- * Every button here calls `rules.save` or `rules.delete` — the tools an agent calls,
- * with the same schema doing the same validation. There is no settings-only writer.
- */
-const EMPTY_RULE: Rule = { id: "", name: "", description: "", when: "", stage: "both", priority: 100, enabled: true, then: {} };
-
-const STAGE_LABELS: Record<string, string> = { select: "Choosing clips", edit: "Editing", both: "Choosing and editing" };
-const STAGE_HELP: Record<string, string> = {
-  select: "Shapes which moments become clips, before any editing happens.",
-  edit: "Shapes how a video is edited once it exists.",
-  both: "Both: it shapes the choice of clips and the editing.",
-};
+import { EMPTY_RULE, STAGE_LABELS, STAGE_HELP } from "./data";
+import { strip, describe, slug } from "./lib";
 
 export function RulesSettings() {
   const { data, error, pending, run, setError } = useWorkspaceSettings();
@@ -154,24 +140,6 @@ export function RulesSettings() {
   );
 }
 
-/** A record carries where it was read from; a rule you save is only the document. */
-const strip = (r: RuleRecord | (Rule & Partial<RuleRecord>)): Rule => {
-  const { level, file, promptText, ...rule } = r as RuleRecord;
-  void level; void file; void promptText;
-  return rule;
-};
-
-function describe(rule: Rule, templates: TemplateOption[]): string {
-  const slots = Object.keys(rule.then.slots ?? {}).length;
-  const parts = [
-    rule.then.template && `uses the ${templates.find((t) => t.id === rule.then.template)?.name ?? rule.then.template} template`,
-    rule.then.overrides && Object.keys(rule.then.overrides).length ? "changes template settings" : "",
-    slots ? `gives it ${slots === 1 ? "an input of its own" : `${slots} inputs of its own`}` : "",
-    (rule.then.prompt || rule.then.promptFile) && "tells the agent something",
-  ].filter(Boolean);
-  return parts.length ? `Then it ${parts.join(", ")}.` : "It does nothing yet — open it and say what should happen.";
-}
-
 function DeleteRule({ rule, pending, onDelete }: { rule: RuleRecord; pending: boolean; onDelete: () => void }) {
   const [open, setOpen] = useState(false);
   return (
@@ -196,8 +164,6 @@ function DeleteRule({ rule, pending, onDelete }: { rule: RuleRecord; pending: bo
     </Dialog>
   );
 }
-
-const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
 function RuleForm({ initial, isNew, templates, assets, terms, pending, error, onSave, onCancel }: {
   initial: Rule; isNew: boolean; templates: TemplateOption[]; assets: AssetOption[]; terms: string[];

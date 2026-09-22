@@ -5,7 +5,7 @@ import path from "node:path";
 import os from "node:os";
 import { spawnSync } from "node:child_process";
 import { FFMPEG } from "../../../common/server/bin";
-import type { AgentProvider } from "../../agent/lib/providers";
+import type { AgentProvider } from "../../agent/server/providers";
 
 let workspace: string;
 let source: string;
@@ -16,7 +16,7 @@ let tools: typeof import("../../editor/server/tools");
 let database: typeof import("../../../common/server/db");
 let registry: typeof import("../server/registry");
 let resolve: typeof import("../lib/resolve");
-let preview: typeof import("../lib/preview");
+let preview: typeof import("../server/preview");
 let derive: typeof import("../../editor/server/derive");
 let onboarding: typeof import("../../onboarding/server/onboarding");
 
@@ -33,7 +33,7 @@ before(async () => {
   process.env.AGENTCUT_WORKSPACE = workspace;
   [store, mediaService, tools, database, registry, resolve, preview, derive, onboarding] = await Promise.all([
     import("../../editor/server/store"), import("../../media/server/media-import"), import("../../editor/server/tools"), import("../../../common/server/db"),
-    import("../server/registry"), import("../lib/resolve"), import("../lib/preview"), import("../../editor/server/derive"), import("../../onboarding/server/onboarding"),
+    import("../server/registry"), import("../lib/resolve"), import("../server/preview"), import("../../editor/server/derive"), import("../../onboarding/server/onboarding"),
   ]);
   const { resetBrandIndex, brandIndex } = await import("../../media/server/search/brand");
   resetBrandIndex();

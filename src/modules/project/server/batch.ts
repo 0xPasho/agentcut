@@ -1,6 +1,6 @@
 import { q } from "../../../common/server/db";
 import { editProject, readEditor, RevisionConflict } from "../../editor/server/store";
-import type { AgentEvent, AgentProvider } from "../../agent/lib/providers";
+import type { AgentEvent, AgentProvider } from "../../agent/server/providers";
 import { recordMessage } from "../../agent/server/conversation";
 
 /**
@@ -63,7 +63,7 @@ export async function runBatch(projectId: string, o: BatchOptions = {}): Promise
   }
 
   const { generateProjectPlan, generateSequencePlan } = await import("../../plan/server/generate");
-  const { applyPlan } = await import("../../plan/lib/apply");
+  const { applyPlan } = await import("../../plan/server/apply");
   stage("planning the set", 0.15);
   try { await generateProjectPlan(projectId, agentOptions); log("stage", "shared plan written"); }
   catch (error) { log("error", `shared plan: ${(error as Error).message}`); }

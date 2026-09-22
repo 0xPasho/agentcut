@@ -121,7 +121,7 @@ export async function saveTemplateFrom(
   from: string,
   changes: { id: string; name: string; author?: string; overrides?: unknown },
 ): Promise<TemplateRecord> {
-  const { mergeTemplate } = await import("../lib/plan");
+  const { mergeTemplate } = await import("./plan");
   const base = mergeTemplate(await getTemplate(from), changes.overrides);
   const { builtin, file, ...document } = base as TemplateRecord;
   void builtin; void file;

@@ -1,24 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useRef, useSyncExternalStore } from "react";
-
-/**
- * Where the preview is, shared without re-rendering the editor.
- *
- * The player reports a new frame thirty times a second. Held in React state that
- * re-rendered the whole editor on every frame — asset browser, panels, timeline,
- * transcript — which took tens of milliseconds and left the player's own playback
- * loop no time to keep picture and sound together: the preview stuttered and the
- * audio jumped back over words it had already played. So the playhead lives here
- * instead. Handlers read it without subscribing, and only the few small parts that
- * draw it re-render as it moves.
- */
-export type PlayheadStore = {
-  /** Position in output seconds. Safe to call from an event handler. */
-  get: () => number;
-  set: (seconds: number) => void;
-  subscribe: (listener: () => void) => () => void;
-};
+import { type PlayheadStore } from "../types";
 
 export function createPlayheadStore(initial = 0): PlayheadStore {
   let seconds = initial;

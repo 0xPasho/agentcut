@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { db, q } from "../../../common/server/db";
 import { projectDir } from "../../../common/server/config";
-import { resolveProvider, type AgentEvent, type AgentProvider } from "../../agent/lib/providers";
+import { resolveProvider, type AgentEvent, type AgentProvider } from "../../agent/server/providers";
 import type { Edl, Edit } from "../../editor/types";
 import type { EditorOperation } from "../../editor/lib/operations";
 import { isGeneratedAuthor, describeAuthor } from "../../editor/lib/authorship";

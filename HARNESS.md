@@ -43,7 +43,7 @@ the API, and an edit run started from the picker spawned
 
 ## Shape
 
-### 1 — `src/modules/agent/lib/providers/` (detection and catalog)
+### 1 — `src/modules/agent/server/providers/` (detection and catalog)
 
 - `registry.ts` — static harness metadata (`id`, `label`, `bin`, the env var that
   overrides the binary, and the label for its "inherit the default" row) for
@@ -75,7 +75,7 @@ the API, and an edit run started from the picker spawned
   `resolveSelection(projectId?)` returns the effective `{ provider, model }` and
   `effectiveSelection` folds an explicit argument over it.
 
-`resolveProvider()` in `src/modules/agent/lib/providers.ts` gains the decision-10 behaviour:
+`resolveProvider()` in `src/modules/agent/server/providers.ts` gains the decision-10 behaviour:
 named-and-missing throws with an actionable message; unnamed keeps today's walk.
 
 ### 2 — `src/app/api/agents/route.ts`

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useId, useState } from "react";
 import { Diamond, Eraser } from "lucide-react";
-import { DEFAULT_ITEM_TRANSFORM, type SequenceItem, type VideoSequence } from "@/modules/editor/types";
+import { type SequenceItem, type VideoSequence } from "@/modules/editor/types";
 import type { EditorOperation } from "@/modules/editor/lib/operations";
 import { sequenceFrames } from "@/modules/editor/lib/sequences";
 import { FIELD_LABELS, animatedFields, itemSeconds, type AnimatedField } from "@/modules/editor/lib/keyframes";
@@ -10,9 +10,8 @@ import { usePlayheadSelector, usePlayheadStore } from "@/modules/editor/hooks/pl
 import { Input } from "../../../common/ui/input";
 import { Button } from "../../../common/ui/button";
 import { Checkbox } from "../../../common/ui/checkbox";
-
-const placement = (item: SequenceItem) => ({ at:item.at ?? null, layer:item.layer ?? 0, transform:{...DEFAULT_ITEM_TRANSFORM,...item.transform}, volume:item.volume ?? 1, muted:item.muted ?? false, hidden:item.hidden ?? false });
-const TRANSFORM_FIELDS = [['x','Left (%)'],['y','Top (%)'],['width','Width (%)'],['height','Height (%)'],['rotation','Rotation (degrees)'],['opacity','Opacity']] as const;
+import { placement } from "../lib/layer-inspector";
+import { TRANSFORM_FIELDS } from "../data";
 
 export function LayerInspector({sequence,item,dispatch}:{sequence:VideoSequence;item:SequenceItem;dispatch:(ops:EditorOperation[])=>void}) {
   const current = placement(item), signature=JSON.stringify(current);

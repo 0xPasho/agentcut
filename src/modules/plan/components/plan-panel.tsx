@@ -5,7 +5,7 @@ import { api } from "@/common/api/client";
 import type { Edl } from "@/modules/editor/types";
 import type { EditorOperation } from "@/modules/editor/lib/operations";
 import type { Beat, BeatKind, SequenceStatus } from "@/modules/plan/types";
-import type { PlanApplyResult, ProjectApplyResult } from "@/modules/plan/lib/apply";
+import type { PlanApplyResult, ProjectApplyResult } from "@/modules/plan/server/apply";
 import { sequenceFrames } from "@/modules/editor/lib/sequences";
 import { Badge } from "../../../common/ui/badge";
 import { Button } from "../../../common/ui/button";
@@ -14,19 +14,8 @@ import { Input } from "../../../common/ui/input";
 import { Label } from "../../../common/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../common/ui/select";
 import { Separator } from "../../../common/ui/separator";
-
-/**
- * The plan is what the agent decided and why. This panel shows both levels and
- * lets a person change a decision; every change is a plan.patch or
- * sequence.plan.patch through the same dispatch as any timeline edit, so it is
- * saved, revisioned and undoable. Generating and applying call the same tools an
- * agent calls.
- */
-
-const STATUS_LABELS: Record<SequenceStatus, string> = { pending: "Pending", edited: "Edited", approved: "Approved", rendered: "Rendered" };
-const KIND_LABELS: Record<BeatKind, string> = { hook: "Hook", point: "Point", payoff: "Payoff", outro: "Outro", other: "Other" };
-const NUMBERING: Record<string, string> = { none: "No numbering", "n-of-total": "Part n of N", n: "Part n" };
-const tagsOf = (text: string) => [...new Set(text.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean))];
+import { STATUS_LABELS, KIND_LABELS, NUMBERING } from "../data";
+import { tagsOf } from "../lib";
 
 export function PlanPanel({ projectId, edl, sequenceId, templates, dispatch, seek, beforeRun, afterRun, children }: {
   projectId: string;

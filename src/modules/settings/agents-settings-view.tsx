@@ -15,6 +15,7 @@ import { Label } from "@/common/ui/label";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/common/ui/select";
 import { SectionHeader } from "./components/section-header";
 import { useWorkspaceSettings } from "./hooks";
+import { encode, decode, label, labelFor } from "./lib";
 
 /**
  * Which agent runs your work, and what it searches with.
@@ -158,20 +159,6 @@ function HarnessRow({ harness }: { harness: HarnessStatus }) {
   );
 }
 
-const encode = (provider: string, model: string) => (provider ? `${provider}:${model}` : "");
-const decode = (value: string): [string, string] => {
-  if (!value) return ["", ""];
-  const cut = value.indexOf(":");
-  return [value.slice(0, cut), value.slice(cut + 1)];
-};
-
-function label(harnesses: HarnessStatus[], provider: string, model: string): string {
-  const harness = harnesses.find((h) => h.id === provider);
-  if (!harness) return provider || "nothing yet";
-  const row = model ? harness.models.find((m) => m.id === model) : undefined;
-  return `${harness.label} · ${model ? (row ? prettyModelLabel(row) : model) : "its default model"}`;
-}
-
 /**
  * Harness and model as one choice, because they are one: picking a model under
  * another harness switches the harness too. Every harness is listed, including the
@@ -210,11 +197,6 @@ function ModelSelect({ label: name, harnesses, value, inheritLabel, onChange }: 
     </>
   );
 }
-
-const labelFor = (harnesses: HarnessStatus[], encoded: string) => {
-  const [provider, model] = decode(encoded);
-  return label(harnesses, provider, model);
-};
 
 /**
  * A key you can set and clear but never read. There is no reveal and no masked

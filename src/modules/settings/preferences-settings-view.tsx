@@ -13,6 +13,7 @@ import { Label } from "@/common/ui/label";
 import { Textarea } from "@/common/ui/textarea";
 import { SectionHeader } from "./components/section-header";
 import { useWorkspaceSettings } from "./hooks";
+import { interviewLine } from "./lib";
 
 /**
  * preferences.md, by hand.
@@ -130,14 +131,6 @@ export function PreferencesSettings() {
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     </section>
   );
-}
-
-function interviewLine(status: string, hasSection: boolean): string {
-  if (status === "done") return hasSection
-    ? "You answered it. The lines it wrote are below, and answering again replaces them."
-    : "You answered it, and the section it wrote has since been removed.";
-  if (status === "skipped") return "You skipped it. Whatever you had typed is kept, and you can finish it whenever.";
-  return "Five questions about what you make and who it is for. The answers become preferences the agent follows.";
 }
 
 /**

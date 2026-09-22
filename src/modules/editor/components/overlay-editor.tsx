@@ -13,12 +13,9 @@ import { ProjectAssets } from "../../media/components/project-assets";
 import { ImageSearch } from "@/modules/media/components/image-search";
 import { AudioPicker } from "@/modules/media/components/audio-picker";
 import { fmt } from "@/modules/transcription/lib/transcript";
-import type { Clip, Edit } from "@/modules/editor/types";
+import type { Clip, Edit, TextEdit, ImageEdit } from "@/modules/editor/types";
+import { num, parseTime } from "../lib/overlay-editor";
 
-type TextEdit = Extract<Edit, { type: "text" }>;
-type ImageEdit = Extract<Edit, { type: "image" }>;
-
-const num = (v: number | readonly number[]) => (Array.isArray(v) ? v[0] : (v as number));
 
 export function OverlayEditor({
   projectId,
@@ -241,17 +238,4 @@ export function OverlayEditor({
       </section>
     </div>
   );
-}
-
-/** Accepts "12", "12.5" or "1:05". */
-function parseTime(raw: string): number | null {
-  const s = raw.trim();
-  if (!s) return null;
-  if (s.includes(":")) {
-    const [m, sec] = s.split(":");
-    const v = Number(m) * 60 + Number(sec);
-    return Number.isFinite(v) ? v : null;
-  }
-  const v = Number(s);
-  return Number.isFinite(v) ? v : null;
 }

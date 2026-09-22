@@ -12,10 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { assetUrl } from "@/common/api/client";
 import type { Edit } from "@/modules/editor/types";
 import { describeAuthor } from "@/modules/editor/lib/authorship";
-
-const num = (v: number | readonly number[]) => (Array.isArray(v) ? v[0] : (v as number));
-/** Where each preset's block roughly centres, so switching to a free position starts from there. */
-const PRESET_Y = { top: 0.15, center: 0.5, bottom: 0.78 } as const;
+import { num } from "../lib/clip-inspector";
+import { PRESET_Y } from "../data";
 
 /** Edits the one selected edit. Fields differ per type, so this is a small switch. */
 export function ClipInspector({

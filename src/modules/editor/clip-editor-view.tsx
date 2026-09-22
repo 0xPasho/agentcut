@@ -10,8 +10,10 @@ import { shotName } from "@/modules/editor/lib/canvas";
 import { audioLayer } from "@/modules/editor/lib/tracks";
 import { LayerInspector } from "./components/layer-inspector";
 import { MotionInspector } from "./components/motion-inspector";
-import { CanvasGrid, CanvasSelection, type CanvasPreview } from "./components/canvas-selection";
-import { ClipToolbar, DEFAULT_PALETTE, TOOLBAR_ROW } from "./components/clip-toolbar";
+import { CanvasGrid, CanvasSelection } from "./components/canvas-selection";
+import { type CanvasPreview } from "./types";
+import { ClipToolbar } from "./components/clip-toolbar";
+import { DEFAULT_PALETTE, TOOLBAR_ROW } from "./data";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../common/ui/dialog";
 import { Menu, MenuContent, MenuTrigger, ContextMenuItem } from "../../common/ui/context-menu";
 import { SequenceComposition } from "@/../remotion/SequenceComposition";
@@ -42,11 +44,12 @@ import { PlanPanel } from "../plan/components/plan-panel";
 import { useEditor } from "@/modules/editor/hooks/use-editor";
 import { patchFromClip, type EditorOperation } from "@/modules/editor/lib/operations";
 import { assetEdit } from "@/modules/editor/lib/asset-edit";
-import { activeDrag, classifyFile, hasFileDrag, hasMediaDrag, readDrag, type DragKind, type DragPayload } from "@/modules/editor/lib/dnd";
+import { classifyFile, hasFileDrag, hasMediaDrag, readDrag, type DragKind, type DragPayload } from "@/modules/editor/lib/dnd";
 import { snapTargets } from "@/modules/editor/lib/snapping";
 import { createPlayheadStore, PlayheadProvider, usePlayheadSelector } from "@/modules/editor/hooks/playhead";
 import { buildTimelineSlip } from "@/modules/editor/lib/timeline-interactions";
-import { adoptSearchHit, importFiles, importLocalFile, importedDuration, type Imported } from "@/modules/editor/hooks/upload";
+import { adoptSearchHit, importFiles, importLocalFile, importedDuration } from "@/modules/editor/hooks/upload";
+import { type Imported } from "@/modules/editor/types";
 import { api, assetUrl, clipUrl, type AssetSummary } from "@/common/api/client";
 import { buildTimeMap, srcToOut } from "@/modules/editor/lib/timeline";
 import { sequenceFrames, transitionJoints } from "@/modules/editor/lib/sequences";
@@ -54,26 +57,9 @@ import { itemSeconds, staticState } from "@/modules/editor/lib/keyframes";
 import { fmt } from "@/modules/transcription/lib/transcript";
 import { Clip as ClipSchema, type Clip, type Edit, type Edl, type SequenceItem } from "@/modules/editor/types";
 import { emptySequencePlan } from "@/modules/plan/types";
-
-const uid = (prefix: string) => `${prefix}_${crypto.randomUUID().slice(0,8)}`;
-/** A template as this screen needs it: a name to pick by, and the colours it edits in. */
-type TemplateOption = { id: string; name: string; brand?: { palette?: Partial<Record<"primary"|"secondary"|"text"|"background", string>> } };
-/** Clip-relative output seconds back to the clip's own source seconds, across its silence cuts. */
-function sourceSecondsAt(clip: Clip, outputSec: number) {
-  const map = buildTimeMap(clip);
-  for (const span of map.spans) if (outputSec <= span.outStart + span.srcEnd - span.srcStart) return span.srcStart + Math.max(0, outputSec - span.outStart);
-  return map.spans.at(-1)?.srcEnd ?? 0;
-}
-// Display-only fallback for an empty timeline. Never saved as source footage.
-const EMPTY = ClipSchema.parse({ id: "empty", title: "Empty canvas", start: 0, end: 5, captions: { preset: "none" } });
-/** Narrower than this and the measurement is a half-laid-out column, not a preview. */
-const MIN_PREVIEW_PX = 80;
-const NEW_EDIT: Record<string, (t: number) => Edit> = {
-  silence: t => ({ type: "silence", t, d: 0.4, by: "" }),
-  punch: t => ({ type: "punch", t, d: 1.2, scale: 1.12, by: "" }),
-  emphasis: t => ({ type: "emphasis", t, d: 1, words: [], color: "#ffe600", by: "" }),
-  text: t => ({ type: "text", t, d: 3, text: "New title", position: "top", x: null, y: null, style: "card", by: "" }),
-};
+import { uid, sourceSecondsAt } from "./lib/clip-editor-view";
+import { type TemplateOption } from "./types";
+import { EMPTY, MIN_PREVIEW_PX, NEW_EDIT } from "./data";
 
 /** A single editor for generated clips, imported footage, and source-free canvases. */
 export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, clipId, sequenceId }: {
@@ -539,7 +525,6 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
   }, [templateOptions, sequence?.plan.template, edl.plan.template]);
   // A fresh object here re-renders the whole composition on every unrelated editor render.
   const previewProps = useMemo(() => !sequence ? null : ({sequence:canvasPreview ? {...sequence,items:sequence.items.map(i=>i.id===canvasPreview.id?{...i,...(canvasPreview.transform?{transform:canvasPreview.transform}:{}),...(canvasPreview.keyframes?{keyframes:canvasPreview.keyframes}:{}),...(canvasPreview.clip?{clip:canvasPreview.clip}:{})}:i)} : sequence,media:edl.media,mediaUrls,assetUrls,assetBase:`/api/projects/${projectId}/asset/`}), [sequence, canvasPreview, edl.media, mediaUrls, assetUrls, projectId]);
-
 
   if(!sequence && activeSequenceId) return <main className="p-8"><h1 className="mb-4 text-xl font-medium">This video is no longer available</h1><Button render={<Link href={`/p/${projectId}`} />}>Back to project</Button></main>;
   /**

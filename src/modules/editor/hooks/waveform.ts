@@ -1,5 +1,7 @@
 "use client";
 
+import { type MediaPeaks } from "../types";
+
 /**
  * Peaks for one audio file, normalised to 0..1 and sampled into a fixed number of buckets so
  * the drawing is independent of zoom. Decoding is done once per file and shared: the timeline
@@ -63,15 +65,6 @@ export function loadPeaks(url: string, buckets = 240): Promise<number[] | null> 
   inFlight.set(url, work);
   return work;
 }
-
-/**
- * Peaks for one of a project's own sources, computed by ffmpeg on this machine.
- *
- * A library sound is a small file the browser can decode; a source video is not, so
- * these arrive already reduced from `/api/projects/<id>/media/<mediaId>/peaks` and are
- * cached here for the same reason the decoded ones are.
- */
-export type MediaPeaks = { rate: number; peaks: number[] };
 const mediaCache = new Map<string, MediaPeaks | null>();
 const mediaInFlight = new Map<string, Promise<MediaPeaks | null>>();
 const mediaKey = (projectId: string, mediaId: string) => `${projectId}/${mediaId}`;

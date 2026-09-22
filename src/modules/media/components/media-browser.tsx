@@ -9,13 +9,12 @@ import { Input } from "../../../common/ui/input";
 import { Card } from "../../../common/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../../common/ui/tabs";
 import { ImageSearch } from "./image-search";
-import { AssetViewer, transcriptionSentence, type TranscriptionState, type ViewerAsset } from "./asset-viewer";
+import { AssetViewer } from "./asset-viewer";
+import { transcriptionSentence } from "../lib";
+import { type ViewerAsset } from "../types";
 import { setActiveDrag, writeDrag, type DragKind } from "@/modules/editor/lib/dnd";
-
-/** What `media.transcription` answers. The agent reads the same shape. */
-type TranscriptionReport = { media: Array<TranscriptionState & { id: string; name: string }>; settings: { effective: { mode: string; scope: string } } };
-const wordsFor = (report: TranscriptionReport | null, mediaId: string): TranscriptionState | undefined =>
-  report?.media.find(m => m.id === mediaId);
+import { type TranscriptionReport } from "../types";
+import { wordsFor } from "../lib";
 
 export function MediaBrowser({ projectId, edl, beforeImport, afterImport, onBusy, onPlace, onPreview, onVideo, onLibraryVideo, onVideoLayer, onRemoveVideo, onReplace, replace, focus, videoAction = "Add to video", canPlace = true, children }: {
   projectId: string; edl: Edl; beforeImport: () => Promise<boolean>; afterImport: () => Promise<void>;

@@ -1,5 +1,5 @@
 import { q, type MessageRow } from "../../../common/server/db";
-import type { AgentEvent, AgentProvider } from "../lib/providers";
+import type { AgentEvent, AgentProvider } from "./providers";
 import { runEditorAgent, type ConversationTurn, type MessageContext } from "./editor-agent";
 import { editProject, readEditor, RevisionConflict } from "../../editor/server/store";
 import { invertOperations } from "../../editor/lib/history";

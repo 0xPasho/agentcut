@@ -226,7 +226,7 @@ export async function applyMatchedRules(projectId: string, dir: string, report: 
   const matches = await readRuleMatches(dir);
   const entries = Object.entries(matches).filter(([, ids]) => ids.length);
   if (!entries.length) return;
-  const { applyRules } = await import("../../rules/lib/apply");
+  const { applyRules } = await import("../../rules/server/apply");
   for (const [clipId, ruleIds] of entries) {
     try {
       const { revision } = readEditor(projectId);

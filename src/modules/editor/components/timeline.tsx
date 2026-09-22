@@ -1,23 +1,10 @@
 "use client";
 
-import type { Clip, Edit } from "@/modules/editor/types";
+import type { Clip } from "@/modules/editor/types";
 import { buildTimeMap, srcToOut, type TimeMap } from "@/modules/editor/lib/timeline";
 import { fmt } from "@/modules/transcription/lib/transcript";
-
-/** Ruler ticks read better without centiseconds. */
-const clock = (sec: number) => {
-  const m = Math.floor(sec / 60);
-  const r = Math.round(sec % 60);
-  return `${m}:${String(r).padStart(2, "0")}`;
-};
-
-const LANES: Array<{ type: Edit["type"]; label: string; className: string }> = [
-  { type: "silence", label: "Silence", className: "bg-destructive/80 text-white" },
-  { type: "punch", label: "Punch", className: "bg-[#ffda2a] text-black" },
-  { type: "emphasis", label: "Emphasis", className: "bg-[#ed8445] text-white" },
-  { type: "text", label: "Title", className: "bg-white text-black" },
-  { type: "image", label: "Image", className: "bg-[#7c6cf5] text-white" },
-];
+import { clock } from "../lib/timeline";
+import { LANES } from "../data";
 
 /**
  * Edits are authored in clip-relative SOURCE time, but the playhead runs in OUTPUT

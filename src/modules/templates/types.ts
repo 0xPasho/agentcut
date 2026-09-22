@@ -389,3 +389,45 @@ export type VideoTemplate = z.infer<typeof VideoTemplate>;
 /** A stored template plus where it came from. `builtin` templates cannot be overwritten in place. */
 export type TemplateRecord = VideoTemplate & { builtin: boolean; file: string | null };
 
+export const SlotValue = z.object({
+  /** A folder on this machine whose images become an ordered pool. */
+  folder: z.string().optional(),
+  /** Asset ids, in the order they should be used. */
+  assetIds: z.array(z.string()).optional(),
+  assetId: z.string().optional(),
+  text: z.string().optional(),
+}).strict();
+export type SlotValue = z.infer<typeof SlotValue>;
+
+export const TemplateTarget = z.object({
+  sequenceId: z.string().optional(),
+  /** A generated clip. It is promoted in place, keeping its id and edits. */
+  clipId: z.string().optional(),
+}).strict();
+
+export const TemplateRequest = z.object({
+  templateId: z.string().min(1),
+  ...TemplateTarget.shape,
+  /** Overrides the hook line the template would otherwise derive from the clip. */
+  hookText: z.string().optional(),
+  slots: z.record(z.string(), SlotValue).default({}),
+  /** A deep patch over the stored template, for a one-off change without saving one. */
+  overrides: z.record(z.string(), z.unknown()).optional(),
+  /** Restrict web image search to these providers. */
+  providers: z.array(z.string()).optional(),
+  /**
+   * The chat message to open on, by its id in the chat database, or `"none"` for no
+   * comment. Omitted, a template that opens on one finds it from what the clip says.
+   */
+  commentId: z.union([z.number().int().nonnegative(), z.literal("none")]).optional(),
+});
+export type TemplateRequest = z.infer<typeof TemplateRequest>;
+
+
+export type Overrides = {
+  captionLook?: string;
+  layout: Pick<VideoTemplate["layout"], "mode" | "cameraPct" | "cameraPosition" | "camera" | "screen">;
+  hook: Pick<VideoTemplate["hook"], "mode">;
+  images: Pick<VideoTemplate["images"], "mode" | "density" | "minSentenceGap" | "durationSec" | "widthPct" | "logoWidthPct" | "style" | "sources">;
+  rhythm: { silence: { enabled: boolean }; punch: { enabled: boolean; perMinute: number } };
+};

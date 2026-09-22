@@ -3,7 +3,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { WORKSPACE } from "../../../common/server/config";
-import { resolveProvider, type AgentEvent, type AgentProvider } from "../../agent/lib/providers";
+import { resolveProvider, type AgentEvent, type AgentProvider } from "../../agent/server/providers";
 import { readPreferences, savePreferences } from "../../rules/server/preferences";
 import { readGlossaryLevel, saveGlossary, GlossaryTerm } from "../../rules/server/glossary";
 // The markers and the two functions that respect them live apart from this module so

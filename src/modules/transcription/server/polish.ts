@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { resolveProvider, type AgentEvent } from "../../agent/lib/providers";
+import { resolveProvider, type AgentEvent } from "../../agent/server/providers";
 import { Transcript, type Segment, type Word } from "../lib/transcript";
 
 /**

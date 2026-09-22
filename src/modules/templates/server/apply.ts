@@ -6,7 +6,7 @@ import { kindFor } from "../../media/server/assets";
 import { localPath, importLocalAsset } from "../../media/server/local-assets";
 import { promoteClipToSequence } from "../../editor/lib/editable-timeline";
 import { MediaSource, type Edl, type SequenceItem } from "../../editor/types";
-import type { Bookend } from "../lib/plan";
+import type { Bookend } from "./plan";
 import { editProject, readEditor, RevisionConflict } from "../../editor/server/store";
 import { adoptAudioHit, adoptHit, brandHit, findBrand, resolveQueryDetailed, searchAudio, type AudioKind } from "../../media/server/search";
 import { getTemplate } from "./registry";
@@ -18,7 +18,7 @@ import type { Envelope } from "../lib/quiet";
 import {
   isBookendTitle, mergeTemplate, planTemplate, requireFraming, slotFilled, templateOperations, TemplateRequest, resolveTarget,
   type PlannedItem, type ResolvedImage, type SlotValue, type TemplatePlan,
-} from "../lib/plan";
+} from "./plan";
 
 /**
  * Turning a plan into a finished edit needs the outside world: folders, the asset

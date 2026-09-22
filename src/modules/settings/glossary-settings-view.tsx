@@ -2,38 +2,14 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import { Loader2, Plus, Search, Trash2 } from "lucide-react";
 import { api } from "@/common/api/client";
-import type { Glossary, GlossaryTerm } from "@/modules/rules/server/glossary";
+
 import { Button } from "@/common/ui/button";
 import { Input } from "@/common/ui/input";
 import { Label } from "@/common/ui/label";
 import { Empty, SectionHeader } from "./components/section-header";
 import { useWorkspaceSettings } from "./hooks";
-
-/**
- * The glossary: a spelling, the ways a recogniser gets it wrong, and one line of
- * what the thing is. Deterministic — it feeds the recogniser's vocabulary hint, the
- * proofreader and a find-and-replace over the transcript — which is why it is a
- * table and not a rule.
- *
- * One save for the list, because `glossary.save` writes a level whole; a per-row
- * save would be the same write wearing a smaller button, and two rows edited with
- * one saved would quietly save both.
- */
-type Row = { term: string; aliases: string; note: string; brand?: GlossaryTerm["brand"] };
-
-const toRows = (glossary: Glossary): Row[] =>
-  glossary.terms.map((t) => ({ term: t.term, aliases: t.aliases.join(", "), note: t.note, brand: t.brand }));
-
-export const rowsToGlossary = (rows: Row[]): Glossary => ({
-  terms: rows
-    .filter((r) => r.term.trim())
-    .map((r) => ({
-      term: r.term.trim(),
-      aliases: r.aliases.split(",").map((a) => a.trim()).filter(Boolean),
-      note: r.note.trim(),
-      ...(r.brand ? { brand: r.brand } : {}),
-    })),
-});
+import { type Row } from "./types";
+import { toRows, rowsToGlossary } from "./lib";
 
 export function GlossarySettings() {
   const { data, error, pending, run } = useWorkspaceSettings();

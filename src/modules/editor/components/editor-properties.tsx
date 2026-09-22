@@ -3,17 +3,17 @@ import { useId, useState } from "react";
 import { z } from "zod";
 import { Clip, Edl, Transition, TransformKeyframe } from "@/modules/editor/types";
 import { applyOperations, patchFromClip, type EditorOperation } from "@/modules/editor/lib/operations";
-import { DEFAULT_TRANSITION_SEC, TRANSITION_LABELS } from "@/modules/editor/lib/transitions";
-import { EASE_LABELS } from "@/modules/editor/lib/motion";
+import { DEFAULT_TRANSITION_SEC } from "@/modules/editor/lib/transitions";
+
 import { describeAuthor } from "@/modules/editor/lib/authorship";
 import { Button } from "../../../common/ui/button";
 import { Checkbox } from "../../../common/ui/checkbox";
 import { Disclosure } from "../../../common/ui/disclosure";
 import { Input } from "../../../common/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../common/ui/select";
-
-// Generated from the SAME schema exposed to agents: new supported fields remain editable.
-export type Schema = { type?: string; default?: unknown; const?: unknown; enum?: unknown[]; minimum?: number; maximum?: number; properties?: Record<string, Schema>; items?: Schema; anyOf?: Schema[]; oneOf?: Schema[] };
+import { type Schema, type PropertyJoint, type PropertyMotion } from "../types";
+import { MOTION_NAMES, OPTION_LABELS } from "../data";
+import { seed } from "../lib/editor-properties";
 const clipSchema = z.toJSONSchema(Clip) as Schema;
 const outputSchema = (z.toJSONSchema(Edl) as Schema).properties!.output;
 // The joint between this shot and the one before it, from the same schema the agent reads.
@@ -28,28 +28,6 @@ const motionSchema = (seed: Record<string, number>): Schema => ({
 });
 const names: Record<string, string> = { ease: "Travel to the next keyframe", t: "Start time (seconds)", d: "Duration (seconds)", x: "Left (pixels)", y: "Top / vertical position", w: "Width (pixels)", h: "Height (pixels)", start: "Source start (seconds)", end: "Source end (seconds)", crop: "Crop keyframes", layout: "Framing", topPct: "Top region (%)", camera: "Which half holds the person", src: "Asset ID or project filename", words: "Transcript words", w_word: "Word", p: "Recogniser confidence (0–1)", syncOffsetMs: "Caption sync (ms, + is later)", output: "Output", fontSizePct: "Font size (%)", maxWordsPerLine: "Words per line", positionY: "Caption position", gain: "Audio gain", duck: "Lower music during speech", loop: "Loop audio", durationSec: "Overlap (seconds)", kind: "Kind", direction: "Arrives from", color: "Colour" };
 const labelFor = (key: string) => names[key] ?? key.replace(/([A-Z])/g, " $1").replace(/^./, c => c.toUpperCase());
-/**
- * A motion keyframe's geometry is a percentage of the OUTPUT frame; `crop`'s is source
- * pixels. The two share field names, so a keyframe says which one it means.
- */
-const MOTION_NAMES: Record<string, string> = { t: "Moment (seconds)", x: "Left (% of frame)", y: "Top (% of frame)", width: "Width (%)", height: "Height (%)", rotation: "Rotation (degrees)", opacity: "Opacity (0–1)", volume: "Volume (0–2)" };
-/**
- * What each choice in an enumerated field is called. The schema's own values are what
- * the agent writes; these are what a person reads, and they are the same words the
- * Motion panel and the timeline's seam menu use rather than a second vocabulary.
- */
-const OPTION_LABELS: Record<string, string> = { ...EASE_LABELS, ...TRANSITION_LABELS, left: "The left", right: "The right", up: "Above", down: "Below" };
-function seed(s: Schema): unknown {
-  if (s.default !== undefined) return structuredClone(s.default);
-  if (s.const !== undefined) return s.const;
-  if (s.enum) return s.enum[0];
-  if (s.anyOf || s.oneOf) return seed((s.anyOf ?? s.oneOf)![0]);
-  if (s.type === "object") return Object.fromEntries(Object.entries(s.properties ?? {}).map(([k,v]) => [k, seed(v)]));
-  if (s.type === "array") return [];
-  if (s.type === "number" || s.type === "integer") return s.minimum ?? 0;
-  if (s.type === "boolean") return false;
-  return "";
-}
 export function Fields({ schema, value, onChange, label, field }: { schema: Schema; value: unknown; onChange: (v: unknown) => void; label: string; field?: string }) {
   const id = useId();
   /**
@@ -92,10 +70,6 @@ export function Fields({ schema, value, onChange, label, field }: { schema: Sche
   const numeric = schema.type === "number" || schema.type === "integer";
   return <div className="space-y-1"><label htmlFor={id} className="text-xs">{label}</label><Input id={id} type={numeric ? "number" : "text"} step={schema.type === "integer" ? 1 : "any"} min={schema.minimum} max={schema.maximum} value={value === undefined ? "" : String(value)} onChange={e => onChange(numeric ? (e.target.value === "" ? "" : Number(e.target.value)) : e.target.value)} /></div>;
 }
-/** Where a transition can go, and what is there now. `null` when this shot opens its track. */
-export type PropertyJoint = { sequenceId: string; itemId: string; previousTitle: string; maxSeconds: number; current: Transition | null };
-/** The layer's motion: the keyframes on it now, and what a new one should start as. */
-export type PropertyMotion = { sequenceId: string; itemId: string; seconds: number; current: TransformKeyframe[] | null; seed: Record<string, number> };
 
 export function EditorProperties({ clip, edl, dispatch, onApplied, validationEdl, joint = null, motion = null, mapOperations = ops => ops }: { clip: Clip; edl: Edl; dispatch: (ops: EditorOperation[]) => void; onApplied: () => void; validationEdl?: Edl; joint?: PropertyJoint | null; motion?: PropertyMotion | null; mapOperations?: (ops: EditorOperation[]) => EditorOperation[] }) {
   const [draft, setDraft] = useState(clip);

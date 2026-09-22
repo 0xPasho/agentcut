@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { SlotValue } from "../templates/lib/plan";
+import { BrandKit, SlotValue, type TemplateSlot } from "../templates/types";
+import type { AssetSummary } from "../../common/api/client";
+import type { Observation } from "./server/observations";
+
 
 /**
  * A rule is a judgement plus an action. `when` is a sentence an agent reads against
@@ -72,3 +75,55 @@ export const RuleMatches = z.object({
   tags: z.array(z.string()).default([]),
 });
 export type RuleMatches = z.infer<typeof RuleMatches>;
+
+/**
+ * How things are spelled. A glossary is deterministic: it feeds the recogniser's
+ * vocabulary hint, the proofreader's brief, and a final pass that rewrites known
+ * mishearings in the transcript itself. It needs no judgement, so it is a table,
+ * not a rule. The workspace glossary applies everywhere; a project's adds to it
+ * and wins on the same term.
+ */
+export const GlossaryTerm = z.object({
+  /** The correct spelling. */
+  term: z.string().trim().min(1),
+  /** Ways the recogniser writes it wrong: "clod", "cloud AI". Matched case-insensitively on word boundaries. */
+  aliases: z.array(z.string().trim().min(1)).default([]),
+  /** One line of what it is, for the agent: "desktop app for designers". */
+  note: z.string().default(""),
+  /** A subject can carry its own brand kit; a project about it inherits the kit when its plan is applied. */
+  brand: BrandKit.optional(),
+}).strict();
+export type GlossaryTerm = z.infer<typeof GlossaryTerm>;
+export const Glossary = z.object({ terms: z.array(GlossaryTerm).default([]) }).strict();
+export type Glossary = z.infer<typeof Glossary>;
+
+
+/**
+ * The inputs a rule hands to the template it applies.
+ *
+ * A rule that can name a template but not fill its slots can only ever choose somebody
+ * else's assets, which is why "end every clip on my stream card" could not be written as
+ * a rule. The agent can write these; so must this, or the two interfaces are not the
+ * same editor.
+ *
+ * Only what is in the library is offered: a rule outlives the project it was written in,
+ * and an asset that belongs to one project would be a dangling reference everywhere else.
+ */
+export type SlotAsset = { id: string; name: string; kind: string };
+
+
+/**
+ * Rules, glossary and preferences for the video you have open: the project level,
+ * beside the subject it is about. Every button calls the same project tool an agent
+ * calls, so nothing here is a second way to write these files.
+ *
+ * The workspace level — the rules, names and preferences that apply to every project
+ * — has its own home at /settings and its own editors. This panel still reads and
+ * writes both levels, because a project rule is edited next to the workspace rules
+ * it inherits, and because the workspace route runs exactly the same functions.
+ */
+
+export type TemplateOption = { id: string; name: string; builtin: boolean; slots: TemplateSlot[] };
+
+
+export type Loaded = { rules: RuleRecord[]; glossary: Glossary; preferences: { workspace: string; project: string }; templates: TemplateOption[]; assets: AssetSummary[]; observations: Observation[] };

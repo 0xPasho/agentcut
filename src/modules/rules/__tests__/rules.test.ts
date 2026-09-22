@@ -5,7 +5,7 @@ import path from "node:path";
 import os from "node:os";
 import { spawnSync } from "node:child_process";
 import { FFMPEG } from "../../../common/server/bin";
-import type { AgentProvider } from "../../agent/lib/providers";
+import type { AgentProvider } from "../../agent/server/providers";
 
 let workspace: string;
 let source: string;
@@ -14,7 +14,7 @@ let mediaService: typeof import("../../media/server/media-import");
 let tools: typeof import("../../editor/server/tools");
 let database: typeof import("../../../common/server/db");
 let registry: typeof import("../server/registry");
-let rulesApply: typeof import("../lib/apply");
+let rulesApply: typeof import("../server/apply");
 let evaluate: typeof import("../server/evaluate");
 let glossary: typeof import("../server/glossary");
 let preferences: typeof import("../server/preferences");
@@ -42,7 +42,7 @@ before(async () => {
   process.env.AGENTCUT_WORKSPACE = workspace;
   [store, mediaService, tools, database, registry, rulesApply, evaluate, glossary, preferences] = await Promise.all([
     import("../../editor/server/store"), import("../../media/server/media-import"), import("../../editor/server/tools"), import("../../../common/server/db"),
-    import("../server/registry"), import("../lib/apply"), import("../server/evaluate"),
+    import("../server/registry"), import("../server/apply"), import("../server/evaluate"),
     import("../server/glossary"), import("../server/preferences"),
   ]);
   const { resetBrandIndex, brandIndex } = await import("../../media/server/search/brand");
@@ -125,7 +125,7 @@ test("matched rules resolve to one template, merged overrides and ordered prompt
 test("applying rules is a template application through the shared tools, marked with the rules that chose it", async () => {
   const { id, sequenceId, itemId } = await projectWithScript();
   const before = store.readEditor(id);
-  const result = await tools.executeEditorTool(id, { tool: "rules.apply", ruleIds: ["gameplay-clean", "stream-outro", "nope"], sequenceId, expectedRevision: before.revision }) as import("../lib/apply").RuleApplyResult;
+  const result = await tools.executeEditorTool(id, { tool: "rules.apply", ruleIds: ["gameplay-clean", "stream-outro", "nope"], sequenceId, expectedRevision: before.revision }) as import("../server/apply").RuleApplyResult;
   assert.equal(result.templateId, "talking-head");
   assert.equal(result.templateFrom, "rule");
   assert.deepEqual(result.ignored, ["nope"]);

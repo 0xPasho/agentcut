@@ -1,42 +1,10 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, JOB_ACTIVE, type Attachment, type LogEvent, type Message, type MessageContext } from "../../../common/api/client";
+import { api, JOB_ACTIVE, type Attachment, type Message, type MessageContext } from "../../../common/api/client";
 import { useProjectStream } from "../../../common/hooks/use-project-stream";
 import { isUrl } from "../../../common/lib/urls";
-
-/**
- * What a chat needs, whatever it is chatting about.
- *
- * The panel in the editor and the empty window on the home page are the same
- * component; they differ only in where the turns come from and what sending one
- * does. A controller is that difference, and nothing else, so a third surface is a
- * third controller rather than a second chat.
- */
-export type ChatController = {
-  /** Scopes the harness picker and the attachment uploads. Absent before a project exists. */
-  projectId?: string;
-  messages: Message[];
-  events: LogEvent[];
-  working: boolean;
-  workingLabel: string;
-  stage?: string | null;
-  elapsed: number;
-  progress?: number;
-  /** The last turn was never answered and nothing is running. */
-  interrupted: boolean;
-  canStop: boolean;
-  error: string;
-  attachments: Attachment[];
-  attaching: boolean;
-  attach: (files: File[]) => void;
-  removeAttachment: (id: string) => void;
-  send: (text: string) => Promise<void>;
-  stop?: () => void;
-  undo?: (messageId: number) => void;
-  placeholder: string;
-  lockedReason?: string;
-};
+import { type ChatController, type StartOptions } from "../types";
 
 const JOB_LABELS: Record<string, string> = { edit: "Editing", analyze: "Analysing", render: "Rendering", transcribe: "Re-syncing the transcript", batch: "Running the batch" };
 /** A run this long has either hung or is a big render; either way the owner deserves a way out. */
@@ -194,18 +162,6 @@ export const nameFromMessage = (text: string) => {
   const short = line.length > 60 ? `${line.slice(0, 57)}…` : line;
   return short || "Untitled project";
 };
-
-/**
- * The chat with no project behind it yet.
- *
- * A message, a link or a dropped video are all legitimate ways to start: the first
- * turn decides which, creates the project through the same endpoints the cards on the
- * home page use, and hands the conversation over to the editor. Nothing is edited
- * here — this window's whole job is to turn what somebody said into a project that
- * already knows what they want.
- */
-/** What the home screen decided before a word was typed: the shape, and the look. */
-export type StartOptions = { aspect?: string; templateIds?: string[] };
 
 export function useStartChat(start: () => StartOptions = () => ({})): ChatController {
   const router = useRouter();

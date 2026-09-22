@@ -1,33 +1,13 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Film, ImageIcon, Music, Play, Plus, Replace, Trash2, Layers, Maximize2, Check, X, Captions, CircleAlert, Clock, Loader2, CircleSlash } from "lucide-react";
+import { Film, ImageIcon, Music, Play, Plus, Replace, Trash2, Layers, Maximize2, Check, X, Captions } from "lucide-react";
 import { Popover } from "@base-ui/react/popover";
 import { Button } from "../../../common/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter, DialogClose } from "../../../common/ui/dialog";
 import { setActiveDrag, writeDrag, type DragPayload } from "@/modules/editor/lib/dnd";
-
-export type ViewerAsset = { key:string; id:string; name:string; kind:"video"|"image"|"audio"; url:string; duration?:number|null; width?:number|null; height?:number|null; license?:string|null; attribution?:string|null; used?:boolean; removable?:boolean;
-  /** A vector — in practice a brand mark. Cropping one to fill a 16:9 tile destroys it, and a dark one vanishes on a dark tile. */
-  vector?:boolean;
-  /** A video from the library rather than project media: it is imported when it is placed. */
-  library?:boolean;
-  /** Where this source's own words stand. The same record the agent reads on the media. */
-  transcription?:TranscriptionState };
-/**
- * A source is never silently wordless. Every state says what it is in words as well
- * as in a mark, because "this video has no captions" and "this video has not been
- * listened to yet" are different facts and only one of them is worth acting on.
- */
-export type TranscriptionState={status:"none"|"queued"|"running"|"done"|"failed"|"skipped";reason?:string;words?:number};
-export const TRANSCRIPTION_LABEL:Record<TranscriptionState["status"],string>={none:"Not transcribed",queued:"Waiting to transcribe",running:"Transcribing…",done:"Transcribed",failed:"Transcription failed",skipped:"Not transcribed"};
-/** One state, in one sentence, wherever it is read out: a tile, a caption, a live region. */
-export function transcriptionSentence(state:TranscriptionState){
-  const label=TRANSCRIPTION_LABEL[state.status];
-  if(state.status==='done')return `${label} · ${state.words??0} words`;
-  return state.reason?`${label} — ${state.reason}`:label;
-}
-/** One mark per state. Waiting is a clock, not a spinner that has nothing to spin about yet. */
-const TRANSCRIPTION_ICON:Record<TranscriptionState["status"],typeof Captions>={none:Captions,queued:Clock,running:Loader2,done:Captions,failed:CircleAlert,skipped:CircleSlash};
+import { type ViewerAsset, type TranscriptionState } from "../types";
+import { TRANSCRIPTION_LABEL, TRANSCRIPTION_ICON } from "../data";
+import { transcriptionSentence, tileLabel, durationLabel } from "../lib";
 function TranscriptionMark({state}:{state:TranscriptionState}) {
   if(state.status==='none')return null;
   const sentence=transcriptionSentence(state);
@@ -36,14 +16,6 @@ function TranscriptionMark({state}:{state:TranscriptionState}) {
     <Icon aria-hidden className={`size-3 ${state.status==='running'?'motion-safe:animate-spin':''}`} /><span className="sr-only">{sentence}</span>
   </span>;
 }
-/**
- * The tile's whole name. Its own `aria-label` wins over everything inside it, so the
- * marks in the corner — used here, being listened to, failed — have to be said in it
- * or they are said to nobody.
- */
-const tileLabel=(asset:ViewerAsset)=>[`Select asset ${asset.name}`,asset.used?"used in this edit":"",
-  asset.transcription&&asset.transcription.status!=="none"?transcriptionSentence(asset.transcription).toLowerCase():""].filter(Boolean).join(", ");
-const durationLabel=(seconds?:number|null)=>seconds==null?null:`${Math.floor(seconds/60)}:${Math.floor(seconds%60).toString().padStart(2,"0")}`;
 
 function VideoThumbnail({url}:{url:string}) {
   const ref=useRef<HTMLVideoElement>(null),[visible,setVisible]=useState(false);

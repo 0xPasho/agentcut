@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { projectDir } from "../../../common/server/config";
-import { resolveProvider, type AgentEvent, type AgentProvider } from "../lib/providers";
+import { resolveProvider, type AgentEvent, type AgentProvider } from "./providers";
 import { executeEditorTool, editorToolSchema } from "../../editor/server/tools";
 import { describeToolCall, describeToolResult } from "../../project/lib/activity";
 import { readEditor, RevisionConflict } from "../../editor/server/store";

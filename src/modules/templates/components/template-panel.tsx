@@ -2,10 +2,10 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import { Compass, Crop, Image as ImageIcon, Loader2, Save, Sparkles, Wand2 } from "lucide-react";
 import { api, type AssetSummary } from "@/common/api/client";
-import type { TemplateRecord, VideoTemplate } from "@/modules/templates/types";
-import type { SlotValue, TemplatePlan } from "@/modules/templates/lib/plan";
+import type { TemplateRecord } from "@/modules/templates/types";
+import type { SlotValue, TemplatePlan } from "@/modules/templates/server/plan";
 import type { DroppedBeat, TemplateApplyResult } from "@/modules/templates/server/apply";
-import type { TemplateSuggestion } from "@/modules/templates/lib/suggest";
+import type { TemplateSuggestion } from "@/modules/templates/server/suggest";
 import { Button } from "../../../common/ui/button";
 import { Checkbox } from "@/common/ui/checkbox";
 import { Disclosure } from "@/common/ui/disclosure";
@@ -14,66 +14,9 @@ import { Label } from "../../../common/ui/label";
 import { Slider } from "../../../common/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../common/ui/select";
 import { Separator } from "../../../common/ui/separator";
-
-/**
- * The human half of the template feature. Every button here calls the same
- * project tool an agent calls — `template.plan` to see what it would do, then
- * `template.apply` to commit it through the shared operation engine. There is no
- * second code path behind this panel.
- */
-
-const SOURCE_LABELS: Record<string, string> = {
-  slot: "Your pictures", brand: "Brand logos", project: "Project assets",
-  frame: "Frames from this footage", web: "Image search",
-};
-const ALL_SOURCES = ["slot", "brand", "project", "frame", "web"];
-/** Base UI prints the raw value unless the trigger is told what to show. */
-const HOOK_LABELS: Record<string, string> = {
-  sticky: "Stays on screen the whole video", intro: "Opening card only", off: "No hook",
-};
-const FRAMING_LABELS: Record<string, string> = {
-  source: "Leave each shot's own framing", crop: "Centre of the frame", split: "Screen and person, stacked",
-};
-const CAMERA_LABELS: Record<string, string> = { top: "Person on top", bottom: "Person underneath" };
-const MODE_LABELS: Record<string, string> = {
-  auto: "Only where a sentence names something", alternate: "Every other sentence",
-  every: "Every sentence that can be illustrated", off: "No pictures",
-};
-const STYLE_LABELS: Record<string, string> = {
-  auto: "Automatic — logo for a brand, card otherwise", card: "Photo card",
-  plain: "Bare picture", logo: "Logo plate",
-};
-const labelled = (labels: Record<string, string>, fallback: string) =>
-  (value: unknown) => labels[String(value)] ?? fallback;
-const asNumber = (v: number | readonly number[]) => (Array.isArray(v) ? v[0] : (v as number));
-
-type Overrides = {
-  captionLook?: string;
-  layout: Pick<VideoTemplate["layout"], "mode" | "cameraPct" | "cameraPosition" | "camera" | "screen">;
-  hook: Pick<VideoTemplate["hook"], "mode">;
-  images: Pick<VideoTemplate["images"], "mode" | "density" | "minSentenceGap" | "durationSec" | "widthPct" | "logoWidthPct" | "style" | "sources">;
-  rhythm: { silence: { enabled: boolean }; punch: { enabled: boolean; perMinute: number } };
-};
-
-const overridesFrom = (template: VideoTemplate): Overrides => ({
-  ...(template.captionLook ? { captionLook: template.captionLook } : {}),
-  layout: {
-    mode: template.layout.mode, cameraPct: template.layout.cameraPct, cameraPosition: template.layout.cameraPosition,
-    camera: { ...template.layout.camera }, screen: { ...template.layout.screen },
-  },
-  hook: { mode: template.hook.mode },
-  images: {
-    mode: template.images.mode, density: template.images.density, minSentenceGap: template.images.minSentenceGap,
-    durationSec: template.images.durationSec, widthPct: template.images.widthPct,
-    logoWidthPct: template.images.logoWidthPct, style: template.images.style,
-    // A source list is compared and edited as a set of kinds; a `web:pexels` entry keeps its provider.
-    sources: template.images.sources,
-  },
-  rhythm: {
-    silence: { enabled: template.rhythm.silence.enabled },
-    punch: { enabled: template.rhythm.punch.enabled, perMinute: template.rhythm.punch.perMinute },
-  },
-});
+import { SOURCE_LABELS, ALL_SOURCES, HOOK_LABELS, FRAMING_LABELS, CAMERA_LABELS, MODE_LABELS, STYLE_LABELS } from "../data/template-panel";
+import { labelled, asNumber, overridesFrom } from "../lib/template-panel";
+import { type Overrides } from "../types";
 
 export function TemplatePanel({ projectId, sequenceId, beforeApply, afterApply, onBusy }: {
   projectId: string;

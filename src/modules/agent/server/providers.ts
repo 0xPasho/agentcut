@@ -2,7 +2,7 @@ import { claudeProvider } from "./claude";
 import { codexProvider } from "./codex";
 import { cursorProvider } from "./cursor";
 import { opencodeProvider } from "./opencode";
-import { HARNESSES, harness, type HarnessId } from "./registry";
+import { HARNESSES, harness, type HarnessId } from "../lib/registry";
 import type { AgentProvider } from "../types";
 
 export * from "../types";
@@ -18,12 +18,12 @@ export * from "../types";
  * `@/modules/agent/server/model-cache` directly from the places that own a request.
  */
 export { claudeProvider, codexProvider, cursorProvider, opencodeProvider };
-export { HARNESSES, HARNESS_IDS, harness, orderedHarnesses } from "./registry";
-export type { Harness, HarnessId } from "./registry";
-export { harnessBinary, resolveBinary, spawnable } from "../server/binary";
-export { probeAuth, usable, type AuthState, type AuthProbe } from "../server/auth";
-export { CURATED, curatedCatalog, prettyModelLabel, filterModels, mergeCatalog, orderModels } from "./model-catalog";
-export type { ModelInfo, HarnessCatalog } from "./model-catalog";
+export { HARNESSES, HARNESS_IDS, harness, orderedHarnesses } from "../lib/registry";
+export type { Harness, HarnessId } from "../lib/registry";
+export { harnessBinary, resolveBinary, spawnable } from "./binary";
+export { probeAuth, usable, type AuthState, type AuthProbe } from "./auth";
+export { CURATED, curatedCatalog, prettyModelLabel, filterModels, mergeCatalog, orderModels } from "../lib/model-catalog";
+export type { ModelInfo, HarnessCatalog } from "../lib/model-catalog";
 
 /** Registry order, so the picker and the fallback walk agree. */
 export const providers: AgentProvider[] = [claudeProvider, codexProvider, cursorProvider, opencodeProvider];

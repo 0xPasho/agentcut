@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { PassThrough } from "node:stream";
-import type { AgentProvider } from "../lib/providers";
+import type { AgentProvider } from "../server/providers";
 
 let workspace: string;
 let store: typeof import("../../editor/server/store");

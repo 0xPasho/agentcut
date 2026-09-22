@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import type { AgentProvider } from "../../agent/lib/providers";
+import type { AgentProvider } from "../../agent/server/providers";
 
 let workspace: string;
 let onboarding: typeof import("../server/onboarding");

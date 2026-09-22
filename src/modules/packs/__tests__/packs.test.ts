@@ -183,7 +183,7 @@ test("a kit travels whole: the end card, the template that has a slot for it, an
   const { id } = await mediaService.createVideoProject("Imported kit", [{ file: source }]);
   const sequenceId = store.readEditor(id).edl.sequences[0].id;
   const applied = await tools.executeEditorTool(id, { tool: "rules.apply", ruleIds: ["kit-outro"], sequenceId,
-    expectedRevision: store.readEditor(id).revision }) as import("../../rules/lib/apply").RuleApplyResult;
+    expectedRevision: store.readEditor(id).revision }) as import("../../rules/server/apply").RuleApplyResult;
   assert.equal(applied.templateId, "kit-short");
   const edl = store.readEditor(id).edl;
   const outro = edl.sequences.find((s) => s.id === sequenceId)!.items.find((i) => i.clip.title === "Outro")!;

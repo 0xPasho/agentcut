@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { readEditor } from "../../editor/server/store";
 import { promoteClipToSequence } from "../../editor/lib/editable-timeline";
-import { resolveTarget, TemplateTarget, SlotValue } from "../../templates/lib/plan";
+import { resolveTarget, TemplateTarget, SlotValue } from "../../templates/server/plan";
 import { applyTemplate, type TemplateApplyResult } from "../../templates/server/apply";
-import { listRules } from "../server/registry";
+import { listRules } from "./registry";
 import type { RuleRecord } from "../types";
 
 /**
@@ -109,7 +109,7 @@ async function chooseTemplate(
   if (fromRequest) return { templateId: fromRequest, templateFrom: "request" };
   const applied = appliedTemplate(edl, target);
   if (applied) return { templateId: applied, templateFrom: "applied" };
-  const { suggestTemplates } = await import("../../templates/lib/suggest");
+  const { suggestTemplates } = await import("../../templates/server/suggest");
   const best = (await suggestTemplates(edl, target, slots)).suggestions[0];
   if (!best) throw new Error("No template to apply these rules with.");
   return { templateId: best.templateId, templateFrom: "suggested" };

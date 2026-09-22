@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import type { AgentEvent, AgentProvider } from "../../agent/lib/providers";
+import type { AgentEvent, AgentProvider } from "../../agent/server/providers";
 
 /**
  * A run that says nothing until it is finished is a spinner, not feedback. These

@@ -268,7 +268,7 @@ test("an unknown harness cannot be saved", () => {
 });
 
 test("a named harness that is not installed fails instead of falling through", async () => {
-  const { resolveProvider } = await import("../lib/providers");
+  const { resolveProvider } = await import("../server/providers");
   await assert.rejects(
     // An override pointing at nothing is the cheapest way to make a CLI missing.
     (async () => {

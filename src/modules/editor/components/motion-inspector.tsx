@@ -11,8 +11,7 @@ import { usePlayheadSelector, usePlayheadStore } from "@/modules/editor/hooks/pl
 import { Button } from "../../../common/ui/button";
 import { Input } from "../../../common/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../common/ui/select";
-
-const seconds = (value: number) => `${value.toFixed(2)}s`;
+import { seconds } from "../lib/motion-inspector";
 
 /**
  * A layer's motion, as the list of moments it is pinned at.

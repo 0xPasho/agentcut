@@ -1,33 +1,13 @@
 "use client";
 import { useSyncExternalStore } from "react";
 import type { JobState, LogEvent } from "../api/client";
-
-/**
- * The project's live feed, shared by everything on the page.
- *
- * A run reports what it is doing line by line — which tool, on what, how it went —
- * and every panel that shows progress reads the same stream. One EventSource per
- * project no matter how many components watch it: the editor's agent panel and the
- * project page would otherwise open one each and see slightly different histories.
- */
-
-export type ProjectStream = {
-  events: LogEvent[];
-  status: string | null;
-  error: string | null;
-  revision: number;
-  job: JobState | null;
-  /** False between an unmount and the reconnect, and before the first message. */
-  connected: boolean;
-};
+import { type ProjectStream, type Entry } from "../api/types";
 
 const EMPTY: ProjectStream = { events: [], status: null, error: null, revision: 0, job: null, connected: false };
 /** Enough to scroll back through a long run without growing without bound. */
 const MAX_EVENTS = 400;
 /** A remount (React's strict double-render, a tab switch) should not drop the stream. */
 const LINGER_MS = 5_000;
-
-type Entry = { source: EventSource; refs: number; snapshot: ProjectStream; listeners: Set<() => void>; closing?: ReturnType<typeof setTimeout> };
 
 const streams = new Map<string, Entry>();
 

@@ -5,7 +5,7 @@ import path from "node:path";
 import os from "node:os";
 import { spawnSync } from "node:child_process";
 import { FFMPEG } from "../../../common/server/bin";
-import type { AgentProvider } from "../../agent/lib/providers";
+import type { AgentProvider } from "../../agent/server/providers";
 
 let workspace: string;
 let sources: string[];

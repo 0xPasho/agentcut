@@ -3,7 +3,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ComponentProps, type PointerEvent } from "react";
 import { EyeOff, Eye, VolumeX, Volume2, Play, Pause, Plus, Film, Music2, Layers, Magnet, Minus, Copy, Scissors, Trash2, ArrowUp, ArrowDown, MousePointerClick, MessageSquare, Blend, Timer } from "lucide-react";
 import { Transition } from "@/modules/editor/types";
-import type { Edit, MediaSource, VideoSequence } from "@/modules/editor/types";
+import type { MediaSource, VideoSequence } from "@/modules/editor/types";
 import type { EditorOperation } from "@/modules/editor/lib/operations";
 import { buildTimelineGroupMove, buildTimelineMove, buildTimelineTrim, timelineCollides } from "@/modules/editor/lib/timeline-interactions";
 import { snapDraggedSpan, snapSpan, snapTargets, snapTime, type SnapPoint } from "@/modules/editor/lib/snapping";
@@ -16,12 +16,13 @@ import { keyframeSummary } from "@/modules/editor/lib/motion";
 import { effectLabel, shotName, standaloneScene } from "@/modules/editor/lib/canvas";
 import { audioOnly, laneLabels, nextLayer, routeLayer, trackLanes, type Lane } from "@/modules/editor/lib/tracks";
 import { DEFAULT_TRANSITION_SEC, TRANSITION_DURATIONS, TRANSITION_KINDS, TRANSITION_LABELS, describeTransition } from "@/modules/editor/lib/transitions";
-import { buildTimeMap, srcToOut, type TimeMap } from "@/modules/editor/lib/timeline";
+import { buildTimeMap, srcToOut } from "@/modules/editor/lib/timeline";
 import { Button } from "../../../common/ui/button";
 import { describeAuthor, isAgentAuthor } from "@/modules/editor/lib/authorship";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel, ContextMenuSeparator, ContextMenuTrigger, Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "../../../common/ui/context-menu";
-
-const LABEL_WIDTH = 76;
+import { LABEL_WIDTH, NO_MORE_FOOTAGE, EMPTY_MEDIA, STRIP_FRAMES } from "../data";
+import { type Drag, type Ghost, type Hover, type ExternalDrop } from "../types";
+import { timeLabel, sourceAt } from "../lib/sequence-timeline";
 /* Everything below follows the playhead. They are separate components, and small ones,
    because each of them re-renders as the preview plays and the timeline around them
    must not. See src/modules/editor/hooks/playhead.ts. */
@@ -103,14 +104,6 @@ function TransitionJointControl({ left, width, current, title, previousTitle, ma
     </Menu>
   </>;
 }
-
-const NO_MORE_FOOTAGE = "This clip has no more footage that way.";
-const EMPTY_MEDIA: MediaSource[] = [];
-type Drag = { id: string; kind: "move" | "start" | "end" | "effect" | "effect-start" | "effect-end"; x: number; y: number; at: number; duration: number; layer: number; index?: number; moved: boolean; snapshot: VideoSequence; scrollLeft: number };
-type Ghost = { id: string; at: number; duration: number; layer: number; index?: number; delta: number; kind: Drag["kind"]; guide?: SnapPoint | null; shift?: number; lift?: number };
-/** Where an incoming drag is pointing: the track under the pointer, and what it carries. */
-type Hover = { clientX: number; metaKey: boolean; ctrlKey: boolean; layer: number; kind: Lane["kind"]; payload: DragPayload | null; files: boolean };
-type ExternalDrop = { layer: number; at: number; guide: SnapPoint | null; payload: DragPayload | null; files: boolean; replace?: { itemId: string; at: number; duration: number } };
 type Props = {
   /** Whose media the peaks belong to: a shot's own audio is drawn from the host's copy of it. */
   projectId: string;
@@ -141,21 +134,6 @@ type Props = {
   /** Feedback that deserves to be seen, not only announced: an undoable change or a refusal. */
   onNotify?: (message: string, kind: "change" | "error") => void;
 };
-
-function timeLabel(seconds: number) {
-  const minutes = Math.floor(seconds / 60);
-  const rest = seconds % 60;
-  return `${minutes}:${rest.toFixed(rest % 1 > .001 ? 1 : 0).padStart(rest % 1 > .001 ? 4 : 2, "0")}`;
-}
-function sourceAt(map: TimeMap, output: number) {
-  for (const span of map.spans) {
-    if (output <= span.outStart + span.srcEnd - span.srcStart) return span.srcStart + Math.max(0, output - span.outStart);
-  }
-  return map.spans.at(-1)?.srcEnd ?? 0;
-}
-
-/** Frames sampled across what the clip shows, so the strip changes with the footage. */
-const STRIP_FRAMES = 5;
 function Filmstrip({ src, start, end }: { src: string; start: number; end: number }) {
   const [frames, setFrames] = useState<string[] | null | undefined>(() => cachedFrames(src, start, end, STRIP_FRAMES));
   useEffect(() => setFrames(cachedFrames(src, start, end, STRIP_FRAMES)), [src, start, end]);

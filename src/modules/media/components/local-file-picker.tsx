@@ -1,73 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  ArrowLeft, ArrowRight, ArrowUp, ChevronDown, ChevronRight, ChevronUp, Film, Folder,
-  Image as ImageIcon, LayoutGrid, List as ListIcon, Loader2, Lock, Music, Search,
-} from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUp, ChevronDown, ChevronRight, ChevronUp, Folder, LayoutGrid, List as ListIcon, Loader2, Lock, Search } from "lucide-react";
 import { api } from "@/common/api/client";
 import type { FilesResponse, FolderEntry } from "@/modules/media/server/local-assets";
 import { Button } from "../../../common/ui/button";
 import { Input } from "../../../common/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../../../common/ui/dialog";
-
-const ICONS = { folder: Folder, video: Film, image: ImageIcon, audio: Music } as const;
-
-const KINDS: Record<string, string> = {
-  ".mp4": "MPEG-4 movie", ".m4v": "MPEG-4 movie", ".mov": "QuickTime movie",
-  ".mkv": "Matroska movie", ".webm": "WebM movie",
-  ".jpg": "JPEG image", ".jpeg": "JPEG image", ".png": "PNG image", ".webp": "WebP image",
-  ".gif": "GIF image", ".avif": "AVIF image", ".svg": "SVG image",
-  ".mp3": "MP3 audio", ".wav": "WAV audio", ".m4a": "Apple MPEG-4 audio",
-  ".aac": "AAC audio", ".flac": "FLAC audio", ".ogg": "Ogg audio", ".oga": "Ogg audio",
-};
-
-const extension = (name: string) => {
-  const dot = name.lastIndexOf(".");
-  return dot > 0 ? name.slice(dot).toLowerCase() : "";
-};
-
-const kindLabel = (entry: FolderEntry) =>
-  entry.kind === "folder" ? "Folder" : KINDS[extension(entry.name)] ?? `${extension(entry.name).slice(1).toUpperCase() || "Unknown"} file`;
-
-/** Finder's own rounding: whole kilobytes, one decimal for megabytes, two for gigabytes. */
-function sizeLabel(bytes: number | null) {
-  if (bytes === null) return "--";
-  if (bytes < 1000) return `${bytes} bytes`;
-  const units = [
-    { scale: 1e3, suffix: "KB", decimals: 0 },
-    { scale: 1e6, suffix: "MB", decimals: 1 },
-    { scale: 1e9, suffix: "GB", decimals: 2 },
-    { scale: 1e12, suffix: "TB", decimals: 2 },
-  ];
-  const unit = units.findLast(u => bytes >= u.scale) ?? units[0];
-  return `${(bytes / unit.scale).toFixed(unit.decimals)} ${unit.suffix}`;
-}
-
-function dateLabel(ms: number) {
-  if (!ms) return "--";
-  const date = new Date(ms);
-  const time = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  if (date.toDateString() === new Date().toDateString()) return `Today at ${time}`;
-  return `${date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })} at ${time}`;
-}
-
-type SortKey = "name" | "size" | "kind" | "date";
-
-const COLUMNS: Array<{ key: SortKey; label: string; className: string }> = [
-  { key: "name", label: "Name", className: "min-w-0 flex-1 justify-start" },
-  { key: "size", label: "Size", className: "w-24 shrink-0 justify-end" },
-  { key: "kind", label: "Kind", className: "w-40 shrink-0 justify-start" },
-  { key: "date", label: "Date Modified", className: "w-48 shrink-0 justify-start" },
-];
-
-/**
- * Pressable surfaces, shared by the rows and the tiles. Glass belongs to the window, not
- * to what sits inside it, so a row is a fill and a highlight rather than a second pane of
- * material — and it gives under the pointer, because a list you pick from should answer.
- */
-const ROW = "cursor-pointer select-none rounded-xl transition-[background-color,box-shadow,scale] duration-150 ease-out motion-reduce:transition-none motion-safe:active:scale-[0.995]";
-const ROW_SELECTED = "bg-linear-to-b from-primary/25 to-primary/12 text-foreground shadow-(--control-highlight) ring-1 ring-inset ring-primary/30";
+import { ICONS, COLUMNS, ROW, ROW_SELECTED } from "../data";
+import { kindLabel, sizeLabel, dateLabel, compare } from "../lib";
+import { type SortKey } from "../types";
 
 /**
  * The folders of this machine, listed by the server that will read the file anyway. A local
@@ -354,11 +296,4 @@ export function LocalFilePicker({ open, onOpenChange, onPick, kinds = ["video"],
       </DialogContent>
     </Dialog>
   );
-}
-
-function compare(a: FolderEntry, b: FolderEntry, key: SortKey) {
-  if (key === "size") return (a.size ?? 0) - (b.size ?? 0);
-  if (key === "date") return a.modifiedAt - b.modifiedAt;
-  if (key === "kind") return kindLabel(a).localeCompare(kindLabel(b)) || a.name.localeCompare(b.name);
-  return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
 }

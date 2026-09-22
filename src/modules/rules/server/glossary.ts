@@ -3,28 +3,9 @@ import path from "node:path";
 import { z } from "zod";
 import { WORKSPACE, projectDir } from "../../../common/server/config";
 import type { Transcript } from "../../transcription/lib/transcript";
-import { BrandKit } from "../../templates/types";
 
-/**
- * How things are spelled. A glossary is deterministic: it feeds the recogniser's
- * vocabulary hint, the proofreader's brief, and a final pass that rewrites known
- * mishearings in the transcript itself. It needs no judgement, so it is a table,
- * not a rule. The workspace glossary applies everywhere; a project's adds to it
- * and wins on the same term.
- */
-export const GlossaryTerm = z.object({
-  /** The correct spelling. */
-  term: z.string().trim().min(1),
-  /** Ways the recogniser writes it wrong: "clod", "cloud AI". Matched case-insensitively on word boundaries. */
-  aliases: z.array(z.string().trim().min(1)).default([]),
-  /** One line of what it is, for the agent: "desktop app for designers". */
-  note: z.string().default(""),
-  /** A subject can carry its own brand kit; a project about it inherits the kit when its plan is applied. */
-  brand: BrandKit.optional(),
-}).strict();
-export type GlossaryTerm = z.infer<typeof GlossaryTerm>;
-export const Glossary = z.object({ terms: z.array(GlossaryTerm).default([]) }).strict();
-export type Glossary = z.infer<typeof Glossary>;
+export { Glossary, GlossaryTerm } from "../types";
+import { Glossary, GlossaryTerm } from "../types";
 
 export const glossaryFile = (level: "workspace" | "project", projectId?: string) => {
   if (level === "project") {
