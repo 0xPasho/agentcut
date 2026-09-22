@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Glass } from "@/components/ui/glass";
-import { SettingsNav } from "@/components/settings/nav";
+import { Button } from "@/common/ui/button";
+import { Glass } from "@/common/ui/glass";
+import { SettingsNav } from "@/modules/settings/components/nav";
 
 /**
  * Settings is a place, not a drawer at the bottom of another page. Everything that

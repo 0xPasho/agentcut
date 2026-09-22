@@ -1,5 +1,5 @@
-import { availableProviders, resolveProvider, extractJson } from "../src/lib/agent";
-import { ensureWorkspace, projectDir } from "../src/lib/config";
+import { availableProviders, resolveProvider, extractJson } from "../src/modules/agent/lib/providers";
+import { ensureWorkspace, projectDir } from "../src/common/server/config";
 
 async function main() {
   ensureWorkspace();

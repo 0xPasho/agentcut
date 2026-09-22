@@ -1,7 +1,7 @@
 import React from "react";
 import { useCurrentFrame } from "remotion";
-import type { SequenceItem, VideoSequence } from "../src/lib/edl";
-import { animatedAt, staticState, type AnimatedState } from "../src/lib/keyframes";
+import type { SequenceItem, VideoSequence } from "../src/modules/editor/types";
+import { animatedAt, staticState, type AnimatedState } from "../src/modules/editor/lib/keyframes";
 
 /**
  * Where a layer sits in the output frame, for one frame of the output.

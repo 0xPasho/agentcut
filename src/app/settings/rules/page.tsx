@@ -1,4 +1,4 @@
-import { RulesSettings } from "@/components/settings/rules-settings";
+import { RulesSettings } from "@/modules/settings/rules-settings-view";
 
 export const dynamic = "force-dynamic";
 

@@ -1,4 +1,4 @@
-import { listTemplates } from "@/lib/templates/registry";
+import { listTemplates } from "@/modules/templates/server/registry";
 
 export const runtime = "nodejs";
 

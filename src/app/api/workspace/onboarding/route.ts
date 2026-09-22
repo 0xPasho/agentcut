@@ -1,5 +1,5 @@
-import { runOnboarding } from "@/lib/onboarding";
-import { effectiveSelection } from "@/lib/agent/selection";
+import { runOnboarding } from "@/modules/onboarding/server/onboarding";
+import { effectiveSelection } from "@/modules/agent/server/selection";
 
 export const runtime = "nodejs";
 export const maxDuration = 600;

@@ -1,4 +1,4 @@
-import { AgentsSettings } from "@/components/settings/agents-settings";
+import { AgentsSettings } from "@/modules/settings/agents-settings-view";
 
 export const dynamic = "force-dynamic";
 

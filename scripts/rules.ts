@@ -1,8 +1,8 @@
 /** Headless access to the SAME rules, glossary and preferences as the panel and the agent tools. */
-import { executeEditorTool } from "../src/lib/editor/tools";
-import { listRules, getRule } from "../src/lib/rules/registry";
-import { readGlossary } from "../src/lib/glossary";
-import { readPreferences } from "../src/lib/preferences";
+import { executeEditorTool } from "../src/modules/editor/server/tools";
+import { listRules, getRule } from "../src/modules/rules/server/registry";
+import { readGlossary } from "../src/modules/rules/server/glossary";
+import { readPreferences } from "../src/modules/rules/server/preferences";
 
 const USAGE = `usage:
   rules list [projectId]

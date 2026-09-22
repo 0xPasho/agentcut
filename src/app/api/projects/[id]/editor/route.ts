@@ -1,6 +1,6 @@
-import { editorToolSchema } from "@/lib/editor/tools";
-import { runReportedTool } from "@/lib/activity-log";
-import { RevisionConflict } from "@/lib/editor/store";
+import { editorToolSchema } from "@/modules/editor/server/tools";
+import { runReportedTool } from "@/modules/project/server/activity-log";
+import { RevisionConflict } from "@/modules/editor/server/store";
 export const runtime = "nodejs";
 export async function GET() { return Response.json(editorToolSchema()); }
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {

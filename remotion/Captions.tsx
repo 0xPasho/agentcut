@@ -1,9 +1,9 @@
 import React from "react";
 import { interpolate, useCurrentFrame, useVideoConfig } from "remotion";
-import type { CaptionStyle, Edit } from "../src/lib/edl";
-import type { Word } from "../src/lib/transcript";
-import { activeWordIndex, LINE_LEAD, lineAt, toLines, visibleWords } from "../src/lib/timeline";
-import { fitRows, fitScaleAll } from "../src/lib/text-fit";
+import type { CaptionStyle, Edit } from "../src/modules/editor/types";
+import type { Word } from "../src/modules/transcription/lib/transcript";
+import { activeWordIndex, LINE_LEAD, lineAt, toLines, visibleWords } from "../src/modules/editor/lib/timeline";
+import { fitRows, fitScaleAll } from "../src/common/lib/text-fit";
 import { loadFont } from "@remotion/google-fonts/Inter";
 
 const { fontFamily: inter } = loadFont("normal", {

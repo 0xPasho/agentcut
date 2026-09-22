@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { q } from "@/lib/db";
-import { uploadLibraryAsset, ensureLibrary, scanLibrary, kindFor, removeLibraryAsset } from "@/lib/assets";
+import { q } from "@/common/server/db";
+import { uploadLibraryAsset, ensureLibrary, scanLibrary, kindFor, removeLibraryAsset } from "@/modules/media/server/assets";
 
 export const runtime = "nodejs";
 

@@ -1,4 +1,4 @@
-import { startJob } from "@/lib/jobs";
+import { startJob } from "@/modules/project/server/jobs";
 import { z } from "zod";
 export const runtime = "nodejs";
 export const maxDuration = 3600;

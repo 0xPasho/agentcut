@@ -1,7 +1,7 @@
 import React from "react";
 import { Img } from "remotion";
 import { loadFont } from "@remotion/google-fonts/Inter";
-import { emWidth } from "../src/lib/text-fit";
+import { emWidth } from "../src/common/lib/text-fit";
 
 const { fontFamily: inter } = loadFont("normal", { weights: ["600", "700", "800"], subsets: ["latin"] });
 

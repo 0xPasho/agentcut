@@ -1,11 +1,11 @@
 /** Render an EDL to mp4 clips: npx tsx scripts/render.ts <projectId|edl.json> [--only id,id] */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { renderProject } from "../src/lib/editor/render";
-import { readEditor } from "../src/lib/editor/store";
-import { Edl } from "../src/lib/edl";
-import { projectDir } from "../src/lib/config";
-import { renderClips } from "../src/lib/render";
+import { renderProject } from "../src/modules/render/server/render-project";
+import { readEditor } from "../src/modules/editor/server/store";
+import { Edl } from "../src/modules/editor/types";
+import { projectDir } from "../src/common/server/config";
+import { renderClips } from "../src/modules/render/server/render";
 
 function arg(name: string) {
   const i = process.argv.indexOf(`--${name}`);

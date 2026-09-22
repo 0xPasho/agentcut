@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
-import { mediaFile } from "@/lib/editor/store";
-import { fileResponse } from "@/lib/httpFile";
+import { mediaFile } from "@/modules/editor/server/store";
+import { fileResponse } from "@/common/server/http-file";
 export const runtime = "nodejs";
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string; mediaId: string }> }) {
   const { id, mediaId } = await params;

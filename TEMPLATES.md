@@ -564,7 +564,7 @@ each adopted asset and reported by `template.apply`.
   searches for the `minGapSec` and `keepSec` that reproduce it on your own material.
   It matches the pauses, not the running time: material with more thinking in it than
   the finished video had needs a shorter `minGapSec` than the fit suggests, or every bit
-  of thinking survives. `src/lib/templates/pace.ts` is the same measurement as a module.
+  of thinking survives. `src/modules/templates/lib/pace.ts` is the same measurement as a module.
 
   **The transcript proposes a cut; the sound decides it.** The words are recognised once,
   on the whole source, before anything is cut, and every cut is placed from their timings

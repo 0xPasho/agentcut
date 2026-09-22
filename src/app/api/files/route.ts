@@ -1,46 +1,8 @@
 import os from "node:os";
-import path from "node:path";
-import fs from "node:fs/promises";
 import { NextRequest, NextResponse } from "next/server";
-import { browseLocalFolder, type Place } from "@/lib/editor/local-assets";
+import { browseLocalFolder, places } from "@/modules/media/server/local-assets";
 
 export const runtime = "nodejs";
-
-/**
- * Desktop, Documents and Downloads are protected by macOS, and the process running this
- * server is not the Finder: it is whatever terminal or editor started `next dev`. Opening
- * the directory handle — without reading a single name out of it — says which of the three
- * answers applies, cheaply enough to do on every listing.
- */
-async function reach(folder: string): Promise<"ok" | "blocked" | "missing"> {
-  try {
-    const dir = await fs.opendir(folder);
-    await dir.close();
-    return "ok";
-  } catch (e) {
-    const code = (e as NodeJS.ErrnoException).code;
-    return code === "EPERM" || code === "EACCES" ? "blocked" : "missing";
-  }
-}
-
-/** The shortcuts a file browser is expected to open with, minus the ones this Mac lacks. */
-async function places(): Promise<Place[]> {
-  const home = os.homedir();
-  const candidates = [
-    { name: path.basename(home), path: home },
-    { name: "Desktop", path: path.join(home, "Desktop") },
-    { name: "Documents", path: path.join(home, "Documents") },
-    { name: "Downloads", path: path.join(home, "Downloads") },
-    { name: "Movies", path: path.join(home, "Movies") },
-    { name: "Pictures", path: path.join(home, "Pictures") },
-    { name: "Music", path: path.join(home, "Music") },
-    { name: "Projects", path: path.join(home, "Projects") },
-  ];
-  const state = await Promise.all(candidates.map(place => reach(place.path)));
-  return candidates
-    .map((place, i) => ({ ...place, blocked: state[i] === "blocked" }))
-    .filter((_, i) => state[i] !== "missing");
-}
 
 /**
  * This machine's folders, before a project exists. It is the same listing the editor's

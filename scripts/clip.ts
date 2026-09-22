@@ -5,15 +5,15 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { ensureWorkspace, projectDir } from "../src/lib/config";
-import { publishClips } from "../src/lib/editor/store";
-import { q } from "../src/lib/db";
-import { probe, extractAudio } from "../src/lib/media";
-import { transcribe, available as whisperAvailable, DEFAULT_MODEL } from "../src/lib/transcribe/whispercpp";
-import { computeSignals } from "../src/lib/pipeline/signals";
-import { selectClips } from "../src/lib/pipeline/select";
-import { Transcript } from "../src/lib/transcript";
-import { fmt } from "../src/lib/transcript";
+import { ensureWorkspace, projectDir } from "../src/common/server/config";
+import { publishClips } from "../src/modules/editor/server/store";
+import { q } from "../src/common/server/db";
+import { probe, extractAudio } from "../src/modules/media/server/ffmpeg";
+import { transcribe, available as whisperAvailable, DEFAULT_MODEL } from "../src/modules/transcription/server/whispercpp";
+import { computeSignals } from "../src/modules/clipping/server/signals";
+import { selectClips } from "../src/modules/clipping/server/select";
+import { Transcript } from "../src/modules/transcription/lib/transcript";
+import { fmt } from "../src/modules/transcription/lib/transcript";
 
 function arg(name: string, fallback?: string) {
   const i = process.argv.indexOf(`--${name}`);

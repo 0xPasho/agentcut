@@ -1,6 +1,6 @@
 import React from "react";
 import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
-import type { ResolvedTransition } from "../src/lib/sequences";
+import type { ResolvedTransition } from "../src/modules/editor/lib/sequences";
 
 /**
  * How a shot arrives over the one it overlaps.

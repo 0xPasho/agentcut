@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
-import { projectDir } from "@/lib/config";
-import { captureAsset } from "@/lib/editor/tools";
+import { projectDir } from "@/common/server/config";
+import { captureAsset } from "@/modules/editor/server/tools";
 
 export const runtime = "nodejs";
 

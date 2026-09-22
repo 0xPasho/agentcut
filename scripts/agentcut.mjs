@@ -6,7 +6,7 @@
  *
  * It finds the app root from its own location, runs the repository's own
  * pnpm script or tsx binary with that root as cwd, and leaves the workspace
- * resolution to src/lib/config.ts (AGENTCUT_WORKSPACE still wins).
+ * resolution to src/common/server/config.ts (AGENTCUT_WORKSPACE still wins).
  */
 import { spawn } from "node:child_process";
 import fs from "node:fs";

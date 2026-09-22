@@ -1,7 +1,7 @@
 import React from "react";
 import { OffthreadVideo, Sequence, useVideoConfig } from "remotion";
-import type { Region } from "../src/lib/edl";
-import { spanFrames, type TimeMap } from "../src/lib/timeline";
+import type { Region } from "../src/modules/editor/types";
+import { spanFrames, type TimeMap } from "../src/modules/editor/lib/timeline";
 import { premountFrames } from "./premount";
 
 type Props = {

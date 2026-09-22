@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createVideoProject, type MediaInput } from "@/lib/editor/media";
-import { startJob } from "@/lib/jobs";
+import { createVideoProject, type MediaInput } from "@/modules/media/server/media-import";
+import { startJob } from "@/modules/project/server/jobs";
 export const runtime = "nodejs";
 
 /** Several raw videos become one project with one video each, and the batch starts at once. */

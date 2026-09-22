@@ -15,10 +15,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { createHash } from "node:crypto";
-import { ensureTranscript } from "../src/lib/transcribe";
-import { probe } from "../src/lib/media";
-import { gapProfile, fitSilence, NOTICEABLE_PAUSE, type GapProfile } from "../src/lib/templates/pace";
-import type { Word } from "../src/lib/transcript";
+import { ensureTranscript } from "../src/modules/transcription/server/transcribe";
+import { probe } from "../src/modules/media/server/ffmpeg";
+import { gapProfile, fitSilence, NOTICEABLE_PAUSE, type GapProfile } from "../src/modules/templates/lib/pace";
+import type { Word } from "../src/modules/transcription/lib/transcript";
 
 async function wordsOf(file: string): Promise<{ words: Word[]; durationSec: number }> {
   const dir = path.join(os.tmpdir(), "agentcut-pace", createHash("sha1").update(path.resolve(file)).digest("hex").slice(0, 12));

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { startJob } from "@/lib/jobs";
+import { startJob } from "@/modules/project/server/jobs";
 
 export const runtime = "nodejs";
 export const maxDuration = 3600;

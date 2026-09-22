@@ -56,7 +56,7 @@ the geometry in that file, and commit what it writes.
 
 | Path | What it is |
 |---|---|
-| `src/components/agentcut-mark.tsx` | The three React components. Generated — edit the script, not this file. |
+| `src/common/components/agentcut-mark.tsx` | The three React components. Generated — edit the script, not this file. |
 | `public/brand/mark.svg` | Flat mark, `currentColor`, for anything outside React. |
 | `public/brand/mark-compact.svg` | The same at UI sizes. |
 | `public/brand/icon.svg` | The app icon, full material. |
@@ -65,7 +65,7 @@ the geometry in that file, and commit what it writes.
 | `src/app/icon.svg` | Browser tab. Next wires it up from the filename. |
 | `src/app/apple-icon.png` | Touch icon, 180px. Same. |
 
-Not to be confused with `src/components/brand-marks.tsx`, which holds the *harness*
+Not to be confused with `src/common/components/brand-marks.tsx`, which holds the *harness*
 marks — Claude, Codex, Cursor — one monochrome path each. This file is the product's
 own mark; that one is other people's.
 

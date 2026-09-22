@@ -1,6 +1,6 @@
 /** Local workspace management for humans and agents, using the UI's project services. */
-import { q } from "../src/lib/db";
-import { createVideoProject } from "../src/lib/editor/media";
+import { q } from "../src/common/server/db";
+import { createVideoProject } from "../src/modules/media/server/media-import";
 const USAGE = 'usage: agentcut projects list | projects create "Project name" [video1.mp4 ...] | projects batch "Set name" [--brief "..."] video1.mp4 video2.mp4 ...';
 async function main() {
   const [command, name, ...rest] = process.argv.slice(2);
@@ -14,7 +14,7 @@ async function main() {
     if (!files.length) throw new Error(USAGE);
     const project = await createVideoProject(name, files.map(file => ({ file })), { layout: "separate" });
     console.error(`project ${project.id}: ${files.length} videos, running the batch…`);
-    const { runBatch } = await import("../src/lib/batch");
+    const { runBatch } = await import("../src/modules/project/server/batch");
     const result = await runBatch(project.id, { brief, onStage: (s) => console.error(s), onLog: (kind, text) => console.error(`${kind}: ${text}`) });
     console.log(JSON.stringify({ ...project, ...result }, null, 2));
   }

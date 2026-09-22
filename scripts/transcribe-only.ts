@@ -7,12 +7,12 @@
  * --resync also puts the new words back into every clip cut from the source,
  * exactly like the "Re-sync captions" button.
  */
-import { q } from "../src/lib/db";
-import { projectDir } from "../src/lib/config";
-import { isUrl } from "../src/lib/ingest";
-import { ensureTranscript } from "../src/lib/transcribe";
-import { resyncTranscript } from "../src/lib/transcribe/resync";
-import { DEFAULT_MODEL } from "../src/lib/transcribe/whispercpp";
+import { q } from "../src/common/server/db";
+import { projectDir } from "../src/common/server/config";
+import { isUrl } from "../src/modules/project/server/ingest";
+import { ensureTranscript } from "../src/modules/transcription/server/transcribe";
+import { resyncTranscript } from "../src/modules/transcription/server/resync";
+import { DEFAULT_MODEL } from "../src/modules/transcription/server/whispercpp";
 
 async function main() {
   const [id, ...flags] = process.argv.slice(2);

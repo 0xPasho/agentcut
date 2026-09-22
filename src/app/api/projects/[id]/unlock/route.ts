@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { q } from "@/lib/db";
-import { reapDeadJobs, unlockProject } from "@/lib/reaper";
+import { q } from "@/common/server/db";
+import { reapDeadJobs, unlockProject } from "@/modules/project/server/reaper";
 
 export const runtime = "nodejs";
 

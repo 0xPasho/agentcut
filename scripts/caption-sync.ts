@@ -8,9 +8,9 @@
  * across every video is what `captions.syncOffsetMs` is for.
  */
 import { spawnSync } from "node:child_process";
-import { FFMPEG } from "../src/lib/bin";
-import { readEditor } from "../src/lib/editor/store";
-import { readSync, speechMask } from "../src/lib/transcribe/sync";
+import { FFMPEG } from "../src/common/server/bin";
+import { readEditor } from "../src/modules/editor/server/store";
+import { readSync, speechMask } from "../src/modules/transcription/lib/sync";
 
 const STEP = 0.02;
 

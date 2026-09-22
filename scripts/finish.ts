@@ -5,12 +5,12 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { projectDir } from "../src/lib/config";
-import { publishClips } from "../src/lib/editor/store";
-import { q } from "../src/lib/db";
-import { probe as probeFile } from "../src/lib/media";
-import { Transcript, fmt } from "../src/lib/transcript";
-import { buildEdl } from "../src/lib/pipeline/select";
+import { projectDir } from "../src/common/server/config";
+import { publishClips } from "../src/modules/editor/server/store";
+import { q } from "../src/common/server/db";
+import { probe as probeFile } from "../src/modules/media/server/ffmpeg";
+import { Transcript, fmt } from "../src/modules/transcription/lib/transcript";
+import { buildEdl } from "../src/modules/clipping/server/select";
 
 async function main() {
   const id = process.argv[2];

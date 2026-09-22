@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
-import { q } from "@/lib/db";
-import { fileResponse } from "@/lib/httpFile";
-import { isUrl } from "@/lib/ingest";
+import { q } from "@/common/server/db";
+import { fileResponse } from "@/common/server/http-file";
+import { isUrl } from "@/modules/project/server/ingest";
 
 export const runtime = "nodejs";
 

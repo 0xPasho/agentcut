@@ -1,7 +1,7 @@
 import path from "node:path";
 import { NextRequest } from "next/server";
-import { projectDir } from "@/lib/config";
-import { fileResponse } from "@/lib/httpFile";
+import { projectDir } from "@/common/server/config";
+import { fileResponse } from "@/common/server/http-file";
 
 export const runtime = "nodejs";
 

@@ -1,13 +1,13 @@
 import React from "react";
-import { emptySequencePlan } from "../src/lib/plan/schema";
+import { emptySequencePlan } from "../src/modules/plan/types";
 import { SequenceComposition } from "./SequenceComposition";
-import { sequenceFrames } from "../src/lib/sequences";
+import { sequenceFrames } from "../src/modules/editor/lib/sequences";
 import { Composition } from "remotion";
 import "./tailwind.css";
 import { ClipComposition, type ClipProps } from "./ClipComposition";
 import { CARD, CommentCard, commentCardHeight, type CommentCardProps } from "./CommentCard";
-import { Clip } from "../src/lib/edl";
-import { buildTimeMap, clipFrames } from "../src/lib/timeline";
+import { Clip } from "../src/modules/editor/types";
+import { buildTimeMap, clipFrames } from "../src/modules/editor/lib/timeline";
 
 const PLACEHOLDER: ClipProps = {
   clip: Clip.parse({ id: "preview", title: "Preview", start: 0, end: 10, words: [] }),

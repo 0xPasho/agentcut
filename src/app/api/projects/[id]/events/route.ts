@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
-import { q } from "@/lib/db";
-import { jobState } from "@/lib/job-state";
-import { reapDeadJobs } from "@/lib/reaper";
+import { q } from "@/common/server/db";
+import { jobState } from "@/modules/project/lib/job-state";
+import { reapDeadJobs } from "@/modules/project/server/reaper";
 
 export const runtime = "nodejs";
 export const maxDuration = 3600;

@@ -1,4 +1,4 @@
-import { PreferencesSettings } from "@/components/settings/preferences-settings";
+import { PreferencesSettings } from "@/modules/settings/preferences-settings-view";
 
 export const dynamic = "force-dynamic";
 

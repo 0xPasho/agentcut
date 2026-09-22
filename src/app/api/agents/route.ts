@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { detectHarnesses } from "@/lib/agent/detect";
-import { refreshAll } from "@/lib/agent/models/cache";
-import { applySelection, selectionOverview, SelectionRequest } from "@/lib/agent/selection";
+import { detectHarnesses } from "@/modules/agent/server/detect";
+import { refreshAll } from "@/modules/agent/server/model-cache";
+import { applySelection, selectionOverview, SelectionRequest } from "@/modules/agent/server/selection";
 export const runtime = "nodejs";
 // Discovery spawns four CLIs; the default serverless budget would cut it short.
 export const maxDuration = 120;

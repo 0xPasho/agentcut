@@ -1,8 +1,8 @@
 /** Headless interface to the SAME editor as the UI. No web server required. */
 import fs from "node:fs/promises";
-import { runReportedTool, recordActivity } from "../src/lib/activity-log";
-import { formatActivity } from "../src/lib/activity";
-import { sendMessage } from "../src/lib/editor/conversation";
+import { runReportedTool, recordActivity } from "../src/modules/project/server/activity-log";
+import { formatActivity } from "../src/modules/project/lib/activity";
+import { sendMessage } from "../src/modules/agent/server/conversation";
 async function main() {
   const [id, mode, ...rest] = process.argv.slice(2);
   if (!id) throw new Error("usage: tsx scripts/edit.ts <projectId> [read | call request.json | ask instruction]");

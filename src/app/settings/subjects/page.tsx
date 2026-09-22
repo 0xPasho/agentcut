@@ -1,4 +1,4 @@
-import { SubjectsSettings } from "@/components/settings/subjects-settings";
+import { SubjectsSettings } from "@/modules/settings/subjects-settings-view";
 
 export const dynamic = "force-dynamic";
 

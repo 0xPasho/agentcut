@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
-import { q } from "@/lib/db";
-import { Edl } from "@/lib/edl";
-import { clipThumb, thumbTarget } from "@/lib/thumbs";
-import { fileResponse } from "@/lib/httpFile";
+import { q } from "@/common/server/db";
+import { Edl } from "@/modules/editor/types";
+import { clipThumb, thumbTarget } from "@/modules/project/server/thumbs";
+import { fileResponse } from "@/common/server/http-file";
 
 export const runtime = "nodejs";
 

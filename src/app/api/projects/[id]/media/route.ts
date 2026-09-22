@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { importProjectMedia } from "@/lib/editor/media";
-import { RevisionConflict } from "@/lib/editor/store";
+import { importProjectMedia } from "@/modules/media/server/media-import";
+import { RevisionConflict } from "@/modules/editor/server/store";
 export const runtime = "nodejs";
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {

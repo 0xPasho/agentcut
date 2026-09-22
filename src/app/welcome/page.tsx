@@ -1,5 +1,5 @@
-import { Welcome } from "@/components/welcome";
-import { onboardingState, ONBOARDING_QUESTIONS } from "@/lib/onboarding";
+import { Welcome } from "@/modules/onboarding/welcome-view";
+import { onboardingState, ONBOARDING_QUESTIONS } from "@/modules/onboarding/server/onboarding";
 
 export const dynamic = "force-dynamic";
 

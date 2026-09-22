@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { searchImages, adoptHit, type ImageHit } from "@/lib/search";
+import { searchImages, adoptHit, type ImageHit } from "@/modules/media/server/search";
 
 export const runtime = "nodejs";
 

@@ -6,7 +6,7 @@ project state. Visual polish must preserve that equivalence; a UI-only editing f
 is incomplete. See [the shared-editor contract](./SPEC.md#core-requirement-one-editor-two-interfaces).
 
 agentcut follows Apple's Liquid Glass, in the dark palette we settled on. Everything is
-built from the shadcn primitives in `src/components/ui/`, so a new screen is on-style by
+built from the shadcn primitives in `src/common/ui/`, so a new screen is on-style by
 using `<Glass>`, `<Button>`, `<Card>`.
 
 **No hand-written CSS.** Tailwind utility classes only. The exceptions are the theme token

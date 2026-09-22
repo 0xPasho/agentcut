@@ -7,7 +7,7 @@
  * The same reading the `style.audit` tool returns, printed. Every video must have been
  * rendered — `rendered.json` is what it reads.
  */
-import { auditStyle } from "../src/lib/editor/style-check";
+import { auditStyle } from "../src/modules/render/server/style-check";
 
 async function main() {
   const [projectId, only] = process.argv.slice(2);

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { readConversation } from "@/lib/editor/conversation";
+import { readConversation } from "@/modules/agent/server/conversation";
 export const runtime = "nodejs";
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

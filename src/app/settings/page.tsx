@@ -1,4 +1,4 @@
-import { SettingsOverview } from "@/components/settings/overview";
+import { SettingsOverview } from "@/modules/settings/overview-view";
 
 export const dynamic = "force-dynamic";
 

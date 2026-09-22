@@ -1,6 +1,6 @@
 /** Headless access to the SAME templates as the editor panel and the agent tools. */
-import { executeEditorTool } from "../src/lib/editor/tools";
-import { listTemplates, getTemplate } from "../src/lib/templates/registry";
+import { executeEditorTool } from "../src/modules/editor/server/tools";
+import { listTemplates, getTemplate } from "../src/modules/templates/server/registry";
 
 const USAGE = `usage:
   templates list

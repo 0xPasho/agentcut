@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
-import { renderedClips } from "@/lib/clipFiles";
-import { fileResponse } from "@/lib/httpFile";
+import { renderedClips } from "@/modules/project/server/clip-files";
+import { fileResponse } from "@/common/server/http-file";
 
 export const runtime = "nodejs";
 

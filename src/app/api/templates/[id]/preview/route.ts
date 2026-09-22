@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
-import { getTemplate } from "@/lib/templates/registry";
-import { templatePreviewSvg } from "@/lib/templates/preview";
-import { aspectOf } from "@/lib/templates/resolve";
-import { readEditor } from "@/lib/editor/store";
+import { getTemplate } from "@/modules/templates/server/registry";
+import { templatePreviewSvg } from "@/modules/templates/lib/preview";
+import { aspectOf } from "@/modules/templates/lib/resolve";
+import { readEditor } from "@/modules/editor/server/store";
 export const runtime = "nodejs";
 
 /**

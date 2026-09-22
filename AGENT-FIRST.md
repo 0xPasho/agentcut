@@ -105,10 +105,10 @@ uses, and everything the agent decides is inspectable and editable in the UI.
 - **M3 (conversation + MCP + SSE): implemented 2026-09-17.** `messages` table; `sendMessage` records
   the turn, runs the agent with `conversation.json` + `context.json`, records the reply; web panel is a
   thread; CLI `ask` and the brief write to the same thread. `agentcut mcp` serves every editor tool over
-  stdio (`src/lib/mcp.ts`, no SDK dependency). The per-project SSE stream already carried revision and
+  stdio (`src/modules/agent/server/mcp.ts`, no SDK dependency). The per-project SSE stream already carried revision and
   job status, so the web reflects agent work without new plumbing.
 - **M4 (raw-video batch, status, approval): implemented 2026-09-17.** `createVideoProject(…, { layout: "separate" })`
-  makes one video per file; `runBatch` (`src/lib/batch.ts`) records the brief, transcribes each media into
+  makes one video per file; `runBatch` (`src/modules/project/server/batch.ts`) records the brief, transcribes each media into
   `<project>/transcripts/<mediaId>/` and puts words on its shots, writes the shared plan, then plans and applies
   each video with 2 workers, then closes the set; failures are logged, left pending with `plan.reasons.error`,
   and a re-run only touches pending videos. Rendering without a list covers approved videos once anything is
@@ -116,15 +116,15 @@ uses, and everything the agent decides is inspectable and editable in the UI.
   approved". CLI: `agentcut projects batch`. Tools: `project.batch`, `media.transcribe`.
 - **M5 (agentic editor: context, frames, authorship, observations): implemented 2026-09-17.** Messages carry
   the open sequence, selection and playhead; "Ask the agent about this" in the clip context menu; every edit an
-  agent creates is stamped `agent:<messageId>` (`src/lib/editor/authorship.ts`) and shown as such on the
+  agent creates is stamped `agent:<messageId>` (`src/modules/editor/lib/authorship.ts`) and shown as such on the
   timeline and in the inspector ("why is this here"). The editing agent gets `frames/`, `transcript.txt` with
   times and `signals.json` per source (cached). The observation bank
-  (`src/lib/observations.ts`) records a person's changes to generated work and caption fixes from the HTTP
+  (`src/modules/rules/server/observations.ts`) records a person's changes to generated work and caption fixes from the HTTP
   editor only; every agent reads it as soft context; "Review my preferences" asks an agent for proposals
   that are saved only on acceptance. Quick actions are four preset messages.
 - **Decision 29 (the agent sees rendered output, not the footage): implemented 2026-09-21.** `frames/` now
   holds stills of the *finished* video, rendered through the same `SequenceComposition` the preview and the
-  export use (`src/lib/editor/frames.ts`): 360 on the short side — 640×360 landscape, 360×640 vertical, since
+  export use (`src/modules/render/server/frames.ts`): 360 on the short side — 640×360 landscape, 360×640 vertical, since
   "360p" alone does not say which — every 2s, up to 32 frames, past which the cadence widens so a long video
   is covered coarsely rather than truncated. Captions, titles, images, crops, layer placement and the blend
   part-way through a transition are in the picture. Measured on this machine: 5.3s for a 17s video and 5.4s
@@ -135,7 +135,7 @@ uses, and everything the agent decides is inspectable and editable in the UI.
   Switched off, empty, already being sampled elsewhere, no browser yet, or a failed render all fall back to
   the old source frames, and `frames.json` plus the prompt say which of the two the agent is holding and what
   they cannot show. Not done: the clipping/selection agent and the batch flow still use source frames
-  (`src/lib/pipeline/`); they choose *which* footage to use, where the output does not exist yet, so the
+  (`src/modules/clipping/`); they choose *which* footage to use, where the output does not exist yet, so the
   decision does not obviously apply to them.
 - **M6 (templates strength + onboarding): implemented 2026-09-17.** `extends`, `captionLook` (five looks),
   `brand` kit (also on glossary subjects), `intro`/`outro` image bookends on the main track, `variants` per
@@ -144,13 +144,13 @@ uses, and everything the agent decides is inspectable and editable in the UI.
   glossary entries; skippable once. Not done: rendered thumbnails (schematic instead), transitions and SFX
   (phase 2 as decided). **Superseded 2026-09-20** by decisions 58-62: the card became the full-screen
   `/welcome` route, the skip became reversible, and the interview became a shared tool the agent asks
-  through too (`src/lib/onboarding.ts`, `src/components/welcome.tsx`, `src/components/onboarding-chat.tsx`,
-  `tests/onboarding.test.ts`).
+  through too (`src/modules/onboarding/server/onboarding.ts`, `src/modules/onboarding/welcome-view.tsx`, `src/modules/onboarding/components/onboarding-chat.tsx`,
+  `src/modules/onboarding/__tests__/onboarding.test.ts`).
 - **Phase 1 complete.**
 - **Phase 2 implemented 2026-09-17:** video in the library (`workspace/library/video`, uploads, drop-in,
   `media.import` by asset id with `place`, library videos placed from the browser or by drag); template
   bookends from library video; the rule action "add an asset at start/end" is `then.overrides.intro/outro`;
-  packs (`src/lib/packs/`, `PACKS.md`: manifest, import by path or URL with an untrusted preview, export,
+  packs (`src/modules/packs/server/packs/`, `PACKS.md`: manifest, import by path or URL with an untrusted preview, export,
   origin recorded, removal); quick actions from packs in the thread; sound on punch-ins
   (`rhythm.punch.sfx`); per-message undo of an agent turn (`conversation.undo`, inverse operations stored
   on the message). Deferred, and why: transitions between shots need renderer work; proposal mode as a
@@ -219,7 +219,7 @@ uses, and everything the agent decides is inspectable and editable in the UI.
 - **Keyframed layer transforms: implemented 2026-09-21.** The schema for these landed and then
   nothing read it: `item.keyframes` was a field the app wrote nowhere. A layer now moves, grows,
   turns, fades and changes its level across the shot it lives on, resolved in one place
-  (`src/lib/keyframes.ts`) that the timeline, the Player and the export all go through, with the
+  (`src/modules/editor/lib/keyframes.ts`) that the timeline, the Player and the export all go through, with the
   schema's five named curves — `linear`, `ease`, `in`, `out`, `hold` — actually implemented,
   because a pack is data and may never ship code. `t` stays what the schema said it was: seconds
   from the item's own first frame, so a move survives being dragged along the timeline, dropped on
@@ -244,7 +244,7 @@ uses, and everything the agent decides is inspectable and editable in the UI.
 
 Milestones, in order: M1 rules + glossary + preferences → M2 plan + panel → M3 conversation + MCP + SSE → M4 batch → M5 editor context + frames + observations → M6 templates + onboarding.
 
-1. `src/lib/rules/`: schema (zod) with `stage`, registry per level (workspace, project, sequence), evaluation (agent judges `when`, host executes `then` through `template.apply` / `project.edit`), marker `by: "rule:<id>"`, re-apply idempotence.
+1. `src/modules/rules/`: schema (zod) with `stage`, registry per level (workspace, project, sequence), evaluation (agent judges `when`, host executes `then` through `template.apply` / `project.edit`), marker `by: "rule:<id>"`, re-apply idempotence.
 2. Glossary and `preferences.md` at workspace and project level; glossary feeds whisper prompt, polish and captions.
 3. Tags: project/source tags by the human, per-clip tags by the agent in `clips.json`, library asset tags at import. All editable in the UI.
 4. Plans: project plan (brief, template, rules, caption style, brand) and sequence beat sheet bound to timeline ranges. Tools `plan.read` / `plan.patch` / `plan.regenerate`. Plan panel replaces the Templates panel.
@@ -262,7 +262,7 @@ Milestones, in order: M1 rules + glossary + preferences → M2 plan + panel → 
 **Phase 2 — video in library, packs**
 1. `kind: "video"` in library and asset browser; rule action "add asset at start/end" for video, image and audio.
 2. Pack format: `pack.json` + `templates/` + `rules/` + `glossary` + `assets/`. `pack.import` (path or URL), `pack.export`, origin recorded, untrusted display before install.
-3. HTTP asset/pack provider in `src/lib/search`.
+3. HTTP asset/pack provider in `src/modules/media/server/search`.
 4. Quick actions as saved prompts inside packs.
 5. Template transitions and SFX on punches. *SFX on punches done (`rhythm.punch.sfx`). Renderer
    transitions between shots done 2026-09-21 as the item-level `item.transition`; a template

@@ -11,7 +11,7 @@ batch with an `expectedRevision`. A successful batch increments the revision onc
 a stale batch fails with a conflict and does not change the project. `edl.json` is a
 derived export, never the authority for a project-ID render.
 
-`src/lib/editor/operations.ts` owns the operation schemas, validation, immutable reducer,
+`src/modules/editor/lib/operations.ts` owns the operation schemas, validation, immutable reducer,
 trim behavior, and UI adapter. Both interfaces use these operations:
 
 | Operation | Behavior |
@@ -35,7 +35,7 @@ All seven edit types are supported: silence, punch, emphasis, text, image, sound
 and music.
 
 Picture and sound are separate tracks. A layer is still a plain z-order integer in the
-EDL, and both interfaces write the same `layer`; `src/lib/editor/tracks.ts` is how that
+EDL, and both interfaces write the same `layer`; `src/modules/editor/lib/tracks.ts` is how that
 number is read. A layer carrying nothing but music, sound effects or hidden footage audio
 is an audio track: it is drawn under the picture, named "Audio" rather than "Track 3",
 and every gesture that hands it a sound — a drop, a drag, `placeAsset`, the default layer
@@ -59,7 +59,7 @@ would invalidate and one write is one undo. `t` is seconds from the item's own f
 frame, which is the only time base that survives moving the shot, changing its layer or
 giving it a transition — and the only one a canvas scene has at all. Every animatable
 field is optional and an absent one keeps the static `transform` (or `volume`)
-underneath; `src/lib/keyframes.ts` resolves the list for the timeline, the Player and the
+underneath; `src/modules/editor/lib/keyframes.ts` resolves the list for the timeline, the Player and the
 export alike. The operation refuses out-of-order or duplicate times, a keyframe that
 animates nothing, and one past the end of the shot, each with the number in the message;
 it also refuses `item.place` changing a fixed value the keyframes animate, since that
@@ -74,13 +74,13 @@ exact length — but none of its captions, titles or pictures, and mutes the ori
 about rendering changes: a hidden item's visuals are hidden and its audio still plays. The
 timeline draws such an item as a sound, with the waveform of the file behind it.
 
-A source's loudness envelope is computed by ffmpeg on this machine (`src/lib/peaks.ts`,
+A source's loudness envelope is computed by ffmpeg on this machine (`src/modules/media/server/peaks.ts`,
 cached under `<project>/cache/peaks-<mediaId>.json`, served by
 `GET /api/projects/<id>/media/<mediaId>/peaks`). A long stream cannot be decoded in the
 browser, which is what the library's small audio assets still do. A file with no audio track
 returns an empty envelope rather than an error.
 
-Undo and redo are `invertOperations` in `src/lib/editor/history.ts`: the inverse of a batch,
+Undo and redo are `invertOperations` in `src/modules/editor/lib/history.ts`: the inverse of a batch,
 expressed in these same operations and sent through the same save path. Nothing in the UI
 writes a remembered EDL back over the project. Crop keyframes, layer motion keyframes, split rectangles, caption settings, transcript words, clip
 metadata, and output settings are accessible to both interfaces. The UI's **All clip
@@ -116,13 +116,13 @@ and must reconsider its requested changes. It must not blindly replay a stale fu
 The playhead is deliberately not React state. The player reports a frame thirty times a
 second, and re-rendering the editor on each one costs tens of milliseconds — enough to
 starve the player's own loop, which then drags the video element back to catch up and
-replays the audio it had already played. `src/lib/editor/playhead.ts` holds the position
+replays the audio it had already played. `src/modules/editor/hooks/playhead.ts` holds the position
 in a small store: handlers read it without subscribing, and only the running time, the
 playhead marks, the ruler's slider value and the lit transcript word follow it.
 
 ## Agent and headless tools
 
-`src/lib/editor/tools.ts` exposes project-scoped tools used by the UI and agent transport:
+`src/modules/editor/server/tools.ts` exposes project-scoped tools used by the UI and agent transport:
 
 - `project.read`, `project.edit`, `project.render`
 - `project.status` (what the project is doing now: status, the running job with its stage and
@@ -163,7 +163,7 @@ playhead marks, the ruler's slider value and the lit transcript word follow it.
 - `scripts/caption-sync.ts PROJECT_ID` measures whether the captions are on the words: it
   marks what the footage's own sound calls speech, slides the transcript against it, and
   reports the shift that agrees best. A shift inside a frame is nothing; a consistent one
-  across every video is what `captions.syncOffsetMs` is for. `src/lib/transcribe/sync.ts`
+  across every video is what `captions.syncOffsetMs` is for. `src/modules/transcription/lib/sync.ts`
   is the same reading as a function.
 - `sequence.derive` (copy a video into another aspect as an editable sequence)
 - `template.plan` (a dry run over the transcript), `template.apply` (commits it)
@@ -206,16 +206,16 @@ An edit takes minutes, so no interface is left with a spinner. Every run reports
 is doing line by line — the tool it is calling and on what, the stage, how it went — and
 all of it lands in one place, the project's `events` table:
 
-- `src/lib/activity.ts` turns a tool call into a line a person can read (`project.edit ·
+- `src/modules/project/lib/activity.ts` turns a tool call into a line a person can read (`project.edit ·
   3 changes · item.patch ×2, item.place`), announced **before** the call runs.
-- `src/lib/activity-log.ts` runs an editor tool and writes that line to the project's feed,
+- `src/modules/project/server/activity-log.ts` runs an editor tool and writes that line to the project's feed,
   whoever started it: the UI (`via: "web"`), a terminal agent (`"mcp"`), the CLI (`"cli"`).
   Reads and status polls stay out of the feed so it does not fill with someone's polling.
 - The web streams it over SSE (`/api/projects/[id]/events`). `useProjectStream` keeps one
   connection per project, so every surface reads the same trail. The project page shows it
   once, in the agent panel: a second raw copy of the same feed below it was noise, not a
   second view.
-  The panel is a chat: `src/lib/thread.ts` interleaves the conversation with the feed by
+  The panel is a chat: `src/modules/agent/lib/thread.ts` interleaves the conversation with the feed by
   time (splitting on job id, and on a gap over three minutes), so each turn shows what
   was asked, the steps that answered it and the reply. Steps collapse to one line —
   `12 steps · 1:48` — and open into `AgentLog`, which follows the newest line only while
@@ -228,8 +228,8 @@ all of it lands in one place, the project's `events` table:
 
 ### The chat
 
-`src/components/chat.tsx` is the chat itself — thread, composer, dropped files, harness
-picker — and knows nothing about projects. A `ChatController` (`src/lib/use-chat.ts`) is
+`src/modules/agent/components/chat.tsx` is the chat itself — thread, composer, dropped files, harness
+picker — and knows nothing about projects. A `ChatController` (`src/modules/agent/hooks/use-chat.ts`) is
 the only difference between surfaces:
 
 - `useProjectChat` is the panel in the editor: the project's shared thread, its live
@@ -251,7 +251,7 @@ still shows the picture next to what was asked.
 A turn's run directory gets `frames/`, `transcript.txt` and `signals.json` for the open
 sequence. The frames are stills of the **finished video**, not of the footage: they come
 out of the same `SequenceComposition` the Player previews and the export writes
-(`src/lib/editor/frames.ts`), so captions, titles, images, crops, layer placement and the
+(`src/modules/render/server/frames.ts`), so captions, titles, images, crops, layer placement and the
 blend part-way through a transition are all in the picture. 360 on the short side, every
 2s, capped at 32 frames — past that the cadence widens, because an agent that has seen
 the first minute of a four-minute video and thinks it has seen the video is exactly the
@@ -297,7 +297,7 @@ alone — the transcript belongs to the primary source.
 
 ## Transcription
 
-`src/lib/transcribe/` owns the words every caption, template and clip selection is built
+`src/modules/transcription/server/transcribe/` owns the words every caption, template and clip selection is built
 from. `ensureTranscript` is the single entry point: it reuses `transcript.json` only when
 it came from the current engine, so improving the recogniser re-runs old projects instead
 of silently keeping their worse words. It writes through a temporary file and renames, so
@@ -323,7 +323,7 @@ overrides the stored setting; a test run is `off` unless it asks otherwise, and
   replace, and a rewrite that keeps too little is refused. `AGENTCUT_TRANSCRIPT_POLISH=0`
   turns it off.
 
-A caption's own timing lives in `src/lib/timeline.ts` (`lineAt`, `activeWordIndex`), which
+A caption's own timing lives in `src/modules/editor/lib/timeline.ts` (`lineAt`, `activeWordIndex`), which
 the preview, the export and the tests all share.
 
 `template.apply` is not a second mutation path. It plans against the transcript, resolves
@@ -404,7 +404,7 @@ thing and it does not work: past the end of its own window the element's readySt
 dropped below HAVE_FUTURE_DATA, and Remotion answers that by calling `.load()` on it,
 which resets the element and discards the frame it was being kept for.
 
-The other half is `src/lib/httpFile.ts`, which serves every file with an `ETag` and a
+The other half is `src/common/server/http-file.ts`, which serves every file with an `ETag` and a
 `Last-Modified` built from its size and date. Without a validator the browser's media
 cache may not keep a byte of a range response, so each of those elements re-read the
 header from scratch. Size and date change whenever the file does, so a re-ingested source
@@ -414,7 +414,7 @@ whole rather than spliced onto a cached piece of a different file.
 Nor does serving a byte range cost a read of the project any more. `readEditor` validates
 the whole edit list, which on a four-hour project measured two to four seconds — per
 range, and a `<video>` asks for many of them before its first frame. `mediaFile` in
-`src/lib/editor/store.ts` reads the one field a file server needs out of the same
+`src/modules/editor/server/store.ts` reads the one field a file server needs out of the same
 authoritative `edl` column and keeps it for as long as that revision stands. The same
 ranges now answer in tens of milliseconds.
 
@@ -425,7 +425,7 @@ A project runs one job at a time — analyze, edit, batch, transcribe or render 
 executing: the web server, or the MCP server in the owner's terminal.
 
 A process can die without writing the ending, and the row would then hold the lock
-forever. `src/lib/reaper.ts` decides liveness from facts, not elapsed time: the row
+forever. `src/modules/project/server/reaper.ts` decides liveness from facts, not elapsed time: the row
 records the owner's pid and a per-run boot id, and every process is local, so
 `kill(pid, 0)` answers whether the owner still exists. A heartbeat every 15s is only a
 backstop for a recycled pid. Dead owners are reaped whenever a project is read or a job
@@ -451,7 +451,7 @@ project back — it never took it, and doing so would clear the status of a job 
 alive and holding it. "Stop and unlock" cancels it too, since the drain checks
 `ownsJob` between sources. Rejected: taking the lock (locks the person out of the
 footage they just added), and queueing behind it (still deadlocks the agent, and a long
-render starves the words). See `src/lib/transcribe/auto.ts` and
+render starves the words). See `src/modules/transcription/server/auto.ts` and
 [SEQUENCES.md](./SEQUENCES.md#newly-imported-sources-transcribe-themselves).
 
 `POST /api/projects/:id/unlock`, the panel's **Stop and unlock** button and the
@@ -523,5 +523,5 @@ What sits inside a layer moves through `item.patch` in the same way. A title car
 optional free centre (`x`/`y`, 0..1 of the frame) that overrides its `position` preset, a
 picture already had `x`/`y`, and the caption block has `captions.positionY`. The canvas
 writes those fields when a title, picture or the captions are dragged, through the shared
-`moveOverlay` in `src/lib/editor/canvas.ts`; the agent sets the same fields directly, and
+`moveOverlay` in `src/modules/editor/lib/canvas.ts`; the agent sets the same fields directly, and
 the Selected panel shows them as sliders either way.

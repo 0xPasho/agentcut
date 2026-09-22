@@ -1,8 +1,8 @@
 import React from "react";
 import { AbsoluteFill, Sequence } from "remotion";
-import type { MediaSource, VideoSequence } from "../src/lib/edl";
-import { sequenceFrames } from "../src/lib/sequences";
-import { animatedFields, fieldAt } from "../src/lib/keyframes";
+import type { MediaSource, VideoSequence } from "../src/modules/editor/types";
+import { sequenceFrames } from "../src/modules/editor/lib/sequences";
+import { animatedFields, fieldAt } from "../src/modules/editor/lib/keyframes";
 import { ClipComposition } from "./ClipComposition";
 import { Layer } from "./Layer";
 import { Transition } from "./Transition";

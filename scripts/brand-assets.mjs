@@ -276,7 +276,7 @@ const SVGS = [
   ["public/brand/icon-flat-light.svg", iconFlat(full, "#141416", "#f2efe9")],
   // Next picks this up for the browser tab. Compact, because tabs render at 16px.
   ["src/app/icon.svg", iconFlat(compact)],
-  ["src/components/agentcut-mark.tsx", component()],
+  ["src/common/components/agentcut-mark.tsx", component()],
 ];
 
 /** Home-screen and store sizes. The small end uses compact for the same reason. */

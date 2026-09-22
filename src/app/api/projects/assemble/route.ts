@@ -1,17 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createVideoProject, type MediaInput } from "@/lib/editor/media";
+import { createVideoProject, type MediaInput } from "@/modules/media/server/media-import";
+import { ASPECTS } from "@/modules/project/data";
 export const runtime = "nodejs";
 
-/**
- * The shapes the home screen offers, by name. Choosing one is a decision about the video
- * being made; without one the project takes the shape of its first source, as before.
- */
-const ASPECTS: Record<string, { width: number; height: number; fps: number }> = {
-  "9:16": { width: 1080, height: 1920, fps: 30 },
-  "4:5": { width: 1080, height: 1350, fps: 30 },
-  "1:1": { width: 1080, height: 1080, fps: 30 },
-  "16:9": { width: 1920, height: 1080, fps: 30 },
-};
 const outputFor = (aspect: string) => ASPECTS[aspect] ?? null;
 export async function POST(req: NextRequest) {
   try {

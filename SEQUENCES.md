@@ -121,8 +121,8 @@ Empty sequences can be saved but cannot be exported.
 
 There is a third consumer of that composition besides the Player and the export: the
 editing agent. Before a turn, the open sequence is sampled to low-resolution stills
-(`src/lib/editor/frames.ts`) so the agent judges the video a viewer would see rather
-than the raw footage. `openRenderServe` in `src/lib/render.ts` is the one place that
+(`src/modules/render/server/frames.ts`) so the agent judges the video a viewer would see rather
+than the raw footage. `openRenderServe` in `src/modules/render/server/render.ts` is the one place that
 decides how a source, a piece of media and an asset become URLs, and both the export and
 the sampler go through it — a second answer to that question would be a second renderer,
 and the two would drift into showing different videos. See
@@ -137,7 +137,7 @@ somebody asked — and captions, the glossary, silence cuts, beats and every age
 judgement that reads text were blind on exactly the footage just added.
 
 Every route in lands in `importProjectMedia` or `createVideoProject`
-(`src/lib/editor/media.ts`): the home composer's drop and pick, `media.import`,
+(`src/modules/media/server/media-import.ts`): the home composer's drop and pick, `media.import`,
 `media.upload`, a library video placed into a project, the batch flow, the CLI.
 Each writes a `transcription` record onto the media **in the same atomic batch that
 registers it**, so a source is never a video that merely happens to have no words.
@@ -151,10 +151,10 @@ before this parses as; reading one persists nothing.
 row with status `running` is that lock. Transcription is a `transcribe-media` job
 written with status **`background`**: `q.activeJob` does not see it, so a person can
 keep editing the video they just imported and a render or an agent run can start;
-`q.unfinishedJobs` does see it, so `src/lib/reaper.ts` heals it from pid liveness
+`q.unfinishedJobs` does see it, so `src/modules/project/server/reaper.ts` heals it from pid liveness
 like every other job. Nothing waits on it and it waits on nothing, so an agent that
 imports a source inside its own edit run cannot deadlock against the lock it holds.
-The reasoning and what was rejected are in `src/lib/transcribe/auto.ts` and
+The reasoning and what was rejected are in `src/modules/transcription/server/auto.ts` and
 [EDITOR.md](./EDITOR.md#jobs-and-the-project-lock).
 
 **Opt-out, and its default.** `media.transcription.set` stores `audio`, `always` or
@@ -228,7 +228,7 @@ all. Nothing is trimmed here, so a transition is exactly as reversible as it loo
 
 Audio follows the picture. During an overlap both shots are already sounding, and two
 takes at once is louder than either, so each end of a joint gets an equal-power ramp
-(`crossfadeGain` in `src/lib/sequences.ts`): the incoming shot rises as a sine, the
+(`crossfadeGain` in `src/modules/editor/lib/sequences.ts`): the incoming shot rises as a sine, the
 outgoing falls as a cosine of the same progress, and the joint holds its loudness
 rather than dipping in the middle the way a linear pair does. A template's transition
 sting (`sound.transitions`) is a separate sound on its own layer and is untouched by
@@ -317,7 +317,7 @@ because a pack is data and may never ship code, so the only curves that exist ar
 ones spelled in the schema. They are quadratic: `ease` is the punch-in's own
 `inOut(quad)`, which is the shape this editor has already agreed reads as arriving
 rather than jumping. `hold` does not travel at all; the value steps on the frame the
-next keyframe starts. `src/lib/keyframes.ts` is the whole resolver, and `sequenceFrames`
+next keyframe starts. `src/modules/editor/lib/keyframes.ts` is the whole resolver, and `sequenceFrames`
 plus `SequenceComposition` carry it identically to the timeline, the Remotion Player and
 the export — an animation that only looked right in the preview would be a failure.
 
@@ -332,7 +332,7 @@ of it. Nobody types a number to get one.
 
 ### Ducking, and which one to reach for
 
-`src/lib/ducking.ts` is untouched and stays where it is. It is *automatic* and *local*:
+`src/modules/editor/lib/ducking.ts` is untouched and stays where it is. It is *automatic* and *local*:
 a `music` edit with `duck: true` is lowered under the words of the clip it is inside,
 computed from word timestamps rather than from audio. A `volume` keyframe is the other
 thing — a gain envelope a person or an agent drew by hand, on the item as a whole.
@@ -405,7 +405,7 @@ the agent reads, seeded with what the layer is doing now. The placement panel ma
 fields the motion decides, so the refusal is never the first anyone hears of it, and
 offers the only two answers that are true of an animated field: pin the number just typed
 at the playhead, or stop animating that one field. Both are ordinary `item.keyframes`
-edits — `setKeyframe` and `clearField` in `src/lib/editor/motion.ts` — so a way out of a
+edits — `setKeyframe` and `clearField` in `src/modules/editor/lib/motion.ts` — so a way out of a
 refusal is not a way around the operation.
 
 A keyframe's `by` is read out rather than typed in, in **All item properties** as

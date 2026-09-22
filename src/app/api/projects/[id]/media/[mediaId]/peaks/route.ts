@@ -1,5 +1,5 @@
-import { readEditor } from "@/lib/editor/store";
-import { mediaPeaks } from "@/lib/peaks";
+import { readEditor } from "@/modules/editor/server/store";
+import { mediaPeaks } from "@/modules/media/server/peaks";
 
 export const runtime = "nodejs";
 

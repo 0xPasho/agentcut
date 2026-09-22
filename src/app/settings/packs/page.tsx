@@ -1,4 +1,4 @@
-import { PacksSettings } from "@/components/settings/packs-settings";
+import { PacksSettings } from "@/modules/settings/packs-settings-view";
 
 export const dynamic = "force-dynamic";
 

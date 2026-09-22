@@ -1,11 +1,11 @@
 import React, { useMemo } from "react";
 import { AbsoluteFill, Audio, Easing, Img, Sequence, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
-import type { Clip, CropKeyframe, Edit, Region } from "../src/lib/edl";
-import { buildTimeMap, isCut, mapCrop, mapWindow, mapWords, srcToOut } from "../src/lib/timeline";
-import { duckedVolume, speechSpans } from "../src/lib/ducking";
-import { crossfadeGain, type AudioFade } from "../src/lib/sequences";
+import type { Clip, CropKeyframe, Edit, Region } from "../src/modules/editor/types";
+import { buildTimeMap, isCut, mapCrop, mapWindow, mapWords, srcToOut } from "../src/modules/editor/lib/timeline";
+import { duckedVolume, speechSpans } from "../src/modules/editor/lib/ducking";
+import { crossfadeGain, type AudioFade } from "../src/modules/editor/lib/sequences";
 import { Captions } from "./Captions";
-import { emWidth, fitScale } from "../src/lib/text-fit";
+import { emWidth, fitScale } from "../src/common/lib/text-fit";
 import { VideoRegion } from "./VideoRegion";
 
 /** Seconds a punch-in takes to reach full scale, and to come back. */

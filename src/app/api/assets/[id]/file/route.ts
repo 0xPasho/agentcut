@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
-import { q } from "@/lib/db";
-import { toAbs } from "@/lib/assets";
-import { fileResponse } from "@/lib/httpFile";
+import { q } from "@/common/server/db";
+import { toAbs } from "@/modules/media/server/assets";
+import { fileResponse } from "@/common/server/http-file";
 
 export const runtime = "nodejs";
 
