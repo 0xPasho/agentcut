@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useId, useMemo, useState } from "react";
-import { Compass, Image as ImageIcon, Loader2, Save, Sparkles, Wand2 } from "lucide-react";
+import { Compass, Crop, Image as ImageIcon, Loader2, Save, Sparkles, Wand2 } from "lucide-react";
 import { api, type AssetSummary } from "@/lib/client";
 import type { TemplateRecord, VideoTemplate } from "@/lib/templates/schema";
 import type { SlotValue, TemplatePlan } from "@/lib/templates/plan";
@@ -31,6 +31,10 @@ const ALL_SOURCES = ["slot", "brand", "project", "frame", "web"];
 const HOOK_LABELS: Record<string, string> = {
   sticky: "Stays on screen the whole video", intro: "Opening card only", off: "No hook",
 };
+const FRAMING_LABELS: Record<string, string> = {
+  source: "Leave each shot's own framing", crop: "Centre of the frame", split: "Screen and person, stacked",
+};
+const CAMERA_LABELS: Record<string, string> = { top: "Person on top", bottom: "Person underneath" };
 const MODE_LABELS: Record<string, string> = {
   auto: "Only where a sentence names something", alternate: "Every other sentence",
   every: "Every sentence that can be illustrated", off: "No pictures",
@@ -45,6 +49,7 @@ const asNumber = (v: number | readonly number[]) => (Array.isArray(v) ? v[0] : (
 
 type Overrides = {
   captionLook?: string;
+  layout: Pick<VideoTemplate["layout"], "mode" | "cameraPct" | "cameraPosition" | "camera" | "screen">;
   hook: Pick<VideoTemplate["hook"], "mode">;
   images: Pick<VideoTemplate["images"], "mode" | "density" | "minSentenceGap" | "durationSec" | "widthPct" | "logoWidthPct" | "style" | "sources">;
   rhythm: { silence: { enabled: boolean }; punch: { enabled: boolean; perMinute: number } };
@@ -52,6 +57,10 @@ type Overrides = {
 
 const overridesFrom = (template: VideoTemplate): Overrides => ({
   ...(template.captionLook ? { captionLook: template.captionLook } : {}),
+  layout: {
+    mode: template.layout.mode, cameraPct: template.layout.cameraPct, cameraPosition: template.layout.cameraPosition,
+    camera: { ...template.layout.camera }, screen: { ...template.layout.screen },
+  },
   hook: { mode: template.hook.mode },
   images: {
     mode: template.images.mode, density: template.images.density, minSentenceGap: template.images.minSentenceGap,
@@ -171,6 +180,12 @@ export function TemplatePanel({ projectId, sequenceId, beforeApply, afterApply, 
 
   const setImages = (patch: Partial<Overrides["images"]>) =>
     setOverrides((current) => current && ({ ...current, images: { ...current.images, ...patch } }));
+  const setLayout = (patch: Partial<Overrides["layout"]>) =>
+    setOverrides((current) => current && ({ ...current, layout: { ...current.layout, ...patch } }));
+  /** A rectangle is edited as whole percentages of the frame; the document keeps fractions. */
+  const setRect = (which: "camera" | "screen", side: "x" | "y" | "w" | "h", percent: number) =>
+    setOverrides((current) => current && ({ ...current,
+      layout: { ...current.layout, [which]: { ...current.layout[which], [side]: Math.min(100, Math.max(0, percent)) / 100 } } }));
 
   const chosenSources = new Set((overrides?.images.sources ?? []).map((s) => s.split(":")[0]));
   // The template's own order, with any kind it never listed appended in the canonical order.
@@ -245,6 +260,51 @@ export function TemplatePanel({ projectId, sequenceId, beforeApply, afterApply, 
               <SelectItem value="off">No hook</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+
+        <Separator />
+
+        <div className="flex flex-col gap-3">
+          <h3 className="flex items-center gap-2 text-xs font-medium"><Crop aria-hidden className="size-3.5" />Framing</h3>
+          <Select value={overrides.layout.mode} onValueChange={(v) => setLayout({ mode: v as Overrides["layout"]["mode"] })}>
+            <SelectTrigger aria-label="How the source fills the frame" className="w-full"><SelectValue>{labelled(FRAMING_LABELS, "Leave each shot's own framing")}</SelectValue></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="source">Leave each shot&apos;s own framing</SelectItem>
+              <SelectItem value="crop">Centre of the frame</SelectItem>
+              <SelectItem value="split">Screen and person, stacked</SelectItem>
+            </SelectContent>
+          </Select>
+          {overrides.layout.mode === "split" && <>
+            <p className="text-xs text-muted-foreground">
+              Where each part sits in <em>your</em> recording, as a share of its frame. Nothing can read the
+              webcam&apos;s position off a document, so this is the one setting to check against your own scene.
+            </p>
+            <Select value={overrides.layout.cameraPosition} onValueChange={(v) => setLayout({ cameraPosition: v as Overrides["layout"]["cameraPosition"] })}>
+              <SelectTrigger aria-label="Which half the person is in" className="w-full"><SelectValue>{labelled(CAMERA_LABELS, "Person on top")}</SelectValue></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="bottom">Person underneath</SelectItem>
+                <SelectItem value="top">Person on top</SelectItem>
+              </SelectContent>
+            </Select>
+            <Label className="text-xs text-muted-foreground">The person takes {overrides.layout.cameraPct}% of the height</Label>
+            <Slider aria-label="Share of height the person takes" min={15} max={85} step={1} value={[overrides.layout.cameraPct]}
+              onValueChange={(v) => setLayout({ cameraPct: asNumber(v) })} />
+            {(["camera", "screen"] as const).map((which) => (
+              <fieldset key={which} className="space-y-1.5">
+                <legend className="text-xs text-muted-foreground">{which === "camera" ? "The webcam in your scene (%)" : "The part of the screen to show (%)"}</legend>
+                <div className="grid grid-cols-4 gap-2">
+                  {(["x", "y", "w", "h"] as const).map((side) => (
+                    <label key={side} className="space-y-1 text-xs text-muted-foreground">
+                      {{ x: "Left", y: "Top", w: "Width", h: "Height" }[side]}
+                      <Input type="number" min={0} max={100} step="1"
+                        value={Math.round(overrides.layout[which][side] * 100)}
+                        onChange={(e) => setRect(which, side, Number(e.target.value))} />
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            ))}
+          </>}
         </div>
 
         <Separator />

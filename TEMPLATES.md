@@ -117,7 +117,11 @@ rectangles that matter instead:
   before this and what a captions-and-cuts template should keep doing), `crop` (centre
   crop, for a talking head) or `split`.
 - The camera rectangle has no sane default: nothing can read it off a document. A split
-  without one is refused, and the dry run says so before anything is applied.
+  without one is refused, and the dry run says so before anything is applied. The
+  Templates panel has a **Framing** block for exactly this — which half the person is
+  in, how much height they take, and both rectangles as whole percentages of your own
+  recording — so adopting someone else's stream template is a matter of typing where
+  your webcam sits and saving it under your own name.
 - The framing is written onto every shot that has footage, including one with no
   transcript, and only when it differs from what is already there — so re-applying
   converges and a project that was already framed this way is not touched. A template
