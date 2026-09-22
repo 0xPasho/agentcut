@@ -122,6 +122,30 @@ test("punctuation and capitals do not hide a repetition", async () => {
   assert.equal(redundancyCuts(said, rhythm, 3).length, 1);
 });
 
+test("a sentence finished and then picked up again is a figure of speech, not a stumble", async () => {
+  const { redundancyCuts } = await import("../src/lib/templates/script");
+  // Straight off a four-hour stream: "el problema siempre es ese 10% extra. Ese 10%
+  // extra es donde mueren los proyectos" — the line the clip was chosen for.
+  const said = words([
+    [0, 0.2, "es"], [0.25, 0.2, "ese"], [0.5, 0.3, "10%"], [0.9, 0.4, "extra."],
+    [1.4, 0.2, "Ese"], [1.65, 0.3, "10%"], [2.0, 0.4, "extra"], [2.5, 0.2, "es"], [2.75, 0.3, "donde"],
+  ]);
+  assert.deepEqual(redundancyCuts(said, rhythm, 4), [], "the first run finished its sentence, so it stays");
+
+  // The same words without the full stop are still a stumble.
+  const stumbled = words([
+    [0, 0.2, "es"], [0.25, 0.2, "ese"], [0.5, 0.3, "10%"], [0.9, 0.4, "extra"],
+    [1.4, 0.2, "ese"], [1.65, 0.3, "10%"], [2.0, 0.4, "extra"], [2.5, 0.2, "es"], [2.75, 0.3, "donde"],
+  ]);
+  assert.equal(redundancyCuts(stumbled, rhythm, 4).length, 1);
+  // A question mark and a closing quote count as finishing it too.
+  const asked = words([
+    [0, 0.3, "vale"], [0.4, 0.4, "la"], [0.9, 0.4, "pena?\""],
+    [1.4, 0.3, "Vale"], [1.8, 0.4, "la"], [2.3, 0.4, "pena"], [2.8, 0.3, "porque"],
+  ]);
+  assert.deepEqual(redundancyCuts(asked, rhythm, 4), []);
+});
+
 test("a disabled rhythm cuts nothing", async () => {
   const { redundancyCuts } = await import("../src/lib/templates/script");
   const said = words([[0, 0.2, "y"], [0.25, 0.2, "esto"], [0.5, 0.2, "y"], [0.75, 0.2, "esto"]]);

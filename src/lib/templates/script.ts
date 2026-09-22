@@ -285,6 +285,11 @@ export function redundancyCuts(words: Word[], rhythm: TemplateRhythm["redundancy
       const secondStart = words[i + n].t;
       // A long pause between the two is a deliberate repetition, not a stumble.
       if (secondStart - firstEnd > rhythm.maxGapSec) continue;
+      // So is a full stop between them. "Pero el problema siempre es ese 10% extra.
+      // Ese 10% extra es donde…" is a sentence finished and then picked up again for
+      // emphasis — a figure of speech, not a false start, and cutting it takes the
+      // emphasis out of the one line the clip was chosen for.
+      if (/[.!?…]["'»)]?$/.test(words[i + n - 1].w.trim())) continue;
       const t = words[i].t;
       const d = secondStart - rhythm.keepSec - t;
       if (d < 0.1 || t < 0 || t + d > clipDuration) continue;

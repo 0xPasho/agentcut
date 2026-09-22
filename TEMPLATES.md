@@ -385,7 +385,10 @@ each adopted asset and reported by `template.apply`.
   pass cannot see it; what marks it is the repetition. The stumble goes and the run that
   continues the sentence stays. `minWords` is 2 because a single repeated word is as often
   emphasis ("muy, muy bueno") as a stutter, and `maxGapSec` is what separates a stumble
-  from saying something again on purpose.
+  from saying something again on purpose. So does a full stop: "el problema siempre es
+  ese 10% extra. Ese 10% extra es donde mueren los proyectos" is a sentence finished and
+  then picked up again, which is the line the clip was chosen for — a run that ended its
+  sentence is kept.
 - `hook.mode` is `sticky` (its own layer, the whole video), `intro` (`seconds` only) or `off`.
   Its text comes from `hookText`, then the template's own `hook.text`, then a hook written
   on any shot, then a footage shot's title, then the video's own title — never a canvas
