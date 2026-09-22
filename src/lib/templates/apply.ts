@@ -320,6 +320,8 @@ async function resolveBookend(
   media: MediaSource[],
   /** The video this bookend is stuck on, so the card can arrive at its loudness. */
   body?: { file: string; start: number; duration: number } | null,
+  /** The loudness the video is being placed at, when the template names one. */
+  levelled?: number,
 ): Promise<Bookend | null> {
   if (!setting.enabled) return null;
   const id = (setting.slot ? slots[setting.slot]?.assetId : undefined) || setting.assetId;
@@ -335,7 +337,10 @@ async function resolveBookend(
   const source = known ?? MediaSource.parse({ id: `m_${randomUUID().replaceAll("-", "")}`, name: asset.name, file, ...(await probe(file)) });
   let gain: number | undefined;
   if (setting.level === "match" && body) {
-    const [card, video] = await Promise.all([loudness(file), loudness(body.file, { start: body.start, duration: body.duration })]);
+    const card = await loudness(file);
+    // The loudness the video will actually play at: the target when the template names
+    // one, because the body is being moved to it, and its own reading otherwise.
+    const video = levelled ?? await loudness(body.file, { start: body.start, duration: body.duration });
     // Either measurement failing means leaving the sound exactly as it was mixed,
     // which is what happened before anything measured it at all.
     if (card !== null && video !== null && Math.abs(video - card) > 1) {
@@ -343,6 +348,36 @@ async function resolveBookend(
     }
   }
   return { media: source, addMedia: !known, seconds: source.durationSec, gain };
+}
+
+/**
+ * The gain that puts this video at the loudness its template asks for, and the loudness
+ * it will then be. Capped by the footage's own peaks: a stream recorded quietly has the
+ * headroom for it, one already mixed loud does not, and clipping a video to hit a number
+ * is worse than being a decibel under it.
+ */
+export async function targetLevel(
+  template: VideoTemplate,
+  body: { file: string; start: number; duration: number } | null,
+): Promise<{ gain: number; lufs: number } | null> {
+  const target = template.audio.targetLufs;
+  if (target === null || !body) return null;
+  const { loudness, audioLevel } = await import("../media");
+  const [measured, peaks] = await Promise.all([
+    loudness(body.file, { start: body.start, duration: body.duration }),
+    audioLevel(body.file, { start: body.start, duration: body.duration }),
+  ]);
+  if (measured === null) return null;
+  const wanted = 10 ** ((target - measured) / 20);
+  // A decibel of headroom below full scale, which is what a platform's own encoder wants.
+  const headroom = peaks ? 10 ** ((-1 - peaks.maxDb) / 20) : Infinity;
+  // A shot's volume is a multiplier the timeline bounds at two, and that bound is the
+  // renderer's: footage too quiet to reach the target lands as close as it can rather
+  // than being written a number the editor would refuse.
+  const gain = Math.min(2, Math.max(0.25, Math.min(wanted, headroom)));
+  // Within half a decibel of where it already is, moving it is noise.
+  if (Math.abs(20 * Math.log10(gain)) < 0.5) return null;
+  return { gain, lufs: measured + 20 * Math.log10(gain) };
 }
 
 /** A beat the template wanted to illustrate and could not, with what each source said. */
@@ -487,14 +522,17 @@ export async function applyTemplate(
   const body = bodyShot && bodyMedia
     ? { file: bodyMedia.file, start: bodyShot.clip.start, duration: Math.max(1, bodyShot.clip.end - bodyShot.clip.start) }
     : null;
-  const intro = await resolveBookend(template.intro, request.slots, "Intro", promoted.media, body);
-  const outro = await resolveBookend(template.outro, request.slots, "Outro", promoted.media, body);
+  // How loud this video should be, and how much of that its own peaks leave room for.
+  // Measured once: the same reading the bookends are levelled against.
+  const level = await targetLevel(template, body);
+  const intro = await resolveBookend(template.intro, request.slots, "Intro", promoted.media, body, level?.lufs);
+  const outro = await resolveBookend(template.outro, request.slots, "Outro", promoted.media, body, level?.lufs);
   const sound = silent ? {} : {
     punch: await resolveSound({ ...template.rhythm.punch.sfx, enabled: template.rhythm.punch.enabled && template.rhythm.punch.sfx.enabled }, request.slots, "Punch sound", projectId, "sfx", sounds),
     transitions: await resolveSound(template.sound.transitions, request.slots, "Transition sound", projectId, "sfx", sounds),
     opener: await resolveSound(template.sound.opener, request.slots, "Opening sound", projectId, "sfx", sounds),
   };
-  const operations = templateOperations(current.edl, template, plan, resolved, (prefix) => `${prefix}_${randomUUID().slice(0, 8)}`, music, watermark, options.author, { intro, outro }, sound);
+  const operations = templateOperations(current.edl, template, plan, resolved, (prefix) => `${prefix}_${randomUUID().slice(0, 8)}`, music, watermark, options.author, { intro, outro }, sound, level);
   if (!operations.length) throw new Error("This template would not change anything on this video.");
   const saved = editProject(projectId, { expectedRevision, operations });
   return {

@@ -292,6 +292,23 @@ export const TemplateLayout = z.object({
 }).strict();
 export type TemplateLayout = z.infer<typeof TemplateLayout>;
 
+/**
+ * How loud the finished video is.
+ *
+ * A short is published into a feed that normalises everything to about -14 LUFS, and a
+ * stream recorded at -23 arrives four decibels quieter than the video before it — which
+ * on a phone is the difference between being heard and being scrolled past. A template
+ * that names a target measures the footage and places it at that loudness, never louder
+ * than its own peaks allow.
+ *
+ * `null` leaves the sound exactly as it was recorded, which is what every template did
+ * before this and what one about captions and pictures should keep doing.
+ */
+export const TemplateAudio = z.object({
+  targetLufs: z.number().min(-40).max(-6).nullable().default(null),
+}).strict();
+export type TemplateAudio = z.infer<typeof TemplateAudio>;
+
 export const TemplateCard = z.object({
   id: z.string().regex(/^[a-zA-Z0-9_-]+$/),
   /** 0 = first frame, 1 = last frame, measured on the finished timeline. */
@@ -338,6 +355,8 @@ export const VideoTemplate = z.object({
   rhythm: TemplateRhythm.prefault({}),
   music: TemplateMusic.prefault({}),
   sound: TemplateSound.prefault({}),
+  /** How loud the finished video should be. */
+  audio: TemplateAudio.prefault({}),
   cards: z.array(TemplateCard).default([]),
   watermark: TemplateWatermark.prefault({}),
   slots: z.array(TemplateSlot).default([]),

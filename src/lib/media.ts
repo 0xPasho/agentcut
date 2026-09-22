@@ -111,9 +111,14 @@ export async function loudnessCurve(src: string): Promise<Array<{ t: number; db:
  *
  * `null` means there is no audio stream to measure, or ffmpeg could not read one.
  */
-export async function audioLevel(src: string): Promise<{ maxDb: number; meanDb: number } | null> {
+export async function audioLevel(src: string, span?: { start?: number; duration?: number }): Promise<{ maxDb: number; meanDb: number } | null> {
   try {
-    const { stderr } = await run(FFMPEG, ["-i", src, "-vn", "-af", "volumedetect", "-f", "null", "-"]);
+    // A span, when the caller has one: the peak of a four-hour stream says nothing about
+    // the forty seconds being cut out of it, and decoding the whole of it to find out
+    // costs a minute per clip.
+    const seek = span?.start ? ["-ss", String(span.start)] : [];
+    const length = span?.duration ? ["-t", String(span.duration)] : [];
+    const { stderr } = await run(FFMPEG, [...seek, "-i", src, ...length, "-vn", "-af", "volumedetect", "-f", "null", "-"]);
     const max = stderr.match(/max_volume:\s*(-?[0-9.]+) dB/);
     if (!max) return null;
     const mean = stderr.match(/mean_volume:\s*(-?[0-9.]+) dB/);

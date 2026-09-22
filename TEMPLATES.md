@@ -72,6 +72,17 @@ it decides which one the material wants.
   **not** of a derived one: deriving it was the decision, and applying the template again
   turned every square copy back into a tall one. A derived video keeps its shape and is
   matched against the variant for it.
+- **`audio.targetLufs`** is how loud the finished video is. A short is published into a
+  feed that normalises everything to about -14 LUFS, and a stream recorded at -22 arrives
+  quieter than the video before it. The footage is measured over the part being used —
+  not the whole four-hour recording, whose loudest second says nothing about this forty
+  and costs a minute to find — and placed at the target, with the bookends levelled
+  against where it now plays rather than where it was recorded.
+  Never at the cost of clipping: the gain is capped so the footage's own peaks stay a
+  decibel below full scale, and capped again at twice, which is the most a shot's volume
+  can be. Stream audio with peaks near full scale and a low average — a microphone with
+  no compressor on it — reaches about -20 rather than -16, and saying so is better than
+  a limiter nobody asked for. `null` leaves the sound exactly as recorded.
 - **Sound**: a template can carry its own sound design. `rhythm.punch.sfx` plays a sound on
   every punch-in; `sound.transitions` plays one on every cut between shots; `sound.opener`
   plays one on the first frame; `music` is the bed. Each takes `enabled`, then a `slot`, an

@@ -334,3 +334,59 @@ test("switching a video from one template to another replaces the first one's wo
   assert.ok(shot.clip.edits.every((e) => !e.by.startsWith("template:look-a")), "no edit of the first template is left");
   assert.ok(shot.clip.edits.some((e) => e.by.startsWith("template:look-b")), "and the second wrote its own");
 });
+
+test("a video recorded quietly is placed at the loudness the template asks for, and the card follows it there", async () => {
+  const quiet = path.join(workspace, "quiet-stream.mp4");
+  const made = spawnSync(FFMPEG, ["-y", "-f", "lavfi", "-i", "color=0x102040:size=1728x1116:rate=15:duration=10",
+    "-f", "lavfi", "-i", "sine=frequency=1000:duration=10", "-af", "volume=0.5", "-pix_fmt", "yuv420p", "-shortest", "-c:a", "aac", quiet], { encoding: "utf8" });
+  assert.equal(made.status, 0, made.stderr);
+  const card = await endCard("level-card.mp4");
+
+  const { loudness } = await import("../src/lib/media");
+  const before = await loudness(quiet);
+  assert.ok(before !== null && before < -17, `the footage is quiet to begin with: ${before}`);
+
+  await registry.saveTemplate({ id: "levelled-stream", extends: "stream-short", name: "Levelled stream",
+    // A target this material can actually reach: a shot's volume is bounded at twice,
+    // and these tones are further from the target than a stream's speech ever is.
+    audio: { targetLufs: -22 }, outro: { enabled: true, slot: "endcard" }, ...STREAM_OVERRIDES });
+  const { id, sequenceId, itemId } = await project(quiet, speak(SCRIPT), 8);
+  await tools.executeEditorTool(id, { tool: "template.apply", templateId: "levelled-stream", sequenceId,
+    expectedRevision: store.readEditor(id).revision, slots: { endcard: { assetId: card.id } } });
+
+  const sequence = store.readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!;
+  const shot = sequence.items.find((i) => i.id === itemId)!;
+  assert.ok(shot.volume !== undefined && shot.volume > 1, `the footage is turned up: ${shot.volume}`);
+  const reached = before! + 20 * Math.log10(shot.volume!);
+  assert.ok(Math.abs(reached - -22) < 1.5, `and lands near the target: ${reached.toFixed(1)} LUFS`);
+
+  // The card is levelled against where the video now plays, not where it was recorded.
+  const outro = sequence.items.find((i) => i.clip.title === "Outro")!;
+  const cardLufs = await loudness(assets.toAbs(database.q.getAsset(card.id)!.path));
+  const cardReached = cardLufs! + 20 * Math.log10(outro.volume ?? 1);
+  assert.ok(Math.abs(cardReached - reached) < 1.5, `the card meets the video at ${cardReached.toFixed(1)} against ${reached.toFixed(1)}`);
+
+  // Applying again changes nothing: the same footage measures the same.
+  const settled = store.readEditor(id).revision;
+  await tools.executeEditorTool(id, { tool: "template.apply", templateId: "levelled-stream", sequenceId,
+    expectedRevision: settled, slots: { endcard: { assetId: card.id } } });
+  const again = store.readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!.items.find((i) => i.id === itemId)!;
+  assert.equal(again.volume, shot.volume, "the level converges rather than creeping up on every apply");
+
+  // Footage too quiet to reach the target at all lands at the loudest the timeline
+  // allows rather than at a number the editor would refuse.
+  const whisper = path.join(workspace, "whisper.mp4");
+  const quietly = spawnSync(FFMPEG, ["-y", "-f", "lavfi", "-i", "color=0x102040:size=1728x1116:rate=15:duration=8",
+    "-f", "lavfi", "-i", "sine=frequency=300:duration=8", "-af", "volume=0.03", "-pix_fmt", "yuv420p", "-shortest", "-c:a", "aac", whisper], { encoding: "utf8" });
+  assert.equal(quietly.status, 0, quietly.stderr);
+  const { id: faint, sequenceId: faintSeq, itemId: faintItem } = await project(whisper, speak(SCRIPT), 8);
+  await tools.executeEditorTool(faint, { tool: "template.apply", templateId: "levelled-stream", sequenceId: faintSeq,
+    expectedRevision: store.readEditor(faint).revision, slots: { endcard: { assetId: card.id } } });
+  assert.equal(store.readEditor(faint).edl.sequences.find((s) => s.id === faintSeq)!.items.find((i) => i.id === faintItem)!.volume, 2);
+
+  // A template that names no target leaves the sound where it was recorded.
+  await registry.saveTemplate({ id: "unlevelled", extends: "stream-short", name: "Unlevelled", audio: { targetLufs: null }, outro: { enabled: false }, ...STREAM_OVERRIDES });
+  const { id: other, sequenceId: otherSeq, itemId: otherItem } = await project(quiet, speak(SCRIPT), 8);
+  await tools.executeEditorTool(other, { tool: "template.apply", templateId: "unlevelled", sequenceId: otherSeq, expectedRevision: store.readEditor(other).revision });
+  assert.equal(store.readEditor(other).edl.sequences.find((s) => s.id === otherSeq)!.items.find((i) => i.id === otherItem)!.volume, undefined);
+});

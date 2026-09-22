@@ -579,6 +579,8 @@ export function templateOperations(
   bookends: { intro?: Bookend | null; outro?: Bookend | null } = {},
   /** The template's sounds, already resolved to assets: on every punch-in, on every cut, on the first frame. */
   sounds: { punch?: { src: string } | null; transitions?: { src: string } | null; opener?: { src: string } | null } = {},
+  /** The gain that puts the footage at the loudness the template asks for. */
+  level?: { gain: number } | null,
 ): EditorOperation[] {
   const by = author ?? templateAuthor(template.id);
   if (!isTemplateEdit({ by })) throw new Error("A template author must start with template:");
@@ -645,6 +647,17 @@ export function templateOperations(
     if (!generated.length && !reframes && !Object.keys(captions).length && kept.length === item.clip.edits.length) continue;
     push({ type: "item.patch", sequenceId: plan.sequenceId, itemId: planned.itemId,
       patch: { edits, ...(Object.keys(captions).length ? { captions } : {}), ...(reframes ? { layout } : {}) } });
+  }
+
+  // The footage is placed at the loudness the template asks for. A shot the template has
+  // nothing else to say about is still levelled: being four decibels quieter than the
+  // video before it in a feed is not a per-shot decision.
+  if (level && Math.abs(level.gain - 1) > 0.001) {
+    for (const item of sequenceOf().items) {
+      if (!item.mediaId || ["Intro", "Outro"].includes(item.clip.title)) continue;
+      if (Math.abs((item.volume ?? 1) - level.gain) < 0.001) continue;
+      push({ type: "item.place", sequenceId: plan.sequenceId, itemId: item.id, patch: { volume: level.gain } });
+    }
   }
 
   // Bookends sit on the main track, so they go in before anything is measured: an

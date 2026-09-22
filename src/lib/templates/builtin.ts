@@ -321,6 +321,11 @@ const DEFINITIONS: unknown[] = [
       "4:5": { layout: { cameraPct: 44 }, captions: { positionY: 0.47 } },
       "16:9": { layout: { mode: "crop" }, captions: { positionY: 0.72 } },
     },
+    // A stream is recorded for a stream, not for a feed: measured on two of them, the
+    // speech sits around -23 LUFS, where a phone's feed normalises everything to about
+    // -14 and the channel's own published shorts sit at -18. This puts it between them,
+    // as far as the footage's own peaks allow.
+    audio: { targetLufs: -16 },
     outro: { enabled: true, slot: "endcard" },
     slots: [
       { id: "endcard", label: "Your end card", kind: "video",
