@@ -23,8 +23,24 @@ export function templatePreviewSvg(template: VideoTemplate, aspect = "9:16"): st
   const y = (captions.positionY ?? 0.72) * H;
   const parts: string[] = [];
   parts.push(`<rect width="${W}" height="${H}" rx="14" fill="${esc(bg)}"/>`);
-  // A speaker, so the layout reads as a video rather than a diagram.
-  parts.push(`<circle cx="${W / 2}" cy="${H * 0.42}" r="${H * 0.07}" fill="#3a3a44"/><rect x="${W / 2 - H * 0.11}" y="${H * 0.49}" width="${H * 0.22}" height="${H * 0.2}" rx="${H * 0.05}" fill="#33333c"/>`);
+  // Where the speaker is drawn is the layout: in the middle of an ordinary frame, in
+  // their own half of a split. A schematic that puts them in the middle of a split is
+  // showing the thing the split exists to avoid.
+  const split = t.layout.mode === "split";
+  const seam = split ? ((t.layout.cameraPosition === "top" ? t.layout.cameraPct : 100 - t.layout.cameraPct) / 100) * H : 0;
+  const cameraTop = split ? (t.layout.cameraPosition === "top" ? 0 : seam) : 0;
+  const cameraHeight = split ? (t.layout.cameraPosition === "top" ? seam : H - seam) : H;
+  if (split) {
+    const screenTop = t.layout.cameraPosition === "top" ? seam : 0;
+    const screenHeight = H - cameraHeight;
+    parts.push(`<rect x="0" y="${screenTop}" width="${W}" height="${screenHeight}" fill="#1e1e28"/>`);
+    // A window on the screen half, so it reads as a shared screen rather than a gap.
+    parts.push(`<rect x="${W * 0.08}" y="${screenTop + screenHeight * 0.14}" width="${W * 0.84}" height="${screenHeight * 0.66}" rx="6" fill="#26262f" stroke="#3a3a44" stroke-width="2"/>`);
+    for (const i of [0, 1, 2]) parts.push(`<rect x="${W * 0.12}" y="${screenTop + screenHeight * (0.26 + i * 0.13)}" width="${W * (0.6 - i * 0.13)}" height="${Math.max(2, screenHeight * 0.035)}" rx="2" fill="#3f3f4b"/>`);
+    parts.push(`<line x1="0" y1="${seam}" x2="${W}" y2="${seam}" stroke="#000" stroke-width="2" opacity="0.8"/>`);
+  }
+  const faceY = cameraTop + cameraHeight * (split ? 0.42 : 0.42);
+  parts.push(`<circle cx="${W / 2}" cy="${faceY}" r="${Math.min(H * 0.07, cameraHeight * 0.22)}" fill="#3a3a44"/><rect x="${W / 2 - H * 0.11}" y="${faceY + Math.min(H * 0.07, cameraHeight * 0.22)}" width="${H * 0.22}" height="${Math.min(H * 0.2, cameraHeight * 0.45)}" rx="${H * 0.05}" fill="#33333c"/>`);
   if (t.hook.mode !== "off") {
     const hy = t.hook.position === "top" ? H * 0.08 : t.hook.position === "center" ? H * 0.46 : H * 0.84;
     parts.push(t.hook.style === "card"
