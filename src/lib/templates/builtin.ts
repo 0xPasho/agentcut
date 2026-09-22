@@ -310,6 +310,14 @@ const DEFINITIONS: unknown[] = [
       punch: { enabled: true, perMinute: 3, scale: 1.1 },
       emphasis: { enabled: true, targets: ["numbers", "brands"] },
     },
+    // A shorter frame needs a taller share for the person, or the camera's own shape is
+    // cropped to a letterbox: a webcam is about as wide as it is tall and a half of a
+    // square frame at a third of the height is three times wider than it is tall.
+    variants: {
+      "1:1": { layout: { cameraPct: 55 } },
+      "4:5": { layout: { cameraPct: 44 } },
+      "16:9": { layout: { mode: "crop" } },
+    },
     outro: { enabled: true, slot: "endcard" },
     slots: [
       { id: "endcard", label: "Your end card", kind: "video",

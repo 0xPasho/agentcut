@@ -87,9 +87,11 @@ async function main() {
     if (!entry) { console.log(`${sequence.id}: not rendered yet`); continue; }
     const file = path.join(projectDir(projectId), "clips", entry.file);
     // An export older than the edit fails every check for the same uninteresting reason,
-    // so it is said once, in words, rather than found four times in the pixels.
+    // so it is said once, in words, rather than found four times in the pixels. The
+    // revision counts the whole project, so this is a "look here first" and not a verdict:
+    // editing another video in the same project moves it too.
     if (entry.revision !== undefined && entry.revision !== snapshot.revision)
-      console.log(`${sequence.id}: exported at revision ${entry.revision}, the project is at ${snapshot.revision} — render it again before believing any of this`);
+      console.log(`${sequence.id}: exported at revision ${entry.revision}, the project is at ${snapshot.revision} — if this video is one of the things that changed, render it again`);
     const { width, height, fps } = sequence.output;
     const resolved = sequenceFrames(sequence);
     const named = (title: string) => resolved.items.find((e) => e.item.clip.title === title);

@@ -532,7 +532,7 @@ because a shortlist is a decision already made.
 | `how-to-steps` | A ding and a push-in on every step, illustrated from your screenshots or from the footage, with a closing recap card |
 | `news-brief` | Company marks and lit numbers, captions low, an impact on each cut and a riser to open |
 | `music-montage` | Footage with nobody talking: no captions, a bed across the whole thing, a whoosh on every cut. The one that needs no transcript |
-| `stream-short` | A short cut from a screen-share stream: the screen on top, the person below, a hook held for the whole video, one word at a time above the seam, and the card you end every video on |
+| `stream-short` | A short cut from a screen-share stream: the screen on top, the person below, a hook held for the whole video, one word at a time above the seam, and the card you end every video on. Square and 4:5 give the person a larger share, because a webcam is about as wide as it is tall and a third of a square frame is not |
 
 The last five carry a sound design out of the box, built from the sounds that ship with the
 app — so they work with no network and nothing to fill in. The first six are silent unless
