@@ -14,5 +14,5 @@ export async function GET(
   const file = path.resolve(dir, name);
   // Never let a name escape the project's own assets directory.
   if (!file.startsWith(dir)) return new Response("forbidden", { status: 403 });
-  return fileResponse(file, req.headers.get("range"));
+  return fileResponse(file, req.headers);
 }

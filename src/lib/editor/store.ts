@@ -15,6 +15,34 @@ export function readEditor(projectId: string): EditorSnapshot {
   return { revision: project.revision, edl: repairWordTimes(Edl.parse(JSON.parse(project.edl))) };
 }
 
+/** The media index a file server needs, and the revision it was read at. */
+let mediaIndex: { key: string; files: Map<string, string> } | null = null;
+
+/**
+ * Where one of a project's media files lives on disk.
+ *
+ * Serving a byte range of a video must not cost a `readEditor`: validating a four-hour
+ * project's edit list takes seconds, and a `<video>` element asks for range after range
+ * before it can show a single frame — measured at two to four seconds each, which is a
+ * large part of why a cut in the Player went black. The `edl` column is still the one
+ * authority; this reads the one field a file server needs out of it, and remembers the
+ * answer for as long as the revision it came from stands.
+ */
+export function mediaFile(projectId: string, mediaId: string): string | null {
+  const project = q.getProject(projectId);
+  if (!project?.edl) return null;
+  const key = `${projectId}:${project.revision}`;
+  if (mediaIndex?.key !== key) {
+    const raw = JSON.parse(project.edl) as { media?: Array<{ id?: unknown; file?: unknown }> };
+    const files = new Map<string, string>();
+    for (const media of raw.media ?? []) {
+      if (typeof media?.id === "string" && typeof media?.file === "string") files.set(media.id, media.file);
+    }
+    mediaIndex = { key, files };
+  }
+  return mediaIndex.files.get(mediaId) ?? null;
+}
+
 /** DB is authoritative. Serialize writes and mirror a complete snapshot while holding the write lock. */
 function commit(projectId: string, expectedRevision: number, build: (current: Edl | null) => Edl): EditorSnapshot {
   db.exec("BEGIN IMMEDIATE");

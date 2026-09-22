@@ -9,7 +9,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   const row = q.getAsset(id);
   if (!row) return new Response("not found", { status: 404 });
-  const res = await fileResponse(toAbs(row.path), req.headers.get("range"));
+  const res = await fileResponse(toAbs(row.path), req.headers);
   res.headers.set("Cache-Control", "public, max-age=31536000, immutable");
   return res;
 }

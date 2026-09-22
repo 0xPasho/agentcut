@@ -351,6 +351,40 @@ by the next one instead of blocking exports until somebody deletes `render.lock`
 `scripts/render.ts path/to/edl.json` remains an explicit standalone snapshot render.
 It does not represent the latest state of a project in the database.
 
+### Why a cut does not go black in the Player
+
+An export extracts frames off-thread and never waits for a seek. The Player is a browser:
+every cut — a shot boundary, or the splice a silence leaves — mounts a new `<video>` that
+has to read a multi-hour recording's header and seek hours in before it has a picture, and
+until then it paints nothing. Two things in `remotion/VideoRegion.tsx` and
+`remotion/SequenceComposition.tsx` keep that off the screen, both preview-only — Remotion
+drops premounting while rendering, and exports are byte-identical:
+
+- **Premount** (`remotion/premount.ts`, two seconds): the incoming shot or span mounts
+  early, invisible and frozen on its first frame, so the seek happens while the previous
+  one is still playing. This is why the span `Sequence` is not `layout="none"`.
+- **`pauseWhenBuffering`**: if a seek is still not done, playback waits instead of running
+  on past footage nobody saw.
+
+Postmounting the outgoing span to hold its last frame underneath is the obvious third
+thing and it does not work: past the end of its own window the element's readyState has
+dropped below HAVE_FUTURE_DATA, and Remotion answers that by calling `.load()` on it,
+which resets the element and discards the frame it was being kept for.
+
+The other half is `src/lib/httpFile.ts`, which serves every file with an `ETag` and a
+`Last-Modified` built from its size and date. Without a validator the browser's media
+cache may not keep a byte of a range response, so each of those elements re-read the
+header from scratch. Size and date change whenever the file does, so a re-ingested source
+is never served from the old cache, and a range asked with a stale `If-Range` comes back
+whole rather than spliced onto a cached piece of a different file.
+
+Nor does serving a byte range cost a read of the project any more. `readEditor` validates
+the whole edit list, which on a four-hour project measured two to four seconds — per
+range, and a `<video>` asks for many of them before its first frame. `mediaFile` in
+`src/lib/editor/store.ts` reads the one field a file server needs out of the same
+authoritative `edl` column and keeps it for as long as that revision stands. The same
+ranges now answer in tens of milliseconds.
+
 ## Jobs and the project lock
 
 A project runs one job at a time — analyze, edit, batch, transcribe or render — and the

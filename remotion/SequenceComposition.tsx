@@ -6,6 +6,7 @@ import { animatedFields, fieldAt } from "../src/lib/keyframes";
 import { ClipComposition } from "./ClipComposition";
 import { Layer } from "./Layer";
 import { Transition } from "./Transition";
+import { premountFrames } from "./premount";
 export type SequenceProps = { sequence: VideoSequence; media: MediaSource[]; mediaUrls: Record<string, string>; assetBase?: string; assetUrls?: Record<string, string> };
 export const SequenceComposition: React.FC<SequenceProps> = ({ sequence, media, mediaUrls, assetBase, assetUrls }) => <AbsoluteFill style={{ backgroundColor: "black" }}>
   {sequenceFrames(sequence).items.toSorted((a, b) => (a.item.layer ?? 0) - (b.item.layer ?? 0)).map(({ item, from, duration, transition, outFrames }) => {
@@ -23,7 +24,10 @@ export const SequenceComposition: React.FC<SequenceProps> = ({ sequence, media, 
     const volume = keys?.length && animatedFields(keys).has("volume")
       ? (frame: number) => fieldAt(keys, "volume", frame / sequence.output.fps, item.volume ?? 1)
       : item.volume;
-    return <Sequence key={item.id} from={from} durationInFrames={duration}>
+    // A shot loads before it is due, invisible and frozen on its first frame, so the cut
+    // into it lands on a picture rather than on a video element that is still seeking.
+    // Remotion drops this while rendering; it is the Player that has a seek to hide.
+    return <Sequence key={item.id} from={from} durationInFrames={duration} premountFor={premountFrames(sequence.output.fps)}>
       <Transition resolved={transition}>
       <Layer item={item} sequence={sequence}>
         <ClipComposition clip={item.clip} hideVideo={!source} transparent hideVisuals={item.hidden}

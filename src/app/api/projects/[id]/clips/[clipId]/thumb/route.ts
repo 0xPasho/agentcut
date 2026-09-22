@@ -22,7 +22,7 @@ export async function GET(
 
   try {
     const file = await clipThumb(id, target.source, target.clip, target.output);
-    const res = await fileResponse(file, req.headers.get("range"));
+    const res = await fileResponse(file, req.headers);
     res.headers.set("Cache-Control", "public, max-age=31536000, immutable");
     return res;
   } catch (e) {

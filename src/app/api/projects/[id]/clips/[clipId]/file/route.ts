@@ -11,5 +11,5 @@ export async function GET(
   const { id, clipId } = await params;
   const file = (await renderedClips(id))[clipId];
   if (!file) return new Response("not rendered", { status: 404 });
-  return fileResponse(file, req.headers.get("range"));
+  return fileResponse(file, req.headers);
 }

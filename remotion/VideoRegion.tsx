@@ -2,6 +2,7 @@ import React from "react";
 import { OffthreadVideo, Sequence, useVideoConfig } from "remotion";
 import type { Region } from "../src/lib/edl";
 import { spanFrames, type TimeMap } from "../src/lib/timeline";
+import { premountFrames } from "./premount";
 
 type Props = {
   sourceUrl: string;
@@ -79,11 +80,20 @@ export const VideoRegion: React.FC<Props> = ({
           // which is the same black frame by another route.
           const trimBefore = Math.round((clipStart + span.srcStart) * fps);
           return (
+          // Premounting is the whole reason this is not `layout="none"`: Remotion refuses
+          // the two together, and the wrapper it adds instead is an absolute fill of this
+          // same source-sized box, so the picture lands exactly where it always did.
           <Sequence
             key={span.srcStart}
             from={from}
             durationInFrames={durationInFrames}
-            layout="none"
+            premountFor={premountFrames(fps)}
+            // Holding the outgoing span on its last frame under the incoming one looks
+            // like the obvious belt to premounting's braces, and it does not work: a
+            // postmounted element is past the end of its own window, so its readyState
+            // has dropped below HAVE_FUTURE_DATA, and Remotion answers that by calling
+            // `.load()` on it — which resets the element and throws away the very frame
+            // it was being kept for. Measured: black, and a second download for it.
           >
             <OffthreadVideo
               src={sourceUrl}
@@ -91,6 +101,9 @@ export const VideoRegion: React.FC<Props> = ({
               // into the shot's timebase before the ramp can be read off it.
               volume={typeof volume === "function" ? (f: number) => volume(from + f) : volume}
               muted={muted}
+              // If a seek is somehow still not done, the clock waits instead of running on
+              // past footage nobody saw. Premounting is what should keep it from ever waiting.
+              pauseWhenBuffering
               trimBefore={trimBefore}
               trimAfter={trimBefore + durationInFrames}
               style={{ width: sourceWidth, height: sourceHeight, position: "absolute", top: 0, left: 0 }}
