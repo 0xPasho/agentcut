@@ -1,9 +1,11 @@
 import type { EditorOperation } from "./operations";
+import { SELECTION_AUTHOR } from "../edl";
 
 /**
  * Every edit carries `by`: who put it there. Templates write `template:<id>`, rules
- * add `/rule:<ids>`, plans `/plan`, and an editing agent `agent:<messageId>` — the
- * turn of the conversation that asked for it. An empty `by` is a person's own work.
+ * add `/rule:<ids>`, plans `/plan`, an editing agent `agent:<messageId>` — the turn of
+ * the conversation that asked for it — and the clip selection `select`, for the draft
+ * it makes while cutting a clip out of a recording. An empty `by` is a person's own work.
  * This is what "why is this here" reads, and what the observation bank uses to tell
  * a correction from a creation.
  */
@@ -12,6 +14,7 @@ export const isGeneratedAuthor = (by: string) => by.length > 0;
 
 export function describeAuthor(by: string): string {
   if (!by) return "Placed by hand";
+  if (by === SELECTION_AUTHOR) return "Written when this clip was cut out of the recording";
   if (by.startsWith("agent:")) return `Placed by the agent (message ${by.slice(6)})`;
   const template = by.match(/^template:([^/]+)/)?.[1];
   if (template) {

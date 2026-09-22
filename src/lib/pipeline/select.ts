@@ -3,7 +3,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { grabFrame, type Probe } from "../media";
 import { toAgentText, wordsForClip, type Transcript } from "../transcript";
-import { AgentClipProposals, CaptionStyle, Edl, centerCrop, type Clip } from "../edl";
+import { AgentClipProposals, CaptionStyle, Edl, centerCrop, type Clip, SELECTION_AUTHOR } from "../edl";
 import { resolveProvider, type AgentEvent } from "../agent";
 import { trim } from "../editor/operations";
 import { resolveQuery } from "../search";
@@ -146,7 +146,10 @@ export async function buildEdl(o: {
         layout: p.layout ?? { type: "crop" as const },
         captions: CaptionStyle.parse(p.captions ?? {}),
         words: [],
-        edits: p.edits ?? [],
+        // Marked as the selection's own, so a template applied later replaces this
+        // first draft — its hook title, its cuts, its push-ins — instead of laying a
+        // second set on top of it.
+        edits: (p.edits ?? []).map((edit) => ({ ...edit, by: edit.by || SELECTION_AUTHOR })),
         tags: [...new Set(p.tags.map((t) => t.toLowerCase().trim()).filter(Boolean))],
       };
       // The agent wrote its punches, overlays and crop moves against the boundaries it

@@ -122,8 +122,9 @@ Tools: `observations.read`, `observations.review`.
 ## Why is this here
 
 Every edit carries `by`. Templates write `template:<id>`, a plan adds `/plan`, rules add
-`/rule:<ids>`, and an editing agent writes `agent:<messageId>` — the turn of the
-conversation that asked for it. Hover an effect on the timeline or open it in the inspector
+`/rule:<ids>`, an editing agent writes `agent:<messageId>` — the turn of the conversation
+that asked for it — and the clip selection writes `select` for the draft it makes while
+cutting a clip out of a recording, which a template then replaces rather than stacks. Hover an effect on the timeline or open it in the inspector
 to read it in words.
 
 ## Command line

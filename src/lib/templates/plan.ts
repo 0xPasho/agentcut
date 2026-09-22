@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Clip, type Layout, type MediaSource, DEFAULT_ITEM_TRANSFORM, type Edl, type Region, type SequenceItem, type VideoSequence } from "../edl";
+import { Clip, type Layout, type MediaSource, DEFAULT_ITEM_TRANSFORM, type Edl, type Region, type SequenceItem, type VideoSequence, SELECTION_AUTHOR } from "../edl";
 import { applyOperations, type EditorOperation } from "../editor/operations";
 import { promoteClipToSequence } from "../editor/editable-timeline";
 import { sequenceFrames } from "../sequences";
@@ -471,6 +471,14 @@ export function hookLine(template: VideoTemplate, sequence: VideoSequence, overr
 export const templateAuthor = (templateId: string) => `template:${templateId}`;
 export const isTemplateEdit = (edit: { by: string }) => edit.by.startsWith("template:");
 /**
+ * An edit the clip selection wrote when it cut this clip out of a recording. A template
+ * replaces these along with its own: they are the same job — a hook title, dead-air
+ * cuts, push-ins — done by an earlier pass that had not been told what the video should
+ * look like. Keeping them stacks a second title over the hook and multiplies two
+ * push-ins into a zoom neither asked for.
+ */
+export const isSelectionEdit = (edit: { by: string }) => edit.by === SELECTION_AUTHOR;
+/**
  * Who a canvas layer belongs to now. A layer whose every edit a template wrote and
  * whose placement is still what the template gave it is the template's own to replace.
  * The moment a person adds an edit to it, it is theirs; the moment they move, resize,
@@ -558,7 +566,7 @@ export function templateOperations(
     // A layer the template has nothing to say about — a title someone placed by hand,
     // a shot with no transcript — is left exactly as it is rather than restyled with
     // caption settings that have no words to apply to. Its own past output still goes.
-    if (!reframes && !planned.sentences && !planned.cues.length && !item.clip.edits.some(isTemplateEdit)) continue;
+    if (!reframes && !planned.sentences && !planned.cues.length && !item.clip.edits.some((edit) => isTemplateEdit(edit) || isSelectionEdit(edit))) continue;
     const images = planned.cues.flatMap((cue, index) =>
       (resolved.get(`${planned.itemId}:${index}`) ?? []).map((image) => ({
         type: "image" as const,
@@ -584,7 +592,7 @@ export function templateOperations(
       ...planned.emphasis.map((edit) => ({ ...edit, by })),
       ...images,
     ];
-    const kept = item.clip.edits.filter((edit) => !isTemplateEdit(edit));
+    const kept = item.clip.edits.filter((edit) => !isTemplateEdit(edit) && !isSelectionEdit(edit));
     const edits = [...kept, ...generated];
     const captions = template.captions ?? {};
     // An unchanged shot is not worth a revision entry or a conflict surface.

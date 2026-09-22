@@ -73,12 +73,16 @@ export const CaptionStyle = z.object({
 export type CaptionStyle = z.infer<typeof CaptionStyle>;
 
 /**
- * Who authored an edit. Empty is a hand-made edit — from the UI, the agent, or
- * the original selection. `template:<id>` marks one a template generated, which
- * is the only reason re-applying a template can replace its own previous output
- * without touching anything a person placed by hand.
+ * Who authored an edit. Empty is a hand-made edit — from the UI or from an agent
+ * asked to make it. `template:<id>` marks one a template generated, which is the only
+ * reason re-applying a template can replace its own previous output without touching
+ * anything a person placed by hand. `select` marks one the clip selection wrote when
+ * it cut this clip out of a long recording: a first draft of the same job a template
+ * does, made before anyone had chosen a look, which is why a template replaces it
+ * rather than stacking a second push-in on top of it.
  */
 export const EditAuthor = z.string().default("");
+export const SELECTION_AUTHOR = "select";
 
 /**
  * Edits are expressed in CLIP-RELATIVE SOURCE seconds. Silence cuts shift the

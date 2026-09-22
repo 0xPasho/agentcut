@@ -167,6 +167,13 @@ which slot.
 - `slots` fills the template's named inputs. An `imagePool` slot takes
   `{"folder": "..."}` (every image in it, in filename order) or `{"assetIds": [...]}`.
 
+A clip cut out of a long recording arrives with a draft on it: the selection agent's own
+hook title, its dead-air cuts, its push-ins, marked `by: "select"`. A template replaces
+that draft along with its own previous output, because it is the same job done by a pass
+that had not been told what the video should look like. Keeping it put a second title
+over the hook and multiplied two overlapping push-ins into a zoom neither asked for.
+A hand edit is still a hand edit and survives both.
+
 Every edit a template writes carries `by: "template:<id>"`. Re-applying removes only
 edits with that marker and only canvas layers whose every edit carries it *and* whose
 placement is still what the template gave them. A title you placed by hand survives; so

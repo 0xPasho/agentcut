@@ -305,3 +305,30 @@ test("the dry run says when the hook it will draw is not the hook that was writt
   assert.equal(short.hook?.shortened, false);
   assert.ok(!short.warnings.some((w) => w.includes("longer than the")));
 });
+
+test("a template replaces the draft the clip selection made, and leaves a hand edit alone", async () => {
+  const { id, sequenceId, itemId } = await project("Draft");
+  const mine = { type: "text" as const, t: 1, d: 2, text: "Mía", position: "bottom" as const, x: null, y: null, style: "plain" as const, by: "" };
+  const theirs = [
+    { type: "text" as const, t: 0.4, d: 2.6, text: "Entrar a Big Tech", position: "top" as const, x: null, y: null, style: "card" as const, by: "select" },
+    { type: "punch" as const, t: 3, d: 1.2, scale: 1.2, by: "select" },
+    { type: "silence" as const, t: 6, d: 0.8, by: "select" },
+  ];
+  store.editProject(id, { expectedRevision: store.readEditor(id).revision, operations: [
+    { type: "item.patch", sequenceId, itemId, patch: { edits: [...theirs, mine] } },
+  ] });
+
+  await tools.executeEditorTool(id, { tool: "template.apply", templateId: "stream-split", sequenceId, expectedRevision: store.readEditor(id).revision });
+  const shot = store.readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!.items.find((i) => i.id === itemId)!;
+  const byAuthor = shot.clip.edits.reduce((acc: Record<string, number>, e) => ({ ...acc, [e.by || "hand"]: (acc[e.by || "hand"] ?? 0) + 1 }), {});
+  assert.equal(byAuthor.select, undefined, "the selection's first draft is gone, not stacked under the template's");
+  assert.equal(byAuthor.hand, 1, "the title someone placed by hand survives");
+  assert.equal(shot.clip.edits.find((e) => e.by === "")!.text, "Mía");
+  assert.ok((byAuthor["template:stream-split"] ?? 0) > 1, "and the template wrote its own");
+  // Exactly one title on screen: the hook, on its own layer.
+  const titles = store.readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!.items
+    .flatMap((i) => i.clip.edits.filter((e) => e.type === "text" && e.position === "top"));
+  assert.equal(titles.length, 1, "the hook is the only card at the top");
+  const { describeAuthor } = await import("../src/lib/editor/authorship");
+  assert.match(describeAuthor("select"), /cut out of the recording/);
+});
