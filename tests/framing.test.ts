@@ -450,3 +450,29 @@ test("a video derived into another shape keeps that shape when the template is a
   assert.deepEqual({ width: original.output.width, height: original.output.height }, { width: 1080, height: 1920 });
   assert.ok(original.items.find((i) => i.mediaId)!.clip.layout.type === "split");
 });
+
+test("captions that clear the seam on the wrong side are called out too", async () => {
+  // Below the seam with the camera below it: on the speaker's face, which is where a
+  // variant that moved the seam and not the captions leaves them.
+  await registry.saveTemplate({ ...SPLIT, id: "on-the-face", captions: { preset: "popline", positionY: 0.8, fontSizePct: 5, maxWordsPerLine: 1 } });
+  const { id, sequenceId } = await project("On the face");
+  const dry = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "on-the-face", sequenceId }) as import("../src/lib/templates/plan").TemplatePlan;
+  assert.ok(dry.warnings.some((w) => w.includes("over the person")), dry.warnings.join(" | "));
+
+  // With the person on top, the same position is over the screen and says nothing.
+  await registry.saveTemplate({ ...SPLIT, id: "person-on-top", captions: { preset: "popline", positionY: 0.8, fontSizePct: 5, maxWordsPerLine: 1 },
+    layout: { ...SPLIT.layout, cameraPosition: "top", cameraPct: 40 } });
+  const flipped = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "person-on-top", sequenceId }) as import("../src/lib/templates/plan").TemplatePlan;
+  assert.ok(!flipped.warnings.some((w) => w.includes("over the person")), flipped.warnings.join(" | "));
+
+  // And the built-in's own variants keep the captions on the screen in every shape.
+  const { resolveTemplate } = await import("../src/lib/templates/resolve");
+  const streamShort = await registry.getTemplate("stream-short");
+  for (const [aspect, output] of [["9:16", { width: 1080, height: 1920 }], ["1:1", { width: 1080, height: 1080 }], ["4:5", { width: 1080, height: 1350 }]] as const) {
+    const resolved = resolveTemplate(streamShort, { aspect });
+    if (resolved.layout.mode !== "split") continue;
+    const seam = (100 - resolved.layout.cameraPct) / 100;
+    const bottom = resolved.captions.positionY! + (resolved.captions.fontSizePct! / 100) * 1.25;
+    assert.ok(bottom < seam, `${aspect}: the captions end at ${bottom.toFixed(2)} and the seam is at ${seam.toFixed(2)} (${output.height}px tall)`);
+  }
+});

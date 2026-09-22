@@ -314,9 +314,12 @@ const DEFINITIONS: unknown[] = [
     // cropped to a letterbox: a webcam is about as wide as it is tall and a half of a
     // square frame at a third of the height is three times wider than it is tall.
     variants: {
-      "1:1": { layout: { cameraPct: 55 } },
-      "4:5": { layout: { cameraPct: 44 } },
-      "16:9": { layout: { mode: "crop" } },
+      // Moving the seam moves where the captions have to sit: they belong just above it,
+      // on the screen's half, and a variant that only changed the share left them over
+      // the speaker's face.
+      "1:1": { layout: { cameraPct: 55 }, captions: { positionY: 0.36 } },
+      "4:5": { layout: { cameraPct: 44 }, captions: { positionY: 0.47 } },
+      "16:9": { layout: { mode: "crop" }, captions: { positionY: 0.72 } },
     },
     outro: { enabled: true, slot: "endcard" },
     slots: [

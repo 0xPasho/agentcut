@@ -139,11 +139,16 @@ rectangles that matter instead:
   want it to stick — and use `mode: "source"` for a template that should keep its hands
   off the framing altogether.
 - `template.plan` reports `framing`: the mode, which half the camera is in, and where
-  the seam falls as a share of height. Two more mistakes are called out there, because
-  both are invisible until the first render: captions that start above the seam and run
-  past it, and a screen rectangle wide enough that the webcam shows through it — the
-  speaker then appears twice, small in the screen pane and large in their own. Stop the
-  screen where the camera starts, which is what the built-in does.
+  the seam falls as a share of height. Three more mistakes are called out there, because
+  all of them are invisible until the first render: captions that start above the seam
+  and run past it; captions that clear it on the wrong side and land on the speaker's
+  face, which is what a variant that moves the seam and not the captions produces; and a
+  screen rectangle wide enough that the webcam shows through it — the speaker then
+  appears twice, small in the screen pane and large in their own. Stop the screen where
+  the camera starts, which is what the built-in does.
+- A variant that moves the seam has to move the captions with it. `stream-short` carries
+  both in each of its shapes, which is why a short derived into a square still reads one
+  word at a time just above the seam rather than across the speaker's face.
 
 ## Choosing one
 

@@ -388,8 +388,15 @@ export async function planTemplate(
       // that happens to be long, and the warning is about the worst line, not the first.
       const rows = captions.preset === "popline" || captions.maxWordsPerLine === 1 ? 1 : 2;
       const bottom = captions.positionY + (captions.fontSizePct / 100) * 1.25 * rows;
+      const cameraSide = template.layout.cameraPosition === "top"
+        ? (top: number) => top < seam!
+        : (top: number) => top >= seam!;
       if (captions.positionY < seam! && bottom > seam!)
         warnings.push(`The captions start at ${(captions.positionY * 100).toFixed(0)}% and run past the seam at ${(seam! * 100).toFixed(0)}%, so a two-row line is cut in half by it. Move them clear of it.`);
+      // Or they cleared it on the wrong side. A variant that moves the seam and not the
+      // captions leaves them over the speaker's face, which is what this caught.
+      else if (cameraSide(captions.positionY) && cameraSide(bottom))
+        warnings.push(`The captions sit over the person rather than over the screen — they start at ${(captions.positionY * 100).toFixed(0)}% and the seam is at ${(seam! * 100).toFixed(0)}%. Move them to the other side of it, or say so on purpose.`);
     }
   }
 
