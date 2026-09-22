@@ -583,6 +583,18 @@ script.
 ones: each screenshot sits whole between the hook above it and the boxed captions below,
 in folder order, with nothing clipped at either end of the frame.
 
+`stream-short` was measured on two four-hour streams of the channel it was modelled on,
+through the whole pipeline — transcribe, choose clips, apply the rules, render, read the
+export back. Sixteen shorts. Every one of the forty-eight checks `scripts/style-audit.ts`
+makes passed on the eight that were rendered: each pane agrees with the layout to within
+three parts in 255, the hook holds from the first frame of the body to the last and is
+off the end card, a word lights the caption band while a gap does not, and the card is
+the card and plays whole. No cut lands on a word in either VOD — every one clears the
+nearest word by 150ms — and the pace lands at 20.3 and 19.9 pauses over a third of a
+second per minute against the reference's 20.5, on two bodies of material, which is what
+says the setting was measured rather than fitted to one of them. The captions sit on the
+speech: `scripts/caption-sync.ts` reads an average shift of 5ms across the eight.
+
 `story-arc` was rendered with both cards filled: the hook holds at the top, the turn card
 sits in the middle of the frame, and the closing card lands in its own band with the last
 spoken line still readable beneath it.
