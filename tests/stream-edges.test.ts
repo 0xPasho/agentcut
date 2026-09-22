@@ -661,6 +661,13 @@ test("three hundred transcripts, and nothing a template writes lands inside a wo
       const left = kept(word.t, word.t + word.d);
       assert.ok(left < 0.02 || left > word.d - 0.02,
         `run ${run}: "${word.w}" at ${word.t} for ${word.d}s is half cut — ${left.toFixed(3)}s of it survives`);
+      // And a word only goes if something asked for it to go. A span too short to keep is
+      // dropped so two cuts meet cleanly, and a word inside one would vanish with no cut
+      // covering it — removed by arithmetic rather than by a decision.
+      if (left >= 0.02) continue;
+      const asked = spans.some((span) =>
+        Math.min(word.t + word.d, span.t + span.d) - Math.max(word.t, span.t) > word.d * 0.5);
+      assert.ok(asked, `run ${run}: "${word.w}" at ${word.t} for ${word.d}s is gone, and no cut covers it`);
     }
 
     // A push-in shortened by the cuts underneath it still has time to happen in: a
@@ -812,4 +819,52 @@ test("cuts that remove the whole shot are refused, not silently ignored", async 
   const map = buildTimeMap(clip);
   assert.equal(map.spans.length, 1);
   assert.ok(Math.abs(map.duration - 2) < 0.01, `${map.duration}s of a 10s shot survives`);
+});
+
+test("a rule that would do nothing is refused where it is written", async () => {
+  const registryRules = await import("../src/lib/rules/registry");
+
+  // A template is applied to clips, and at the select stage there are none yet. Saved
+  // happily before this, and did nothing for ever after.
+  await assert.rejects(() => registryRules.saveRule({ id: "at-select", name: "At select", when: "siempre",
+    stage: "select", then: { template: "stream-short" } }), /select stage, where there are no clips yet/);
+  // The same rule at a stage that can act is fine, and so is a select rule that only talks.
+  const acting = await registryRules.saveRule({ id: "at-edit", name: "At edit", when: "siempre",
+    stage: "edit", then: { template: "stream-short" } });
+  assert.equal(acting.then.template, "stream-short");
+  const talking = await registryRules.saveRule({ id: "talks", name: "Talks", when: "siempre",
+    stage: "select", then: { prompt: "prefiere los momentos donde explica algo" } });
+  assert.equal(talking.promptText, "prefiere los momentos donde explica algo");
+
+  // A judgement nobody acts on is still a judgement — it lands in the match list and
+  // tags the video — so it saves, and says what it will not do.
+  const inert = await registryRules.saveRule({ id: "inert", name: "Inert", when: "siempre", then: {} });
+  assert.ok(inert.warnings?.some((w) => w.includes("judges but does not act")), JSON.stringify(inert.warnings));
+
+  // A prompt file that is not there took the whole rule with it: written, then dropped
+  // from the list on the next read, and the save reported "Rule not found".
+  await assert.rejects(() => registryRules.saveRule({ id: "ghost", name: "Ghost", when: "siempre",
+    then: { promptFile: "nope.md" } }), /which is not in the rules folder/);
+  assert.ok(!(await registryRules.listRules()).some((r) => r.id === "ghost"), "and nothing was left behind");
+});
+
+test("a rule naming something its template has not got is saved, and said", async () => {
+  const registryRules = await import("../src/lib/rules/registry");
+  // Not refused: a rule can arrive with a pack before the template it names. But a typo
+  // in a slot id means the end card the rule exists to add simply never arrives.
+  const typo = await registryRules.saveRule({ id: "typo", name: "Typo", when: "siempre",
+    then: { template: "stream-short", slots: { endcrad: { assetId: "a_nothing" } }, overrides: { captionz: { positionY: 0.5 } } } });
+  assert.equal(typo.warnings?.length, 2, JSON.stringify(typo.warnings));
+  assert.ok(typo.warnings!.some((w) => w.includes("no slot called “endcrad”") && w.includes("endcard")), typo.warnings!.join(" | "));
+  assert.ok(typo.warnings!.some((w) => w.includes("no “captionz” to override")), typo.warnings!.join(" | "));
+
+  // Spelled right, nothing to say.
+  const right = await registryRules.saveRule({ id: "right", name: "Right", when: "siempre",
+    then: { template: "stream-short", slots: { endcard: { assetId: "a_nothing" } }, overrides: { captions: { positionY: 0.5 } } } });
+  assert.equal(right.warnings, undefined);
+
+  // A template this machine has not got is not something to be wrong about yet.
+  const later = await registryRules.saveRule({ id: "later", name: "Later", when: "siempre",
+    then: { template: "arrives-with-a-pack", slots: { whatever: { text: "x" } } } });
+  assert.equal(later.warnings, undefined);
 });

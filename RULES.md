@@ -43,6 +43,20 @@ command read and write the same files.
   ordinary template application with the rules that chose it in its `by` marker:
   `template:talking-head/rule:gameplay-clean,stream-outro`. Re-applying a template or
   the rules replaces that work and leaves hand edits alone, exactly as before.
+- **What a rule may not be.** A rule that applies a template at the `select` stage is
+  refused: a template is applied to clips, and at selection there are none yet — written
+  that way it saved happily and did nothing for ever after. So is a rule whose
+  `promptFile` is not in the rules folder, which used to be worse than useless: the file
+  was written, dropped from the list on the next read with a line on the console, and the
+  save that wrote it then failed with "Rule not found", blaming the wrong thing.
+
+  Two more are said rather than refused, because a rule can arrive with a pack before the
+  template it names: an override naming a section the template has not got, and a slot id
+  the template does not offer — a typo in either is otherwise silent, and the end card
+  the rule exists to add simply never arrives. A rule with nothing in `then` is also
+  worth a word: it matches videos and tags them, and changes nothing. All three come back
+  from `rules.save` as `warnings`, which the panel shows and an agent reads.
+
 - **Conflicts:** lower `priority` runs first. The first matched rule naming a template
   wins; every matched rule's overrides merge in that order; prompts accumulate. A slot
   is one value rather than a patch, so a later rule replaces it whole, and a slot the

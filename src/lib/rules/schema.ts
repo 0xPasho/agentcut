@@ -55,6 +55,13 @@ export type RuleRecord = Rule & {
   file: string;
   /** `then.promptFile` read from disk, or `then.prompt`. */
   promptText: string;
+  /**
+   * What is doubtful about this rule but not wrong enough to refuse: an override naming
+   * a section its template has not got, a slot its template does not offer. Set when the
+   * rule is saved, because that is when somebody is looking at what they wrote; a rule
+   * that arrives with a pack may name a template that is installed a moment later.
+   */
+  warnings?: string[];
 };
 
 /** What a rule evaluation returns: which rules the agent judged to match, and why. */

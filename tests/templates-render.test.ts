@@ -387,3 +387,86 @@ test("a word too long for the frame is drawn smaller, not drawn outside it", { t
   assert.ok(inside, `the audit checked: ${audit.checks.map((c) => c.name).join(", ")}`);
   assert.ok(inside!.ok, inside!.detail);
 });
+
+test("a square derive is its own video: its own seam, its own captions, the same hook", { timeout: 420_000 }, async () => {
+  // A variant is a promise about a shape the author never renders: they cut vertical and
+  // the square is derived later, so a seam or a caption band that moved with the frame
+  // and not with the other is invisible until somebody publishes it.
+  const { createVideoProject } = await import("../src/lib/editor/media");
+  const { readEditor, editProject } = await import("../src/lib/editor/store");
+  const { executeEditorTool } = await import("../src/lib/editor/tools");
+  const { renderProject } = await import("../src/lib/editor/render");
+
+  const source = path.join(workspace, "square-stream.mp4");
+  ffmpeg(["-y", "-f", "lavfi", "-i", "color=0x102040:size=1728x1116:rate=12:duration=16",
+    "-f", "lavfi", "-i", "sine=frequency=220:duration=16", "-shortest", "-pix_fmt", "yuv420p", "-c:a", "aac",
+    "-vf", "drawbox=x=1200:y=806:w=528:h=310:color=0xE08020@1:t=fill", source]);
+
+  const { id } = await createVideoProject("Square derive", [{ file: source }]);
+  let snapshot = readEditor(id);
+  const sequenceId = snapshot.edl.sequences[0].id;
+  const words = ["hoy", "vamos", "a", "conectar", "el", "editor", "con", "el", "agente"]
+    .map((w, i) => ({ t: 1 + i * 0.6, d: 0.45, w }));
+  snapshot = editProject(id, { expectedRevision: snapshot.revision, operations: [{
+    type: "item.patch", sequenceId, itemId: snapshot.edl.sequences[0].items[0].id,
+    patch: { title: "Stream", hook: "¿Y si el editor y el agente fueran el mismo?", start: 0, end: 14, words },
+  }] });
+
+  const framing = { camera: { x: 1200 / 1728, y: 806 / 1116, w: 528 / 1728, h: 310 / 1116 }, screen: { x: 0, y: 0, w: 1200 / 1728, h: 1 } };
+  await executeEditorTool(id, {
+    tool: "template.apply", templateId: "stream-short", sequenceId, expectedRevision: snapshot.revision,
+    overrides: { output: { width: 1080, height: 1920, fps: 12 }, outro: { enabled: false }, layout: framing },
+  });
+  const derived = await executeEditorTool(id, {
+    tool: "sequence.derive", sequenceId, aspect: "1:1", expectedRevision: readEditor(id).revision,
+  }) as { sequenceId: string };
+  await executeEditorTool(id, {
+    tool: "template.apply", templateId: "stream-short", sequenceId: derived.sequenceId,
+    expectedRevision: readEditor(id).revision, overrides: { outro: { enabled: false }, layout: framing },
+  });
+
+  const square = readEditor(id).edl.sequences.find((s) => s.id === derived.sequenceId)!;
+  assert.deepEqual({ w: square.output.width, h: square.output.height }, { w: 1080, h: 1080 },
+    "the derive keeps the shape it was derived into");
+  const shot = square.items.find((i) => i.mediaId)!;
+  assert.equal(shot.clip.layout.type, "split");
+  if (shot.clip.layout.type !== "split") return;
+  // The 1:1 variant gives the person more of a shorter frame than the 9:16 one does.
+  const seam = Math.round((square.output.height * shot.clip.layout.topPct) / 100);
+  assert.ok(shot.clip.layout.topPct < 68, `the square variant moved the seam: ${shot.clip.layout.topPct}%`);
+
+  const { outputs } = await renderProject(id, { only: [derived.sequenceId] });
+  const file = outputs[0].file;
+  const at = 2;
+
+  // Screen above the seam, person below it, in the square's own pixels.
+  assert.ok(near(pixel(file, at, 120, seam - 60), [16, 32, 64]), `screen above the seam, saw ${pixel(file, at, 120, seam - 60)}`);
+  assert.ok(near(pixel(file, at, 120, seam + 60), [224, 128, 32]), `person below it, saw ${pixel(file, at, 120, seam + 60)}`);
+  // And the webcam does not show through the screen half as well.
+  for (const y of [120, seam - 120]) {
+    assert.ok(!near(pixel(file, at, 900, y), [224, 128, 32], 60), `the webcam shows through the screen half at y=${y}`);
+  }
+
+  // The hook is still at the top of the square, held across the body.
+  for (const t of [0.4, 6, 12]) {
+    const seen = pixel(file, t, 540, Math.round(1080 * 0.11));
+    assert.ok(seen.every((c) => c > 200), `the hook holds at ${t}s, saw ${seen}`);
+  }
+
+  // The captions are inside the screen half, not over the person's face.
+  const captions = { ...shot.clip.captions };
+  const top = captions.positionY * square.output.height;
+  assert.ok(top + square.output.height * 0.054 * 1.25 < seam,
+    `the caption band ends at ${(top + square.output.height * 0.054 * 1.25).toFixed(0)} and the seam is at ${seam}`);
+  const band = (sec: number, y: number) => {
+    const rgbv = [...ffmpeg(["-ss", String(sec), "-i", file, "-frames:v", "1",
+      "-vf", `crop=1080:90:0:${Math.round(y)},scale=1:1`, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])];
+    return (rgbv[0] + rgbv[1] + rgbv[2]) / 3;
+  };
+  assert.ok(band(words[3].t + 0.2, top) > band(0.2, top) + 6,
+    `a spoken word lights the square's own caption band: ${band(words[3].t + 0.2, top)} against ${band(0.2, top)}`);
+
+  // The vertical original is untouched by any of it.
+  const tall = readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!;
+  assert.deepEqual({ w: tall.output.width, h: tall.output.height }, { w: 1080, h: 1920 });
+});

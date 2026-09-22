@@ -47,6 +47,7 @@ export function RulesPanel({ projectId, sequenceId, beforeApply, afterApply }: {
 }) {
   const [data, setData] = useState<Loaded | null>(null);
   const [error, setError] = useState("");
+  const [notes, setNotes] = useState<string[]>([]);
   const [pending, setPending] = useState("");
 
   const load = useCallback(async () => {
@@ -75,8 +76,15 @@ export function RulesPanel({ projectId, sequenceId, beforeApply, afterApply }: {
 
   /** One call, either transport, then reload so the list is what is on disk. */
   const run = async (label: string, call: () => Promise<unknown>) => {
-    setPending(label); setError("");
-    try { await call(); await load(); }
+    setPending(label); setError(""); setNotes([]);
+    try {
+      const result = await call();
+      // A save can succeed and still be worth a word: a rule naming a slot its template
+      // has not got is saved, and never fills anything.
+      const said = (result as { warnings?: string[] } | undefined)?.warnings;
+      if (Array.isArray(said) && said.length) setNotes(said);
+      await load();
+    }
     catch (e) { setError((e as Error).message); }
     finally { setPending(""); }
   };
@@ -114,6 +122,7 @@ export function RulesPanel({ projectId, sequenceId, beforeApply, afterApply }: {
           onAcceptPreferences={(text) => run("prefs:workspace", () => write({ tool: "preferences.set", text, level: "workspace" }, { action: "preferences.set", text }))} />
       </TabsContent>
       {error && <p role="alert" className="pt-3 text-sm text-destructive">{error}</p>}
+      {notes.map((note) => <p key={note} role="status" className="pt-3 text-sm text-amber-500">{note}</p>)}
     </Tabs>
   );
 }
