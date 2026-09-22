@@ -118,6 +118,17 @@ it decides which one the material wants.
   three hundred generated transcripts through the whole pass and asking the one thing a
   cut must never do: every word is either entirely there or entirely gone.
 
+- **What a template written by somebody else may not be.** A caption look that does not
+  exist, a parent that does not exist, and a template that extends itself are all refused
+  when the document is saved, each naming what is wrong. So is a ring — `uno` extending
+  `tres` extending `dos` extending `uno` — and refusing it *before* writing is the point:
+  found on the next read instead, a ring makes every template in it unreadable, so the
+  app drops them from the list and the author finds two documents gone with no way back
+  but a text editor. An output frame with an odd side is evened rather than refused,
+  because h264 with 4:2:0 chroma cannot encode one: the encoder rounds it down silently
+  and the project would otherwise go on computing every caption position, seam and audit
+  crop against a frame a pixel wider than the file.
+
 - **Framing across recordings.** Rectangles are fractions so a template survives a change
   of resolution — the same OBS scene is 1920x1080 on one machine and 1728x1116 on another
   — not so it survives a change of *shape*. `stream-short` carries the rectangles of the

@@ -82,8 +82,22 @@ export async function getTemplate(id: string): Promise<TemplateRecord> {
 /** Create or replace a user template. Built-ins on disk are never modified. */
 export async function saveTemplate(input: unknown): Promise<TemplateRecord> {
   const template = VideoTemplate.parse(input);
-  if (template.extends && !(await listTemplates()).some((t) => t.id === template.extends)) throw new Error(`Template ${template.id} extends ${template.extends}, which does not exist`);
   if (template.extends === template.id) throw new Error(`Template ${template.id} extends itself`);
+  if (template.extends) {
+    const known = await listTemplates();
+    if (!known.some((t) => t.id === template.extends)) throw new Error(`Template ${template.id} extends ${template.extends}, which does not exist`);
+    // A cycle is refused here rather than discovered on the next read. Written first, it
+    // makes both templates in the ring unreadable, so the app drops them from the list
+    // and the person is left with two documents that have vanished and no way back but
+    // an editor. Walking the parents somebody already has costs nothing.
+    const parentOf = new Map(known.map((t) => [t.id, t.extends]));
+    parentOf.set(template.id, template.extends);
+    const chain = [template.id];
+    for (let at = template.extends; at; at = parentOf.get(at) ?? "") {
+      if (chain.includes(at)) throw new Error(`Template ${template.id} would extend itself through ${[...chain, at].join(" → ")}`);
+      chain.push(at);
+    }
+  }
   const dir = templatesDir();
   await fs.mkdir(dir, { recursive: true });
   const file = path.join(dir, `${template.id}.json`);

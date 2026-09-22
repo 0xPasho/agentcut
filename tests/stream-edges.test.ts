@@ -677,3 +677,53 @@ test("three hundred transcripts, and nothing a template writes lands inside a wo
   assert.ok(cuts > 300, `the run has to actually cut something: ${cuts} cuts over ${checked} transcripts`);
   assert.ok(punches > 0, `and push in somewhere: ${punches}`);
 });
+
+test("a frame with an odd side is evened, because the encoder evens it either way", async () => {
+  // h264 with 4:2:0 chroma cannot encode an odd side. The encoder rounds it down without
+  // saying so, and the project then claims a frame it does not produce: every caption
+  // position, seam and audit crop is computed against a number a pixel off the file.
+  await registry.saveTemplate({ id: "odd-frame", extends: "stream-short", name: "Odd frame",
+    output: { width: 1081, height: 1921, fps: 30 }, outro: { enabled: false }, ...STREAM_OVERRIDES });
+  const { id, sequenceId } = await project();
+  await tools.executeEditorTool(id, { tool: "template.apply", templateId: "odd-frame", sequenceId,
+    expectedRevision: store.readEditor(id).revision });
+  const output = store.readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!.output;
+  assert.deepEqual({ width: output.width, height: output.height }, { width: 1080, height: 1920 });
+
+  // Straight through the timeline too, which is the path a person's own output setting takes.
+  store.editProject(id, { expectedRevision: store.readEditor(id).revision, operations: [
+    { type: "sequence.patch", sequenceId, output: { width: 999, height: 1777, fps: 30 } },
+  ] });
+  const patched = store.readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!.output;
+  assert.deepEqual({ width: patched.width, height: patched.height }, { width: 998, height: 1776 });
+
+  // And a whole even frame is left exactly as it is.
+  store.editProject(id, { expectedRevision: store.readEditor(id).revision, operations: [
+    { type: "sequence.patch", sequenceId, output: { width: 1080, height: 1350, fps: 30 } },
+  ] });
+  const kept = store.readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!.output;
+  assert.deepEqual({ width: kept.width, height: kept.height }, { width: 1080, height: 1350 });
+});
+
+test("a template that would extend itself the long way round is refused before it is written", async () => {
+  // Discovered on the next read instead, a ring makes every template in it unreadable:
+  // the app drops them from the list with a line on the console, and somebody who edited
+  // one of their own templates finds both of them gone and no way back but a text editor.
+  await registry.saveTemplate({ id: "uno", name: "Uno" });
+  await registry.saveTemplate({ id: "dos", name: "Dos", extends: "uno" });
+  await registry.saveTemplate({ id: "tres", name: "Tres", extends: "dos" });
+
+  await assert.rejects(() => registry.saveTemplate({ id: "uno", name: "Uno", extends: "tres" }),
+    /uno → tres → dos → uno/);
+  await assert.rejects(() => registry.saveTemplate({ id: "uno", name: "Uno", extends: "uno" }), /extends itself/);
+  await assert.rejects(() => registry.saveTemplate({ id: "cuatro", name: "Cuatro", extends: "nada" }), /does not exist/);
+
+  // And all three are still there, still readable, still extending what they extended.
+  const ids = (await registry.listTemplates()).map((t) => t.id);
+  for (const id of ["uno", "dos", "tres"]) assert.ok(ids.includes(id), `${id} survived: ${ids.join(", ")}`);
+  assert.equal((await registry.getTemplate("tres")).extends, "dos");
+
+  // A chain that is not a ring still saves.
+  await registry.saveTemplate({ id: "cuatro", name: "Cuatro", extends: "tres" });
+  assert.equal((await registry.getTemplate("cuatro")).extends, "tres");
+});

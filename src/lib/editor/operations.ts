@@ -113,9 +113,22 @@ function validateKeyframes(keyframes: TransformKeyframe[] | undefined, title: st
   }
 }
 
+/**
+ * An output frame is positive, whole, and even on both sides.
+ *
+ * h264 with 4:2:0 chroma cannot encode an odd side, and the encoder rounds one down
+ * without saying so: a template asking for 1081x1921 produced a 1080x1920 file while
+ * every caption position, seam and audit crop went on being computed against the size
+ * the project claimed. A pixel is nothing to look at and a wrong frame size is not, so
+ * it is evened here rather than refused — this runs on every read of an existing
+ * project, and a project nobody can open is a worse answer than a project one pixel
+ * narrower than it asked to be.
+ */
 function validateOutput(output: { width: number; height: number; fps: number }) {
   positive(output.width, "Output width"); positive(output.height, "Output height"); positive(output.fps, "Output frame rate");
   if (!Number.isInteger(output.width) || !Number.isInteger(output.height)) throw new Error("Output dimensions must be integers");
+  output.width -= output.width % 2;
+  output.height -= output.height % 2;
 }
 
 /** Shared domain validation: browser preview, agent tools and persistence all use this. */
