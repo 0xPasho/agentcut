@@ -14,7 +14,7 @@ import { aspectOf, resolveTemplate } from "./resolve";
 import type { VideoTemplate } from "./schema";
 import type { ImageCue, Subject } from "./script";
 import {
-  mergeTemplate, planTemplate, slotFilled, templateOperations, TemplateRequest, resolveTarget,
+  isBookendTitle, mergeTemplate, planTemplate, requireFraming, slotFilled, templateOperations, TemplateRequest, resolveTarget,
   type PlannedItem, type ResolvedImage, type SlotValue, type TemplatePlan,
 } from "./plan";
 
@@ -356,6 +356,10 @@ async function resolveBookend(
  * headroom for it, one already mixed loud does not, and clipping a video to hit a number
  * is worse than being a decibel under it.
  */
+/** Where a peak should land, and how far a transient may go past it before it counts. */
+const PEAK_CEILING_DB = -1;
+const TRANSIENT_DB = 3;
+
 export async function targetLevel(
   template: VideoTemplate,
   body: { file: string; start: number; duration: number } | null,
@@ -370,7 +374,13 @@ export async function targetLevel(
   if (measured === null) return null;
   const wanted = 10 ** ((target - measured) / 20);
   // A decibel of headroom below full scale, which is what a platform's own encoder wants.
-  const headroom = peaks ? 10 ** ((-1 - peaks.maxDb) / 20) : Infinity;
+  // Two things about it. It is a ceiling on turning a video *up*, never a reason to turn
+  // one down: loudness is gated and integrated, a peak is one sample, and a single mouse
+  // click at full scale in a quiet stream would otherwise place every shot quieter than
+  // it was recorded. And a transient is allowed to overshoot it by a few decibels, for
+  // the same reason — leaving a whole video five decibels quiet so that one click does
+  // not clip is the trade nobody wants.
+  const headroom = peaks ? Math.max(1, 10 ** ((PEAK_CEILING_DB + TRANSIENT_DB - peaks.maxDb) / 20)) : Infinity;
   // A shot's volume is a multiplier the timeline bounds at two, and that bound is the
   // renderer's: footage too quiet to reach the target lands as close as it can rather
   // than being written a number the editor would refuse.
@@ -468,6 +478,7 @@ export async function applyTemplate(
   // target, a missing required slot — is refused before a folder of two hundred
   // pictures has been copied into the project on its behalf.
   requireSlots(template, request.slots);
+  requireFraming(template);
   const { sizes } = await countPools(request.slots);
   const plan = await planTemplate(current.edl, template, request, sizes);
   const pools = await buildPools(template, request.slots);
@@ -517,7 +528,7 @@ export async function applyTemplate(
   const watermark = resolveSlotAsset(template.watermark, request.slots, "image", "Watermark");
   // The loudness of the video the bookends sit around: the first shot with footage in
   // it, which is what a viewer's ears have adjusted to by the time the card arrives.
-  const bodyShot = [...sequenceItems.values()].find((item) => item.mediaId);
+  const bodyShot = [...sequenceItems.values()].find((item) => item.mediaId && !isBookendTitle(item.clip.title));
   const bodyMedia = bodyShot ? promoted.media.find((m) => m.id === bodyShot.mediaId) : undefined;
   const body = bodyShot && bodyMedia
     ? { file: bodyMedia.file, start: bodyShot.clip.start, duration: Math.max(1, bodyShot.clip.end - bodyShot.clip.start) }

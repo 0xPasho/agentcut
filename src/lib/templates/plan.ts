@@ -2,6 +2,7 @@ import { z } from "zod";
 import { Clip, type Layout, type MediaSource, DEFAULT_ITEM_TRANSFORM, type Edl, type Region, type SequenceItem, type VideoSequence, SELECTION_AUTHOR } from "../edl";
 import { applyOperations, type EditorOperation } from "../editor/operations";
 import { promoteClipToSequence } from "../editor/editable-timeline";
+import { animatedFields } from "../keyframes";
 import { sequenceFrames } from "../sequences";
 import { brandsInText, transcriptCasing, type Casing } from "../search/brand";
 import { VideoTemplate, type TemplateRegion } from "./schema";
@@ -225,6 +226,9 @@ function sameLayout(a: Layout, b: Layout): boolean {
   return same(a.top, b.top) && same(a.bottom, b.bottom) && a.topPct === b.topPct && a.camera === b.camera;
 }
 
+/** The two titles a bookend carries. A shot with one is a card, not the video. */
+export const isBookendTitle = (title: string) => title === "Intro" || title === "Outro";
+
 /** The camera rectangle is the one thing a split cannot be guessed from. */
 export const CAMERA_NEEDED =
   "A split layout needs the camera rectangle: where the webcam sits in the source frame, as fractions of it (x, y, w, h between 0 and 1).";
@@ -237,6 +241,11 @@ export const CAMERA_NEEDED =
  * `null` means the template has nothing to say about framing and the shot keeps its own —
  * a hand-placed crop, or the split an agent read off the frames.
  */
+export function requireFraming(template: VideoTemplate): void {
+  if (template.layout.mode === "split" && (!template.layout.camera.w || !template.layout.camera.h))
+    throw new Error(CAMERA_NEEDED);
+}
+
 export function layoutFor(template: VideoTemplate, media?: { width: number; height: number } | null): Layout | null {
   const layout = template.layout;
   if (layout.mode === "source") return null;
@@ -380,11 +389,12 @@ export async function planTemplate(
         warnings.push(`The ${pane.name} rectangle is a different shape from the half it fills, so ${Math.round((1 - crop.share) * 100)}% of it is cropped away — what shows is its middle ${Math.round(crop.w)}x${Math.round(crop.h)} pixels. Give it the shape of its half to choose what is lost.`);
     }
   }
-  if (split && sequence.items.some((entry) => entry.mediaId && entry.clip.words.length)) {
+  const captioned = sequence.items.find((entry) => entry.mediaId && entry.clip.words.length);
+  if (split && captioned) {
     // The caption block grows downward from its top edge. A block that reaches across
     // the seam is read half on the screen and half on the speaker, which is the one
     // framing mistake that looks like a bug rather than a taste.
-    const captions = { ...sequence.items.find((entry) => entry.mediaId)!.clip.captions, ...(template.captions ?? {}) };
+    const captions = { ...captioned.clip.captions, ...(template.captions ?? {}) };
     if (captions.preset !== "none") {
       // One word at a time is one row, always. Anything else wraps to two on the line
       // that happens to be long, and the warning is about the worst line, not the first.
@@ -501,8 +511,11 @@ export function hookSource(template: VideoTemplate, sequence: VideoSequence, ove
   // order is not meaning: after a few edits, a hand-placed title can sit first in it.
   const hooked = sequence.items.find((item) => item.clip.hook.trim());
   const shot = sequence.items.find((item) => item.mediaId !== null && item.clip.title.trim()) ?? sequence.items.find((item) => item.clip.title.trim());
+  // A line somebody typed is used as typed: the filter below is for candidates this
+  // function *derives*, and refusing an author's own words while telling them to write
+  // some is the worst of both.
+  if ((override ?? "").trim()) return override!.trim();
   const candidates = [
-    (override ?? "").trim(),
     substitute(template.hook.text, { hook: "", title: sequence.title }, slots).trim(),
     (hooked?.clip.hook ?? "").trim(),
     (shot?.clip.title ?? "").trim(),
@@ -538,7 +551,7 @@ export type TemplateItemState = "owned" | "moved" | "hand";
 export type Bookend = { src: string; seconds: number } | { media: MediaSource; addMedia: boolean; seconds: number; gain?: number };
 export function templateItemState(item: SequenceItem): TemplateItemState {
   // A video bookend has footage and no edits; its mark is on the clip itself.
-  if (item.mediaId !== null && ["Intro", "Outro"].includes(item.clip.title) && item.clip.reason.startsWith("template:") && !item.clip.edits.length)
+  if (item.mediaId !== null && isBookendTitle(item.clip.title) && item.clip.reason.startsWith("template:") && !item.clip.edits.length)
     return item.at !== null && item.at !== undefined ? "moved" : "owned";
   if (item.mediaId !== null || !item.clip.edits.length || !item.clip.edits.some(isTemplateEdit)) return "hand";
   if (!item.clip.edits.every(isTemplateEdit)) return "hand";
@@ -548,7 +561,7 @@ export function templateItemState(item: SequenceItem): TemplateItemState {
   // Layers a template always starts at zero: a nonzero start is a person's decision.
   const retimed = ["Hook", "Watermark", "Music bed"].includes(item.clip.title) && (item.at ?? 0) !== 0;
   // A bookend is placed on the main track with automatic timing; a pinned time is a person's decision.
-  const repinned = ["Intro", "Outro"].includes(item.clip.title) && (item.at !== null && item.at !== undefined);
+  const repinned = isBookendTitle(item.clip.title) && (item.at !== null && item.at !== undefined);
   if (repinned) return "moved";
   return placed || retimed ? "moved" : "owned";
 }
@@ -611,7 +624,11 @@ export function templateOperations(
     // caption: a screen share is framed wrongly by a centre crop whether or not anyone
     // is talking over it.
     const media = item.mediaId ? working.media.find((entry) => entry.id === item.mediaId) : null;
-    const layout = layoutFor(template, media);
+    // A template frames the video it is applied to: the shots on the main track. An end
+    // card somebody pinned there, or b-roll floating over the video on its own layer, is
+    // not a screen share, and cutting it into two arbitrary halves mangles it.
+    const framable = !isBookendTitle(item.clip.title) && (item.layer ?? 0) === 0;
+    const layout = framable ? layoutFor(template, media) : null;
     const reframes = !!layout && !sameLayout(layout, item.clip.layout);
     // A layer the template has nothing to say about — a title someone placed by hand,
     // a shot with no transcript — is left exactly as it is rather than restyled with
@@ -656,8 +673,12 @@ export function templateOperations(
   // video before it in a feed is not a per-shot decision.
   if (level && Math.abs(level.gain - 1) > 0.001) {
     for (const item of sequenceOf().items) {
-      if (!item.mediaId || ["Intro", "Outro"].includes(item.clip.title)) continue;
+      if (!item.mediaId || isBookendTitle(item.clip.title)) continue;
       if (Math.abs((item.volume ?? 1) - level.gain) < 0.001) continue;
+      // A shot whose volume is a fade is already saying something about its own level,
+      // and a fixed value would never be seen — the editor refuses it. Skipping it keeps
+      // one hand-drawn fade from throwing away the whole apply, pictures and all.
+      if (animatedFields(item.keyframes).has("volume")) continue;
       push({ type: "item.place", sequenceId: plan.sequenceId, itemId: item.id, patch: { volume: level.gain } });
     }
   }

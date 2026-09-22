@@ -78,11 +78,31 @@ it decides which one the material wants.
   not the whole four-hour recording, whose loudest second says nothing about this forty
   and costs a minute to find — and placed at the target, with the bookends levelled
   against where it now plays rather than where it was recorded.
-  Never at the cost of clipping: the gain is capped so the footage's own peaks stay a
-  decibel below full scale, and capped again at twice, which is the most a shot's volume
+  Never at the cost of clipping: the gain is capped so the footage's own peaks stay about
+  a decibel below full scale, and capped again at twice, which is the most a shot's volume
   can be. Stream audio with peaks near full scale and a low average — a microphone with
   no compressor on it — reaches about -20 rather than -16, and saying so is better than
-  a limiter nobody asked for. `null` leaves the sound exactly as recorded.
+  a limiter nobody asked for. Two things that cap is *not*. It never turns a video down:
+  loudness is integrated and gated, a peak is a single sample, and one mouse click at full
+  scale in a stream recorded at -29 would otherwise place every shot quieter than it was
+  recorded — the opposite of what the template asked for. And a transient may overshoot it
+  by three decibels, because leaving a whole video five decibels quiet so that one click
+  does not clip is the trade nobody wants. `null` leaves the sound exactly as recorded.
+
+  What is measured is the video, never a card in front of it: re-applying a template that
+  opens on an intro would otherwise read the sting and level the whole timeline to it. A
+  shot whose volume is a fade somebody drew keeps its fade — a fixed value would never be
+  seen, and one hand-drawn fade is not a reason to throw away the rest of the apply.
+- **Framing across recordings.** Rectangles are fractions so a template survives a change
+  of resolution — the same OBS scene is 1920x1080 on one machine and 1728x1116 on another
+  — not so it survives a change of *shape*. `stream-short` carries the rectangles of the
+  scene its author records; on a 16:9 recording its screen rectangle is a different shape
+  from the half it fills, and the dry run says so, with the pixels that would actually
+  show, before anything is applied. A split template with no camera rectangle is refused
+  at the same point, beside the missing-slot refusal, rather than part-way through an
+  import. Framing is for the video: a card somebody pinned to the timeline, and b-roll
+  floating over it on its own layer, are left as they are rather than cut into two halves.
+
 - **Sound**: a template can carry its own sound design. `rhythm.punch.sfx` plays a sound on
   every punch-in; `sound.transitions` plays one on every cut between shots; `sound.opener`
   plays one on the first frame; `music` is the bed. Each takes `enabled`, then a `slot`, an

@@ -423,6 +423,20 @@ test("a rectangle that loses a third of itself to the shape of its half says so"
   // say nothing about — a pane always loses a little.
   const shipped = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "stream-short", sequenceId }) as import("../src/lib/templates/plan").TemplatePlan;
   assert.ok(!shipped.warnings.some((w) => w.includes("cropped away")), shipped.warnings.join(" | "));
+
+  // On a differently shaped recording the same rectangles do not fit, and that is what
+  // the warning is for: a template carries the rectangles of the scene its author
+  // records, and somebody who installs a pack and records 16:9 is told, before anything
+  // is applied, which part of their screen would actually show. Rectangles are fractions
+  // so they survive a resolution change, not so they survive a reframe.
+  const streamShort = await registry.getTemplate("stream-short");
+  const resolved = (await import("../src/lib/templates/resolve")).resolveTemplate(streamShort, { aspect: "9:16" });
+  if (resolved.layout.mode !== "split") return assert.fail("the built-in is a split");
+  const pane = { width: 1080, height: 1920 * (100 - resolved.layout.cameraPct) / 100 };
+  const hd = paneCrop(resolved.layout.screen, { width: 1920, height: 1080 }, pane);
+  assert.ok(hd.share < 0.7, `16:9 is the shape the warning exists for: ${hd.share.toFixed(3)}`);
+  const own = paneCrop(resolved.layout.screen, { width: 1728, height: 1116 }, pane);
+  assert.ok(own.share > 0.7, `and the shape it was written on is not: ${own.share.toFixed(3)}`);
 });
 
 test("a video derived into another shape keeps that shape when the template is applied again", async () => {

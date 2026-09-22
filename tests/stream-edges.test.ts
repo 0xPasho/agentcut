@@ -390,3 +390,153 @@ test("a video recorded quietly is placed at the loudness the template asks for, 
   await tools.executeEditorTool(other, { tool: "template.apply", templateId: "unlevelled", sequenceId: otherSeq, expectedRevision: store.readEditor(other).revision });
   assert.equal(store.readEditor(other).edl.sequences.find((s) => s.id === otherSeq)!.items.find((i) => i.id === otherItem)!.volume, undefined);
 });
+
+test("a single peak in quiet footage is not a reason to make the whole video quieter", async () => {
+  // A stream mixed low with one full-scale sample in it: a mouse click, a cough, a sting.
+  // Loudness is gated and integrated, so the click does not move the reading — but it does
+  // fill the headroom, and headroom is a ceiling on turning a video up, not a reason to
+  // turn one down.
+  const clicked = path.join(workspace, "clicked.mp4");
+  const tone = "0.05*sin(2*PI*1000*t)+gt(t\\,5)*lt(t\\,5.01)*0.95*sin(2*PI*2000*t)";
+  const made = spawnSync(FFMPEG, ["-y",
+    "-f", "lavfi", "-i", "color=0x102040:size=1728x1116:rate=15:duration=10",
+    "-f", "lavfi", "-i", `aevalsrc=${tone}:d=10`,
+    "-map", "0:v", "-map", "1:a", "-pix_fmt", "yuv420p", "-shortest", "-c:a", "aac", clicked], { encoding: "utf8" });
+  assert.equal(made.status, 0, made.stderr);
+
+  const { loudness, audioLevel } = await import("../src/lib/media");
+  const [measured, peaks] = await Promise.all([loudness(clicked), audioLevel(clicked)]);
+  assert.ok(measured !== null && measured < -25, `the footage is quiet: ${measured}`);
+  assert.ok(peaks !== null && peaks.maxDb > -1.5, `and it peaks at full scale anyway: ${peaks?.maxDb}`);
+
+  const { targetLevel } = await import("../src/lib/templates/apply");
+  const template = (await import("../src/lib/templates/resolve")).resolveTemplate(
+    await registry.getTemplate("stream-short"), { aspect: "9:16" });
+  const level = await targetLevel({ ...template, audio: { targetLufs: -22 } },
+    { file: clicked, start: 0, duration: 10 });
+  assert.ok(level && level.gain > 1, `the template asked for louder and got louder: ${level?.gain}`);
+  assert.ok(level!.lufs > measured!, `and says where it now plays: ${level!.lufs.toFixed(1)} from ${measured!.toFixed(1)}`);
+});
+
+test("the loudness is read off the video, not off the card somebody put in front of it", async () => {
+  const card = await endCard("intro-card.mp4");
+  await registry.saveTemplate({ id: "opened", extends: "stream-short", name: "Opened",
+    audio: { targetLufs: -22 }, intro: { enabled: true, slot: "opencard" }, outro: { enabled: false },
+    slots: [{ id: "opencard", kind: "video", label: "Opening card" }], ...STREAM_OVERRIDES });
+
+  const quiet = path.join(workspace, "opened-stream.mp4");
+  const made = spawnSync(FFMPEG, ["-y", "-f", "lavfi", "-i", "color=0x102040:size=1728x1116:rate=15:duration=10",
+    "-f", "lavfi", "-i", "sine=frequency=1000:duration=10", "-af", "volume=0.35", "-pix_fmt", "yuv420p", "-shortest", "-c:a", "aac", quiet], { encoding: "utf8" });
+  assert.equal(made.status, 0, made.stderr);
+
+  const { id, sequenceId, itemId } = await project(quiet, speak(SCRIPT), 8);
+  await tools.executeEditorTool(id, { tool: "template.apply", templateId: "opened", sequenceId,
+    expectedRevision: store.readEditor(id).revision, slots: { opencard: { assetId: card.id } } });
+  const first = store.readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!;
+  const opening = first.items.find((i) => i.clip.title === "Intro");
+  assert.ok(opening, "the card is on the front of the video");
+  const levelled = first.items.find((i) => i.id === itemId)!.volume;
+  assert.ok(levelled !== undefined && levelled > 1, `the quiet footage was turned up: ${levelled}`);
+
+  // The second apply now has the card as the first shot with footage in it. What it
+  // measures must still be the video: measuring the card would level the whole timeline
+  // to a green 480x854 sting.
+  await tools.executeEditorTool(id, { tool: "template.apply", templateId: "opened", sequenceId,
+    expectedRevision: store.readEditor(id).revision, slots: { opencard: { assetId: card.id } } });
+  const again = store.readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!.items.find((i) => i.id === itemId)!;
+  assert.equal(again.volume, levelled, "the level converges on the video's own loudness");
+});
+
+test("a shot with a volume fade takes the rest of the template instead of throwing it away", async () => {
+  const card = await endCard("fade-card.mp4");
+  await registry.saveTemplate({ id: "faded", extends: "stream-short", name: "Faded",
+    audio: { targetLufs: -22 }, outro: { enabled: true, slot: "endcard" }, ...STREAM_OVERRIDES });
+  const quiet = path.join(workspace, "faded-stream.mp4");
+  const made = spawnSync(FFMPEG, ["-y", "-f", "lavfi", "-i", "color=0x102040:size=1728x1116:rate=15:duration=10",
+    "-f", "lavfi", "-i", "sine=frequency=1000:duration=10", "-af", "volume=0.35", "-pix_fmt", "yuv420p", "-shortest", "-c:a", "aac", quiet], { encoding: "utf8" });
+  assert.equal(made.status, 0, made.stderr);
+
+  const { id, sequenceId, itemId } = await project(quiet, speak(SCRIPT), 8);
+  store.editProject(id, { expectedRevision: store.readEditor(id).revision, operations: [
+    { type: "item.keyframes", sequenceId, itemId, keyframes: [{ t: 0, volume: 0 }, { t: 1.5, volume: 1 }] },
+  ] });
+
+  await tools.executeEditorTool(id, { tool: "template.apply", templateId: "faded", sequenceId,
+    expectedRevision: store.readEditor(id).revision, slots: { endcard: { assetId: card.id } } });
+  const sequence = store.readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!;
+  const shot = sequence.items.find((i) => i.id === itemId)!;
+  assert.equal(shot.keyframes?.length, 2, "the fade somebody drew is still theirs");
+  assert.ok(sequence.items.some((i) => i.clip.title === "Outro"), "and the card still went on the end");
+  assert.ok(shot.clip.layout.type === "split", "and the framing still happened");
+});
+
+test("a split template with no camera rectangle is refused before it imports anything", async () => {
+  await registry.saveTemplate({ id: "no-camera", extends: "stream-short", name: "No camera",
+    layout: { camera: { x: 0, y: 0, w: 0, h: 0 }, screen: { x: 0, y: 0, w: 0.69, h: 1 } } });
+  const { id, sequenceId } = await project();
+  const before = store.readEditor(id).revision;
+  await assert.rejects(
+    () => tools.executeEditorTool(id, { tool: "template.apply", templateId: "no-camera", sequenceId, expectedRevision: before }),
+    /camera rectangle/i);
+  assert.equal(store.readEditor(id).revision, before, "and the project is exactly as it was");
+});
+
+test("the seam check reads the captions of the shot that has words, not of the card in front of it", async () => {
+  // A split template that says where the captions go and nothing about their look: the
+  // preset then comes from the shot. Read off the wrong shot — a card, an untranscribed
+  // clip — it reads "none" and the whole check goes quiet.
+  await registry.saveTemplate({ id: "bare-split", name: "Bare split",
+    layout: { mode: "split", cameraPosition: "bottom", cameraPct: 32,
+      screen: { x: 0, y: 0, w: 0.69, h: 1 }, camera: { x: 0.69, y: 0.72, w: 0.31, h: 0.28 } },
+    captions: { positionY: 0.85, fontSizePct: 5, maxWordsPerLine: 1 } });
+
+  const { id, sequenceId, itemId } = await project();
+  const snapshot = store.readEditor(id);
+  const sequence = snapshot.edl.sequences.find((s) => s.id === sequenceId)!;
+  const media = sequence.items.find((i) => i.id === itemId)!.mediaId!;
+  store.editProject(id, { expectedRevision: snapshot.revision, operations: [
+    { type: "item.patch", sequenceId, itemId, patch: { captions: { preset: "popline", positionY: 0.85, fontSizePct: 5, maxWordsPerLine: 1 } } },
+  ] });
+  // A silent shot with no words and no captions, placed in front of the one that speaks.
+  store.editProject(id, { expectedRevision: store.readEditor(id).revision, operations: [
+    { type: "item.add", sequenceId, index: 0, item: { id: "i_sting", mediaId: media, clip: { id: "c_sting", title: "Sting", start: 0, end: 2, captions: { preset: "none" } } } },
+  ] });
+
+  const dry = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "bare-split", sequenceId }) as import("../src/lib/templates/plan").TemplatePlan;
+  assert.ok(dry.warnings.some((w) => w.includes("over the person")), dry.warnings.join(" | "));
+});
+
+test("an end card somebody pinned is not cut in half by the next apply", async () => {
+  const card = await endCard("pinned-card.mp4");
+  await registry.saveTemplate({ id: "pinnable", extends: "stream-short", name: "Pinnable",
+    outro: { enabled: true, slot: "endcard" }, ...STREAM_OVERRIDES });
+  const { id, sequenceId } = await project();
+  await tools.executeEditorTool(id, { tool: "template.apply", templateId: "pinnable", sequenceId,
+    expectedRevision: store.readEditor(id).revision, slots: { endcard: { assetId: card.id } } });
+
+  const placed = store.readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!;
+  const outro = placed.items.find((i) => i.clip.title === "Outro")!;
+  assert.equal(outro.clip.layout.type, "crop", "the card was never framed as a screen share");
+  // Pinning it makes it the person's, and the template stops owning it.
+  const { sequenceFrames } = await import("../src/lib/sequences");
+  const at = sequenceFrames(placed).items.find((e) => e.item.id === outro.id)!.from / placed.output.fps;
+  store.editProject(id, { expectedRevision: store.readEditor(id).revision, operations: [
+    { type: "item.place", sequenceId, itemId: outro.id, patch: { at } },
+  ] });
+  assert.equal(planner.templateItemState(store.readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!.items.find((i) => i.id === outro.id)!), "moved");
+
+  await tools.executeEditorTool(id, { tool: "template.apply", templateId: "pinnable", sequenceId,
+    expectedRevision: store.readEditor(id).revision, slots: { endcard: { assetId: card.id } } });
+  const after = store.readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!.items.find((i) => i.id === outro.id)!;
+  assert.equal(after.clip.layout.type, "crop", "and it is still a card, not two arbitrary halves of one");
+});
+
+test("a hook somebody typed is used as typed, even when it looks like a file name", async () => {
+  await registry.saveTemplate({ id: "hooked", extends: "stream-short", name: "Hooked", ...STREAM_OVERRIDES });
+  const { id, sequenceId } = await project();
+  for (const written of ["main video", "dia-169.mp4"]) {
+    const dry = await tools.executeEditorTool(id, { tool: "template.plan", templateId: "hooked", sequenceId, hookText: written }) as import("../src/lib/templates/plan").TemplatePlan;
+    assert.equal(dry.hook?.text, written, `the line the author wrote is the hook: ${written}`);
+    assert.ok(!dry.warnings.some((w) => w.toLowerCase().includes("hook")), dry.warnings.join(" | "));
+  }
+});
