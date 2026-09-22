@@ -202,13 +202,19 @@ export async function auditStyle(projectId: string, only?: string): Promise<Styl
         }
         // And it is inside the frame. A caption wraps between words, so a word wider than
         // the band has nowhere to go and runs off both edges with its ends cut off by the
-        // picture — which a check on the middle of the band cannot see.
+        // picture — which a check on the middle of the band cannot see. Read the same way
+        // as the band itself: against the same strip with no caption on it, because a
+        // push-in moves the footage under the whole band and that is not ink.
         const margin = width * 0.06;
-        const edges = [0, width - margin].map((x) => drawnOver(outAt(map, spoken.t) + 0.08, top, bandHeight, x, margin));
-        if (edges.every((edge) => edge !== null)) {
-          const worst = Math.max(...(edges as number[]));
-          check("captions inside the frame", worst < 10,
-            `the longest word, "${spoken.w}", stops before the edges: ${worst.toFixed(0)}/255 drawn into the outer ${Math.round(margin)}px`);
+        const edge = (at: number) => {
+          const sides = [0, width - margin].map((x) => drawnOver(at, top, bandHeight, x, margin));
+          return sides.every((side) => side !== null) ? Math.max(...(sides as number[])) : null;
+        };
+        const edgeLit = edge(outAt(map, spoken.t) + 0.08);
+        const edgeQuiet = edge(quiet);
+        if (edgeLit !== null && edgeQuiet !== null) {
+          check("captions inside the frame", edgeLit - edgeQuiet < 6,
+            `the longest word, "${spoken.w}", stops before the edges: ${edgeLit.toFixed(0)}/255 in the outer ${Math.round(margin)}px against ${edgeQuiet.toFixed(0)} with no caption there`);
         }
       }
     }

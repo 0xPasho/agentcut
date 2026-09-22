@@ -378,4 +378,12 @@ test("a word too long for the frame is drawn smaller, not drawn outside it", { t
   // The hook card holds the same URL and stays inside the frame too.
   const hook = ink(2, 120, 520);
   assert.ok(hook.left > 40 && hook.right < 1040, `the hook card runs from ${hook.left} to ${hook.right} of 1080`);
+
+  // And the audit says so from the pixels, which is what somebody checking their own
+  // export has rather than this test's knowledge of where the words were.
+  const { auditStyle } = await import("../src/lib/editor/style-check");
+  const [audit] = await auditStyle(id, sequenceId);
+  const inside = audit.checks.find((c) => c.name === "captions inside the frame");
+  assert.ok(inside, `the audit checked: ${audit.checks.map((c) => c.name).join(", ")}`);
+  assert.ok(inside!.ok, inside!.detail);
 });
