@@ -100,7 +100,9 @@ it decides which one the material wants.
 - **Video bookends**: `intro` / `outro` may name a library video; it is added as project media
   and placed as a shot (played whole), marked as the template's through the shot's `reason`.
 - **Preview**: `templates.preview` and `GET /api/templates/<id>/preview?aspect=9:16` return
-  a schematic SVG of the layout — hook, caption band in the template's colours, picture
+  a schematic SVG of the layout. Given `?project=&sequence=` instead, it draws the
+  template in the shape of *that* video, variants and all — which is the point of them,
+  and a 9:16 schematic beside a square video is the wrong drawing — hook, caption band in the template's colours, picture
   plate, watermark corner, cards, bookends. A schematic, not a render.
 
 ## Framing: the screen and the person

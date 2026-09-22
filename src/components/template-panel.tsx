@@ -214,7 +214,7 @@ export function TemplatePanel({ projectId, sequenceId, beforeApply, afterApply, 
           <SelectContent>{templates.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}{t.builtin ? "" : " (yours)"}</SelectItem>)}</SelectContent>
         </Select>
         {template && <p className="text-xs leading-relaxed text-muted-foreground">{template.description}</p>}
-        {template && <img key={`${template.id}-${templateId}`} src={`/api/templates/${encodeURIComponent(template.id)}/preview?aspect=9:16&t=${template.file ? encodeURIComponent(template.file) : "builtin"}`} alt={`${template.name} layout`} className="h-40 w-auto self-start rounded-xl border border-border" />}
+        {template && <img key={`${template.id}-${templateId}`} src={`/api/templates/${encodeURIComponent(template.id)}/preview?project=${encodeURIComponent(projectId)}&sequence=${encodeURIComponent(sequenceId)}&t=${template.file ? encodeURIComponent(template.file) : "builtin"}`} alt={`${template.name} layout`} className="h-40 w-auto self-start rounded-xl border border-border" />}
         <Button size="xs" variant="ghost" className="self-start" disabled={busy} onClick={suggest}>
           {pending === "suggest" ? <Loader2 className="motion-safe:animate-spin" /> : <Compass />}Which one suits this video?
         </Button>
