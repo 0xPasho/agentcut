@@ -476,3 +476,16 @@ test("captions that clear the seam on the wrong side are called out too", async 
     assert.ok(bottom < seam, `${aspect}: the captions end at ${bottom.toFixed(2)} and the seam is at ${seam.toFixed(2)} (${output.height}px tall)`);
   }
 });
+
+test("the shortener leaves a hook the selection now writes alone", () => {
+  // What the prompt asks for: a line a card holds, ten words, a question or a claim.
+  for (const line of [
+    "¿Por qué se me olvida el ECMAScript?",
+    "El 10% donde mueren los proyectos",
+    "Nueve dólares por analizar un stream",
+    "¿Claude o GPT? La respuesta de hoy",
+    "Antes del lenguaje, aprende la lógica",
+  ]) {
+    assert.deepEqual(planner.shortenHook(line, 10), { text: line, shortened: false }, line);
+  }
+});
