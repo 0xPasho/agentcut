@@ -7,7 +7,10 @@ import { DEFAULT_TRANSITION_SEC, TRANSITION_LABELS } from "@/lib/editor/transiti
 import { EASE_LABELS } from "@/lib/editor/motion";
 import { describeAuthor } from "@/lib/editor/authorship";
 import { Button } from "./ui/button";
+import { Checkbox } from "./ui/checkbox";
+import { Disclosure } from "./ui/disclosure";
 import { Input } from "./ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
 // Generated from the SAME schema exposed to agents: new supported fields remain editable.
 export type Schema = { type?: string; default?: unknown; const?: unknown; enum?: unknown[]; minimum?: number; maximum?: number; properties?: Record<string, Schema>; items?: Schema; anyOf?: Schema[]; oneOf?: Schema[] };
@@ -63,22 +66,29 @@ export function Fields({ schema, value, onChange, label, field }: { schema: Sche
   if (branches) {
     const item = value as Record<string, unknown>;
     const active = Math.max(0, branches.findIndex(b => b.properties?.type?.const === item?.type));
-    return <div className="space-y-3"><div className="flex flex-col gap-1"><label htmlFor={id} className="text-xs">{label} type</label>
-      <select id={id} className="h-9 rounded-xl border border-border bg-background px-2 text-sm focus-visible:outline-2 focus-visible:outline-ring" value={active} onChange={e => onChange(seed(branches[Number(e.target.value)]))}>
-        {branches.map((b,i) => <option key={i} value={i}>{String(b.properties?.type?.const ?? i)}</option>)}
-      </select></div><Fields schema={branches[active]} value={value} onChange={onChange} label={label} /></div>;
+    return <div className="space-y-3"><div className="flex flex-col gap-1"><label id={id} className="text-xs">{label} type</label>
+      <Select value={String(active)} onValueChange={v => onChange(seed(branches[Number(v)]))}>
+        <SelectTrigger aria-labelledby={id} size="sm" className="w-full"><SelectValue /></SelectTrigger>
+        <SelectContent>{branches.map((b,i) => <SelectItem key={i} value={String(i)}>{OPTION_LABELS[String(b.properties?.type?.const ?? "")] ?? String(b.properties?.type?.const ?? i)}</SelectItem>)}</SelectContent>
+      </Select></div><Fields schema={branches[active]} value={value} onChange={onChange} label={label} /></div>;
   }
   if (schema.const !== undefined) return null;
-  if (schema.type === "object") return <fieldset className="min-w-0 space-y-3 rounded-xl border border-border p-3"><legend className="px-1 text-sm font-medium">{label}</legend>{Object.entries(schema.properties ?? {}).filter(([k]) => k !== "id").map(([key,s]) => <Fields key={key} field={key} schema={s} label={schema.properties?.ease ? MOTION_NAMES[key] ?? labelFor(key) : key === "w" && schema.properties?.d ? "Word" : key === "y" && schema.properties?.h ? "Top (pixels)" : labelFor(key)} value={(value as Record<string, unknown>)?.[key]} onChange={v => onChange({ ...(value as object), [key]: v })} />)}</fieldset>;
+  if (schema.type === "object") return <fieldset className="min-w-0 space-y-3"><legend className="pb-2 text-xs font-medium text-foreground/80">{label}</legend><div className="min-w-0 space-y-3 border-s border-foreground/10 ps-3">{Object.entries(schema.properties ?? {}).filter(([k]) => k !== "id").map(([key,s]) => <Fields key={key} field={key} schema={s} label={schema.properties?.ease ? MOTION_NAMES[key] ?? labelFor(key) : key === "w" && schema.properties?.d ? "Word" : key === "y" && schema.properties?.h ? "Top (pixels)" : labelFor(key)} value={(value as Record<string, unknown>)?.[key]} onChange={v => onChange({ ...(value as object), [key]: v })} />)}</div></fieldset>;
   if (schema.type === "array") {
     const values = (value ?? []) as unknown[];
-    return <fieldset className="min-w-0 space-y-3 rounded-xl border border-border p-3"><legend className="px-1 text-sm font-medium">{label}</legend>
-      {values.map((v,i) => <div key={i} className="space-y-2 border-b border-border pb-3"><Fields schema={schema.items!} value={v} label={`${label} ${i+1}`} onChange={next => onChange(values.map((old,n) => n === i ? next : old))} /><Button size="xs" variant="outline" onClick={() => onChange(values.filter((_,n) => n !== i))}>Remove {label.toLowerCase()} {i+1}</Button></div>)}
-      <Button size="sm" variant="outline" onClick={() => onChange([...values, seed(schema.items!)])}>Add {label.toLowerCase()}</Button>
+    return <fieldset className="min-w-0 space-y-3"><legend className="pb-2 text-xs font-medium text-foreground/80">{label}</legend>
+      <div className="min-w-0 space-y-5 border-s border-foreground/10 ps-3">
+        {values.map((v,i) => <div key={i} className="space-y-2"><Fields schema={schema.items!} value={v} label={`${label} ${i+1}`} onChange={next => onChange(values.map((old,n) => n === i ? next : old))} /><Button size="xs" variant="outline" onClick={() => onChange(values.filter((_,n) => n !== i))}>Remove {label.toLowerCase()} {i+1}</Button></div>)}
+        <Button size="sm" variant="outline" onClick={() => onChange([...values, seed(schema.items!)])}>Add {label.toLowerCase()}</Button>
+      </div>
     </fieldset>;
   }
-  if (schema.enum) return <div className="flex flex-col gap-1"><label htmlFor={id} className="text-xs">{label}</label><select id={id} className="h-9 rounded-xl border border-border bg-background px-2 text-sm focus-visible:outline-2 focus-visible:outline-ring" value={String(value)} onChange={e => onChange(e.target.value)}>{schema.enum.map(v => <option key={String(v)} value={String(v)}>{OPTION_LABELS[String(v)] ?? String(v)}</option>)}</select></div>;
-  if (schema.type === "boolean") return <label className="flex min-h-9 items-center gap-2 text-sm"><input type="checkbox" checked={!!value} onChange={e => onChange(e.target.checked)} />{label}</label>;
+  if (schema.enum) return <div className="flex flex-col gap-1"><label id={id} className="text-xs">{label}</label>
+    <Select value={String(value)} onValueChange={onChange}>
+      <SelectTrigger aria-labelledby={id} size="sm" className="w-full"><SelectValue /></SelectTrigger>
+      <SelectContent>{schema.enum.map(v => <SelectItem key={String(v)} value={String(v)}>{OPTION_LABELS[String(v)] ?? String(v)}</SelectItem>)}</SelectContent>
+    </Select></div>;
+  if (schema.type === "boolean") return <Checkbox checked={!!value} onCheckedChange={onChange}>{label}</Checkbox>;
   const numeric = schema.type === "number" || schema.type === "integer";
   return <div className="space-y-1"><label htmlFor={id} className="text-xs">{label}</label><Input id={id} type={numeric ? "number" : "text"} step={schema.type === "integer" ? 1 : "any"} min={schema.minimum} max={schema.maximum} value={value === undefined ? "" : String(value)} onChange={e => onChange(numeric ? (e.target.value === "" ? "" : Number(e.target.value)) : e.target.value)} /></div>;
 }
@@ -100,19 +110,19 @@ export function EditorProperties({ clip, edl, dispatch, onApplied, validationEdl
   return <div className="space-y-4">
     <p className="text-xs text-muted-foreground">Every clip property is editable here, including crop keyframes, split framing, caption styling, transcript timing, and all edit types.</p>
     <Fields schema={clipSchema} value={draft} onChange={v => setDraft(v as Clip)} label="Clip" />
-    <details className="rounded-xl border border-border p-3"><summary className="cursor-pointer text-sm">Output dimensions and frame rate</summary><div className="pt-3"><Fields schema={outputSchema} value={output} onChange={v => setOutput(v as Edl["output"])} label="Output" /></div></details>
-    {joint && <details className="rounded-xl border border-border p-3" open={!!transition}><summary className="cursor-pointer text-sm">Transition from “{joint.previousTitle}”</summary><div className="space-y-3 pt-3">
+    <Disclosure summary="Output dimensions and frame rate"><Fields schema={outputSchema} value={output} onChange={v => setOutput(v as Edl["output"])} label="Output" /></Disclosure>
+    {joint && <Disclosure open={!!transition} summary={`Transition from “${joint.previousTitle}”`} contentClassName="space-y-3 px-3 pt-1 pb-3">
       <p className="text-xs text-muted-foreground">How this shot arrives over the one before it on its track. The two play at once for the overlap, which comes out of the video's length rather than out of either shot's footage. This joint has room for {joint.maxSeconds.toFixed(2)}s.</p>
-      <label className="flex min-h-9 items-center gap-2 text-sm"><input type="checkbox" checked={!!transition} onChange={e => setTransition(e.target.checked ? Transition.parse({ durationSec: Math.min(DEFAULT_TRANSITION_SEC, Math.max(0.04, joint.maxSeconds)) }) : null)} />Blend into this shot</label>
+      <Checkbox checked={!!transition} onCheckedChange={on => setTransition(on ? Transition.parse({ durationSec: Math.min(DEFAULT_TRANSITION_SEC, Math.max(0.04, joint.maxSeconds)) }) : null)}>Blend into this shot</Checkbox>
       {transition && <Fields schema={transitionSchema} value={transition} onChange={v => setTransition(v as Transition)} label="Transition" />}
-    </div></details>}
-    {motion && <details className="rounded-xl border border-border p-3" open={keyframes.length > 0}><summary className="cursor-pointer text-sm">Motion keyframes</summary><div className="space-y-3 pt-3">
+    </Disclosure>}
+    {motion && <Disclosure open={keyframes.length > 0} summary="Motion keyframes" contentClassName="space-y-3 px-3 pt-1 pb-3">
       <p className="text-xs text-muted-foreground">Every moment this layer is pinned at, exactly as an agent reads and writes them. Times run from this shot’s own first frame and may not pass {motion.seconds.toFixed(2)}s, each one later than the last. A field no keyframe names is not animated and keeps the fixed placement above — a keyframe added here pins all of them, where <strong className="font-medium text-foreground">Motion</strong> pins only what you change.</p>
       {/* A new one lands after the last, holding what the layer is doing now, rather than on
           top of the keyframe at zero that almost every animated layer already has. */}
       <Fields schema={motionSchema({ ...motion.seed, t: keyframes.length ? Math.min(motion.seconds, Math.round((Math.max(...keyframes.map(key => key.t)) + 0.5) * 1000) / 1000) : 0 })}
         value={keyframes} onChange={v => setKeyframes(v as TransformKeyframe[])} label="Keyframe" />
-    </div></details>}
+    </Disclosure>}
     {/* Not an alert: nothing is wrong yet, and nothing has been lost. The same notice in
         the same words as Position & audio's, which is the other staged form in this panel. */}
     {stale && <p role="status" className="text-sm text-destructive">The clip changed while these fields were open. Your unsaved fields are kept — close and reopen Properties to load the latest values.</p>}

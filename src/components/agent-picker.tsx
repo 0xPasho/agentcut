@@ -149,7 +149,7 @@ export function AgentPicker({
           </Button>
         }
       />
-      <PopoverContent className="w-[27rem] p-0" aria-label="Agent and model" onKeyDown={onKeyDown}>
+      <PopoverContent className="w-[27rem] rounded-2xl p-0" aria-label="Agent and model" onKeyDown={onKeyDown}>
         <div className="flex">
           <ul className="w-40 shrink-0 space-y-0.5 border-r border-border/60 p-1.5" aria-label="Agents">
             <li>

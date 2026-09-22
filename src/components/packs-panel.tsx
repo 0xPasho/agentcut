@@ -6,6 +6,7 @@ import type { InstalledPack } from "@/lib/packs/schema";
 import type { PackPreview } from "@/lib/packs";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 
@@ -89,10 +90,10 @@ export function PacksPanel() {
             <Input aria-label="Pack name" placeholder="Streamer kit" value={exportForm.name} onChange={(e) => setExportForm({ ...exportForm, name: e.target.value })} />
           </div>
           <div className="grid gap-2 sm:grid-cols-2 text-xs">
-            <fieldset className="space-y-1"><legend className="font-medium">Templates</legend>{templates.filter((t) => !t.builtin).map((t) => <label key={t.id} className="flex min-h-9 items-center gap-2"><input type="checkbox" className="accent-primary" checked={exportForm.templates.has(t.id)} onChange={(e) => { const next = new Set(exportForm.templates); if (e.target.checked) next.add(t.id); else next.delete(t.id); setExportForm({ ...exportForm, templates: next }); }} />{t.name}</label>)}{!templates.some((t) => !t.builtin) && <p className="text-muted-foreground">No templates of your own yet.</p>}</fieldset>
-            <fieldset className="space-y-1"><legend className="font-medium">Rules</legend>{rules.map((r) => <label key={r.id} className="flex min-h-9 items-center gap-2"><input type="checkbox" className="accent-primary" checked={exportForm.rules.has(r.id)} onChange={(e) => { const next = new Set(exportForm.rules); if (e.target.checked) next.add(r.id); else next.delete(r.id); setExportForm({ ...exportForm, rules: next }); }} />{r.name}</label>)}{!rules.length && <p className="text-muted-foreground">No rules yet.</p>}</fieldset>
+            <fieldset className="space-y-1"><legend className="font-medium">Templates</legend>{templates.filter((t) => !t.builtin).map((t) => <Checkbox key={t.id} className="flex w-full text-xs" checked={exportForm.templates.has(t.id)} onCheckedChange={(on) => { const next = new Set(exportForm.templates); if (on) next.add(t.id); else next.delete(t.id); setExportForm({ ...exportForm, templates: next }); }}>{t.name}</Checkbox>)}{!templates.some((t) => !t.builtin) && <p className="text-muted-foreground">No templates of your own yet.</p>}</fieldset>
+            <fieldset className="space-y-1"><legend className="font-medium">Rules</legend>{rules.map((r) => <Checkbox key={r.id} className="flex w-full text-xs" checked={exportForm.rules.has(r.id)} onCheckedChange={(on) => { const next = new Set(exportForm.rules); if (on) next.add(r.id); else next.delete(r.id); setExportForm({ ...exportForm, rules: next }); }}>{r.name}</Checkbox>)}{!rules.length && <p className="text-muted-foreground">No rules yet.</p>}</fieldset>
           </div>
-          <label className="flex min-h-9 items-center gap-2 text-xs"><input type="checkbox" className="accent-primary" checked={exportForm.glossary} onChange={(e) => setExportForm({ ...exportForm, glossary: e.target.checked })} />Include the glossary</label>
+          <Checkbox className="text-xs" checked={exportForm.glossary} onCheckedChange={(glossary) => setExportForm({ ...exportForm, glossary })}>Include the glossary</Checkbox>
           <Button size="sm" type="submit" variant="outline" disabled={!!busy || !exportForm.id.trim()}>{busy === "export" ? <Loader2 className="motion-safe:animate-spin" /> : null}Export</Button>
         </form>
       </section>

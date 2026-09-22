@@ -7,9 +7,9 @@ import { sequenceFrames } from "@/lib/sequences";
 import { FIELD_LABELS, animatedFields, itemSeconds, type AnimatedField } from "@/lib/keyframes";
 import { PLAYHEAD_OUTSIDE_SHOT, clearField, setKeyframe } from "@/lib/editor/motion";
 import { usePlayheadSelector, usePlayheadStore } from "@/lib/editor/playhead";
-import { Card } from "./ui/card";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
+import { Checkbox } from "./ui/checkbox";
 
 const placement = (item: SequenceItem) => ({ at:item.at ?? null, layer:item.layer ?? 0, transform:{...DEFAULT_ITEM_TRANSFORM,...item.transform}, volume:item.volume ?? 1, muted:item.muted ?? false, hidden:item.hidden ?? false });
 const TRANSFORM_FIELDS = [['x','Left (%)'],['y','Top (%)'],['width','Width (%)'],['height','Height (%)'],['rotation','Rotation (degrees)'],['opacity','Opacity']] as const;
@@ -47,10 +47,12 @@ export function LayerInspector({sequence,item,dispatch}:{sequence:VideoSequence;
     <Button type="button" size="xs" variant="outline" disabled={!inside} onClick={()=>pin(field,value)}><Diamond />Pin the {FIELD_LABELS[field]} here</Button>
     <Button type="button" size="xs" variant="ghost" onClick={()=>motion(clearField(item.keyframes,field))}><Eraser />Stop animating the {FIELD_LABELS[field]}</Button>
   </div>:null;
-  return <Card className="shrink-0 gap-3 p-4"><h2 className="text-sm font-medium">Layer placement</h2><p className="text-xs text-muted-foreground">Higher layers appear above lower ones. Timing is independent of the footage beneath.</p>
+  // No card and no heading of its own: the section this opens out of is already called
+  // Position & audio, and a panel inside a panel draws two edges around one thing.
+  return <div className="flex min-w-0 flex-col gap-3"><p className="text-xs leading-relaxed text-muted-foreground">Higher layers appear above lower ones. Timing is independent of the footage beneath.</p>
     <form className="space-y-3" onSubmit={e=>{e.preventDefault();if(stale)return;dispatch([{type:"item.place",sequenceId:sequence.id,itemId:item.id,patch:draft,before:JSON.parse(base)}]);setBase(JSON.stringify(draft));}}>
       <div className="grid grid-cols-2 gap-3"><label className="space-y-1 text-xs">Timeline start (seconds)<Input required type="number" min={0} step="any" value={draft.at ?? resolved} onChange={e=>setDraft({...draft,at:Number(e.target.value)})} /></label><label className="space-y-1 text-xs">Layer<Input required type="number" min={0} step={1} value={draft.layer} onChange={e=>setDraft({...draft,layer:Number(e.target.value)})} /></label></div>
-      <label className="flex min-h-9 items-center gap-2 text-xs"><input type="checkbox" checked={draft.at===null} onChange={e=>setDraft({...draft,at:e.target.checked?null:resolved})} />Follow previous item on this layer</label>
+      <Checkbox className="text-xs" checked={draft.at===null} onCheckedChange={on=>setDraft({...draft,at:on?null:resolved})}>Follow previous item on this layer</Checkbox>
       {/* The way out sits under the field it is about, outside its label: a button inside a
           label forwards its click to the input, which is not what pinning a moment means. */}
       <div className="grid grid-cols-2 gap-3">{TRANSFORM_FIELDS.map(([key,label])=><div key={key} className={animated.has(key)?"col-span-2":undefined}>
@@ -59,11 +61,11 @@ export function LayerInspector({sequence,item,dispatch}:{sequence:VideoSequence;
       </div>)}</div>
       <div><label className="block space-y-1 text-xs">Volume{animated.has("volume")&&<span className="ml-1 text-muted-foreground">· animated</span>}<Input required type="number" min={0} max={2} step="any" aria-describedby={animated.has("volume")?motionId:undefined} value={draft.volume} onChange={e=>setDraft({...draft,volume:Number(e.target.value)})} /></label>{actions("volume",draft.volume)}</div>
       {note&&<p id={motionId} className="text-[11px] leading-relaxed text-muted-foreground">{note}{!inside&&` ${PLAYHEAD_OUTSIDE_SHOT}`}</p>}
-      <div className="flex flex-wrap gap-4"><label className="flex min-h-9 items-center gap-2 text-xs"><input type="checkbox" checked={draft.muted} onChange={e=>setDraft({...draft,muted:e.target.checked})} />Mute audio</label><label className="flex min-h-9 items-center gap-2 text-xs"><input type="checkbox" checked={draft.hidden} onChange={e=>setDraft({...draft,hidden:e.target.checked})} />Hide visuals</label></div>
+      <div className="flex flex-wrap gap-4"><Checkbox className="text-xs" checked={draft.muted} onCheckedChange={muted=>setDraft({...draft,muted})}>Mute audio</Checkbox><Checkbox className="text-xs" checked={draft.hidden} onCheckedChange={hidden=>setDraft({...draft,hidden})}>Hide visuals</Checkbox></div>
       {stale&&<p role="status" className="text-xs text-muted-foreground">The layer changed while these fields were open. Your unsaved fields are kept — load the latest placement to continue.</p>}
       <div className="flex flex-wrap gap-2"><Button type="submit" variant="outline" size="sm" disabled={stale}>Apply placement</Button>{stale&&<Button type="button" variant="ghost" size="sm" onClick={()=>{setDraft(current);setBase(signature);}}>Load latest placement</Button>}</div>
     </form>
     <div className="flex flex-wrap gap-2"><Button size="xs" variant="outline" disabled={sequence.items[0]?.id===item.id} onClick={()=>dispatch([{type:"item.move",sequenceId:sequence.id,itemId:item.id,index:sequence.items.findIndex(i=>i.id===item.id)-1}])}>Earlier in order</Button><Button size="xs" variant="outline" disabled={sequence.items.at(-1)?.id===item.id} onClick={()=>dispatch([{type:"item.move",sequenceId:sequence.id,itemId:item.id,index:sequence.items.findIndex(i=>i.id===item.id)+1}])}>Later in order</Button></div>
     <Button size="sm" variant="ghost" onClick={()=>dispatch([{type:"item.remove",sequenceId:sequence.id,itemId:item.id}])}>Remove selected item</Button>
-  </Card>;
+  </div>;
 }

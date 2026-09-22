@@ -163,7 +163,9 @@ export function AgentThread({ messages, events, working, workingLabel, stage, el
 
   return (
     <div className="relative min-h-0">
-      <div ref={ref} onScroll={onScroll} className={`overflow-y-auto overscroll-contain rounded-xl border border-border bg-card/20 ${className}`}>
+      <div ref={ref} onScroll={onScroll} // A well, not a box: inside a card a hairline draws a second edge around the same
+      // colour. The recess is what says the thread scrolls under the panel's own rim.
+      className={`overflow-y-auto overscroll-contain rounded-xl bg-black/20 shadow-(--field-shadow) ${className}`}>
         <ol className="flex flex-col gap-2.5 p-3 text-sm">
           {header ? <li>{header}</li> : null}
           {!shown.length && !working ? (

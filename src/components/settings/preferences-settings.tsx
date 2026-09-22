@@ -8,6 +8,7 @@ import type { Rule } from "@/lib/rules/schema";
 import type { Glossary } from "@/lib/glossary";
 import type { Observation, Proposals } from "@/lib/observations";
 import { Button } from "@/components/ui/button";
+import { Disclosure } from "@/components/ui/disclosure";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SectionHeader } from "./section-header";
@@ -179,10 +180,9 @@ function Review({ observations, glossary, preferences, pending, onError, onAccep
       </div>
 
       {!!observations.length && (
-        <details className="text-xs">
-          <summary className="inline-flex min-h-6 cursor-pointer items-center rounded-md text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">Recent corrections</summary>
-          <ul className="mt-2 space-y-1 text-muted-foreground">{observations.slice(-15).reverse().map((o) => <li key={o.id}>{o.text}</li>)}</ul>
-        </details>
+        <Disclosure variant="plain" summary="Recent corrections" summaryClassName="-ms-2">
+          <ul className="space-y-1 text-xs text-muted-foreground">{observations.slice(-15).reverse().map((o) => <li key={o.id}>{o.text}</li>)}</ul>
+        </Disclosure>
       )}
 
       {proposals && (

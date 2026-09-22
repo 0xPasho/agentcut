@@ -150,6 +150,12 @@ function invertOne(edl: Edl, op: EditorOperation): EditorOperation[] {
       { type: "item.keyframes", sequenceId: op.sequenceId, itemId: op.itemId, keyframes: item.keyframes ?? null },
       { type: "item.place", sequenceId: op.sequenceId, itemId: op.itemId, patch: pick(placementOf(item), PLACEMENT) },
     ];
+    // Separating sound is two changes in one: a new track, and the picture going quiet.
+    // Undoing only the first would leave a silent shot with nothing to hear it from.
+    case "item.detachAudio": return [
+      { type: "item.remove", sequenceId: op.sequenceId, itemId: op.newItemId },
+      { type: "item.place", sequenceId: op.sequenceId, itemId: op.itemId, patch: { muted: item.muted ?? false } },
+    ];
     case "item.source": return [
       { type: "item.source", sequenceId: op.sequenceId, itemId: op.itemId, mediaId: item.mediaId, start: item.clip.start, end: item.clip.end, title: item.clip.title },
       { type: "item.patch", sequenceId: op.sequenceId, itemId: op.itemId, patch: pick(item.clip, TIMED) },

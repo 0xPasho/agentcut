@@ -4,6 +4,7 @@ import { promoteClipToSequence } from "./editable-timeline";
 import { sequenceFrames, transitionJoint } from "../sequences";
 import { ANIMATED_FIELDS, FIELD_LABELS, animatedFields, itemSeconds, splitKeyframes } from "../keyframes";
 import { buildTimeMap, clipFrames } from "../timeline";
+import { audioLayer } from "./tracks";
 import { ProjectPlan, SequencePlan } from "../plan/schema";
 
 /** Zod .partial() still applies nested defaults. Patch schemas MUST leave omitted fields absent. */
@@ -389,8 +390,11 @@ export function applyOperations(input: Edl, raw: unknown): Edl {
         // A canvas scene's sound is already its own edits; there is no footage track under it.
         if (item.mediaId === null) throw new Error("This scene has no footage audio to separate");
         if (item.muted) throw new Error("This shot is muted, so it has no audio to separate");
-        const from = sequenceFrames(sequence).items[index].from;
-        const layer = op.layer ?? Math.max(0, ...sequence.items.map(i => i.layer ?? 0)) + 1;
+        const placed = sequenceFrames(sequence).items[index];
+        const from = placed.from;
+        // Lifted sound is sound: it goes to the audio region, beside the music, not onto a
+        // picture track above the shot it came from. Both interfaces get the same default.
+        const layer = op.layer ?? audioLayer(sequence, from / sequence.output.fps, placed.duration / sequence.output.fps);
         // Silence cuts are what shape the time map, so the separated track keeps exactly
         // the length of the shot it came from. Captions, titles and pictures stay with
         // the picture; copying them would render everything twice.

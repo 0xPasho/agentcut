@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Diamond, Trash2, Volume2, ZoomIn } from "lucide-react";
 import { Ease, type SequenceItem, type TransformKeyframe, type VideoSequence } from "@/lib/edl";
 import type { EditorOperation } from "@/lib/editor/operations";
@@ -10,6 +10,7 @@ import { describeAuthor, isAgentAuthor } from "@/lib/editor/authorship";
 import { usePlayheadSelector, usePlayheadStore } from "@/lib/editor/playhead";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
 const seconds = (value: number) => `${value.toFixed(2)}s`;
 
@@ -24,6 +25,7 @@ const seconds = (value: number) => `${value.toFixed(2)}s`;
 export function MotionInspector({ sequence, item, dispatch, onSeek }: {
   sequence: VideoSequence; item: SequenceItem; dispatch: (ops: EditorOperation[]) => void; onSeek: (seconds: number) => void;
 }) {
+  const motionId = useId();
   const fps = sequence.output.fps;
   const entry = sequenceFrames(sequence).items.find(i => i.item.id === item.id)!;
   const offset = entry.from / fps, span = itemSeconds(item, fps);
@@ -79,13 +81,14 @@ export function MotionInspector({ sequence, item, dispatch, onSeek }: {
           <div className="mt-2 grid grid-cols-2 gap-2">
             <TimeField label="Moment (seconds)" value={key.t} max={span}
               onCommit={t => { if (t !== key.t) commit(retimeKeyframe(keyframes, index, t, span)); }} />
-            <label className="flex flex-col gap-1 text-xs">Travel to the next keyframe
-              <select className="h-8 rounded-xl border border-border bg-background px-2 text-sm focus-visible:outline-2 focus-visible:outline-ring"
-                value={key.ease} disabled={index === keyframes.length - 1}
-                onChange={event => commit(keyframes.map((each, n) => n === index ? { ...each, ease: Ease.parse(event.target.value) } : each))}>
-                {Ease.options.map(option => <option key={option} value={option}>{EASE_LABELS[option]}</option>)}
-              </select>
-            </label>
+            <div className="flex flex-col gap-1 text-xs">
+              <span id={`${motionId}-ease-${index}`}>Travel to the next keyframe</span>
+              <Select value={key.ease} disabled={index === keyframes.length - 1}
+                onValueChange={value => commit(keyframes.map((each, n) => n === index ? { ...each, ease: Ease.parse(value) } : each))}>
+                <SelectTrigger size="sm" className="w-full" aria-labelledby={`${motionId}-ease-${index}`}><SelectValue /></SelectTrigger>
+                <SelectContent>{Ease.options.map(option => <SelectItem key={option} value={option}>{EASE_LABELS[option]}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
           </div>
         </li>)}
       </ul>

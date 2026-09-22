@@ -27,11 +27,14 @@ export function OverlayEditor({
   clip,
   atSec = () => 0,
   onChange,
+  onPlaceBed,
 }: {
   projectId: string;
   mediaId?: string;
   canCapture?: boolean;
   clip: Clip;
+  /** Put a music bed on the audio track instead of inside this shot. */
+  onPlaceBed?: (assetId: string) => void;
   /** Where new overlays land, clip-relative. Read when one is added, so a playing
       preview never re-renders this panel just to keep the number current. */
   atSec?: () => number;
@@ -152,7 +155,7 @@ export function OverlayEditor({
       </section>
 
       <section className="flex flex-col gap-3 border-t border-border pt-4">
-        <AudioPicker projectId={projectId} clip={clip} atSec={atSec} onChange={onChange} />
+        <AudioPicker projectId={projectId} clip={clip} atSec={atSec} onChange={onChange} onPlaceBed={onPlaceBed} />
       </section>
 
       <section className="flex flex-col gap-3 border-t border-border pt-4">

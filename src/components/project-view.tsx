@@ -248,7 +248,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                     </Button>
                   }
                 />
-                <PopoverContent side="bottom" align="end" className="w-64 p-1.5">
+                <PopoverContent side="bottom" align="end" className="w-64 rounded-2xl p-1.5">
                   <MenuItem
                     disabled={busy || !pending}
                     hint="Transcribe, plan and edit every pending video under the shared plan"

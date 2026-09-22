@@ -111,12 +111,20 @@ export function AudioPicker({
   clip,
   atSec,
   onChange,
+  onPlaceBed,
 }: {
   projectId: string;
   clip: Clip;
   /** Where a new sound effect lands, clip-relative. Read when it is added. */
   atSec: () => number;
   onChange: (edits: Edit[]) => void;
+  /**
+   * A bed is not something a shot carries: it plays across the cuts, so choosing one here
+   * puts it on the audio track under the picture. Beds already written into a shot — by an
+   * older edit or a template — stay editable in place, because the fix for those is to move
+   * them, not to hide their level and their ducking.
+   */
+  onPlaceBed?: (assetId: string) => void;
 }) {
   const [sounds, setSounds] = useState<AssetSummary[]>([]);
   const audition = useAudition();
@@ -126,6 +134,8 @@ export function AudioPicker({
 
   const music = clip.edits.find((e): e is MusicEdit => e.type === "music");
   const sfx = clip.edits.filter((e): e is SfxEdit => e.type === "sfx");
+  /** The bed is not in this scene, it *is* this scene: a canvas item on the audio track. */
+  const ownScene = !!music && clip.edits.length === 1 && music.t === 0 && Math.abs(music.d - (clip.end - clip.start)) < 0.01;
 
   const setMusic = (patch: Partial<MusicEdit> | null) => {
     const musicIndex = clip.edits.findIndex(e => e.type === "music");
@@ -162,9 +172,15 @@ export function AudioPicker({
         <Label className="flex items-center gap-2 text-xs text-muted-foreground">
           <Music className="size-3.5" /> Music bed
         </Label>
-        <Select value={music?.src ?? "none"} onValueChange={(v) => setMusic(!v || v === "none" ? null : { src: v })}>
+        <Select value={music?.src ?? "none"} onValueChange={(v) => {
+          if (!v || v === "none") return setMusic(null);
+          if (!music && onPlaceBed) return onPlaceBed(v);
+          setMusic({ src: v });
+        }}>
           <SelectTrigger aria-label="Music bed">
-            <SelectValue placeholder="No music" />
+            {/* The value is an asset id. Left to say itself it says "a_3a24748a8f46", which
+                is not the name of a piece of music. */}
+            <SelectValue placeholder="No music">{(value: string) => value === "none" || !value ? "No music" : soundName(sounds.find(s => s.id === value)?.name ?? value)}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="none">No music</SelectItem>
@@ -197,12 +213,17 @@ export function AudioPicker({
               {music.duck ? "Ducking under speech" : "Ducking off"}
             </Button>
             <p className="text-[11px] text-muted-foreground">
-              Ducking drops the bed while words are sounding, using the word timestamps. Without it
+              Ducking drops the bed while words are sounding, using the word timings. Without it
               the music fights the voice.
             </p>
           </>
         ) : null}
-        <SoundSearch projectId={projectId} kind="music" onAdopted={asset => adopted(asset, id => setMusic({ src: id }))} />
+        <p className="text-[11px] text-muted-foreground">{!music
+          ? "A bed goes on the audio track under the picture, so it plays across every cut."
+          : ownScene
+            ? "This bed is a track of its own, so it plays across every cut. Trim it on the timeline to change how long it runs."
+            : "This bed is written into this shot, so it stops when the shot does. Drag it onto the audio track to let it play across the cuts."}</p>
+        <SoundSearch projectId={projectId} kind="music" onAdopted={asset => adopted(asset, id => { if (!music && onPlaceBed) onPlaceBed(id); else setMusic({ src: id }); })} />
       </section>
 
       <section className="flex flex-col gap-3 border-t border-border pt-4">

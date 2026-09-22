@@ -14,6 +14,7 @@ import { activeDrag, classifyFile, dropDuration, hasFileDrag, hasMediaDrag, read
 import { sequenceFrames, transitionJoints } from "@/lib/sequences";
 import { keyframeSummary } from "@/lib/editor/motion";
 import { effectLabel, shotName, standaloneScene } from "@/lib/editor/canvas";
+import { audioOnly, laneLabels, nextLayer, routeLayer, trackLanes, type Lane } from "@/lib/editor/tracks";
 import { DEFAULT_TRANSITION_SEC, TRANSITION_DURATIONS, TRANSITION_KINDS, TRANSITION_LABELS, describeTransition } from "@/lib/editor/transitions";
 import { buildTimeMap, srcToOut, type TimeMap } from "@/lib/timeline";
 import { Button } from "./ui/button";
@@ -107,12 +108,14 @@ const NO_MORE_FOOTAGE = "This clip has no more footage that way.";
 const EMPTY_MEDIA: MediaSource[] = [];
 type Drag = { id: string; kind: "move" | "start" | "end" | "effect" | "effect-start" | "effect-end"; x: number; y: number; at: number; duration: number; layer: number; index?: number; moved: boolean; snapshot: VideoSequence; scrollLeft: number };
 type Ghost = { id: string; at: number; duration: number; layer: number; index?: number; delta: number; kind: Drag["kind"]; guide?: SnapPoint | null; shift?: number; lift?: number };
+/** Where an incoming drag is pointing: the track under the pointer, and what it carries. */
+type Hover = { clientX: number; metaKey: boolean; ctrlKey: boolean; layer: number; kind: Lane["kind"]; payload: DragPayload | null; files: boolean };
 type ExternalDrop = { layer: number; at: number; guide: SnapPoint | null; payload: DragPayload | null; files: boolean; replace?: { itemId: string; at: number; duration: number } };
 type Props = {
   /** Whose media the peaks belong to: a shot's own audio is drawn from the host's copy of it. */
   projectId: string;
   sequence: VideoSequence; selectedId?: string; dispatch: (ops: EditorOperation[]) => boolean | void;
-  onSelect: (id: string, seconds: number) => void; onBlank: () => void;
+  onSelect: (id: string, seconds: number) => void;
   onSeek: (seconds: number) => void;
   /** Transport lives here because the preview has no controls of its own. */
   playing?: boolean; onPlayToggle?: () => void;
@@ -213,7 +216,7 @@ function Waveform({ src }: { src: string }) {
   return <WaveShape peaks={peaks} className="pointer-events-none absolute inset-x-0 bottom-0 h-7 w-full fill-emerald-300/70 opacity-60" />;
 }
 
-export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, onSelect, onBlank, onSeek, mediaUrls = {}, assetUrls = {}, media = EMPTY_MEDIA, selectedEdit, onSelectEdit, onDropMedia, onDropAsset, onDropFiles, onDropLocalFile, onDropSearchHit, onReplaceMedia, onReplaceAsset, onSplit, onDuplicate, onDetachAudio, onAskAgent, onNotify, playing = false, onPlayToggle }: Props) {
+export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, onSelect, onSeek, mediaUrls = {}, assetUrls = {}, media = EMPTY_MEDIA, selectedEdit, onSelectEdit, onDropMedia, onDropAsset, onDropFiles, onDropLocalFile, onDropSearchHit, onReplaceMedia, onReplaceAsset, onSplit, onDuplicate, onDetachAudio, onAskAgent, onNotify, playing = false, onPlayToggle }: Props) {
   // Reading the playhead here never re-renders the timeline; the parts that draw it
   // subscribe on their own, so a playing preview repaints a marker, not every clip.
   const playhead = usePlayheadStore();
@@ -225,7 +228,7 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
   const [zoom, setZoom] = useState(1);
   const [extraWidth, setExtraWidth] = useState(0);
   const pointer = useRef<{clientX:number;clientY:number;altKey:boolean;metaKey:boolean;ctrlKey:boolean}|null>(null);
-  const hovering = useRef<{ clientX: number; metaKey: boolean; ctrlKey: boolean; layer: number; payload: DragPayload | null; files: boolean } | null>(null);
+  const hovering = useRef<Hover | null>(null);
   const dragScroll = useRef<number|null>(null);
   const dragTick = useRef<()=>void>(()=>{});
   const stopDragScroll = () => { if (dragScroll.current !== null) cancelAnimationFrame(dragScroll.current); dragScroll.current = null; hovering.current = null; };
@@ -307,8 +310,13 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
   const scale = baseWidth / baseSpan;
   const width = baseWidth + extraWidth;
   const span = width / scale;
-  const layers = [...new Set([0, ...sequence.items.map(item => item.layer ?? 0)])].sort((a, b) => b - a);
-  const newLayer = Math.max(...layers) + 1;
+  // Picture tracks stack downward from the top; sound sits under them in its own region.
+  const lanes = trackLanes(sequence);
+  const labels = laneLabels(lanes);
+  const newLayer = nextLayer(sequence);
+  const newAudioLayer = newLayer + 1;
+  const laneOf = (layer: number): Lane => lanes.find(lane => lane.layer === layer) ?? { layer, kind: layer === newAudioLayer ? "audio" : "video" };
+  const laneName = (layer: number) => labels.get(layer) ?? (layer === newAudioLayer ? "Audio" : "Track");
   const alive = (id: string) => sequence.items.some(item => item.id === id);
   const selection = new Set([...(selectedId ? [selectedId] : []), ...extra].filter(alive));
   const selected = layout.items.find(({ item }) => item.id === selectedId);
@@ -368,11 +376,11 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
     lastPreview.current = now;
     onSeek(Math.max(0, seconds));
   };
-  const layerAt = (clientY: number, fallback: number) => {
+  const laneAt = (clientY: number, fallback: Lane): Lane => {
     const rows = viewport.current?.querySelectorAll<HTMLElement>("[data-timeline-layer]");
     for (const row of rows ?? []) {
       const rect = row.getBoundingClientRect();
-      if (clientY >= rect.top && clientY <= rect.bottom) return Number(row.dataset.timelineLayer);
+      if (clientY >= rect.top && clientY <= rect.bottom) return { layer: Number(row.dataset.timelineLayer), kind: row.dataset.timelineKind === "audio" ? "audio" : "video" };
     }
     return fallback;
   };
@@ -432,11 +440,12 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
     },
     onPointerCancel: () => { marqueeRef.current = null; setMarquee(null); },
   };
+  /** The tracks a track can trade places with: picture with picture, sound with sound. */
+  const siblings = (lane: Lane) => lanes.filter(other => other.kind === lane.kind && other.layer !== 0).map(other => other.layer);
   /**
    * Tracks stack, so their order is an edit. Swapping two of them is an ordinary group move:
    * every clip on both keeps the time it resolved to and only changes which track it is on.
    */
-  const overlayLayers = layers.filter(value => value !== 0);
   const swapTracks = (a: number, b: number) => {
     const moves = layout.items.filter(entry => [a, b].includes(entry.item.layer ?? 0))
       .map(entry => ({ itemId: entry.item.id, at: entry.from / fps, layer: (entry.item.layer ?? 0) === a ? b : a }));
@@ -482,11 +491,16 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
     d.moved = true;
     const delta = roundFrame((event.clientX - d.x + (viewport.current?.scrollLeft ?? 0) - d.scrollLeft) / scale);
     if (d.kind === "move") {
-      const layer = layerAt(event.clientY, d.layer);
       const pull = snapDraggedSpan(d.at, delta, d.duration, targets(d.id), magnet(event) ? tolerance : 0);
+      const at = Math.max(0, roundFrame(pull.at));
+      // A sound dragged over the picture lands in the audio region, and the ghost says so
+      // before the pointer is released rather than after.
+      const dragged = sequence.items.find(item => item.id === d.id);
+      const aim = laneAt(event.clientY, laneOf(d.layer));
+      const layer = dragged ? routeLayer(sequence, aim, audioOnly(dragged), at, d.duration) : aim.layer;
       const target = layer === 0 && event.altKey && group.current.length < 2
         ? { ...insertion(d.id, positionAt(event.clientX)), guide: null }
-        : { at: Math.max(0, roundFrame(pull.at)), index: undefined, guide: pull.guide };
+        : { at, index: undefined, guide: pull.guide };
       setGhost({ id: d.id, kind: d.kind, duration: d.duration, layer, ...target, delta, shift: target.at - d.at, lift: layer - d.layer });
     } else if (d.kind === "effect" || d.kind === "effect-start" || d.kind === "effect-end") {
       setGhost({ id: d.id, kind: d.kind, duration: d.duration, layer: d.layer, at: d.at, index: d.index, delta });
@@ -606,21 +620,24 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
     return compatible ? { itemId: hit.item.id, at: hit.from / fps, duration: hit.duration / fps } : undefined;
   };
   /** Where an incoming asset or desktop file would land on this track, already snapped. */
-  const resolveDrop = (hover: { clientX: number; metaKey: boolean; ctrlKey: boolean; layer: number; payload: DragPayload | null; files: boolean }): ExternalDrop => {
+  const resolveDrop = (hover: Hover): ExternalDrop => {
     const duration = hover.payload ? dropDuration(hover.payload) : 0;
     const raw = positionAt(hover.clientX);
     const replace = replaceTarget(hover.layer, raw, hover.payload);
     if (replace) return { layer: hover.layer, at: replace.at, guide: null, payload: hover.payload, files: false, replace };
     const pull = !magnet(hover) ? { at: raw, guide: null }
       : duration ? snapSpan(raw, duration, targets(), tolerance) : snapTime(raw, targets(), tolerance);
-    return { layer: hover.layer, at: Math.max(0, roundFrame(pull.at)), guide: pull.guide, payload: hover.payload, files: hover.files };
+    const at = Math.max(0, roundFrame(pull.at));
+    // A file drag cannot be read until it lands, so it is routed on drop instead of here.
+    const layer = routeLayer(sequence, { layer: hover.layer, kind: hover.kind }, hover.payload?.kind === "audio", at, duration || 8);
+    return { layer, at, guide: pull.guide, payload: hover.payload, files: hover.files };
   };
-  const dropTarget = (event: React.DragEvent<HTMLDivElement>, layer: number) => {
+  const dropTarget = (event: React.DragEvent<HTMLDivElement>, lane: Lane): Hover | null => {
     const types = Array.from(event.dataTransfer.types);
     const media = hasMediaDrag(types), files = hasFileDrag(types) && !!onDropFiles;
     if (!media && !files) return null;
     if (media && !onDropMedia && !onDropAsset) return null;
-    return { clientX: event.clientX, metaKey: event.metaKey, ctrlKey: event.ctrlKey, layer, payload: media ? activeDrag() : null, files: files && !media };
+    return { clientX: event.clientX, metaKey: event.metaKey, ctrlKey: event.ctrlKey, layer: lane.layer, kind: lane.kind, payload: media ? activeDrag() : null, files: files && !media };
   };
   // A dragover only fires while the pointer moves, so holding still at the edge needs its own loop.
   dragTick.current = () => {
@@ -637,9 +654,9 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
     }
     dragScroll.current = requestAnimationFrame(() => dragTick.current());
   };
-  const dropHandlers = (layer: number) => ({
+  const dropHandlers = (lane: Lane) => ({
     onDragOver: (event: React.DragEvent<HTMLDivElement>) => {
-      const target = dropTarget(event, layer);
+      const target = dropTarget(event, lane);
       if (!target) return;
       event.preventDefault(); event.dataTransfer.dropEffect = "copy";
       hovering.current = target;
@@ -647,7 +664,7 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
       setExternalDrop(resolveDrop(target));
     },
     onDrop: (event: React.DragEvent<HTMLDivElement>) => {
-      const hover = dropTarget(event, layer);
+      const hover = dropTarget(event, lane);
       if (!hover) return;
       event.preventDefault();
       const target = resolveDrop(hover);
@@ -656,7 +673,9 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
       if (target.files) {
         const files = Array.from(event.dataTransfer.files).filter(file => classifyFile(file.name));
         if (!files.length) return announce("Those files are not video, image or audio.", "error", true);
-        onDropFiles?.(files, target.at, layer);
+        // Only now is there a filename to read, so this is where a sound is sent to its own track.
+        const sound = files.every(file => classifyFile(file.name) === "audio");
+        onDropFiles?.(files, target.at, routeLayer(sequence, lane, sound, target.at, 8));
         return setNotice(`Importing ${files.length === 1 ? files[0].name : `${files.length} files`}…`);
       }
       const payload = readDrag(event.dataTransfer);
@@ -667,12 +686,26 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
         else if (payload.assetId) onReplaceAsset?.(target.replace.itemId, payload.assetId);
         return;
       }
-      if (payload.mediaId) onDropMedia?.(payload.mediaId, target.at, layer);
-      else if (payload.assetId) onDropAsset?.(payload.assetId, target.at, layer);
-      else if (payload.file) onDropLocalFile?.(payload.file, payload.kind, target.at, layer);
-      else if (payload.search) onDropSearchHit?.(payload.search, target.at, layer);
+      if (payload.mediaId) onDropMedia?.(payload.mediaId, target.at, target.layer);
+      else if (payload.assetId) onDropAsset?.(payload.assetId, target.at, target.layer);
+      else if (payload.file) onDropLocalFile?.(payload.file, payload.kind, target.at, target.layer);
+      else if (payload.search) onDropSearchHit?.(payload.search, target.at, target.layer);
     },
   });
+  /**
+   * The lane that does not exist yet. There is one above the picture and one below the
+   * sound, so "somewhere new" is a place you can aim at for either kind rather than a
+   * rule you have to know.
+   */
+  const newTrackRow = (lane: Lane, hint: string, edge: string) => {
+    const aimed = ghost?.layer === lane.layer || externalDrop?.layer === lane.layer;
+    return <div data-timeline-layer={lane.layer} data-timeline-kind={lane.kind} className={`flex h-8 ${aimed ? "bg-primary/10" : ""}`} {...dropHandlers(lane)}>
+      <span className="sticky left-0 z-20 flex w-[76px] shrink-0 items-center justify-center bg-card text-muted-foreground">{lane.kind === "audio" ? <Music2 className="size-3" aria-hidden /> : <Plus className="size-3" aria-hidden />}</span>
+      <div className={`relative flex-1 ${edge} border-dashed border-white/10 px-2 pt-1 text-[11px] text-muted-foreground`} onPointerDown={event => { if (event.button === 0 && event.target === event.currentTarget) seekAt(event.clientX); }}>{hint}
+        {aimed && <span aria-hidden className="pointer-events-none absolute inset-y-0 w-0.5 bg-primary" style={{ left: (ghost?.layer === lane.layer ? ghost.at : externalDrop?.at ?? 0) * scale }} />}
+      </div>
+    </div>;
+  };
   const interval = [0.1, .2, .5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800, 3600].find(value => value * scale >= 72) ?? Math.ceil(span / 8 / 3600) * 3600;
   const ticks = Array.from({ length: Math.floor(span / interval) + 1 }, (_, index) => index * interval);
   const sharedPointer = { onPointerMove: move, onPointerUp: end, onPointerCancel: cancelDrag };
@@ -700,9 +733,8 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
       <Button size="icon-xs" variant={snapping ? "secondary" : "ghost"} aria-pressed={snapping} aria-label="Snap to clip edges and the playhead" title="Hold Command or Control while dragging to bypass snapping" onClick={() => setSnapping(value => !value)}><Magnet /></Button>
       <Button size="icon-xs" variant="ghost" aria-label="Zoom out timeline" disabled={zoom <= 1} onClick={() => setZoom(value => Math.max(1, value / 1.5))}><Minus /></Button>
       <Button size="icon-xs" variant="ghost" aria-label="Zoom in timeline" disabled={zoom >= 12} onClick={() => setZoom(value => Math.min(12, value * 1.5))}><Plus /></Button>
-      <Button size="xs" variant="outline" title="Add an empty scene on a new track, ready for a title, image or sound" onClick={onBlank}><Plus />Blank scene</Button>
     </div>
-    <p id={instructionsId} className="sr-only">Drag clips to move them; drag an edge to trim. Clips move freely on every track and snap to other clips and the playhead; hold Command or Control to bypass snapping, or turn it off with the snapping button. Hold Alt while dragging onto Main to reorder and close gaps. Arrow keys move overlay clips one frame; Shift moves one second. Alt and arrow keys reorder main clips. Shift-click or Command-click to select several clips; dragging one then moves them all. Delete removes the selection. On an edge, arrow keys trim. Escape cancels a drag. Command or Control with the scroll wheel zooms around the pointer, and Shift with the wheel scrolls sideways. Dropping media onto the middle of a matching clip replaces that clip\u2019s media and keeps its place.</p>
+    <p id={instructionsId} className="sr-only">Drag clips to move them; drag an edge to trim. Clips move freely on every track and snap to other clips and the playhead; hold Command or Control to bypass snapping, or turn it off with the snapping button. Hold Alt while dragging onto Main to reorder and close gaps. Arrow keys move overlay clips one frame; Shift moves one second. Alt and arrow keys reorder main clips. Shift-click or Command-click to select several clips; dragging one then moves them all. Delete removes the selection. On an edge, arrow keys trim. Escape cancels a drag. Command or Control with the scroll wheel zooms around the pointer, and Shift with the wheel scrolls sideways. Dropping media onto the middle of a matching clip replaces that clip\u2019s media and keeps its place. Sound has its own tracks under the picture: music and separated audio land there, and dragging one over the picture sends it back down.</p>
     <div ref={viewport} className="min-h-0 max-h-80 select-none overflow-auto rounded-xl bg-black/25" aria-label="Video timeline" onDragStart={event => event.preventDefault()} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) { stopDragScroll(); setExternalDrop(null); } }} onDragEnd={() => { stopDragScroll(); setExternalDrop(null); }}>
       <div className="relative" style={{ width: width + LABEL_WIDTH }}>
         <div className="sticky top-0 z-30 flex h-9 bg-card/95 backdrop-blur-md">
@@ -716,24 +748,19 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
             <PlayheadMark span={span} scale={scale} className="pointer-events-none absolute bottom-0 h-3 w-3 -translate-x-1/2 rounded-t-sm bg-primary [clip-path:polygon(0_0,100%_0,100%_55%,50%_100%,0_55%)]" />
           </Ruler>
         </div>
-        <div data-timeline-layer={newLayer} className={`flex h-8 ${ghost?.layer === newLayer || externalDrop?.layer === newLayer ? "bg-primary/10" : ""}`} {...dropHandlers(newLayer)}>
-          <span className="sticky left-0 z-20 flex w-[76px] shrink-0 items-center justify-center bg-card text-muted-foreground"><Plus className="size-3" aria-hidden /></span>
-          <div className="relative flex-1 border-b border-dashed border-white/10 px-2 pt-1 text-[11px] text-muted-foreground" onPointerDown={event => { if (event.button === 0 && event.target === event.currentTarget) seekAt(event.clientX); }}>Drop above to create a track
-            {(ghost?.layer === newLayer || externalDrop?.layer === newLayer) && <span aria-hidden className="pointer-events-none absolute inset-y-0 w-0.5 bg-primary" style={{ left: (ghost?.layer === newLayer ? ghost.at : externalDrop?.at ?? 0) * scale }} />}
-          </div>
-        </div>
-        {layers.map(layer => <div key={layer} data-timeline-layer={layer} className="flex border-b border-white/5" {...dropHandlers(layer)}>
+        {newTrackRow({ layer: newLayer, kind: "video" }, "Drop a clip here for a new track", "border-b")}
+        {lanes.map((lane, position) => { const layer = lane.layer, first = lane.kind === "audio" && lanes[position - 1]?.kind !== "audio"; return <div key={layer} data-timeline-layer={layer} data-timeline-kind={lane.kind} className={`flex border-b border-white/5 ${first ? "border-t border-t-white/15" : ""}`} {...dropHandlers(lane)}>
           <Menu>
-            <MenuTrigger render={<button type="button" aria-label={`${layer === 0 ? "Main" : `Track ${layer + 1}`} actions` } className="sticky left-0 z-20 flex w-[76px] shrink-0 items-center gap-1.5 bg-card px-2 text-left text-[11px] text-muted-foreground transition-colors hover:bg-white/8 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring aria-expanded:bg-white/10 aria-expanded:text-foreground" />}>
-              {layer === 0 ? <Film className="size-3.5" aria-hidden /> : <Layers className="size-3.5" aria-hidden />}{layer === 0 ? "Main" : `Track ${layer + 1}`}
+            <MenuTrigger render={<button type="button" aria-label={`${laneName(layer)} track actions` } className="sticky left-0 z-20 flex w-[76px] shrink-0 items-center gap-1.5 bg-card px-2 text-left text-[11px] text-muted-foreground transition-colors hover:bg-white/8 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring aria-expanded:bg-white/10 aria-expanded:text-foreground" />}>
+              {lane.kind === "audio" ? <Music2 className="size-3.5" aria-hidden /> : layer === 0 ? <Film className="size-3.5" aria-hidden /> : <Layers className="size-3.5" aria-hidden />}{laneName(layer)}
             </MenuTrigger>
             <MenuContent>
-              <ContextMenuLabel>{layer === 0 ? "Main track" : `Track ${layer + 1}`}</ContextMenuLabel>
+              <ContextMenuLabel>{laneName(layer)} track</ContextMenuLabel>
               <ContextMenuItem onClick={() => selectTrack(layer)}><MousePointerClick />Select its clips</ContextMenuItem>
               {layer !== 0 && <>
                 <ContextMenuSeparator />
-                <ContextMenuItem disabled={overlayLayers.indexOf(layer) === 0} onClick={() => swapTracks(layer, overlayLayers[overlayLayers.indexOf(layer) - 1])}><ArrowUp />Move track up</ContextMenuItem>
-                <ContextMenuItem disabled={overlayLayers.indexOf(layer) === overlayLayers.length - 1} onClick={() => swapTracks(layer, overlayLayers[overlayLayers.indexOf(layer) + 1])}><ArrowDown />Move track down</ContextMenuItem>
+                <ContextMenuItem disabled={siblings(lane).indexOf(layer) === 0} onClick={() => swapTracks(layer, siblings(lane)[siblings(lane).indexOf(layer) - 1])}><ArrowUp />Move track up</ContextMenuItem>
+                <ContextMenuItem disabled={siblings(lane).indexOf(layer) === siblings(lane).length - 1} onClick={() => swapTracks(layer, siblings(lane)[siblings(lane).indexOf(layer) + 1])}><ArrowDown />Move track down</ContextMenuItem>
                 <ContextMenuSeparator />
                 <ContextMenuItem onClick={() => removeItems(layout.items.filter(entry => (entry.item.layer ?? 0) === layer).map(entry => entry.item.id))}><Trash2 />Remove its clips</ContextMenuItem>
               </>}
@@ -742,9 +769,10 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
           <div {...marqueeHandlers} className={`group/track relative h-16 shrink-0 touch-none ${externalDrop?.layer === layer ? "bg-primary/5" : ""}`} style={{ width }}>
             {layout.items.filter(entry => (entry.item.layer ?? 0) === layer).map(({ item, from, duration }) => {
               // Two ways to be a sound on this timeline: a standalone music/sfx scene, or a
-              // shot whose own audio was lifted off its picture.
+              // shot whose own audio was lifted off its picture. The same reading decides
+              // which track it belongs on, so a green clip is never on a picture track.
               const detached = !!item.mediaId && !!item.hidden;
-              const audio = detached || (!item.mediaId && item.clip.edits.length > 0 && item.clip.edits.every(edit => edit.type === "music" || edit.type === "sfx"));
+              const audio = audioOnly(item);
               const active = selection.has(item.id), primary = selectedId === item.id;
               const clipWidth = Math.max(40, duration / fps * scale);
               // Both trim grips are cut out of the clip's own body, so a fixed width ate the
@@ -763,7 +791,7 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
                 onSelect(item.id, from / fps);
               }}>
                 <ContextMenuTrigger render={<div className={`group absolute top-2 h-12 rounded-md border ${primary ? "z-10 border-primary ring-1 ring-primary" : active ? "z-10 border-primary/70 ring-1 ring-primary/40" : "border-white/20"} ${audio ? "bg-emerald-950" : "bg-zinc-800"} ${moving ? "opacity-35" : ""}`} style={{ left: from / fps * scale, width: clipWidth }} />}>
-                <button type="button" draggable={false} aria-label={`Select ${item.clip.title}, ${layer === 0 ? "main track" : `track ${layer + 1}`}${item.keyframes?.length ? `, ${item.keyframes.length} motion keyframes` : ""}`} aria-pressed={active} aria-describedby={instructionsId} className="absolute inset-0 cursor-grab touch-none overflow-hidden rounded-md text-left focus-visible:outline-2 focus-visible:outline-ring active:cursor-grabbing" onPointerDown={event => begin(event, item.id, "move")} {...sharedPointer}
+                <button type="button" draggable={false} aria-label={`Select ${item.clip.title}, ${laneName(layer)} track${item.keyframes?.length ? `, ${item.keyframes.length} motion keyframes` : ""}`} aria-pressed={active} aria-describedby={instructionsId} className="absolute inset-0 cursor-grab touch-none overflow-hidden rounded-md text-left focus-visible:outline-2 focus-visible:outline-ring active:cursor-grabbing" onPointerDown={event => begin(event, item.id, "move")} {...sharedPointer}
                   onClick={event => {
                     if (!suppressClick.current) {
                       if (event.shiftKey || event.metaKey || event.ctrlKey) toggleSelection(item.id);
@@ -858,9 +886,10 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
             {externalDrop?.layer === layer && externalDrop.replace && <div aria-hidden className="pointer-events-none absolute top-2 z-30 h-12 rounded-md border-2 border-primary bg-primary/25 ring-2 ring-primary/50" style={{ left: externalDrop.replace.at * scale, width: Math.max(40, externalDrop.replace.duration * scale) }}><span className="absolute inset-x-0 top-1/2 -translate-y-1/2 truncate px-2 text-center text-[11px] font-medium text-white">Replace</span></div>}
             {externalDrop?.layer === layer && !externalDrop.replace && <div aria-hidden className={`pointer-events-none absolute inset-y-1 z-30 rounded-md border-2 border-dashed border-primary ${dropClash ? "" : "bg-primary/15"}`} style={{ left: externalDrop.at * scale, width: externalDrop.payload ? Math.max(3, dropDuration(externalDrop.payload) * scale) : 3, ...(dropClash ? HATCH : {}) }}><span className="absolute left-1 top-0 max-w-40 truncate whitespace-nowrap rounded bg-black/85 px-1 text-[10px] text-white">{externalDrop.files ? "Import here" : dropClash ? `Stacks on ${externalDrop.payload?.name ?? "this track"}` : externalDrop.payload?.name ?? (layer === 0 ? "Insert here" : "Add here")}</span></div>}
           </div>
-        </div>)}
+        </div>; })}
+        {newTrackRow({ layer: newAudioLayer, kind: "audio" }, "Drop a sound here for a new audio track", "border-t")}
         {selected && selectedMap && effectTypes.map(type => <div key={type} className="flex border-b border-white/5">
-          <span className="sticky left-0 z-20 flex w-[76px] shrink-0 items-center bg-card px-2 text-[10px] text-muted-foreground">{({ silence: "Cuts", punch: "Zoom", emphasis: "Emphasis", text: "Titles", image: "Images", music: "Music", sfx: "Sounds" })[type]}</span>
+          <span className="sticky left-0 z-20 flex w-[76px] shrink-0 items-center bg-card px-2 text-[10px] text-muted-foreground">{({ silence: "Cuts", punch: "Punch-ins", emphasis: "Emphasis", text: "Titles", image: "Images", music: "Music", sfx: "Sounds" })[type]}</span>
           <div className="relative h-8" style={{ width }} onPointerDown={event => { if (event.button === 0 && event.target === event.currentTarget) seekAt(event.clientX); }}>
             {selected.item.clip.edits.map((edit, index) => {
               if (edit.type !== type) return null;

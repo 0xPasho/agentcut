@@ -2,9 +2,11 @@
 
 import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ColorField } from "@/components/ui/color-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { assetUrl } from "@/lib/client";
@@ -50,8 +52,28 @@ export function ClipInspector({
       </Field>
 
       <Field label="Lasts" value={`${edit.d.toFixed(2)}s`}>
-        <Slider aria-label="Duration" aria-valuetext={`${edit.d.toFixed(2)} seconds`} min={0.1} max={12} step={0.05} value={[edit.d]} onValueChange={(v) => patch({ d: num(v) })} />
+        {/* A music bed is as long as the video, so a slider that stopped at twelve seconds
+            sat pinned at its far end and said the bed was twelve seconds long. */}
+        <Slider aria-label="Duration" aria-valuetext={`${edit.d.toFixed(2)} seconds`} min={0.1} max={Math.max(12, Math.ceil(edit.d * 1.25))} step={0.05} value={[edit.d]} onValueChange={(v) => patch({ d: num(v) })} />
       </Field>
+
+      {/* The everyday controls for a sound, where the sound is: pick it on the audio track
+          and its level, its ducking and its looping are right here. */}
+      {edit.type === "music" || edit.type === "sfx" ? (
+        <Field label="Level" value={`${Math.round(edit.gain * 100)}%`}>
+          <Slider aria-label="Level" aria-valuetext={`${Math.round(edit.gain * 100)} percent`} min={0} max={2} step={0.01} value={[edit.gain]} onValueChange={(v) => patch({ gain: num(v) } as Partial<Edit>)} />
+        </Field>
+      ) : null}
+
+      {edit.type === "music" ? (
+        <div className="flex flex-col gap-1">
+          <div className="flex flex-wrap gap-4">
+            <Checkbox className="text-xs" checked={edit.duck} onCheckedChange={(duck) => patch({ duck } as Partial<Edit>)}>Lower it under speech</Checkbox>
+            <Checkbox className="text-xs" checked={edit.loop} onCheckedChange={(loop) => patch({ loop } as Partial<Edit>)}>Loop to fill the time</Checkbox>
+          </div>
+          <p className="text-[11px] text-muted-foreground">Ducking drops the bed while words are sounding, using the word timings. Without it the music fights the voice.</p>
+        </div>
+      ) : null}
 
       {edit.type === "punch" ? (
         <Field label="Zoom" value={`${edit.scale.toFixed(2)}×`}>
@@ -74,12 +96,11 @@ export function ClipInspector({
               patch({ words: e.target.value.split(/\s+/).filter(Boolean) } as Partial<Edit>)
             }
           />
-          <Input
-            aria-label="Highlight color" type="color"
+          <ColorField
+            label="Highlight colour"
             value={edit.color}
-            onChange={(e) => patch({ color: e.target.value } as Partial<Edit>)}
-            className="h-9 cursor-pointer p-1"
-          />
+            onChange={(color) => patch({ color } as Partial<Edit>)}
+          >Highlight colour</ColorField>
         </div>
       ) : null}
 

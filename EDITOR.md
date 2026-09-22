@@ -19,7 +19,7 @@ trim behavior, and UI adapter. Both interfaces use these operations:
 | `clip.promote` | Promote a clip in place to a layered timeline, preserving its ID and edits |
 | `item.place` | Patch item timing, layer, transform, volume, mute, and visibility |
 | `item.source` | Replace an item's footage in place, keeping its slot and overlays |
-| `item.detachAudio` | Lift a shot's own sound onto its own hidden track and mute the picture |
+| `item.detachAudio` | Lift a shot's own sound onto an audio track and mute the picture |
 | `item.transition` | How a shot arrives over the one before it on its track; `null` is a hard cut |
 | `item.keyframes` | How a layer's transform and volume travel over the item's own time; `null` holds still |
 | `clip.add` | Add a clip with a unique ID |
@@ -33,6 +33,16 @@ trim behavior, and UI adapter. Both interfaces use these operations:
 
 All seven edit types are supported: silence, punch, emphasis, text, image, sound effect,
 and music.
+
+Picture and sound are separate tracks. A layer is still a plain z-order integer in the
+EDL, and both interfaces write the same `layer`; `src/lib/editor/tracks.ts` is how that
+number is read. A layer carrying nothing but music, sound effects or hidden footage audio
+is an audio track: it is drawn under the picture, named "Audio" rather than "Track 3",
+and every gesture that hands it a sound — a drop, a drag, `placeAsset`, the default layer
+of `item.detachAudio` — lands there instead of on a picture track. Layer 0 is always the
+picture's running order, because a transparent scene there holds black frames for as long
+as the sound it carries. One thing you can see anywhere on a layer makes the whole layer
+picture again.
 
 `item.transition` is the joint between two shots on one track. It is the only operation
 that writes the incoming shot's `transition`, and it validates against the pair it joins:

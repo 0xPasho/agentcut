@@ -9,6 +9,8 @@ import type { Glossary } from "@/lib/glossary";
 import type { Proposals, Observation } from "@/lib/observations";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Disclosure } from "@/components/ui/disclosure";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
@@ -150,12 +152,12 @@ function JudgeAndApply({ projectId, sequenceId, rules, beforeApply, afterApply, 
       <ul className="space-y-1.5">
         {candidates.map((r) => {
           const match = evaluation?.matches.find((m) => m.id === r.id);
-          return <li key={r.id} className="flex items-start gap-2 text-sm">
-            <input type="checkbox" className="mt-1 accent-primary" id={`rule-${r.id}`} checked={checked.has(r.id)} onChange={(e) => { const next = new Set(checked); if (e.target.checked) next.add(r.id); else next.delete(r.id); setChecked(next); }} />
-            <label htmlFor={`rule-${r.id}`} className="min-w-0 flex-1">
+          return <li key={r.id} className="text-sm">
+            <Checkbox className="w-full items-start gap-2" boxClassName="mt-1" checked={checked.has(r.id)}
+              onCheckedChange={(on) => { const next = new Set(checked); if (on) next.add(r.id); else next.delete(r.id); setChecked(next); }}>
               <span className="font-medium">{r.name}</span>
               {match && <span className="block text-xs text-muted-foreground">{match.reason || "holds for this video"}</span>}
-            </label>
+            </Checkbox>
           </li>;
         })}
       </ul>
@@ -253,7 +255,7 @@ function RuleForm({ initial, level: initialLevel, templates, canProject, pending
         </Select></div>
       <div className="space-y-1"><Label htmlFor={`${id}-overrides`}>Template overrides (JSON)</Label><Textarea id={`${id}-overrides`} className="font-mono text-xs" value={overrides} placeholder='{"images":{"mode":"off"}}' onChange={(e) => setOverrides(e.target.value)} />{jsonError && <p className="text-xs text-destructive">{jsonError}</p>}</div>
       <div className="space-y-1"><Label htmlFor={`${id}-prompt`}>Instruction for the agent</Label><Textarea id={`${id}-prompt`} value={rule.then.prompt ?? ""} placeholder="Never cover the game with pictures." onChange={(e) => setThen({ prompt: e.target.value })} /></div>
-      <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="accent-primary" checked={rule.enabled} onChange={(e) => set({ enabled: e.target.checked })} />Enabled</label>
+      <Checkbox checked={rule.enabled} onCheckedChange={(enabled) => set({ enabled })}>Enabled</Checkbox>
       <div className="flex gap-2"><Button size="sm" type="submit" disabled={pending}>{pending ? <Loader2 className="motion-safe:animate-spin" /> : null}Save rule</Button><Button size="sm" type="button" variant="ghost" onClick={onCancel}>Cancel</Button></div>
     </form>
   );
@@ -332,9 +334,9 @@ function Review({ observations, glossary, preferences, pending, review, onAccept
           try { setProposals(await review()); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
         }}>{busy ? <Loader2 className="motion-safe:animate-spin" /> : <Wand2 />}Review my preferences</Button>
       </div>
-      {!!observations.length && <details className="text-xs"><summary className="cursor-pointer text-muted-foreground">Recent corrections</summary>
-        <ul className="mt-2 space-y-1 text-muted-foreground">{observations.slice(-15).reverse().map((o) => <li key={o.id}>{o.text}</li>)}</ul></details>}
-      {proposals && <div className="space-y-3 rounded-xl border border-border p-3 text-sm">
+      {!!observations.length && <Disclosure variant="plain" summary="Recent corrections">
+        <ul className="space-y-1 text-xs text-muted-foreground">{observations.slice(-15).reverse().map((o) => <li key={o.id}>{o.text}</li>)}</ul></Disclosure>}
+      {proposals && <div className="space-y-3 rounded-2xl bg-white/[0.03] p-4 text-sm ring-1 ring-foreground/10">
         {proposals.notes && <p className="text-xs text-muted-foreground">{proposals.notes}</p>}
         {!proposals.rules.length && !proposals.glossary.length && !proposals.preferences && <p className="text-xs text-muted-foreground">Nothing repeats often enough to propose a rule.</p>}
         {proposals.rules.map((rule) => <div key={rule.id} className="flex items-start gap-2">

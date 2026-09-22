@@ -5,6 +5,7 @@ import { ArrowLeft, Loader2, Plus, Trash2 } from "lucide-react";
 import { api, type AssetSummary } from "@/lib/client";
 import type { Glossary, GlossaryTerm } from "@/lib/glossary";
 import { Button } from "@/components/ui/button";
+import { ColorField } from "@/components/ui/color-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -186,12 +187,14 @@ function Colour({ id, label, value, onChange }: { id: string; label: string; val
       <Label htmlFor={id} className="text-xs text-muted-foreground">{label}</Label>
       <div className="flex items-center gap-2">
         <Input id={id} value={value} placeholder="#ffda2a" className="font-mono" onChange={(e) => onChange(e.target.value)} />
-        <input
-          type="color"
-          aria-label={`Pick ${label.toLowerCase()}`}
+        <ColorField
+          label={`Pick ${label.toLowerCase()}`}
           value={/^#[0-9a-f]{6}$/i.test(value) ? value : "#000000"}
-          onChange={(e) => onChange(e.target.value)}
-          className="size-9 shrink-0 cursor-pointer rounded-lg bg-transparent ring-1 ring-foreground/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          onChange={onChange}
+          side="bottom"
+          align="end"
+          className="shrink-0"
+          swatchClassName="size-8"
         />
       </div>
     </div>

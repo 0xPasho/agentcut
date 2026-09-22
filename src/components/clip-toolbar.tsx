@@ -5,6 +5,7 @@ import { Copy, Music2, Palette, Scissors, Trash2, Type, Volume2, VolumeX } from 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ColorField } from "@/components/ui/color-field";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { shotName } from "@/lib/editor/canvas";
 import type { Clip, Edit, SequenceItem } from "@/lib/edl";
@@ -13,6 +14,9 @@ type TextEdit = Extract<Edit, { type: "text" }>;
 
 /** When a template carries no brand kit, these are the colours a hook and a caption reach for. */
 export const DEFAULT_PALETTE = ["#ffe600", "#ffffff", "#000000", "#ff4d4d", "#4dd4ff", "#7cff6b"];
+
+/** Where the hook sits on the frame, in the words the panel shows rather than the schema's. */
+const POSITION_LABELS = { top: "Top", center: "Middle", bottom: "Bottom" } as const;
 
 /** The bar keeps its height with nothing selected, so picking a clip never resizes the frame. */
 export const TOOLBAR_ROW = "flex min-h-11 shrink-0 items-center justify-center";
@@ -73,13 +77,10 @@ export function ClipToolbar({
             style={{ backgroundColor: color }}
           />
         ))}
-        <input
-          type="color"
-          aria-label={`${label}, custom colour`}
-          value={current}
-          onChange={e => apply(e.target.value)}
-          className="size-6 cursor-pointer rounded-full border border-white/25 bg-transparent p-0"
-        />
+        {/* The seventh slot is any colour at all, in a panel of ours rather than the
+            operating system's window. The six above are already one click away, so it
+            does not repeat them. */}
+        <ColorField label={`${label}, any colour`} value={current} onChange={apply} side="right" align="start" />
       </div>
     </div>
   );
@@ -121,7 +122,7 @@ export function ClipToolbar({
                   variant={hook.position === position ? "secondary" : "outline"}
                   aria-pressed={hook.position === position}
                   onClick={() => onChange({ ...clip, edits: clip.edits.map((edit, index) => index === hookIndex ? { ...hook, position, y: null } : edit) })}
-                >{position}</Button>
+                >{POSITION_LABELS[position]}</Button>
               ))}
             </div>
           ) : null}

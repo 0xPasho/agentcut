@@ -40,6 +40,10 @@ In the editor:
 - Adjust each layer’s position, size, rotation, opacity, volume, mute, and visibility.
 - Animate any of those over the shot's own time, on the frame or in the **Motion** panel.
 - Place titles, images, and audio on independent canvas layers, including music spanning cuts.
+- Sound sits in its own region of the timeline, under the picture tracks: music, sound
+  effects and separated audio go there, and dragging one over the picture sends it back.
+- Add a title, an image, music or a blank scene from the one **Add** row under the timeline;
+  the shot edits beside it — punch-in, emphasis, silence cut — act on the picked clip.
 - Use **Captions** and **Add** for common shot edits. Source-frame
   capture uses the selected shot’s media, through the same `assets.capture` tool.
 - Select a clip and its controls appear in the bar under the frame: hook, colours, mute,

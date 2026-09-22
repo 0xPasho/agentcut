@@ -9,6 +9,7 @@ import type { PlanApplyResult, ProjectApplyResult } from "@/lib/plan/apply";
 import { sequenceFrames } from "@/lib/sequences";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { Disclosure } from "@/components/ui/disclosure";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
@@ -153,7 +154,7 @@ export function PlanPanel({ projectId, edl, sequenceId, templates, dispatch, see
           </div>
         </section>
       </>}
-      {children && <><Separator /><details><summary className="cursor-pointer text-sm font-medium">Template settings</summary><div className="mt-3">{children}</div></details></>}
+      {children && <><Separator /><Disclosure variant="plain" heading="h3" summaryClassName="text-sm font-medium text-foreground" summary="Template settings">{children}</Disclosure></>}
       {message && <p role="status" className="text-xs text-muted-foreground">{message}</p>}
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     </div>
@@ -192,15 +193,15 @@ function Beats({ beats, onSeek, onChange }: { beats: Beat[]; onSeek: (beat: Beat
           </button>
           <Button size="icon-sm" variant="ghost" aria-label={`Remove beat ${i + 1}`} onClick={() => onChange(beats.filter((b) => b.id !== beat.id))}><Trash2 /></Button>
         </div>
-        <details className="mt-1 text-xs"><summary className="cursor-pointer text-muted-foreground">Edit</summary>
-          <div className="mt-2 grid gap-2 sm:grid-cols-[auto_1fr]">
+        <Disclosure variant="plain" className="mt-1" summary="Edit" contentClassName="px-0 pt-2">
+          <div className="grid gap-2 sm:grid-cols-[auto_1fr]">
             <Select value={beat.kind} onValueChange={(v) => onChange(beats.map((b) => b.id === beat.id ? { ...b, kind: v as BeatKind } : b))}>
               <SelectTrigger aria-label="Beat kind" className="w-28"><SelectValue>{(v: unknown) => KIND_LABELS[v as BeatKind]}</SelectValue></SelectTrigger>
               <SelectContent>{Object.entries(KIND_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
             </Select>
             <Input aria-label="Beat intent" key={beat.intent} defaultValue={beat.intent} onBlur={(e) => { if (e.target.value !== beat.intent) onChange(beats.map((b) => b.id === beat.id ? { ...b, intent: e.target.value } : b)); }} />
           </div>
-        </details>
+        </Disclosure>
       </li>)}
       <li className="flex gap-2">
         <Select value={draft.kind} onValueChange={(v) => setDraft({ ...draft, kind: v as BeatKind })}>

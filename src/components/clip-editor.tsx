@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Player, type PlayerRef } from "@remotion/player";
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, Download, FolderOpen, ImagePlus, Loader2, MousePointerClick, Music2, Plus, Redo2, Scissors, Settings2, Square, Undo2, Wand2 } from "lucide-react";
+import { ArrowLeft, Check, ChevronLeft, ChevronRight, Download, FolderOpen, ImagePlus, Loader2, MousePointerClick, Music2, Plus, Redo2, Scissors, Settings2, Square, Type, Undo2, Wand2 } from "lucide-react";
 import { promoteClipToSequence } from "@/lib/editor/editable-timeline";
 import { shotName } from "@/lib/editor/canvas";
+import { audioLayer } from "@/lib/editor/tracks";
 import { LayerInspector } from "./layer-inspector";
 import { MotionInspector } from "./motion-inspector";
 import { CanvasGrid, CanvasSelection, type CanvasPreview } from "./canvas-selection";
@@ -18,6 +19,7 @@ import { Button, buttonVariants } from "./ui/button";
 import { cn } from "cn";
 import { Input } from "./ui/input";
 import { Card, CardContent } from "./ui/card";
+import { Disclosure } from "./ui/disclosure";
 import { Glass } from "./ui/glass";
 import { ScrollArea } from "./ui/scroll-area";
 import { Separator } from "./ui/separator";
@@ -115,6 +117,14 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
   const [canvasDrop, setCanvasDrop] = useState<{ x: number; y: number } | null>(null);
   const [pendingDrop, setPendingDrop] = useState<{ queue: Imported[]; placement: { at: number; layer: number } | null; spot?: { x: number; y: number } } | null>(null);
   const [assetPanelOpen, setAssetPanelOpen] = useState(false);
+  /**
+   * Asking for a picture or a sound points the asset browser at that kind and puts the
+   * cursor in its search box. On a wide screen the browser is always on show, so a button
+   * that only unhid it did nothing at all where most editing happens.
+   */
+  const [assetFocus, setAssetFocus] = useState<{ kind: "image" | "audio"; nonce: number } | null>(null);
+  const browseAssets = (kind: "image" | "audio") => { setAssetPanelOpen(true); setAssetFocus({ kind, nonce: Date.now() }); };
+  const addGroupId = useId(), clipGroupId = useId();
   const [propertiesOpen, setPropertiesOpen] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
   // The playhead is not state: see src/lib/editor/playhead.ts for why the editor must
@@ -205,10 +215,15 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
   const addCanvas = (edit?: Edit, title = "Blank scene", placement?:{at:number;layer:number}) => {
     if (!sequence) return;
     const id = uid("layer"), duration = edit ? edit.d : 5;
-    const ops:EditorOperation[]=[{type:"item.add",sequenceId:sequence.id,item:{id,mediaId:null,at:placement?.at ?? playhead.get(),layer:placement?.layer ?? topLayer(),clip:ClipSchema.parse({id,title,start:0,end:duration,captions:{preset:"none"},edits:edit ? [{...edit,t:0}] : []})}}];
-    if(placement?.layer===0)ops.push({type:"item.reorder",sequenceId:sequence.id,itemId:id,layer:0,index:allocation!.items.filter(i=>(i.item.layer??0)===0).sort((a,b)=>a.from-b.from).filter(i=>placement.at>=(i.from+i.duration/2)/output.fps).length});
+    const at = placement?.at ?? playhead.get();
+    // A piece of music is not an overlay on the picture: it belongs on the audio track,
+    // beside the rest of the sound, wherever it was asked for.
+    const sound = edit?.type === "music" || edit?.type === "sfx";
+    const layer = placement?.layer ?? (sound ? audioLayer(sequence, at, duration) : topLayer());
+    const ops:EditorOperation[]=[{type:"item.add",sequenceId:sequence.id,item:{id,mediaId:null,at,layer,clip:ClipSchema.parse({id,title,start:0,end:duration,captions:{preset:"none"},edits:edit ? [{...edit,t:0}] : []})}}];
+    if(layer===0)ops.push({type:"item.reorder",sequenceId:sequence.id,itemId:id,layer:0,index:allocation!.items.filter(i=>(i.item.layer??0)===0).sort((a,b)=>a.from-b.from).filter(i=>at>=(i.from+i.duration/2)/output.fps).length});
     dispatch(ops);
-    setActiveItemId(id); setCanvasSelected(true); player.current?.pause(); if(placement)seek(placement.at); resetSelection();
+    setActiveItemId(id); setCanvasSelected(true); player.current?.pause(); if(placement)seek(at); resetSelection();
     if(edit) { setSelected(0); setTab("edit"); }
   };
   /** Where a drop landed inside the frame, 0..1 on each axis. */
@@ -254,6 +269,20 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
     if(!asset)throw new Error("This asset is no longer available.");
     return asset;
   };
+  /**
+   * A music bed for the whole video, not for the shot that happened to be picked when it
+   * was chosen: it starts at zero, runs the length of the programme, and lands on the
+   * audio track under the picture.
+   */
+  const placeMusicBed = (assetId: string) => void (async()=>{
+    try {
+      if(!sequence) throw new Error("Choose a video first.");
+      const asset=await findAsset(assetId);
+      const duration=Math.max(5,(allocation?.duration ?? 0)/output.fps);
+      addCanvas(assetEdit(asset,0,duration,"music"),asset.name,{at:0,layer:audioLayer(sequence,0,duration)});
+      notify(`${asset.name} added on the audio track.`);
+    } catch(error){ setActionError((error as Error).message); }
+  })();
   const dropAsset = async(assetId:string,at:number,layer:number,spot?:Spot)=>{
     try {
       const asset=await findAsset(assetId);
@@ -630,7 +659,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
     <Button className="mx-4 mt-3 self-start xl:hidden" variant="outline" size="sm" aria-expanded={assetPanelOpen} onClick={()=>setAssetPanelOpen(!assetPanelOpen)}><FolderOpen />{assetPanelOpen ? "Hide assets" : "Browse assets"}</Button>
     <fieldset disabled={assetBusy} aria-busy={assetBusy} className={`flex min-h-0 min-w-0 flex-1 flex-col gap-5 px-4 pt-4 pb-5 lg:flex-row ${assetBusy ? "cursor-progress" : ""}`}>
       <aside aria-label="Asset browser" {...libraryDropHandlers} className={`${assetPanelOpen ? "block" : "hidden xl:block"} w-full min-w-0 shrink-0 rounded-3xl lg:w-[320px] lg:overflow-y-auto lg:pr-1 ${libraryDrag ? "outline-2 outline-dashed outline-offset-2 outline-primary" : ""}`}>
-        <MediaBrowser projectId={projectId} edl={savedEdl} beforeImport={save} afterImport={editor.reload} onBusy={setAssetBusy} onPreview={()=>player.current?.pause()} canPlace={!!sequence} onVideo={id=>{const name=appendVideo(id);if(name)notify(`${name} added to the end.`);}} onLibraryVideo={id=>void placeLibraryVideo(id).catch(error=>setActionError((error as Error).message))} onVideoLayer={id=>{const name=appendVideo(id,true);if(name)notify(`${name} added over the playhead.`);}} videoAction="Add to timeline" onPlace={(asset,mode)=>{const name=placeAsset(asset,mode);if(name)notify(`${name} added at the playhead.`);}} onRemoveVideo={mediaId=>{const name=edl.media.find(m=>m.id===mediaId)?.name ?? "That source";if(dispatched([{type:"media.remove",mediaId}]))notify(`${name} removed from the project.`);}}
+        <MediaBrowser projectId={projectId} edl={savedEdl} focus={assetFocus} beforeImport={save} afterImport={editor.reload} onBusy={setAssetBusy} onPreview={()=>player.current?.pause()} canPlace={!!sequence} onVideo={id=>{const name=appendVideo(id);if(name)notify(`${name} added to the end.`);}} onLibraryVideo={id=>void placeLibraryVideo(id).catch(error=>setActionError((error as Error).message))} onVideoLayer={id=>{const name=appendVideo(id,true);if(name)notify(`${name} added over the playhead.`);}} videoAction="Add to timeline" onPlace={(asset,mode)=>{const name=placeAsset(asset,mode);if(name)notify(`${name} added at the playhead.`);}} onRemoveVideo={mediaId=>{const name=edl.media.find(m=>m.id===mediaId)?.name ?? "That source";if(dispatched([{type:"media.remove",mediaId}]))notify(`${name} removed from the project.`);}}
           replace={replaceable} onReplace={(id,kind)=>{if(!item)return;if(kind==="video")replaceMedia(item.id,id);else void replaceAsset(item.id,id,0);}} />
       </aside>
       <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
@@ -660,15 +689,27 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
             : <p className="px-2 text-xs text-muted-foreground">Pick a clip on the frame or the timeline to edit it.</p>}
         </div>}
         <Card className="min-h-0 max-h-[45dvh] min-w-0 shrink-0 overflow-hidden py-3"><CardContent className="flex min-h-0 flex-col gap-3 overflow-hidden px-4">
-          {sequence && <SequenceTimeline projectId={projectId} sequence={sequence} selectedId={item?.id} dispatch={dispatch} onSeek={seek} playing={playing} onPlayToggle={()=>{if(playing)player.current?.pause();else player.current?.play();}} onBlank={()=>addCanvas()} media={edl.media} mediaUrls={mediaUrls} assetUrls={assetUrls} selectedEdit={selected} onSelectEdit={index=>{setSelected(index);setTab("edit");}} onDropMedia={(id,at,layer)=>appendVideo(id,layer>0,{at,layer})} onDropAsset={(id,at,layer)=>void dropAsset(id,at,layer)} onDropFiles={(files,at,layer)=>dropFiles(files,{at,layer})} onDropLocalFile={(file,kind,at,layer)=>dropLocalFile(file,kind,{at,layer})} onDropSearchHit={(hit,at,layer)=>dropSearchHit(hit,{at,layer})} onReplaceMedia={replaceMedia} onReplaceAsset={(itemId,assetId,editIndex)=>void replaceAsset(itemId,assetId,editIndex)} onSplit={splitAtPlayhead} onDuplicate={duplicateSelected} onDetachAudio={detachAudio} onAskAgent={id=>{const target=sequence?.items.find(i=>i.id===id);setActiveItemId(id);setCanvasSelected(true);setAgentPrefill({text:`About "${target?.clip.title??"this clip"}": `,nonce:Date.now()});}} onNotify={notify} onSelect={(id,t)=>{setActiveItemId(id);setCanvasSelected(true);player.current?.pause();seek(t);resetSelection();}} />}
-          <div className="flex flex-wrap items-center gap-2"><Button size="xs" variant="outline" disabled={!sequence} onClick={()=>addEdit("text")}><Plus />Title</Button>
-            <Button size="xs" variant="outline" disabled={!sequence} title="Browse pictures in your project, your library and online" onClick={()=>setAssetPanelOpen(true)}><ImagePlus />Image</Button>
-            {/* Music and sound effects live with the selected shot; without a selection this
-                opens them on the first one rather than refusing. */}
-            <Button size="xs" variant="outline" disabled={!hasContent} title="Music and sound effects for this shot" onClick={()=>{if(!picked&&item)setActiveItemId(item.id);setTab("overlays");}}><Music2 />Sound</Button>
-            {/* Split and duplicate act on the selection, so they live with the selection, in
-                the bar under the frame. This row is what a video can be given, not what the
-                picked clip can be told; the same button twice reads as two different ones. */}{hasContent&&<details className="text-xs"><summary className="cursor-pointer rounded-full px-3 py-2 text-muted-foreground">Clip effects</summary><div className="flex flex-wrap gap-2 py-2">{["silence","punch","emphasis"].map(kind=><Button key={kind} size="xs" variant="outline" onClick={()=>addEdit(kind)}><Plus />{kind}</Button>)}</div></details>}</div>
+          {sequence && <SequenceTimeline projectId={projectId} sequence={sequence} selectedId={item?.id} dispatch={dispatch} onSeek={seek} playing={playing} onPlayToggle={()=>{if(playing)player.current?.pause();else player.current?.play();}} media={edl.media} mediaUrls={mediaUrls} assetUrls={assetUrls} selectedEdit={selected} onSelectEdit={index=>{setSelected(index);setTab("edit");}} onDropMedia={(id,at,layer)=>appendVideo(id,layer>0,{at,layer})} onDropAsset={(id,at,layer)=>void dropAsset(id,at,layer)} onDropFiles={(files,at,layer)=>dropFiles(files,{at,layer})} onDropLocalFile={(file,kind,at,layer)=>dropLocalFile(file,kind,{at,layer})} onDropSearchHit={(hit,at,layer)=>dropSearchHit(hit,{at,layer})} onReplaceMedia={replaceMedia} onReplaceAsset={(itemId,assetId,editIndex)=>void replaceAsset(itemId,assetId,editIndex)} onSplit={splitAtPlayhead} onDuplicate={duplicateSelected} onDetachAudio={detachAudio} onAskAgent={id=>{const target=sequence?.items.find(i=>i.id===id);setActiveItemId(id);setCanvasSelected(true);setAgentPrefill({text:`About "${target?.clip.title??"this clip"}": `,nonce:Date.now()});}} onNotify={notify} onSelect={(id,t)=>{setActiveItemId(id);setCanvasSelected(true);player.current?.pause();seek(t);resetSelection();}} />}
+          {/* Everything a video can be given, in one row under the timeline it lands on.
+              Split and duplicate are not here: they act on the selection, so they live with
+              the selection in the bar under the frame. The second group does act on the
+              picked clip, which is why it is named after it and only appears with one. */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <div role="group" aria-labelledby={addGroupId} className="flex flex-wrap items-center gap-1.5">
+              <span id={addGroupId} className="pr-0.5 text-[11px] font-medium text-muted-foreground">Add</span>
+              <Button size="xs" variant="outline" disabled={!sequence} aria-label="Add a title" title="A text card on its own layer" onClick={()=>addEdit("text")}><Type />Title</Button>
+              <Button size="xs" variant="outline" disabled={!sequence} aria-label="Add an image" title="Pictures in your project, your library and online" onClick={()=>browseAssets("image")}><ImagePlus />Image</Button>
+              {/* Sound is not something a shot carries: it goes onto the audio track under the
+                  picture, where it can span the cuts it plays across. */}
+              <Button size="xs" variant="outline" disabled={!sequence} aria-label="Add music" title="Music and sound effects, on their own track under the picture" onClick={()=>browseAssets("audio")}><Music2 />Music</Button>
+              <Button size="xs" variant="outline" disabled={!sequence} aria-label="Add a blank scene" title="An empty scene on a new track, ready for a title, image or sound" onClick={()=>addCanvas()}><Square />Blank scene</Button>
+            </div>
+            {canvasSelected&&item&&<div role="group" aria-labelledby={clipGroupId} className="flex flex-wrap items-center gap-1.5">
+              <span id={clipGroupId} className="pr-0.5 text-[11px] font-medium text-muted-foreground">This clip</span>
+              {([["punch","Punch-in","Push in on the picture at the playhead"],["emphasis","Emphasis","Colour the words being said at the playhead"],["silence","Silence cut","Take out a pause at the playhead"]] as const).map(([kind,label,hint])=>
+                <Button key={kind} size="xs" variant="outline" aria-label={`Add ${label.toLowerCase()}`} title={hint} onClick={()=>addEdit(kind)}>{label}</Button>)}
+            </div>}
+          </div>
         </CardContent></Card>
       </section>
       <aside aria-label="Editing properties" className="flex w-full min-h-0 shrink-0 flex-col gap-3 lg:w-[340px] lg:overflow-y-auto lg:pr-1">
@@ -677,9 +718,9 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
         </Card>
         {!picked&&<p className="shrink-0 rounded-2xl border border-dashed border-white/15 p-4 text-xs leading-relaxed text-muted-foreground"><MousePointerClick aria-hidden className="mb-2 size-4" /><br />Nothing picked. A clip&apos;s properties appear here, and its everyday controls in the bar under the frame. The video as a whole — plan, templates, rules, format — is under <strong className="font-medium text-foreground">Video</strong> at the top.</p>}
         {picked&&<>
-          {sequence&&item&&<details className="shrink-0 rounded-2xl border border-border bg-card p-4"><summary className="cursor-pointer text-sm font-medium">Position & audio</summary><div className="mt-3"><LayerInspector key={`placement-${item.id}`} sequence={sequence} item={item} dispatch={dispatch} /></div></details>}
-          {sequence&&item&&<details className="shrink-0 rounded-2xl border border-border bg-card p-4" open={!!item.keyframes?.length}><summary className="cursor-pointer text-sm font-medium">Motion{item.keyframes?.length?` · ${item.keyframes.length}`:""}</summary><div className="mt-3"><MotionInspector key={`motion-${item.id}`} sequence={sequence} item={item} dispatch={dispatch} onSeek={seek} /></div></details>}
-          {sequence&&item&&<details className="shrink-0 rounded-2xl border border-border bg-card p-4"><summary className="cursor-pointer text-sm font-medium">Trim & split</summary><div className="mt-3"><SceneBounds key={item.id} clip={clip} sourceDuration={source?.durationSec} onChange={(start,end)=>{
+          {sequence&&item&&<Disclosure className="shrink-0" heading="h2" summary="Position & audio"><LayerInspector key={`placement-${item.id}`} sequence={sequence} item={item} dispatch={dispatch} /></Disclosure>}
+          {sequence&&item&&<Disclosure className="shrink-0" heading="h2" open={!!item.keyframes?.length} summary="Motion" aside={item.keyframes?.length?`${item.keyframes.length} keyframes`:undefined}><MotionInspector key={`motion-${item.id}`} sequence={sequence} item={item} dispatch={dispatch} onSeek={seek} /></Disclosure>}
+          {sequence&&item&&<Disclosure className="shrink-0" heading="h2" summary="Trim & split"><SceneBounds key={item.id} clip={clip} sourceDuration={source?.durationSec} onChange={(start,end)=>{
             const duration=end-start;
             const fullCanvasEdit=!source && clip.edits.length===1 && clip.edits[0].t===0 && Math.abs(clip.edits[0].d-(clip.end-clip.start))<.01;
             update({...clip,start,end,...(fullCanvasEdit?{edits:[{...clip.edits[0],d:duration}]}:{})});
@@ -687,10 +728,10 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
             onSlip={delta=>{
               try { const ops=buildTimelineSlip(sequence,item.id,delta,edl.media); if(ops.length)dispatch(ops); }
               catch(error){ notify((error as Error).message,"error"); }
-            }} /></div></details>}
+            }} /></Disclosure>}
           <Card className="shrink-0 p-4"><Tabs value={tab} onValueChange={v=>setTab(v as typeof tab)}><TabsList className="w-full"><TabsTrigger value="captions" className="flex-1">Captions</TabsTrigger><TabsTrigger value="overlays" className="flex-1">Add</TabsTrigger><TabsTrigger value="edit" className="flex-1" disabled={selected===null}>Selected</TabsTrigger></TabsList>
             <TabsContent value="captions" className="pt-4"><CaptionControls value={clip.captions} onChange={captions=>update({...clip,captions})} /></TabsContent>
-            <TabsContent value="overlays" className="pt-4"><OverlayEditor key={clip.id} projectId={projectId} mediaId={savedEdl.media.some(m=>m.id===item?.mediaId) ? item?.mediaId ?? undefined : undefined} canCapture={!!source} clip={clip} atSec={playheadInSource} onChange={edits=>update({...clip,edits})} /></TabsContent>
+            <TabsContent value="overlays" className="pt-4"><OverlayEditor key={clip.id} onPlaceBed={placeMusicBed} projectId={projectId} mediaId={savedEdl.media.some(m=>m.id===item?.mediaId) ? item?.mediaId ?? undefined : undefined} canCapture={!!source} clip={clip} atSec={playheadInSource} onChange={edits=>update({...clip,edits})} /></TabsContent>
             <TabsContent value="edit" className="pt-4">{selected!==null&&clip.edits[selected]?<ClipInspector projectId={projectId} edit={clip.edits[selected]} onChange={edit=>update({...clip,edits:clip.edits.map((e,i)=>i===selected?edit:e)})} onRemove={()=>{update({...clip,edits:clip.edits.filter((_,i)=>i!==selected)});setSelected(null);setTab("captions");}} />:<p className="text-xs text-muted-foreground">Pick a block on the timeline.</p>}</TabsContent>
           </Tabs></Card>
           <Transcript clip={clip} map={map} itemOffset={itemOffset} onSeek={seek} onTrimStart={word=>update({...clip,start:clip.start+word.t})} />
@@ -730,12 +771,12 @@ function SceneBounds({clip,sourceDuration,onChange,onSplit,onSlip}:{clip:Clip;so
   const [start,setStart]=useState(clip.start),[end,setEnd]=useState(clip.end),[base,setBase]=useState({start:clip.start,end:clip.end}),[split,setSplit]=useState(1);
   const stale=base.start!==clip.start||base.end!==clip.end;
   useEffect(()=>{if(stale&&start===base.start&&end===base.end){setStart(clip.start);setEnd(clip.end);setBase({start:clip.start,end:clip.end});}},[stale,start,end,base,clip.start,clip.end]);
-  return <Card className="shrink-0 gap-3 p-4"><h2 className="text-sm font-medium">{sourceDuration ? "Selected video" : "Selected canvas scene"}</h2><p className="truncate text-xs text-muted-foreground">{clip.title}</p><form className="space-y-3" onSubmit={e=>{e.preventDefault();if(stale||end<=start)return;onChange(start,end);setBase({start,end});}}>{sourceDuration ? <div className="grid grid-cols-2 gap-3"><label className="space-y-1 text-xs">In (seconds)<Input required type="number" min={0} max={sourceDuration} step="any" value={start} onChange={e=>setStart(Number(e.target.value))} /></label><label className="space-y-1 text-xs">Out (seconds)<Input required type="number" min={0} max={sourceDuration} step="any" value={end} onChange={e=>setEnd(Number(e.target.value))} /></label></div> : <label className="block space-y-1 text-xs">Duration (seconds)<Input required type="number" min={0.01} step="any" value={end-start} onChange={e=>setEnd(start+Number(e.target.value))} /></label>}<Button type="submit" variant="outline" size="sm" disabled={stale||end<=start}>{sourceDuration?"Apply trim":"Apply duration"}</Button>{stale&&<><p role="status" className="text-xs text-muted-foreground">This scene changed. Your trim fields are preserved.</p><Button type="button" size="sm" variant="ghost" onClick={()=>{setStart(clip.start);setEnd(clip.end);setBase({start:clip.start,end:clip.end});}}>Load latest trim</Button></>}</form>{sourceDuration ? <div className="space-y-2">
+  return <div className="flex min-w-0 flex-col gap-3"><p className="truncate text-xs text-muted-foreground">{clip.title}</p><form className="space-y-3" onSubmit={e=>{e.preventDefault();if(stale||end<=start)return;onChange(start,end);setBase({start,end});}}>{sourceDuration ? <div className="grid grid-cols-2 gap-3"><label className="space-y-1 text-xs">In (seconds)<Input required type="number" min={0} max={sourceDuration} step="any" value={start} onChange={e=>setStart(Number(e.target.value))} /></label><label className="space-y-1 text-xs">Out (seconds)<Input required type="number" min={0} max={sourceDuration} step="any" value={end} onChange={e=>setEnd(Number(e.target.value))} /></label></div> : <label className="block space-y-1 text-xs">Duration (seconds)<Input required type="number" min={0.01} step="any" value={end-start} onChange={e=>setEnd(start+Number(e.target.value))} /></label>}<Button type="submit" variant="outline" size="sm" disabled={stale||end<=start}>{sourceDuration?"Apply trim":"Apply duration"}</Button>{stale&&<><p role="status" className="text-xs text-muted-foreground">This scene changed. Your trim fields are preserved.</p><Button type="button" size="sm" variant="ghost" onClick={()=>{setStart(clip.start);setEnd(clip.end);setBase({start:clip.start,end:clip.end});}}>Load latest trim</Button></>}</form>{sourceDuration ? <div className="space-y-2">
     <p className="text-xs text-muted-foreground">Slip content <span className="tabular-nums">— footage starts at {fmt(clip.start)}</span></p>
     {/* Slipping changes what the clip shows without moving it or changing how long it runs. */}
     <div className="flex gap-2">
       <Button size="xs" variant="outline" aria-label="Show footage half a second earlier" disabled={clip.start <= 0} onClick={()=>onSlip(-0.5)}><ChevronLeft />0.5s earlier</Button>
       <Button size="xs" variant="outline" aria-label="Show footage half a second later" disabled={clip.end >= sourceDuration} onClick={()=>onSlip(0.5)}>0.5s later<ChevronRight /></Button>
     </div>
-  </div> : null}<label className="space-y-1 text-xs">Split after (seconds)<Input type="number" min={0.01} step="any" value={split} onChange={e=>setSplit(Number(e.target.value))} /></label><Button variant="outline" size="sm" disabled={split<=0||split>=clip.end-clip.start} onClick={()=>onSplit(split)}><Scissors />Split scene</Button></Card>;
+  </div> : null}<label className="space-y-1 text-xs">Split after (seconds)<Input type="number" min={0.01} step="any" value={split} onChange={e=>setSplit(Number(e.target.value))} /></label><Button variant="outline" size="sm" disabled={split<=0||split>=clip.end-clip.start} onClick={()=>onSplit(split)}><Scissors />Split scene</Button></div>;
 }

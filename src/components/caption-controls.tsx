@@ -4,7 +4,7 @@ import { useId } from "react";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
+import { ColorField } from "@/components/ui/color-field";
 import type { CaptionStyle } from "@/lib/edl";
 
 const asNumber = (v: number | readonly number[]) => (Array.isArray(v) ? v[0] : (v as number));
@@ -105,36 +105,9 @@ export function CaptionControls({
       </div>
 
       <div className="flex items-center gap-5">
-        <Swatch label="Text" value={value.color} onChange={(v) => set("color", v)} />
-        <Swatch label="Highlight" value={value.highlight} onChange={(v) => set("highlight", v)} />
+        <ColorField label="Caption text" value={value.color} onChange={(v) => set("color", v)}>Text</ColorField>
+        <ColorField label="Caption highlight" value={value.highlight} onChange={(v) => set("highlight", v)}>Highlight</ColorField>
       </div>
     </div>
-  );
-}
-
-/** A native colour input reads as a raw form control; this is just the swatch. */
-function Swatch({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <label className="relative flex min-h-9 cursor-pointer items-center gap-2 rounded-full text-xs text-muted-foreground has-focus-visible:ring-2 has-focus-visible:ring-ring has-focus-visible:ring-offset-4 has-focus-visible:ring-offset-background">
-      <span
-        className="size-6 rounded-full border border-white/20 shadow-[inset_0_1px_2px_rgba(0,0,0,0.4)]"
-        style={{ backgroundColor: value }}
-      />
-      {label}
-      <input
-        type="color"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="sr-only"
-      />
-    </label>
   );
 }

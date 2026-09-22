@@ -17,13 +17,15 @@ type TranscriptionReport = { media: Array<TranscriptionState & { id: string; nam
 const wordsFor = (report: TranscriptionReport | null, mediaId: string): TranscriptionState | undefined =>
   report?.media.find(m => m.id === mediaId);
 
-export function MediaBrowser({ projectId, edl, beforeImport, afterImport, onBusy, onPlace, onPreview, onVideo, onLibraryVideo, onVideoLayer, onRemoveVideo, onReplace, replace, videoAction = "Add to video", canPlace = true, children }: {
+export function MediaBrowser({ projectId, edl, beforeImport, afterImport, onBusy, onPlace, onPreview, onVideo, onLibraryVideo, onVideoLayer, onRemoveVideo, onReplace, replace, focus, videoAction = "Add to video", canPlace = true, children }: {
   projectId: string; edl: Edl; beforeImport: () => Promise<boolean>; afterImport: () => Promise<void>;
   onBusy: (busy: boolean) => void; onPlace: (asset: AssetSummary, mode?: "music" | "sfx") => void;
   onPreview?: () => void; onVideo: (mediaId: string) => void; onVideoLayer?: (mediaId: string) => void; onRemoveVideo?: (mediaId: string) => void;
   /** A library video: imported into the project and placed at the end of the main track. */
   onLibraryVideo?: (assetId: string) => void;
   onReplace?: (id: string, kind: "video" | "image" | "audio") => void; replace?: { kind: "video" | "image" | "audio"; title: string };
+  /** "Show me the pictures" from elsewhere in the editor: the same browser, pointed at one kind. */
+  focus?: { kind: "image" | "audio"; nonce: number } | null;
   videoAction?: string; canPlace?: boolean; children?: React.ReactNode;
 }) {
   const [tab, setTab] = useState("project"), [filter, setFilter] = useState("");
@@ -36,6 +38,16 @@ export function MediaBrowser({ projectId, edl, beforeImport, afterImport, onBusy
   const heard = useRef(new Map<string, string>());
   const [announcement, setAnnouncement] = useState("");
   const input = useRef<HTMLInputElement>(null);
+  const search = useRef<HTMLInputElement>(null);
+  // Only when it is asked for: a filter that reset itself on every render would fight the
+  // person using it. The nonce is what makes asking twice in a row work.
+  useEffect(() => {
+    if (!focus) return;
+    setKind(focus.kind); setFilter("");
+    setTab(current => current === "project" || current === "library" ? current : "project");
+    requestAnimationFrame(() => { search.current?.focus({ preventScroll: true }); search.current?.scrollIntoView({ block: "nearest" }); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus?.nonce]);
   const refresh = async () => {
     const results = await Promise.all(["image", "audio", "video"].map(kind => api.editorTool<AssetSummary[]>(projectId, { tool: "assets.list", kind })));
     setAssets(results.flat());
@@ -137,7 +149,7 @@ export function MediaBrowser({ projectId, edl, beforeImport, afterImport, onBusy
     <input ref={input} type="file" multiple accept="video/*,image/*,audio/*" className="hidden" onChange={e => { const files = Array.from(e.target.files ?? []); e.target.value = ""; if (files.length) void upload(files); }} />
     <Tabs value={tab} onValueChange={v => {setTab(String(v));setKind("all");}}>
       <TabsList className="grid h-auto w-full grid-cols-4"><TabsTrigger value="project" className="px-1 text-xs">Project</TabsTrigger><TabsTrigger value="library" className="px-1 text-xs">Library</TabsTrigger><TabsTrigger value="folders" className="px-1 text-xs">Folders</TabsTrigger><TabsTrigger value="online" className="px-1 text-xs">Online</TabsTrigger></TabsList>
-      {(tab === "project" || tab === "library") && <div className="my-4 space-y-3"><Input aria-label="Filter assets" placeholder="Search your media…" value={filter} onChange={e => setFilter(e.target.value)} /><div role="group" aria-label="Asset type" className="flex flex-wrap gap-1">{[['all','All'],['video','Video'],['image','Images'],['audio','Audio']].filter(([value])=>tab==='project'||value!=='video').map(([value,label])=><Button key={value} variant={kind===value?'secondary':'ghost'} size="xs" aria-pressed={kind===value} onClick={()=>setKind(value)}>{label}</Button>)}</div></div>}
+      {(tab === "project" || tab === "library") && <div className="my-4 space-y-3"><Input ref={search} aria-label="Filter assets" placeholder="Search your media…" value={filter} onChange={e => setFilter(e.target.value)} /><div role="group" aria-label="Asset type" className="flex flex-wrap gap-1">{[['all','All'],['video','Video'],['image','Images'],['audio','Audio']].filter(([value])=>tab==='project'||value!=='video').map(([value,label])=><Button key={value} variant={kind===value?'secondary':'ghost'} size="xs" aria-pressed={kind===value} onClick={()=>setKind(value)}>{label}</Button>)}</div></div>}
       <TabsContent value="project" className="space-y-3">{viewer}{words&&<section aria-label="Transcription" className="space-y-2 rounded-2xl border border-white/10 bg-black/20 p-3">
         <p className="text-[11px] text-muted-foreground">{busyWords?`Listening to ${words.media.filter(m=>m.status==='running'||m.status==='queued').length} of ${words.media.length} sources. You can keep editing.`:'Imported videos are transcribed so captions, silence cuts and the agent can read what is said.'}</p>
         {/* A stable region, empty until a source lands, so the same news announces twice. */}

@@ -52,7 +52,7 @@ export function overlayLabel(clip: Clip, target: OverlayTarget): string {
 export function effectLabel(edit: Edit): string {
   if (edit.type === "text") return edit.text || "Title";
   if (edit.type === "emphasis") return edit.words.join(" ") || "Emphasis";
-  return ({ silence: "Cut", punch: "Zoom", image: "Image", music: "Music", sfx: "Sound" } as Record<string, string>)[edit.type] ?? edit.type;
+  return ({ silence: "Cut", punch: "Punch-in", image: "Image", music: "Music", sfx: "Sound" } as Record<string, string>)[edit.type] ?? edit.type;
 }
 
 /** A scene with no footage under it, whose one edit fills it: a title card, a piece of music. */

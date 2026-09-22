@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "tsx --test tests/clip-quality.test.ts tests/picker.test.ts tests/agents.test.ts tests/activity.test.ts tests/jobs.test.ts tests/onboarding.test.ts tests/settings.test.ts tests/packs.test.ts tests/library-video.test.ts tests/templates-m6.test.ts tests/observations.test.ts tests/batch.test.ts tests/conversation.test.ts tests/plan.test.ts tests/rules.test.ts tests/templates.test.ts tests/editor.test.ts tests/sequence.test.ts tests/workspace.test.ts tests/layers.test.ts tests/timeline-interactions.test.ts tests/interaction.test.ts tests/transcribe.test.ts tests/http-file.test.ts tests/audio.test.ts",
+    "test": "tsx --test tests/clip-quality.test.ts tests/picker.test.ts tests/agents.test.ts tests/activity.test.ts tests/jobs.test.ts tests/onboarding.test.ts tests/settings.test.ts tests/packs.test.ts tests/library-video.test.ts tests/templates-m6.test.ts tests/observations.test.ts tests/batch.test.ts tests/conversation.test.ts tests/plan.test.ts tests/rules.test.ts tests/templates.test.ts tests/editor.test.ts tests/sequence.test.ts tests/workspace.test.ts tests/layers.test.ts tests/tracks.test.ts tests/timeline-interactions.test.ts tests/interaction.test.ts tests/transcribe.test.ts tests/http-file.test.ts tests/audio.test.ts",
     "test:render": "tsx --test --test-force-exit tests/splice-render.test.ts tests/render-parity.test.ts tests/sequence-render.test.ts tests/layers-render.test.ts tests/templates-render.test.ts tests/output-frames-render.test.ts"
   },
   "dependencies": {

@@ -85,7 +85,7 @@ function TemplateChip({ value, onChange }: { value: string[]; onChange: (ids: st
             </Button>
           }
         />
-        <PopoverContent align="start" className="w-[23rem] p-1.5">
+        <PopoverContent align="start" className="w-[23rem] rounded-2xl p-1.5">
           <div className="flex items-center gap-1.5 px-0.5 pb-1.5">
             <Input
               value={query}
