@@ -71,7 +71,10 @@ command read and write the same files.
 - **At generation.** The selection agent gets `rules.json`, judges every edit-stage rule
   per clip and writes the matched ids into `clips.json`. After the clips are published
   the host executes them clip by clip, promoting each clip in place; a failure is logged
-  and the clip is left as generated.
+  and the clip is left as generated. Run on twenty minutes of a real stream through the
+  job the home screen starts, that came back as four videos, each framed by the rule's
+  template, each ending on the card the rule names, at the loudness the template asks
+  for — and the checks the export was read back with all passed.
 - **On request.** In the editor, **Which rules hold?** runs `rules.evaluate`, an agent
   judgement that returns matches with reasons and a few tags for the video. Tick or untick,
   then **Apply checked rules** runs `rules.apply`. Both are tools the agent can call too.
