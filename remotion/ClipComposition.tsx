@@ -1,7 +1,7 @@
 import React, { useMemo } from "react";
 import { AbsoluteFill, Audio, Easing, Img, Sequence, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 import type { Clip, CropKeyframe, Edit, Region } from "../src/lib/edl";
-import { buildTimeMap, mapCrop, mapWindow, mapWords, srcToOut } from "../src/lib/timeline";
+import { buildTimeMap, isCut, mapCrop, mapWindow, mapWords, srcToOut } from "../src/lib/timeline";
 import { duckedVolume, speechSpans } from "../src/lib/ducking";
 import { crossfadeGain, type AudioFade } from "../src/lib/sequences";
 import { Captions } from "./Captions";
@@ -204,6 +204,8 @@ export const ClipComposition: React.FC<ClipProps> = ({
       {music.map((m, i) => {
         const from = Math.round(srcToOut(map, m.t) * fps);
         const until = Math.round(srcToOut(map, m.t + m.d) * fps);
+        // A bed whose whole span the cuts took has nothing left to play under.
+        if (until <= from) return null;
         return (
           <Sequence key={`music-${i}`} from={from} durationInFrames={Math.max(1, until - from)} layout="none">
             <Audio
@@ -217,6 +219,10 @@ export const ClipComposition: React.FC<ClipProps> = ({
       })}
 
       {sfx.map((s, i) => {
+        // A sound is cued at an instant and keeps its own length across a cut. An instant
+        // the cuts removed is not an instant any more: the sound would play at the joint
+        // with nothing under it — a push-in sting for a push-in that is not there.
+        if (isCut(map, s.t)) return null;
         const from = Math.round(srcToOut(map, s.t) * fps);
         return (
           <Sequence

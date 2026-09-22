@@ -127,6 +127,14 @@ export function mapCrop(map: TimeMap, keys: CropKeyframe[]): CropKeyframe[] {
   return keys.map((k) => ({ ...k, t: srcToOut(map, k.t) }));
 }
 
+/**
+ * Whether a moment of the source was removed.
+ *
+ * `srcToOut` answers *where* a source second lands, and for one inside a cut that is the
+ * cut's edge — the right answer for a span drawn across it, the wrong one for a thing
+ * that happens at an instant. A sound cued on a push-in the cuts then removed would
+ * otherwise still play, at the joint, with nothing under it.
+ */
 export function isCut(map: TimeMap, t: number): boolean {
   return !map.spans.some((s) => t >= s.srcStart && t <= s.srcEnd);
 }

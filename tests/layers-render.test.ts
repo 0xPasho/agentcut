@@ -551,3 +551,48 @@ test("a picture the cuts shorten still exports", { timeout: 300_000 }, async () 
   const seen = pixel(outputs[0].file, at, 540, Math.round(1920 * 0.4));
   assert.ok(seen[0] > 120 && seen[0] > seen[2] + 40, `the picture is on screen at ${at.toFixed(2)}s, saw ${seen}`);
 });
+
+test("a sound cued on a moment the cuts removed does not play at the joint", { timeout: 300_000 }, async () => {
+  // A sound keeps its own length across a cut, which is right: a whoosh is not stretched
+  // because the shot under it got shorter. But its cue is an instant, and an instant
+  // inside a cut is not an instant any more — it would play at the joint, with nothing
+  // under it. A push-in sting for a push-in that is not there.
+  const { createVideoProject } = await import("../src/lib/editor/media");
+  const { readEditor, editProject } = await import("../src/lib/editor/store");
+  const { renderProject } = await import("../src/lib/editor/render");
+  const { uploadLibraryAsset } = await import("../src/lib/assets");
+
+  const source = path.join(workspace, "sting-cut.mp4");
+  ffmpeg(["-y", "-f", "lavfi", "-i", "color=0x203040:size=1080x1920:rate=12:duration=10",
+    // Near silence under it, so the sting is the only thing there is to hear.
+    "-f", "lavfi", "-i", "aevalsrc=0.002*sin(2*PI*200*t):d=10", "-shortest", "-pix_fmt", "yuv420p", "-c:a", "aac", source]);
+  const stingFile = path.join(workspace, "sting.wav");
+  ffmpeg(["-y", "-f", "lavfi", "-i", "sine=frequency=1500:duration=0.5", stingFile]);
+  const sting = await uploadLibraryAsset("sting.wav", await fs.readFile(stingFile));
+
+  const { id } = await createVideoProject("Sting cut", [{ file: source }]);
+  const snapshot = readEditor(id);
+  const sequenceId = snapshot.edl.sequences[0].id;
+  editProject(id, { expectedRevision: snapshot.revision, operations: [{
+    type: "item.patch", sequenceId, itemId: snapshot.edl.sequences[0].items[0].id,
+    patch: {
+      title: "Sting", start: 0, end: 8,
+      words: [{ t: 0.5, d: 0.4, w: "hola" }, { t: 5.0, d: 0.4, w: "adiós" }],
+      edits: [
+        // One sting where the video still plays, one inside the cut.
+        { type: "sfx", t: 0.6, d: 0.5, src: sting.id, gain: 1, by: "" },
+        { type: "sfx", t: 2.5, d: 0.5, src: sting.id, gain: 1, by: "" },
+        { type: "silence", t: 2.0, d: 2.0, by: "" },
+      ],
+    },
+  }] });
+
+  const { outputs } = await renderProject(id, { only: [sequenceId] });
+  const { loudness } = await import("../src/lib/media");
+  // The surviving sting is audible where it was cued.
+  const heard = await loudness(outputs[0].file, { start: 0.6, duration: 0.5 });
+  assert.ok(heard !== null && heard > -40, `the first sting is there: ${heard} LUFS`);
+  // The joint the second one was cued into is as quiet as the footage under it.
+  const joint = await loudness(outputs[0].file, { start: 2.0, duration: 0.6 });
+  assert.ok(joint === null || joint < -45, `nothing plays at the joint: ${joint} LUFS against ${heard} for the real one`);
+});

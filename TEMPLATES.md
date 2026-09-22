@@ -109,6 +109,13 @@ it decides which one the material wants.
   opens on an intro would otherwise read the sting and level the whole timeline to it. A
   shot whose volume is a fade somebody drew keeps its fade — a fixed value would never be
   seen, and one hand-drawn fade is not a reason to throw away the rest of the apply.
+- **A sound whose moment went.** A sound keeps its own length across a cut, which is
+  right — a whoosh is not stretched because the shot under it got shorter. But its cue is
+  an *instant*, and an instant inside a cut is not an instant any more: it played at the
+  joint, with nothing under it. A push-in sting for a push-in that is not there. It is
+  skipped now, and a music bed whose whole span the cuts took is skipped too rather than
+  sounding for the single frame the collapsed span left it.
+
 - **A picture the cuts shortened.** A picture eases in and out over its own beat, and the
   ease was written against the beat's full length. Shorten that beat from under it — the
   sentence it was placed on loses a second to a false-start cut — and the interpolation
