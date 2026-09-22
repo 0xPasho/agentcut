@@ -162,10 +162,10 @@ export type CaptionLine = { start: number; end: number; words: Word[] };
  * matches. Their windows overlap, and preferring the earlier one leaves the next
  * line's opening words being spoken with the previous line still up.
  */
-export function lineAt(lines: CaptionLine[], t: number): CaptionLine | null {
+export function lineAt(lines: CaptionLine[], t: number, lead = LINE_LEAD): CaptionLine | null {
   let found: CaptionLine | null = null;
   for (const line of lines) {
-    if (t >= line.start - LINE_LEAD) found = line;
+    if (t >= line.start - lead) found = line;
     else break;
   }
   if (!found || t > found.end + LINE_TAIL) return null;

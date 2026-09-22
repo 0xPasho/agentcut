@@ -283,11 +283,12 @@ const DEFINITIONS: unknown[] = [
     id: "stream-short",
     name: "Stream short — screen and camera",
     description:
-      "A vertical short cut from a screen-share stream: the screen on top, you underneath, the hook held for the whole video and one word at a time above the seam. Set the two rectangles to match your own scene, and give it the card you end every video on.",
+      "A vertical short cut from a screen-share stream: the screen on top, you underneath, the hook held for the whole video and the sentence being said above the seam, its spoken word lit. Set the two rectangles to match your own scene, and give it the card you end every video on.",
     tags: ["vertical", "stream", "split", "captions", "screen-share"],
     output: VERTICAL,
-    captionLook: "stream-pop",
-    captions: { positionY: 0.6 },
+    captionLook: "stream-karaoke",
+    // Two rows of the phrase end just above the seam at 0.68.
+    captions: { positionY: 0.545 },
     hook: { mode: "sticky", position: "top", style: "card", maxWords: 10 },
     // The screen is the b-roll. A picture over it would cover the thing being talked about.
     images: { mode: "off" },
@@ -317,8 +318,8 @@ const DEFINITIONS: unknown[] = [
       // Moving the seam moves where the captions have to sit: they belong just above it,
       // on the screen's half, and a variant that only changed the share left them over
       // the speaker's face.
-      "1:1": { layout: { cameraPct: 55 }, captions: { positionY: 0.36 } },
-      "4:5": { layout: { cameraPct: 44 }, captions: { positionY: 0.47 } },
+      "1:1": { layout: { cameraPct: 55 }, captions: { positionY: 0.32 } },
+      "4:5": { layout: { cameraPct: 44 }, captions: { positionY: 0.43 } },
       "16:9": { layout: { mode: "crop" }, captions: { positionY: 0.72 } },
     },
     // A stream is recorded for a stream, not for a feed: measured on two of them, the

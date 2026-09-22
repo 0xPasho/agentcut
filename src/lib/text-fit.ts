@@ -55,3 +55,30 @@ export function fitScale(text: string, boxEm: number): number {
 /** The factor that fits every one of these — a caption line wraps between words, so the widest one decides. */
 export const fitScaleAll = (texts: string[], boxEm: number): number =>
   texts.reduce((smallest, text) => Math.min(smallest, fitScale(text, boxEm)), 1);
+
+/** Space between two words of a caption, in ems — the `gap-x` the renderer draws. */
+const WORD_GAP = 0.28;
+
+/**
+ * The factor that keeps a line of words to `rows` rows of `boxEm` ems, wrapping between
+ * words the way the renderer does. 1 when it already fits. A caption that reads a whole
+ * sentence at a time is placed by its top edge just above the seam, so a line that
+ * wraps to a third row puts its last words over the speaker: shrinking it a little is
+ * what keeps the sentence whole and on the right side.
+ */
+export function fitRows(words: string[], boxEm: number, rows: number): number {
+  const room = boxEm * 0.97;
+  const count = (scale: number) => {
+    let used = 0;
+    let taken = 1;
+    for (const word of words) {
+      const width = emWidth(word) * scale;
+      if (used > 0 && used + WORD_GAP * scale + width > room) { taken += 1; used = width; }
+      else used += (used > 0 ? WORD_GAP * scale : 0) + width;
+    }
+    return taken;
+  };
+  if (!words.length || count(1) <= rows) return 1;
+  for (let scale = 0.95; scale > MIN_FIT; scale -= 0.05) if (count(scale) <= rows) return scale;
+  return MIN_FIT;
+}

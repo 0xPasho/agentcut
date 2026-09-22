@@ -207,7 +207,7 @@ test("a split template puts the screen above the person, and pushes in on the pe
   assert.ok(Math.abs(screenBand(7) - screenBand(2)) <= 8, `the screen pane should not move, saw ${screenBand(2)} then ${screenBand(7)}`);
 });
 
-test("the whole stream look, read back out of the pixels: hook, one word at a time, seam, and a clean end card", { timeout: 420_000 }, async () => {
+test("the whole stream look, read back out of the pixels: hook, the sentence being said, seam, and a clean end card", { timeout: 420_000 }, async () => {
   const { createVideoProject } = await import("../src/lib/editor/media");
   const { readEditor, editProject } = await import("../src/lib/editor/store");
   const { executeEditorTool } = await import("../src/lib/editor/tools");
@@ -357,21 +357,21 @@ test("a word too long for the frame is drawn smaller, not drawn outside it", { t
     return { left, right, top: top + first, bottom: top + last, tall: last - first };
   };
 
-  // The caption band sits at 60% of the frame; the seam is at 68% of it, and the look
-  // asks for letters 5.4% of the height tall.
+  // The caption block starts at 54.5% of the frame; the seam is at 68% of it, and the look
+  // asks for letters 4.8% of the height tall, two rows of them at most.
   const seam = Math.round(1920 * 0.68);
-  const lineHeight = 1920 * 0.054;
+  const lineHeight = 1920 * 0.048;
   for (const word of words) {
-    const band = ink(word.t + word.d / 2, 1100, 1920);
+    const band = ink(word.t + word.d / 2, 1000, 1920);
     assert.ok(band.right >= 0, `${word.w}: nothing was drawn at all`);
     // Inside the frame, and inside the margin the look asks for rather than at its edge.
     assert.ok(band.left > 40 && band.right < 1040,
       `${word.w}: drawn from ${band.left} to ${band.right} of 1080`);
-    // One word at a time is one line, whatever the word is: a word broken across two of
-    // them is a second row of letters reaching down towards the speaker's face, which is
-    // what shrinking the line buys over letting it wrap inside itself.
-    assert.ok(band.tall < lineHeight * 1.35,
-      `${word.w}: its letters span ${band.tall}px, more than the one line of ${Math.round(lineHeight)}px it asked for`);
+    // A sentence is two rows at most, whatever is in it: a third row, or a word broken
+    // inside itself, is letters reaching down towards the speaker's face, which is what
+    // shrinking the line buys over letting it wrap.
+    assert.ok(band.tall < lineHeight * 1.22 * 2 + lineHeight * 0.35,
+      `${word.w}: its letters span ${band.tall}px, more than the two rows of ${Math.round(lineHeight)}px it asked for`);
     assert.ok(band.bottom < seam, `${word.w}: it reaches ${band.bottom}, past the seam at ${seam}`);
   }
 

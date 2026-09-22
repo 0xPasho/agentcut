@@ -2,8 +2,8 @@ import React from "react";
 import { interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 import type { CaptionStyle, Edit } from "../src/lib/edl";
 import type { Word } from "../src/lib/transcript";
-import { activeWordIndex, lineAt, toLines, visibleWords } from "../src/lib/timeline";
-import { fitScaleAll } from "../src/lib/text-fit";
+import { activeWordIndex, LINE_LEAD, lineAt, toLines, visibleWords } from "../src/lib/timeline";
+import { fitRows, fitScaleAll } from "../src/lib/text-fit";
 import { loadFont } from "@remotion/google-fonts/Inter";
 
 const { fontFamily: inter } = loadFont("normal", {
@@ -18,6 +18,9 @@ const { fontFamily: inter } = loadFont("normal", {
  */
 const spoken = (word: string) =>
   word.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\p{L}\p{N}]/gu, "");
+
+/** The most rows a caption line may take. Templates place the block assuming this. */
+const CAPTION_ROWS = 2;
 
 type Props = {
   words: Word[];
@@ -37,14 +40,14 @@ export const Captions: React.FC<Props> = ({ words, style, emphasis }) => {
 
   // Line choice and the spoken word live in timeline.ts so the preview, the export
   // and the tests all decide this the same way.
-  const line = lineAt(toLines(words, style.maxWordsPerLine), t);
+  const popline = style.preset === "popline";
+  const line = lineAt(toLines(words, style.maxWordsPerLine), t, popline ? 0 : LINE_LEAD);
   if (!line) return null;
   const activeIndex = activeWordIndex(line.words, t);
   const shown = visibleWords(line.words, activeIndex, style.preset);
   if (!shown.length) return null;
 
   const boxed = style.preset === "boxed";
-  const popline = style.preset === "popline";
 
   const asked = (style.fontSizePct / 100) * height;
   // A line wraps between words, so a word wider than the band has nowhere to go and
@@ -53,7 +56,9 @@ export const Captions: React.FC<Props> = ({ words, style, emphasis }) => {
   // the line that contains one is drawn smaller instead of drawn outside the picture.
   const labels = shown.map((w) => (style.uppercase ? w.w.toUpperCase() : w.w));
   const band = (width * 0.86) / asked - (boxed ? 0.9 : 0);
-  const fontSize = asked * fitScaleAll(labels, band);
+  // And a whole sentence is held to two rows: the block grows down from its top edge,
+  // and a third row is the one that lands across the seam onto the speaker's face.
+  const fontSize = asked * Math.min(fitScaleAll(labels, band), fitRows(labels, band, CAPTION_ROWS));
   // The stroke is written in pixels of a 1080x1920 frame, which is what every short is,
   // and scaled with the frame everywhere else: the letters are a share of the height, so
   // a stroke that is not would double in weight on a square derive and vanish on a wall.

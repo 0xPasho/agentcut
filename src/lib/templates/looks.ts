@@ -21,6 +21,11 @@ export const CAPTION_LOOKS: Record<string, { label: string; description: string;
     // highlight paints the whole video yellow. White here leaves the accent to the
     // emphasis beats, which is where it means something.
     style: { preset: "popline", fontFamily: "Inter", fontWeight: 900, fontSizePct: 5.4, color: "#ffffff", highlight: "#ffffff", strokeWidth: 10, maxWordsPerLine: 1, uppercase: false } },
+  "stream-karaoke": { label: "Stream sentence", description: "The whole phrase on screen, heavy white with a thick black outline, the spoken word lit yellow. Two rows at most, in the speaker's own case.",
+    // One word at a time was what the stream look shipped with, and it lost words: a
+    // viewer reading along never sees a short word at all, and the rest flash by. A
+    // phrase stays up long enough to be read, and the yellow word keeps the rhythm.
+    style: { preset: "karaoke", fontFamily: "Inter", fontWeight: 900, fontSizePct: 4.8, color: "#ffffff", highlight: "#ffe600", strokeWidth: 10, maxWordsPerLine: 5, uppercase: false } },
   "minimal": { label: "Minimal", description: "Small, lower on the frame, no highlight. When the picture matters more than the words.",
     style: { preset: "karaoke", fontFamily: "Inter", fontWeight: 600, fontSizePct: 4, color: "#ffffff", highlight: "#ffffff", strokeWidth: 3, maxWordsPerLine: 5, uppercase: false, positionY: 0.8 } },
 };
