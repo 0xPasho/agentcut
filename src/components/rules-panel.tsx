@@ -7,6 +7,9 @@ import type { RuleEvaluation } from "@/lib/rules/evaluate";
 import type { RuleApplyResult } from "@/lib/rules/apply";
 import type { Glossary } from "@/lib/glossary";
 import type { Proposals, Observation } from "@/lib/observations";
+import type { TemplateSlot } from "@/lib/templates/schema";
+import type { AssetSummary } from "@/lib/client";
+import { RuleSlots } from "./rule-slots";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -29,8 +32,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
  * it inherits, and because the workspace route runs exactly the same functions.
  */
 
-type TemplateOption = { id: string; name: string; builtin: boolean };
-type Loaded = { rules: RuleRecord[]; glossary: Glossary; preferences: { workspace: string; project: string }; templates: TemplateOption[]; observations: Observation[] };
+type TemplateOption = { id: string; name: string; builtin: boolean; slots: TemplateSlot[] };
+type Loaded = { rules: RuleRecord[]; glossary: Glossary; preferences: { workspace: string; project: string }; templates: TemplateOption[]; assets: AssetSummary[]; observations: Observation[] };
 
 const EMPTY_RULE: Rule = { id: "", name: "", description: "", when: "", stage: "both", priority: 100, enabled: true, then: {} };
 const STAGE_LABELS: Record<string, string> = { select: "Choosing clips", edit: "Editing", both: "Both" };
@@ -49,17 +52,21 @@ export function RulesPanel({ projectId, sequenceId, beforeApply, afterApply }: {
   const load = useCallback(async () => {
     try {
       if (projectId) {
-        const [rules, glossary, preferences, templates, observations] = await Promise.all([
+        const [rules, glossary, preferences, templates, observations, ...assets] = await Promise.all([
           api.editorTool<RuleRecord[]>(projectId, { tool: "rules.list" }),
           api.editorTool<Glossary>(projectId, { tool: "glossary.get" }),
           api.editorTool<Loaded["preferences"]>(projectId, { tool: "preferences.get" }),
           api.editorTool<TemplateOption[]>(projectId, { tool: "templates.list" }),
           api.editorTool<Observation[]>(projectId, { tool: "observations.read", limit: 40 }),
+          // A rule outlives the project it was written in, so only library assets are
+          // offered for its slots — a project's own asset is a dangling reference anywhere else.
+          ...(["video", "image", "audio"] as const).map((kind) => api.editorTool<AssetSummary[]>(projectId, { tool: "assets.list", kind })),
         ]);
-        setData({ rules, glossary, preferences, templates: templates.map((t) => ({ id: t.id, name: t.name, builtin: t.builtin })), observations });
+        setData({ rules, glossary, preferences, templates: templates.map((t) => ({ id: t.id, name: t.name, builtin: t.builtin, slots: t.slots })),
+          assets: assets.flat().filter((asset) => asset.scope === "library"), observations });
       } else {
-        const w = await api.workspace<{ rules: RuleRecord[]; glossary: Glossary; preferences: string; templates: TemplateOption[]; observations: Observation[] }>();
-        setData({ rules: w.rules, glossary: w.glossary, preferences: { workspace: w.preferences, project: "" }, templates: w.templates, observations: w.observations });
+        const w = await api.workspace<{ rules: RuleRecord[]; glossary: Glossary; preferences: string; templates: TemplateOption[]; assets: AssetSummary[]; observations: Observation[] }>();
+        setData({ rules: w.rules, glossary: w.glossary, preferences: { workspace: w.preferences, project: "" }, templates: w.templates, assets: w.assets ?? [], observations: w.observations });
       }
       setError("");
     } catch (e) { setError((e as Error).message); }
@@ -86,7 +93,7 @@ export function RulesPanel({ projectId, sequenceId, beforeApply, afterApply }: {
       </TabsList>
       <TabsContent value="rules" className="space-y-4 pt-4">
         {projectId && sequenceId && <JudgeAndApply projectId={projectId} sequenceId={sequenceId} rules={data.rules} beforeApply={beforeApply} afterApply={afterApply} onError={setError} />}
-        <RuleList rules={data.rules} templates={data.templates} canProject={!!projectId} pending={pending}
+        <RuleList rules={data.rules} templates={data.templates} assets={data.assets} canProject={!!projectId} pending={pending}
           onSave={(rule, level) => run(`save:${rule.id}`, () => write({ tool: "rules.save", rule, level }, { action: "rules.save", rule }))}
           onDelete={(rule) => run(`delete:${rule.id}`, () => write({ tool: "rules.delete", id: rule.id, level: rule.level }, { action: "rules.delete", id: rule.id }))} />
       </TabsContent>
@@ -168,8 +175,8 @@ function JudgeAndApply({ projectId, sequenceId, rules, beforeApply, afterApply, 
   );
 }
 
-function RuleList({ rules, templates, canProject, pending, onSave, onDelete }: {
-  rules: RuleRecord[]; templates: TemplateOption[]; canProject: boolean; pending: string;
+function RuleList({ rules, templates, assets, canProject, pending, onSave, onDelete }: {
+  rules: RuleRecord[]; templates: TemplateOption[]; assets: AssetSummary[]; canProject: boolean; pending: string;
   onSave: (rule: Rule, level: RuleLevel) => void; onDelete: (rule: RuleRecord) => void;
 }) {
   const [editing, setEditing] = useState<{ rule: Rule; level: RuleLevel } | null>(null);
@@ -185,7 +192,9 @@ function RuleList({ rules, templates, canProject, pending, onSave, onDelete }: {
           </div>
           <p className="mt-1 text-xs text-muted-foreground">When {r.when}</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            {[r.then.template && `template ${r.then.template}`, r.then.overrides && "overrides", (r.promptText || r.then.prompt) && "instruction"].filter(Boolean).join(" · ") || "no action yet"}
+            {[r.then.template && `template ${r.then.template}`, r.then.overrides && "overrides",
+              r.then.slots && `${Object.keys(r.then.slots).length} input${Object.keys(r.then.slots).length === 1 ? "" : "s"}`,
+              (r.promptText || r.then.prompt) && "instruction"].filter(Boolean).join(" · ") || "no action yet"}
           </p>
           <div className="mt-2 flex gap-2">
             <Button size="xs" variant="outline" onClick={() => setEditing({ rule: stripRecord(r), level: r.level })}>Edit</Button>
@@ -194,7 +203,7 @@ function RuleList({ rules, templates, canProject, pending, onSave, onDelete }: {
         </li>)}
       </ul>
       {editing
-        ? <RuleForm initial={editing.rule} level={editing.level} templates={templates} canProject={canProject} pending={pending.startsWith("save:")}
+        ? <RuleForm initial={editing.rule} level={editing.level} templates={templates} assets={assets} canProject={canProject} pending={pending.startsWith("save:")}
             onCancel={() => setEditing(null)} onSave={(rule, level) => { onSave(rule, level); setEditing(null); }} />
         : <Button size="sm" variant="outline" onClick={() => setEditing({ rule: EMPTY_RULE, level: "workspace" })}><Plus />New rule</Button>}
     </div>
@@ -206,8 +215,8 @@ const stripRecord = (r: RuleRecord): Rule => {
   return rule;
 };
 
-function RuleForm({ initial, level: initialLevel, templates, canProject, pending, onSave, onCancel }: {
-  initial: Rule; level: RuleLevel; templates: TemplateOption[]; canProject: boolean; pending: boolean;
+function RuleForm({ initial, level: initialLevel, templates, assets, canProject, pending, onSave, onCancel }: {
+  initial: Rule; level: RuleLevel; templates: TemplateOption[]; assets: AssetSummary[]; canProject: boolean; pending: boolean;
   onSave: (rule: Rule, level: RuleLevel) => void; onCancel: () => void;
 }) {
   const id = useId();
@@ -226,7 +235,9 @@ function RuleForm({ initial, level: initialLevel, templates, canProject, pending
         try { parsed = JSON.parse(overrides); } catch { setJsonError("Overrides must be JSON, e.g. {\"images\":{\"mode\":\"off\"}}"); return; }
       }
       setJsonError("");
-      const then = { ...rule.then, overrides: parsed, template: rule.then.template || undefined, prompt: rule.then.prompt?.trim() || undefined };
+      const then = { ...rule.then, overrides: parsed, template: rule.then.template || undefined,
+        slots: Object.keys(rule.then.slots ?? {}).length ? rule.then.slots : undefined,
+        prompt: rule.then.prompt?.trim() || undefined };
       onSave({ ...rule, id: rule.id || slug(rule.name), then }, level);
     }}>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -253,6 +264,8 @@ function RuleForm({ initial, level: initialLevel, templates, canProject, pending
           <SelectTrigger aria-labelledby={`${id}-template`} className="w-full"><SelectValue>{(v: unknown) => templates.find((t) => t.id === v)?.name ?? "Keep whatever template is on the video"}</SelectValue></SelectTrigger>
           <SelectContent><SelectItem value="">Keep whatever template is on the video</SelectItem>{templates.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}{t.builtin ? "" : " (yours)"}</SelectItem>)}</SelectContent>
         </Select></div>
+      <RuleSlots slots={templates.find((t) => t.id === rule.then.template)?.slots ?? []} assets={assets}
+        value={rule.then.slots ?? {}} onChange={(slots) => setThen({ slots })} />
       <div className="space-y-1"><Label htmlFor={`${id}-overrides`}>Template overrides (JSON)</Label><Textarea id={`${id}-overrides`} className="font-mono text-xs" value={overrides} placeholder='{"images":{"mode":"off"}}' onChange={(e) => setOverrides(e.target.value)} />{jsonError && <p className="text-xs text-destructive">{jsonError}</p>}</div>
       <div className="space-y-1"><Label htmlFor={`${id}-prompt`}>Instruction for the agent</Label><Textarea id={`${id}-prompt`} value={rule.then.prompt ?? ""} placeholder="Never cover the game with pictures." onChange={(e) => setThen({ prompt: e.target.value })} /></div>
       <Checkbox checked={rule.enabled} onCheckedChange={(enabled) => set({ enabled })}>Enabled</Checkbox>

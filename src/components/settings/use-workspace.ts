@@ -7,9 +7,12 @@ import type { Observation } from "@/lib/observations";
 import type { InstalledPack } from "@/lib/packs/schema";
 import type { ProviderKeyInfo } from "@/lib/secrets";
 import type { OnboardingState } from "@/lib/onboarding";
+import type { TemplateSlot } from "@/lib/templates/schema";
 import type { selectionOverview } from "@/lib/agent/selection";
 
-export type TemplateOption = { id: string; name: string; builtin: boolean };
+export type TemplateOption = { id: string; name: string; builtin: boolean; slots: TemplateSlot[] };
+/** Library assets a rule may point a template's slot at. */
+export type AssetOption = { id: string; name: string; kind: "image" | "audio" | "video" };
 
 /**
  * Everything the settings pages read, in one request. `GET /api/workspace` is the
@@ -21,6 +24,7 @@ export type WorkspaceSettings = {
   glossary: Glossary;
   preferences: string;
   templates: TemplateOption[];
+  assets: AssetOption[];
   observations: Observation[];
   onboarding: OnboardingState;
   packs: InstalledPack[];

@@ -58,6 +58,12 @@ command read and write the same files.
 }
 ```
 
+  Both rule editors — **Video → Rules and preferences** in the editor and the Rules page
+  in /settings — show the chosen template's own slots and fill them from the library, so
+  this is a pair of dropdowns rather than an asset id typed by hand. Only library assets
+  are offered: a rule outlives the project it was written in, and a project's own asset
+  would be a dangling reference everywhere else.
+
 - **`subject`** is optional and names a glossary entry the rule is about.
 
 ### When rules run

@@ -12,7 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Empty, SectionHeader } from "./section-header";
 import { Toggle } from "./toggle";
-import { useWorkspaceSettings, type TemplateOption } from "./use-workspace";
+import { useWorkspaceSettings, type AssetOption, type TemplateOption } from "./use-workspace";
+import { RuleSlots } from "@/components/rule-slots";
 
 /**
  * Rules for every project, with the whole story in one place: what each one judges,
@@ -71,6 +72,7 @@ export function RulesSettings() {
         initial={editing.rule}
         isNew={editing.isNew}
         templates={templates}
+        assets={data?.assets ?? []}
         terms={terms.map((t) => t.term)}
         pending={pending.startsWith("save:")}
         onCancel={() => { setEditing(null); setError(""); }}
@@ -195,8 +197,8 @@ function DeleteRule({ rule, pending, onDelete }: { rule: RuleRecord; pending: bo
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
-function RuleForm({ initial, isNew, templates, terms, pending, error, onSave, onCancel }: {
-  initial: Rule; isNew: boolean; templates: TemplateOption[]; terms: string[];
+function RuleForm({ initial, isNew, templates, assets, terms, pending, error, onSave, onCancel }: {
+  initial: Rule; isNew: boolean; templates: TemplateOption[]; assets: AssetOption[]; terms: string[];
   pending: boolean; error: string; onSave: (rule: Rule) => void; onCancel: () => void;
 }) {
   const id = useId();
@@ -225,6 +227,7 @@ function RuleForm({ initial, isNew, templates, terms, pending, error, onSave, on
             ...rule.then,
             overrides: parsed,
             template: rule.then.template || undefined,
+            slots: Object.keys(rule.then.slots ?? {}).length ? rule.then.slots : undefined,
             prompt: rule.then.prompt?.trim() || undefined,
           },
         });
@@ -312,6 +315,12 @@ function RuleForm({ initial, isNew, templates, terms, pending, error, onSave, on
             </SelectContent>
           </Select>
         </div>
+        <RuleSlots
+          slots={templates.find((t) => t.id === rule.then.template)?.slots ?? []}
+          assets={assets}
+          value={rule.then.slots ?? {}}
+          onChange={(slots) => setThen({ slots })}
+        />
         <div className="space-y-1.5">
           <Label htmlFor={`${id}-overrides`}>Change these template settings</Label>
           <Textarea id={`${id}-overrides`} rows={3} className="font-mono text-xs" value={overrides}
