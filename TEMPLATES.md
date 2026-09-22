@@ -354,6 +354,22 @@ each adopted asset and reported by `template.apply`.
   `color` and let `rhythm.emphasis` carry the accent, which is what `stream-pop` does.
   An emphasised word is drawn in the colour its own emphasis beat asks for
   (`rhythm.emphasis.color`), not in the caption highlight.
+- `rhythm.silence` is the pace, and it is the setting most worth measuring rather than
+  guessing. `minGapSec` is what counts as dead air; `keepSec` is what is left where it
+  was cut. The first `stream-short` cut every gap over a third of a second down to a
+  tenth, which left **no** pause over a third of a second anywhere in the finished video,
+  while the channel it was modelled on keeps one every three seconds. It cut the
+  breathing along with the dead air, and no still frame shows that.
+
+  ```
+  pnpm exec tsx scripts/pace.ts my-published-short.mp4 --against raw-clip.mp4
+  ```
+
+  measures a video you already like — the distribution of the pauses it kept — and
+  searches for the `minGapSec` and `keepSec` that reproduce it on your own material.
+  It matches the pauses, not the running time: material with more thinking in it than
+  the finished video had needs a shorter `minGapSec` than the fit suggests, or every bit
+  of thinking survives. `src/lib/templates/pace.ts` is the same measurement as a module.
 - `rhythm.redundancy` cuts a phrase said twice in a row — the false start a stream is full
   of, "y entonces yo… y entonces yo creo que". There is no silence in it, so the dead-air
   pass cannot see it; what marks it is the repetition. The stumble goes and the run that

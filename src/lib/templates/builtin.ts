@@ -300,8 +300,12 @@ const DEFINITIONS: unknown[] = [
       camera: { x: 0.68, y: 0.72, w: 0.32, h: 0.28 },
     },
     rhythm: {
-      // A stream is mostly pauses and false starts. Both go; the rhetorical pause stays.
-      silence: { enabled: true, minGapSec: 0.35, keepSec: 0.1 },
+      // A stream is mostly pauses and false starts, and the first pass at this cut the
+      // breathing with them: at 0.35s no pause over a third of a second survived at all,
+      // where the shorts this shape was measured from keep one every three seconds. So
+      // dead air here means a second of it, and a second of it becomes a beat rather
+      // than a join. See `pace.ts` and `scripts/pace.ts` for how that was measured.
+      silence: { enabled: true, minGapSec: 1, keepSec: 0.3, maxGapSec: 30 },
       redundancy: { enabled: true, minWords: 2, maxGapSec: 1.5 },
       punch: { enabled: true, perMinute: 3, scale: 1.1 },
       emphasis: { enabled: true, targets: ["numbers", "brands"] },

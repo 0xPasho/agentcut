@@ -1091,6 +1091,13 @@ test("every built-in template actually does something on a video it suits", asyn
   assert.ok(builtins.length >= 11, "the sweep is only worth running if it covers them all");
 
   const { id, sequenceId, itemId } = await projectWithScript();
+  // Real material has a real pause in it. Without one, a template whose threshold for
+  // dead air is a whole second correctly finds nothing, and the sweep cannot tell that
+  // apart from a template whose cutting is broken.
+  const paused = speak(SCRIPT).map((word, index) => (index < 12 ? word : { ...word, t: word.t + 1.6 }));
+  store.editProject(id, { expectedRevision: store.readEditor(id).revision, operations: [
+    { type: "item.patch", sequenceId, itemId, patch: { start: 0, end: 20, words: paused } },
+  ] });
   const tone = path.join(workspace, "sweep.wav");
   assert.equal(spawnSync(FFMPEG, ["-y", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=4", tone], { encoding: "utf8" }).status, 0);
   const audio = await tools.executeEditorTool(id, { tool: "assets.importLocal", file: tone }) as { id: string };
@@ -1131,7 +1138,8 @@ test("every built-in template actually does something on a video it suits", asyn
 
     assert.equal(!!plan.hook, template.hook.mode !== "off", `${template.id}: hook presence disagrees with its own mode`);
     assert.equal(plan.cards.length, template.cards.length, `${template.id}: every card's text was supplied, so every card should be planned`);
-    assert.ok(plan.totals.silences > 0 === template.rhythm.silence.enabled, `${template.id}: dead-air cuts disagree with its own setting`);
+    assert.equal(plan.totals.silences > 0, template.rhythm.silence.enabled,
+      `${template.id}: dead-air cuts disagree with its own setting (threshold ${template.rhythm.silence.minGapSec}s)`);
 
     // And it must produce a real edit rather than a no-op, offline sources only so
     // this sweep never depends on a CDN being reachable.

@@ -333,3 +333,33 @@ test("a template replaces the draft the clip selection made, and leaves a hand e
   const { describeAuthor } = await import("../src/lib/editor/authorship");
   assert.match(describeAuthor("select"), /cut out of the recording/);
 });
+
+test("the pace of a finished video is measurable, and the settings that reproduce it are findable", async () => {
+  const pace = await import("../src/lib/templates/pace");
+  // A finished video that keeps its pauses: four of them over a third of a second.
+  const finished = [
+    ...["una", "cosa", "que", "nadie", "dice"].map((w, i) => ({ t: i * 0.4, d: 0.3, w })),
+    ...["es", "que", "esto", "tarda"].map((w, i) => ({ t: 2.6 + i * 0.4, d: 0.3, w })),
+    ...["muchisimo", "mas", "de", "lo", "que", "crees"].map((w, i) => ({ t: 5 + i * 0.4, d: 0.3, w })),
+    ...["y", "eso", "cambia", "todo"].map((w, i) => ({ t: 8.2 + i * 0.4, d: 0.3, w })),
+  ];
+  const target = pace.gapProfile(finished);
+  assert.ok(Math.abs(target.median - 0.1) < 0.02, `word spacing is the median, not the pauses: ${target.median}`);
+  assert.ok(target.p95 > 0.5, `the pauses are in the tail: ${target.p95}`);
+  assert.ok(target.perMinute > 15, `${target.perMinute.toFixed(1)} pauses a minute`);
+  assert.equal(pace.gapProfile([]).perMinute, 0, "nothing said is no pace at all");
+  assert.equal(pace.gapProfile([{ t: 0, d: 0.3, w: "sola" }]).spanSec, 0);
+
+  // The same speech with three seconds of thinking in the middle of it.
+  const raw = finished.map((w, i) => (i < 9 ? w : { ...w, t: w.t + 3 }));
+  const material = [{ words: raw, durationSec: 16 }];
+  const wide = pace.profileAfterCuts(raw, { enabled: true, minGapSec: 5, keepSec: 0.3, maxGapSec: 30 }, 16);
+  assert.ok(wide.p95 > 2, "a threshold nothing reaches leaves the thinking in");
+  const tight = pace.profileAfterCuts(raw, { enabled: true, minGapSec: 0.3, keepSec: 0.1, maxGapSec: 30 }, 16);
+  assert.ok(tight.perMinute === 0, "and a threshold everything reaches leaves no pause at all");
+
+  const fit = pace.fitSilence(target, material);
+  assert.ok(fit.minGapSec >= 0.8 && fit.minGapSec <= 2, `the three-second hole is what it should cut: ${fit.minGapSec}`);
+  assert.ok(fit.profile.perMinute > 0, "and the pauses the finished video keeps survive it");
+  assert.ok(fit.distance < pace.fitSilence(target, material).distance + 0.001, "the search is deterministic");
+});
