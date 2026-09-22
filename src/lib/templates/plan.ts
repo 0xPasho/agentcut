@@ -487,7 +487,7 @@ export const isSelectionEdit = (edit: { by: string }) => edit.by === SELECTION_A
  */
 export type TemplateItemState = "owned" | "moved" | "hand";
 /** An intro or outro: a picture for some seconds, or a library video played whole (added as media when new). */
-export type Bookend = { src: string; seconds: number } | { media: MediaSource; addMedia: boolean; seconds: number };
+export type Bookend = { src: string; seconds: number } | { media: MediaSource; addMedia: boolean; seconds: number; gain?: number };
 export function templateItemState(item: SequenceItem): TemplateItemState {
   // A video bookend has footage and no edits; its mark is on the clip itself.
   if (item.mediaId !== null && ["Intro", "Outro"].includes(item.clip.title) && item.clip.reason.startsWith("template:") && !item.clip.edits.length)
@@ -611,7 +611,8 @@ export function templateOperations(
       ...(which === "Intro" ? { index: 0 } : {}),
       item: "media" in b
         // A video bookend is a real shot. `reason` carries the template's mark, since a shot has no edits to carry it.
-        ? { id, mediaId: b.media.id, layer: 0, clip: Clip.parse({ id, title: which, start: 0, end: b.seconds, reason: by, captions: { preset: "none" } }) }
+        ? { id, mediaId: b.media.id, layer: 0, ...(b.gain !== undefined && b.gain !== 1 ? { volume: b.gain } : {}),
+            clip: Clip.parse({ id, title: which, start: 0, end: b.seconds, reason: by, captions: { preset: "none" } }) }
         : { id, mediaId: null, layer: 0, clip: Clip.parse({ id, title: which, start: 0, end: b.seconds, captions: { preset: "none" },
             edits: [{ type: "image", t: 0, d: b.seconds, src: b.src, query: "", credit: "", x: 0.5, y: 0.5, widthPct: 100, heightPct: 100, style: "plain", caption: "", by }] }) },
     };

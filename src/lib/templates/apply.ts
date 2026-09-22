@@ -314,10 +314,12 @@ async function resolveSound(
  * bookend is an ordinary shot backed by the library file.
  */
 async function resolveBookend(
-  setting: { enabled: boolean; slot: string; assetId: string; seconds: number },
+  setting: { enabled: boolean; slot: string; assetId: string; seconds: number; level: "match" | "as-is" },
   slots: Record<string, SlotValue>,
   label: string,
   media: MediaSource[],
+  /** The video this bookend is stuck on, so the card can arrive at its loudness. */
+  body?: { file: string; start: number; duration: number } | null,
 ): Promise<Bookend | null> {
   if (!setting.enabled) return null;
   const id = (setting.slot ? slots[setting.slot]?.assetId : undefined) || setting.assetId;
@@ -327,11 +329,20 @@ async function resolveBookend(
   if (asset.kind === "image") return { src: asset.id, seconds: setting.seconds };
   if (asset.kind !== "video") throw new Error(`${label} asset ${id} is a sound; use an image or a video.`);
   const { toAbs } = await import("../assets");
-  const { probe } = await import("../media");
+  const { probe, loudness } = await import("../media");
   const file = toAbs(asset.path);
   const known = media.find((m) => m.file === file);
   const source = known ?? MediaSource.parse({ id: `m_${randomUUID().replaceAll("-", "")}`, name: asset.name, file, ...(await probe(file)) });
-  return { media: source, addMedia: !known, seconds: source.durationSec };
+  let gain: number | undefined;
+  if (setting.level === "match" && body) {
+    const [card, video] = await Promise.all([loudness(file), loudness(body.file, { start: body.start, duration: body.duration })]);
+    // Either measurement failing means leaving the sound exactly as it was mixed,
+    // which is what happened before anything measured it at all.
+    if (card !== null && video !== null && Math.abs(video - card) > 1) {
+      gain = Math.min(2, Math.max(0.2, 10 ** ((video - card) / 20)));
+    }
+  }
+  return { media: source, addMedia: !known, seconds: source.durationSec, gain };
 }
 
 /** A beat the template wanted to illustrate and could not, with what each source said. */
@@ -456,8 +467,15 @@ export async function applyTemplate(
   const sounds = new Map<string, { src: string } | null>();
   const music = silent ? null : await resolveSound(template.music, request.slots, "Music", projectId, "music", sounds);
   const watermark = resolveSlotAsset(template.watermark, request.slots, "image", "Watermark");
-  const intro = await resolveBookend(template.intro, request.slots, "Intro", promoted.media);
-  const outro = await resolveBookend(template.outro, request.slots, "Outro", promoted.media);
+  // The loudness of the video the bookends sit around: the first shot with footage in
+  // it, which is what a viewer's ears have adjusted to by the time the card arrives.
+  const bodyShot = [...sequenceItems.values()].find((item) => item.mediaId);
+  const bodyMedia = bodyShot ? promoted.media.find((m) => m.id === bodyShot.mediaId) : undefined;
+  const body = bodyShot && bodyMedia
+    ? { file: bodyMedia.file, start: bodyShot.clip.start, duration: Math.max(1, bodyShot.clip.end - bodyShot.clip.start) }
+    : null;
+  const intro = await resolveBookend(template.intro, request.slots, "Intro", promoted.media, body);
+  const outro = await resolveBookend(template.outro, request.slots, "Outro", promoted.media, body);
   const sound = silent ? {} : {
     punch: await resolveSound({ ...template.rhythm.punch.sfx, enabled: template.rhythm.punch.enabled && template.rhythm.punch.sfx.enabled }, request.slots, "Punch sound", projectId, "sfx", sounds),
     transitions: await resolveSound(template.sound.transitions, request.slots, "Transition sound", projectId, "sfx", sounds),

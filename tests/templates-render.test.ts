@@ -204,3 +204,93 @@ test("a split template puts the screen above the person, and pushes in on the pe
   };
   assert.ok(Math.abs(screenBand(7) - screenBand(2)) <= 8, `the screen pane should not move, saw ${screenBand(2)} then ${screenBand(7)}`);
 });
+
+test("the whole stream look, read back out of the pixels: hook, one word at a time, seam, and a clean end card", { timeout: 420_000 }, async () => {
+  const { createVideoProject } = await import("../src/lib/editor/media");
+  const { readEditor, editProject } = await import("../src/lib/editor/store");
+  const { executeEditorTool } = await import("../src/lib/editor/tools");
+  const { renderProject } = await import("../src/lib/editor/render");
+  const { uploadLibraryAsset } = await import("../src/lib/assets");
+  const { buildTimeMap, srcToOut } = await import("../src/lib/timeline");
+
+  // A scene shaped like a stream: dark screen, webcam in the bottom-right corner.
+  const source = path.join(workspace, "look-stream.mp4");
+  ffmpeg(["-y", "-f", "lavfi", "-i", "color=0x102040:size=1728x1116:rate=12:duration=24",
+    "-f", "lavfi", "-i", "sine=frequency=220:duration=24", "-shortest", "-pix_fmt", "yuv420p", "-c:a", "aac",
+    "-vf", "drawbox=x=1200:y=806:w=528:h=310:color=0xE08020@1:t=fill", source]);
+  // The card this channel ends on: its own shape, its own colour, its own sound.
+  const cardFile = path.join(workspace, "look-card.mp4");
+  ffmpeg(["-y", "-f", "lavfi", "-i", "color=0x1E9E4A:size=480x854:rate=12:duration=4",
+    "-f", "lavfi", "-i", "sine=frequency=500:duration=4", "-shortest", "-pix_fmt", "yuv420p", "-c:a", "aac", cardFile]);
+  const card = await uploadLibraryAsset("look-card.mp4", await fs.readFile(cardFile));
+
+  const { id } = await createVideoProject("Stream look", [{ file: source }]);
+  let snapshot = readEditor(id);
+  const sequenceId = snapshot.edl.sequences[0].id;
+  const itemId = snapshot.edl.sequences[0].items[0].id;
+  // Words with a real pause in the middle: the pause is cut, and the silence either
+  // side of a word is where a caption must not be.
+  const words = [
+    ...["hoy", "vamos", "a", "conectar", "el", "editor"].map((w, i) => ({ t: 1 + i * 0.6, d: 0.45, w })),
+    ...["con", "el", "agente", "y", "eso", "es", "todo"].map((w, i) => ({ t: 9 + i * 0.6, d: 0.45, w })),
+  ];
+  snapshot = editProject(id, { expectedRevision: snapshot.revision, operations: [{
+    type: "item.patch", sequenceId, itemId,
+    patch: { title: "Stream", hook: "¿Y si el editor y el agente fueran el mismo?", start: 0, end: 20, words },
+  }] });
+
+  await executeEditorTool(id, {
+    tool: "template.apply", templateId: "stream-short", sequenceId, expectedRevision: snapshot.revision,
+    slots: { endcard: { assetId: card.id } },
+    overrides: { output: { width: 1080, height: 1920, fps: 12 },
+      layout: { camera: { x: 1200 / 1728, y: 806 / 1116, w: 528 / 1728, h: 310 / 1116 }, screen: { x: 0, y: 0, w: 1200 / 1728, h: 1 } } },
+  });
+
+  const saved = readEditor(id);
+  const sequence = saved.edl.sequences.find((s) => s.id === sequenceId)!;
+  const shot = sequence.items.find((i) => i.id === itemId)!;
+  const map = buildTimeMap(shot.clip);
+  const { sequenceFrames } = await import("../src/lib/sequences");
+  const frames = sequenceFrames(sequence);
+  const fps = sequence.output.fps;
+  const outro = frames.items.find((e) => e.item.clip.title === "Outro")!;
+  const body = outro.from / fps;
+  const total = frames.duration / fps;
+  assert.ok(Math.abs(total - body - 4) < 0.2, `the end card plays whole at the end: body ${body}, total ${total}`);
+
+  const { outputs } = await renderProject(id, { only: [sequenceId] });
+  const file = outputs[0].file;
+
+  // The hook holds from the first frame of the body to its last, and is gone on the card.
+  for (const at of [0.3, body / 2, body - 0.3]) {
+    const seen = pixel(file, at, 540, 200);
+    assert.ok(seen.every((c) => c > 200), `the hook card should be at the top at ${at.toFixed(2)}s, saw ${seen}`);
+  }
+  assert.ok(!pixel(file, body + 2, 540, 200).every((c) => c > 200), "and not over the end card");
+  assert.ok(near(pixel(file, body + 2, 540, 960), [30, 158, 74], 45), `the end card fills the frame, saw ${pixel(file, body + 2, 540, 960)}`);
+  assert.ok(near(pixel(file, body + 2, 540, 1700), [30, 158, 74], 45), "including where the camera pane was");
+
+  // The seam: screen above, person below, at 68% of the frame. Sampled off-centre,
+  // because the middle of those rows is where the caption is.
+  assert.ok(near(pixel(file, 1, 120, 1200), [16, 32, 64]), `screen above the seam, saw ${pixel(file, 1, 120, 1200)}`);
+  assert.ok(near(pixel(file, 1, 120, 1400), [224, 128, 32]), `person below it, saw ${pixel(file, 1, 120, 1400)}`);
+  assert.ok(near(pixel(file, 1, 120, 1290), [16, 32, 64]), "the last rows above the seam are still the screen");
+  assert.ok(near(pixel(file, 1, 120, 1320), [224, 128, 32]), "and the first rows below it are already the person");
+  // The screen half stops where the webcam starts, so the person is not in it twice.
+  for (const y of [300, 700, 1100]) {
+    assert.ok(!near(pixel(file, 1, 900, y), [224, 128, 32], 60), `the webcam should not show through the screen half at y=${y}`);
+  }
+
+  /** How bright the caption band is: a white word on dark footage lifts it. */
+  const band = (sec: number) => {
+    const rgbv = [...ffmpeg(["-ss", String(sec), "-i", file, "-frames:v", "1", "-vf", "crop=1080:150:0:1160,scale=1:1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])];
+    return (rgbv[0] + rgbv[1] + rgbv[2]) / 3;
+  };
+  const spoken = srcToOut(map, words[3].t + 0.2);
+  const quiet = srcToOut(map, words[0].t - 0.6);
+  assert.ok(band(spoken) > band(quiet) + 6, `a spoken word belongs in the caption band: ${band(spoken)} vs ${band(quiet)} when nobody is talking`);
+  assert.ok(band(body + 2) < band(spoken), "and there are no captions over the end card");
+
+  // The pause between the two runs of words was cut out of the video.
+  assert.ok(map.duration < 19, `dead air was removed: ${map.duration}s of 20`);
+});

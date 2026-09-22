@@ -123,6 +123,31 @@ export async function audioLevel(src: string): Promise<{ maxDb: number; meanDb: 
   }
 }
 
+/**
+ * Integrated loudness, in LUFS, of a file or a span of one.
+ *
+ * Mean level is the wrong measure for comparing two pieces of sound: a speech clip is
+ * half pauses and a music sting is continuous, so their means differ by ten decibels
+ * while they sound the same, and matching on the mean makes the quiet one blare. LUFS
+ * is the measure that says which of two things sounds louder.
+ *
+ * `null` when there is nothing to measure or ffmpeg could not read it — the caller then
+ * leaves the sound alone, which is what every project did before this.
+ */
+export async function loudness(src: string, span?: { start?: number; duration?: number }): Promise<number | null> {
+  try {
+    const seek = span?.start ? ["-ss", String(span.start)] : [];
+    const length = span?.duration ? ["-t", String(span.duration)] : [];
+    const { stderr } = await run(FFMPEG, [...seek, "-i", src, ...length, "-vn", "-af", "ebur128=framelog=quiet", "-f", "null", "-"]);
+    const found = stderr.match(/I:\s*(-?[0-9.]+)\s*LUFS/);
+    const value = found ? Number(found[1]) : NaN;
+    // A span with no sound in it measures as -70 or lower and says nothing useful.
+    return Number.isFinite(value) && value > -70 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Below this peak a file is silence, not quiet speech. Speech never lives down here. */
 export const SILENCE_PEAK_DB = -50;
 

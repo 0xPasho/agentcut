@@ -246,6 +246,14 @@ export const TemplateBookend = z.object({
   slot: z.string().default(""),
   assetId: z.string().default(""),
   seconds: z.number().positive().max(15).default(2),
+  /**
+   * What to do about how loud it is. An end card is mixed once, for itself, and the
+   * video it is stuck on the end of is mixed by whatever was happening that day: the
+   * card measured five LUFS louder than a real stream clip, which is a step everyone
+   * hears. `match` measures both and sets the card's volume so it arrives at the
+   * loudness of the video; `as-is` plays it exactly as it was mixed.
+   */
+  level: z.enum(["match", "as-is"]).default("match"),
 });
 export type TemplateBookend = z.infer<typeof TemplateBookend>;
 

@@ -57,6 +57,13 @@ it decides which one the material wants.
   end, which is what a channel's end card is. The intro shifts every shot after it; both
   are ordinary items and converge on re-apply. Point `slot` at a `video` slot to keep the
   template free of asset ids.
+  A video bookend also arrives at the **loudness of the video it is stuck on**. A card is
+  mixed once, for itself, and the clip it ends is mixed by whatever was happening that
+  day: a real end card measured five LUFS above a real stream clip, which is a step
+  everyone hears. Both are measured — integrated loudness, not mean level, because a
+  speech clip is half pauses and a sting is continuous — and the card is placed with the
+  volume that meets the video. `level: "as-is"` plays it exactly as mixed, and a
+  measurement that fails leaves it alone.
 - **`variants`**: per-aspect overrides keyed `9:16`, `4:5`, `1:1`, `16:9`, merged when the
   template is applied to a video of that shape. `sequence.derive` copies a video into
   another aspect as its own editable sequence (crops recentred, plan carried, status

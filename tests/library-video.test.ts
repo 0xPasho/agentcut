@@ -210,3 +210,49 @@ test("the end card is the end: the hook, the card and the mark hold across the b
   assert.ok(Math.abs(bedItem.from) < 0.01, "the bed plays under the intro too");
   assert.ok(Math.abs(bedItem.to - outro.from) < 0.05, `the bed stops at the end card, which has its own sound: ${bedItem.to} vs ${outro.from}`);
 });
+
+test("an end card arrives at the loudness of the video it is stuck on, unless it is told not to", async () => {
+  const make = (file: string, colour: string, gain: number) => {
+    const r = spawnSync(FFMPEG, ["-y", "-f", "lavfi", "-i", `color=${colour}:size=320x180:rate=15:duration=6`,
+      "-f", "lavfi", "-i", "sine=frequency=300:duration=6", "-af", `volume=${gain}`, "-pix_fmt", "yuv420p", "-shortest", "-c:a", "aac", file], { encoding: "utf8" });
+    assert.equal(r.status, 0, r.stderr);
+  };
+  const quiet = path.join(workspace, "quiet-source.mp4"); make(quiet, "navy", 0.08);
+  const loudCard = path.join(workspace, "loud-card.mp4"); make(loudCard, "red", 0.5);
+  const card = await assets.uploadLibraryAsset("loud-card.mp4", await fs.readFile(loudCard));
+
+  const { loudness } = await import("../src/lib/media");
+  const cardLufs = await loudness(assets.toAbs(card.path));
+  const bodyLufs = await loudness(quiet);
+  assert.ok(cardLufs !== null && bodyLufs !== null && cardLufs - bodyLufs > 5, `the card is the louder of the two: ${cardLufs} vs ${bodyLufs}`);
+
+  await registry.saveTemplate({ id: "levelled", extends: "talking-head", name: "Levelled", outro: { enabled: true, assetId: card.id } });
+  const { id } = await mediaService.createVideoProject("Levelled", [{ file: quiet }]);
+  const sequenceId = store.readEditor(id).edl.sequences[0].id;
+  await tools.executeEditorTool(id, { tool: "template.apply", templateId: "levelled", sequenceId, expectedRevision: store.readEditor(id).revision });
+  const outro = store.readEditor(id).edl.sequences[0].items.find((i) => i.clip.title === "Outro")!;
+  assert.ok(outro.volume !== undefined && outro.volume < 1, `the card is turned down to meet the video: ${outro.volume}`);
+  const wanted = 10 ** ((bodyLufs! - cardLufs!) / 20);
+  assert.ok(Math.abs(outro.volume! - wanted) < 0.05, `${outro.volume} should be about ${wanted.toFixed(3)}`);
+
+  // Re-applying does not stack a second adjustment on the first.
+  await tools.executeEditorTool(id, { tool: "template.apply", templateId: "levelled", sequenceId, expectedRevision: store.readEditor(id).revision });
+  const again = store.readEditor(id).edl.sequences[0].items.find((i) => i.clip.title === "Outro")!;
+  assert.ok(Math.abs(again.volume! - outro.volume!) < 0.001, "the same card, the same level");
+
+  // A card mixed on purpose is left exactly as it was mixed.
+  await registry.saveTemplate({ id: "as-is", extends: "talking-head", name: "As is", outro: { enabled: true, assetId: card.id, level: "as-is" } });
+  const { id: other } = await mediaService.createVideoProject("As is", [{ file: quiet }]);
+  const otherSeq = store.readEditor(other).edl.sequences[0].id;
+  await tools.executeEditorTool(other, { tool: "template.apply", templateId: "as-is", sequenceId: otherSeq, expectedRevision: store.readEditor(other).revision });
+  assert.equal(store.readEditor(other).edl.sequences[0].items.find((i) => i.clip.title === "Outro")!.volume, undefined);
+
+  // Two things already at the same loudness are left alone rather than nudged.
+  const same = path.join(workspace, "same-card.mp4"); make(same, "green", 0.08);
+  const sameCard = await assets.uploadLibraryAsset("same-card.mp4", await fs.readFile(same));
+  await registry.saveTemplate({ id: "same-level", extends: "talking-head", name: "Same", outro: { enabled: true, assetId: sameCard.id } });
+  const { id: third } = await mediaService.createVideoProject("Same", [{ file: quiet }]);
+  const thirdSeq = store.readEditor(third).edl.sequences[0].id;
+  await tools.executeEditorTool(third, { tool: "template.apply", templateId: "same-level", sequenceId: thirdSeq, expectedRevision: store.readEditor(third).revision });
+  assert.equal(store.readEditor(third).edl.sequences[0].items.find((i) => i.clip.title === "Outro")!.volume, undefined);
+});

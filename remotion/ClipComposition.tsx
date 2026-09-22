@@ -113,19 +113,29 @@ export const ClipComposition: React.FC<ClipProps> = ({
 
   // Punch-in: ease up over ~300ms, hold, ease back down. Both ramps use an
   // ease-in-out curve; a linear ramp starts and stops dead and reads as a jump
-  // rather than a zoom. Short punches shrink the ramps so they never cross.
+  // rather than a zoom.
+  //
+  // A punch is written in source seconds and played in output seconds, so a cut
+  // underneath it makes it shorter than it was written — and a punch of six tenths of
+  // a second in the script can reach the screen as half of one. At exactly twice the
+  // ramp the two middle moments are the same moment, which is a range that does not
+  // strictly increase, and Remotion refuses it: the export died on a real stream at
+  // frame 419 for that reason. A punch that short has no hold. It peaks and comes back.
   const zoom = punches.reduce((acc, p) => {
     const start = srcToOut(map, p.t);
     const end = srcToOut(map, p.t + p.d);
-    if (t < start || t > end) return acc;
+    // A punch entirely inside a cut has no moment left to play in.
+    if (end <= start || t < start || t > end) return acc;
     const ramp = Math.min(PUNCH_RAMP_SEC, (end - start) / 2);
+    const held = end - start > ramp * 2;
     return (
       acc *
-      interpolate(t, [start, start + ramp, end - ramp, end], [1, p.scale, p.scale, 1], {
-        easing: Easing.inOut(Easing.quad),
-        extrapolateLeft: "clamp",
-        extrapolateRight: "clamp",
-      })
+      interpolate(
+        t,
+        held ? [start, start + ramp, end - ramp, end] : [start, (start + end) / 2, end],
+        held ? [1, p.scale, p.scale, 1] : [1, p.scale, 1],
+        { easing: Easing.inOut(Easing.quad), extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+      )
     );
   }, 1);
 

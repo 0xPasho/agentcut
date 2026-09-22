@@ -363,3 +363,49 @@ test("splitting a moving layer is invisible: the same seconds decode to the same
   assert.ok(was.at(-1)!.centre - was[0].centre > 300, `it travels: ${was.map(m => m.centre.toFixed(0))}`);
   assert.ok(was.at(-1)!.weight > was[0].weight * 1.8, `and fades up: ${was.map(m => m.weight.toFixed(1))}`);
 });
+
+test("a push-in shortened by the cut underneath it still renders", { timeout: 300_000 }, async () => {
+  // Written as six tenths of a second, played as half of one, because a silence cut
+  // sits inside it. At exactly twice the ramp the zoom's two middle moments are the
+  // same moment, and a real export died on that at frame 419.
+  const { createVideoProject } = await import("../src/lib/editor/media");
+  const { readEditor, editProject } = await import("../src/lib/editor/store");
+  const { renderProject } = await import("../src/lib/editor/render");
+
+  const source = path.join(workspace, "punchy.mp4");
+  ffmpeg(["-y", "-f", "lavfi", "-i", "color=0x203040:size=320x568:rate=12:duration=8",
+    "-f", "lavfi", "-i", "sine=frequency=220:duration=8", "-shortest", "-pix_fmt", "yuv420p", "-c:a", "aac",
+    "-vf", "drawbox=x=60:y=60:w=200:h=200:color=0xE08020@1:t=fill", source]);
+
+  const { id } = await createVideoProject("Punchy", [{ file: source }]);
+  const snapshot = readEditor(id);
+  const sequenceId = snapshot.edl.sequences[0].id;
+  const itemId = snapshot.edl.sequences[0].items[0].id;
+  editProject(id, { expectedRevision: snapshot.revision, operations: [{
+    type: "item.patch", sequenceId, itemId,
+    patch: { start: 0, end: 8, captions: { preset: "none" }, edits: [
+      // The cut takes 0.1s out of the middle of the punch: 0.6s written, 0.5s played.
+      { type: "punch", t: 2, d: 0.6, scale: 1.2, by: "" },
+      { type: "silence", t: 2.25, d: 0.1, by: "" },
+      // And one that the cut swallows whole.
+      { type: "punch", t: 5, d: 0.4, scale: 1.2, by: "" },
+      { type: "silence", t: 4.9, d: 0.7, by: "" },
+    ] },
+  }] });
+
+  const { outputs } = await renderProject(id, { only: [sequenceId] });
+  const file = outputs[0].file;
+  // It rendered at all, which is the test; and the frame in the middle of the punch is
+  // zoomed, so the shortened punch still does its job.
+  const { buildTimeMap, srcToOut } = await import("../src/lib/timeline");
+  const map = buildTimeMap(readEditor(id).edl.sequences[0].items[0].clip);
+  const at = srcToOut(map, 2.3);
+  const near = (actual: number[], expected: number[], tolerance = 60) =>
+    actual.length === 3 && actual.every((value, index) => Math.abs(value - expected[index]) <= tolerance);
+  const { width } = readEditor(id).edl.sequences[0].output;
+  const box = (sec: number) => {
+    for (let x = 0; x < width; x += 8) if (near(pixel(file, sec, x, Math.round(readEditor(id).edl.sequences[0].output.height * 0.26)), [224, 128, 32])) return x;
+    return width;
+  };
+  assert.ok(box(at) < box(0.2), `the punch zooms: box edge at ${box(at)} during it, ${box(0.2)} before it`);
+});
