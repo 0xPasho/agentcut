@@ -156,3 +156,32 @@ test("asset upload/list/import use the same project-scoped services", async () =
   assert.ok(available.some(a => a.id === uploaded.id));
   await assert.rejects(tools.executeEditorTool("assets", { tool: "assets.import", file: "../../source.mp4" }));
 });
+
+test("the file server's media lookup answers from the edl column, and follows its revision", async () => {
+  // A byte range must not cost a full read of the project, so the route reads the media
+  // index straight out of the `edl` column and remembers it. What it must never do is
+  // remember it past the revision it came from, or hand one project another's answer.
+  const media = (id: string, file: string) => ({ id, name: id, file, width: 640, height: 360, fps: 30, durationSec: 20 });
+  const one = Edl.parse({ ...fixture("index-one"), media: [media("m", path.join(workspace, "one.mp4"))] });
+  const two = Edl.parse({ ...fixture("index-two"), media: [media("m", path.join(workspace, "two.mp4"))] });
+  for (const edl of [one, two]) {
+    database.q.insertProject({ id: edl.projectId, name: edl.projectId, source_path: edl.source?.file ?? "", created_at: Date.now() });
+    store.publishClips(edl.projectId, edl);
+  }
+  assert.equal(store.mediaFile("index-one", "m"), path.join(workspace, "one.mp4"));
+  assert.equal(store.mediaFile("index-two", "m"), path.join(workspace, "two.mp4"), "one project's index must not answer for another");
+  assert.equal(store.mediaFile("index-one", "m"), path.join(workspace, "one.mp4"), "and switching back reads the right one again");
+  assert.equal(store.mediaFile("index-one", "nothing"), null);
+  assert.equal(store.mediaFile("no-such-project", "m"), null);
+
+  // What a re-import looks like from here: the column says something else, at a new revision.
+  const moved = { ...one, media: [media("m", path.join(workspace, "moved.mp4"))] };
+  const row = database.q.getProject("index-one")!;
+  database.db.prepare("UPDATE projects SET edl = ?, revision = ? WHERE id = ?").run(JSON.stringify(moved), row.revision + 1, "index-one");
+  assert.equal(store.mediaFile("index-one", "m"), path.join(workspace, "moved.mp4"), "a remembered index must not outlive the revision it was read at");
+
+  // Whatever the shortcut answers is what the authoritative read answers.
+  for (const id of ["index-one", "index-two"]) {
+    for (const entry of store.readEditor(id).edl.media) assert.equal(store.mediaFile(id, entry.id), entry.file);
+  }
+});

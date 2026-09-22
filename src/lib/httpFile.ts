@@ -7,16 +7,20 @@ import type { Stats } from "node:fs";
 const CHUNK = 4 * 1024 * 1024;
 
 /**
- * How long a served file may be reused without asking again.
+ * Reuse the bytes, never the answer.
  *
  * Every cut in a timeline mounts a fresh `<video>` on the same source, and a fresh
  * element re-reads the recording's header before it can show a frame — on a four-hour
- * capture that is tens of megabytes, which is why a splice went black for as long as
- * it did. A validator lets the browser's media cache keep those bytes across elements.
- * Five minutes is a playback session; after that one cheap revalidation says whether
- * the file moved under us, so re-ingesting a source is never served from a stale copy.
+ * capture that is tens of megabytes, which is why a splice went black for as long as it
+ * did. A validator lets the browser's media cache keep those bytes across elements.
+ *
+ * `no-cache` is not "do not cache": it is "ask first, every time". A freshness window
+ * would be faster by one conditional request on a local socket and wrong for as long as
+ * it lasted — a clip re-rendered in place, or a source re-ingested, keeps its URL, and a
+ * video editor that shows you the take you just replaced is worse than any millisecond
+ * this would buy. The ask is answered with a 304 and the browser reuses what it holds.
  */
-const MAX_AGE = 300;
+const CACHE_CONTROL = "private, no-cache";
 
 const TYPES: Record<string, string> = {
   ".mp4": "video/mp4",
@@ -63,7 +67,7 @@ export async function fileResponse(filePath: string, headers: Headers | null): P
   const validators = {
     ETag: tag,
     "Last-Modified": stat.mtime.toUTCString(),
-    "Cache-Control": `private, max-age=${MAX_AGE}`,
+    "Cache-Control": CACHE_CONTROL,
     "Accept-Ranges": "bytes",
   };
 

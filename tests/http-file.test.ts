@@ -16,7 +16,7 @@ test("a served file carries a validator, so a second video element can reuse it"
   assert.equal(res.status, 206);
   const tag = res.headers.get("etag");
   assert.ok(tag, "a range response without a validator is a range no cache may keep");
-  assert.match(res.headers.get("cache-control") ?? "", /max-age=\d+/);
+  assert.match(res.headers.get("cache-control") ?? "", /no-cache/, "a freshness window would serve a re-rendered clip from the old bytes");
   assert.equal(res.headers.get("content-range"), "bytes 0-8999/9000");
   await res.arrayBuffer();
 });
