@@ -61,7 +61,9 @@ export const EditorToolCall = z.discriminatedUnion("tool", [
     author: z.string().optional(), overrides: z.record(z.string(), z.unknown()).optional() }),
   z.object({ tool: z.literal("templates.delete"), id: z.string().min(1) }),
   z.object({ tool: z.literal("templates.looks") }),
-  z.object({ tool: z.literal("templates.preview"), id: z.string().min(1), aspect: z.string().optional() }),
+  // `sequenceId` draws it in the shape of that video, variants and all, which is what a
+  // panel beside a square copy needs; `aspect` names a shape directly.
+  z.object({ tool: z.literal("templates.preview"), id: z.string().min(1), aspect: z.string().optional(), sequenceId: z.string().optional() }),
   z.object({ tool: z.literal("sequence.derive"), ...DeriveRequest.shape, expectedRevision: z.number().int().nonnegative() }),
   z.object({ tool: z.literal("templates.suggest"), sequenceId: z.string().optional(), clipId: z.string().optional(), slots: z.record(z.string(), z.unknown()).optional() }),
   z.object({ tool: z.literal("template.plan"), ...TemplateRequest.shape }),
@@ -274,8 +276,12 @@ export async function executeEditorTool(projectId: string, raw: unknown, onActiv
     }
     case "templates.looks": { const { listCaptionLooks } = await import("../templates/looks"); return listCaptionLooks(); }
     case "templates.preview": {
-      const [{ getTemplate }, { templatePreviewSvg }] = await Promise.all([import("../templates/registry"), import("../templates/preview")]);
-      return { svg: templatePreviewSvg(await getTemplate(call.id), call.aspect ?? "9:16") };
+      const [{ getTemplate }, { templatePreviewSvg }, { aspectOf }] = await Promise.all([
+        import("../templates/registry"), import("../templates/preview"), import("../templates/resolve"),
+      ]);
+      const sequence = call.sequenceId ? readEditor(projectId).edl.sequences.find((s) => s.id === call.sequenceId) : undefined;
+      const aspect = call.aspect ?? (sequence ? aspectOf(sequence.output) : "9:16");
+      return { svg: templatePreviewSvg(await getTemplate(call.id), aspect), aspect };
     }
     case "sequence.derive": {
       const { deriveSequence } = await import("./derive");
