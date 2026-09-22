@@ -109,12 +109,13 @@ it decides which one the material wants.
 
 A stream is a screen with a person in the corner of it. A single crop of that frame is
 mostly wallpaper with the speaker sliced off at an edge, so `layout` stacks the two
-rectangles that matter instead:
+rectangles that matter instead — the screen stopping where the camera starts, so the
+speaker is not in both:
 
 ```json
 "layout": {
   "mode": "split",
-  "screen": { "x": 0, "y": 0, "w": 1, "h": 1 },
+  "screen": { "x": 0, "y": 0, "w": 0.69, "h": 1 },
   "camera": { "x": 0.69, "y": 0.72, "w": 0.31, "h": 0.28 },
   "cameraPct": 32,
   "cameraPosition": "bottom"
