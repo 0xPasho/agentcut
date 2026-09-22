@@ -489,3 +489,18 @@ test("the shortener leaves a hook the selection now writes alone", () => {
     assert.deepEqual(planner.shortenHook(line, 10), { text: line, shortened: false }, line);
   }
 });
+
+test("the style audit is a tool, and says so when there is nothing exported to read", async () => {
+  const { id, sequenceId } = await project("Unrendered");
+  await tools.executeEditorTool(id, { tool: "template.apply", templateId: "stream-split", sequenceId, expectedRevision: store.readEditor(id).revision });
+  const audits = await tools.executeEditorTool(id, { tool: "style.audit" }) as import("../src/lib/editor/style-check").StyleAudit[];
+  assert.equal(audits.length, 1);
+  assert.equal(audits[0].sequenceId, sequenceId);
+  assert.equal(audits[0].skipped, "not rendered yet", "a video nobody has exported has no pixels to read");
+  assert.deepEqual(audits[0].checks, []);
+
+  // And it answers for one video when asked for one.
+  const one = await tools.executeEditorTool(id, { tool: "style.audit", sequenceId }) as import("../src/lib/editor/style-check").StyleAudit[];
+  assert.equal(one.length, 1);
+  assert.deepEqual((await tools.executeEditorTool(id, { tool: "style.audit", sequenceId: "s_nothing" }) as unknown[]), []);
+});

@@ -27,6 +27,9 @@ export const EditorToolCall = z.discriminatedUnion("tool", [
   z.object({ tool: z.literal("project.status"), since: z.number().int().nonnegative().default(0), limit: z.number().int().positive().max(500).default(50) }),
   // The same escape hatch the panel's "Stop and unlock" button uses.
   z.object({ tool: z.literal("project.unlock") }),
+  // Did it come out the way the template said? Reads the exported pixels, not the
+  // project: everything a template promises is visible there and nowhere else.
+  z.object({ tool: z.literal("style.audit"), sequenceId: z.string().optional() }),
   z.object({ tool: z.literal("media.import"), file: z.string().min(1), expectedRevision: z.number().int().nonnegative(),
     /** Also place the imported video as a shot: on this sequence, at output seconds (null appends), on a layer. */
     place: z.object({ sequenceId: z.string(), at: z.number().nonnegative().nullable().optional(), layer: z.number().int().nonnegative().optional() }).optional(),
@@ -180,6 +183,13 @@ export async function executeEditorTool(projectId: string, raw: unknown, onActiv
       const stopped = unlockProject(projectId);
       if (stopped) report(`released the ${stopped.kind} job holding this project`, "tool");
       return { reaped: reaped.map((j) => ({ id: j.id, kind: j.kind })), stopped: stopped ? { id: stopped.id, kind: stopped.kind } : null };
+    }
+    case "style.audit": {
+      const { auditStyle } = await import("./style-check");
+      const audits = await auditStyle(projectId, call.sequenceId);
+      const failed = audits.flatMap((a) => a.checks.filter((c) => !c.ok));
+      report(`read ${audits.length} video${audits.length === 1 ? "" : "s"} back out of the export: ${failed.length ? `${failed.length} check${failed.length === 1 ? "" : "s"} failed` : "everything matches the template"}`, "tool");
+      return audits;
     }
     case "media.import": case "media.upload": {
       const { importProjectMedia } = await import("./media");
