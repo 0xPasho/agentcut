@@ -54,7 +54,10 @@ it decides which one the material wants.
   agree and measuring depends on a font having finished loading. Past the point where
   shrinking would make it unreadable the word wraps inside itself instead. The same
   applies to a hook card. `style.audit` reads the outer 6% of the caption band and says
-  whether anything was drawn there.
+  whether anything was drawn there — against the strip directly above it in the same
+  frame, because reading a band against the source compares two resamplings and how far
+  apart they land depends on the picture: a screen share full of small text reads eight
+  of 255 with nothing drawn on it at all.
 - **`brand`** is a brand kit: `palette` (primary → caption highlight, text → caption
   colour, background), `fonts.captions`, `logo` (asset or slot, lent to the watermark when
   it has none). A glossary subject can carry a `brand` too; a project whose plan names

@@ -126,6 +126,11 @@ export async function auditStyle(projectId: string, only?: string): Promise<Styl
      * camera-on-top video sits in the screen's half, and comparing it with the other half
      * says a difference that is only the two halves being different.
      */
+    // A push-in moves the footage under every band, so a band read against the source
+    // says a difference that is only the zoom. Every such reading is taken at a moment
+    // with no push-in happening in it.
+    const punches = item.clip.edits.filter((e): e is Extract<typeof e, { type: "punch" }> => e.type === "punch");
+    const clear = (at: number) => !punches.some((p) => at >= outAt(map, p.t) - 0.15 && at <= outAt(map, p.t + p.d) + 0.15);
     const drawnOver = (at: number, y: number, bandHeight: number, x = width * 0.1, bandWidth = width * 0.8) => {
       const pane = paneAt(y);
       if (!pane || y + bandHeight > pane.top + pane.height) return null;
@@ -142,8 +147,6 @@ export async function auditStyle(projectId: string, only?: string): Promise<Styl
       const onTop = layout.camera !== "bottom";
       const region = onTop ? layout.top : layout.bottom;
       const pane = { top: onTop ? 0 : topHeight, height: onTop ? topHeight : height - topHeight };
-      const punches = item.clip.edits.filter((e): e is Extract<typeof e, { type: "punch" }> => e.type === "punch");
-      const clear = (at: number) => !punches.some((p) => at >= outAt(map, p.t) - 0.15 && at <= outAt(map, p.t + p.d) + 0.15);
       const samples = [0.2, 0.45, 0.7, 0.9].map((share) => from + (to - from) * share).filter((at) => clear(at) && at > from + 0.3 && at < to - 0.3);
       const diffs = samples.map((at) => meanAbs(
         frame(file, at, box(0, pane.top, width, pane.height), 160, 90),
@@ -179,9 +182,11 @@ export async function auditStyle(projectId: string, only?: string): Promise<Styl
     const words: Word[] = item.clip.words;
     if (words.length && item.clip.captions.preset !== "none") {
       const band = (at: number) => mean(frame(file, at, box(width * 0.1, item.clip.captions.positionY * height, width * 0.8, height * 0.07), 60, 10));
-      const spoken = words
-        .filter((w) => outAt(map, w.t) > from + 1 && outAt(map, w.t) < to - 1)
-        .sort((a, b) => b.w.length - a.w.length)[0];
+      const inside = words.filter((w) => outAt(map, w.t) > from + 1 && outAt(map, w.t) < to - 1);
+      const spoken = [...inside].sort((a, b) => b.w.length - a.w.length)[0];
+      // The longest word that is also on screen with no push-in under it: what the edge
+      // reading needs is a frame whose footage is where the source says it is.
+      const still = [...inside].filter((w) => clear(outAt(map, w.t) + 0.08)).sort((a, b) => b.w.length - a.w.length)[0];
       const lines = toLines(mapWords(map, words), item.clip.captions.maxWordsPerLine);
       let quiet: number | null = null;
       for (let at = from + 0.5; at < to - 0.5 && quiet === null; at += 0.1) {
@@ -205,16 +210,23 @@ export async function auditStyle(projectId: string, only?: string): Promise<Styl
         // picture — which a check on the middle of the band cannot see. Read the same way
         // as the band itself: against the same strip with no caption on it, because a
         // push-in moves the footage under the whole band and that is not ink.
+        // The baseline comes from the same frame rather than from a quiet moment of it:
+        // reading a band against the source is a comparison of two resamplings, and how
+        // far apart they land depends on what is in the picture. A screen share full of
+        // small text reads eight of 255 with nothing drawn on it at all, and a different
+        // second of the same video reads one. The control is the strip of the same size
+        // directly above the caption band, in the same half, at the same instant.
         const margin = width * 0.06;
-        const edge = (at: number) => {
-          const sides = [0, width - margin].map((x) => drawnOver(at, top, bandHeight, x, margin));
+        const edge = (at: number, y: number) => {
+          const sides = [0, width - margin].map((x) => drawnOver(at, y, bandHeight, x, margin));
           return sides.every((side) => side !== null) ? Math.max(...(sides as number[])) : null;
         };
-        const edgeLit = edge(outAt(map, spoken.t) + 0.08);
-        const edgeQuiet = edge(quiet);
-        if (edgeLit !== null && edgeQuiet !== null) {
-          check("captions inside the frame", edgeLit - edgeQuiet < 6,
-            `the longest word, "${spoken.w}", stops before the edges: ${edgeLit.toFixed(0)}/255 in the outer ${Math.round(margin)}px against ${edgeQuiet.toFixed(0)} with no caption there`);
+        const lit = still ? outAt(map, still.t) + 0.08 : null;
+        const edgeLit = lit === null ? null : edge(lit, top);
+        const edgeControl = lit === null ? null : edge(lit, top - bandHeight);
+        if (still && edgeLit !== null && edgeControl !== null) {
+          check("captions inside the frame", edgeLit - edgeControl < 6,
+            `the longest word, "${still.w}", stops before the edges: ${edgeLit.toFixed(0)}/255 in the outer ${Math.round(margin)}px against ${edgeControl.toFixed(0)} in the strip above it`);
         }
       }
     }
