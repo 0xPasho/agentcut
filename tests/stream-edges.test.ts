@@ -924,3 +924,61 @@ test("what a template would cover is part of the case for it", async () => {
   assert.ok(split.why.some((w) => w.includes("which is what a split is for")), split.why.join(" | "));
   assert.ok(!split.why.some((w) => w.includes("would cover what is on it")), split.why.join(" | "));
 });
+
+test("four hundred transcripts of caption lines, and none of them loses a word or shows a stranger", async () => {
+  // Captions are the part of the look somebody reads word by word, so the ways they can
+  // be wrong are all small and all visible: a word dropped between two lines, a line that
+  // holds more words than the look asked for, a moment with a line on screen that does
+  // not contain the word being spoken. These are the transcripts a recogniser produces
+  // when the audio is hard — words that touch, words of no length worth the name,
+  // punctuation alone, a line of one very long word, a four-second pause in the middle.
+  const { toLines, lineAt, activeWordIndex, visibleWords, LINE_LEAD, LINE_TAIL } = await import("../src/lib/timeline");
+
+  let seed = 20260922;
+  const random = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  const pick = <T,>(list: T[]) => list[Math.floor(random() * list.length)];
+  const VOCAB = ["hoy", "vamos", "a", "conectar", "el", "editor.", "con", "¿y?", "—", "…",
+    "internacionalización", "sí", "no.", "que", "1080p", "Deska", "!"];
+
+  let lines = 0, shown = 0;
+  for (let run = 0; run < 400; run++) {
+    const words: Array<{ t: number; d: number; w: string }> = [];
+    let t = random() * 2;
+    for (let i = 0, n = 1 + Math.floor(random() * 40); i < n; i++) {
+      const d = random() < 0.1 ? 0.01 : 0.05 + random() * 0.7;
+      words.push({ t: Number(t.toFixed(3)), d: Number(d.toFixed(3)), w: pick(VOCAB) });
+      t += d + (random() < 0.3 ? 0 : random() < 0.8 ? random() * 0.4 : random() * 4);
+    }
+    const maxWords = 1 + Math.floor(random() * 8);
+    const built = toLines(words, maxWords);
+    lines += built.length;
+
+    // Every word, once, in the order it was said.
+    assert.deepEqual(built.flatMap((line) => line.words), words, `run ${run}: the lines are not the transcript`);
+    for (const line of built) {
+      assert.ok(line.words.length <= maxWords || maxWords < 1,
+        `run ${run}: a line of ${line.words.length} where the look asked for ${maxWords}`);
+      assert.ok(line.end >= line.start, `run ${run}: a line that ends before it starts`);
+    }
+
+    // At every moment of the clip, whatever is on screen is the line the spoken word is in.
+    const last = words[words.length - 1];
+    for (let at = 0; at < last.t + last.d + 1; at += 0.05) {
+      const line = lineAt(built, at);
+      if (!line) continue;
+      assert.ok(at >= line.start - LINE_LEAD - 0.001 && at <= line.end + LINE_TAIL + 0.001,
+        `run ${run}: a line is up at ${at.toFixed(2)}s and its window is ${line.start.toFixed(2)}..${line.end.toFixed(2)}`);
+      const active = activeWordIndex(line.words, at);
+      assert.ok(active >= -1 && active < line.words.length, `run ${run}: word ${active} of ${line.words.length}`);
+      for (const preset of ["karaoke", "popline", "boxed"] as const) {
+        const visible = visibleWords(line.words, active, preset);
+        shown += visible.length;
+        for (const word of visible) assert.ok(line.words.includes(word), `run ${run}: ${preset} shows a word from another line`);
+        if (preset === "popline") assert.ok(visible.length <= 1, `run ${run}: one word at a time showed ${visible.length}`);
+      }
+      assert.deepEqual(visibleWords(line.words, active, "none"), []);
+    }
+  }
+  assert.ok(lines > 400, `the run has to build real lines: ${lines}`);
+  assert.ok(shown > 1000, `and show real words: ${shown}`);
+});
