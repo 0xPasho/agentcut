@@ -463,6 +463,14 @@ async function templateFor(edl: ReturnType<typeof readEditor>["edl"], request: T
  * caption has nothing this changes. A source that cannot be read leaves its shot to the
  * transcript, which is where every clip was before this.
  */
+/**
+ * The last few spans measured, so the dry run and the apply that follows it do not both
+ * decode the same forty seconds. A media file never changes once it is imported — its
+ * name is its content — so the file and the span are the whole key.
+ */
+const heardBefore = new Map<string, Envelope>();
+const HEARD_KEEP = 24;
+
 async function envelopesFor(edl: Edl, sequenceId: string): Promise<Map<string, Envelope>> {
   const sequence = edl.sequences.find((s) => s.id === sequenceId);
   const envelopes = new Map<string, Envelope>();
@@ -472,11 +480,16 @@ async function envelopesFor(edl: Edl, sequenceId: string): Promise<Map<string, E
     if (!item.mediaId || !item.clip.words.length || envelopes.has(item.mediaId)) continue;
     const media = edl.media.find((m) => m.id === item.mediaId);
     if (!media) continue;
-    const curve = await loudnessCurve(media.file, {
-      start: item.clip.start,
-      duration: Math.max(1, item.clip.end - item.clip.start),
-    }).catch(() => [] as Envelope);
-    if (curve.length) envelopes.set(item.mediaId, curve);
+    const span = { start: item.clip.start, duration: Math.max(1, item.clip.end - item.clip.start) };
+    const key = `${media.file}@${span.start}+${span.duration}`;
+    const curve = heardBefore.get(key) ?? await loudnessCurve(media.file, span).catch(() => [] as Envelope);
+    if (!curve.length) continue;
+    if (!heardBefore.has(key)) {
+      heardBefore.set(key, curve);
+      // Oldest first: a Map keeps insertion order, and a handful is all a session needs.
+      for (const stale of [...heardBefore.keys()].slice(0, Math.max(0, heardBefore.size - HEARD_KEEP))) heardBefore.delete(stale);
+    }
+    envelopes.set(item.mediaId, curve);
   }
   return envelopes;
 }

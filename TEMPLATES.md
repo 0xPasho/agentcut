@@ -19,7 +19,7 @@ same two project tools:
 | `templates.list` | Every template on this machine, built-in and user, with full settings |
 | `templates.get` | One template by id |
 | `templates.schema` | The JSON Schema a template document is written against |
-| `templates.suggest` | Measures the material and ranks every template, with the reasons behind each score |
+| `templates.suggest` | Measures the material and ranks every template, with the reasons behind each score. One reason is never scored: on a wide frame — the shape a screen recording has — a template that places pictures says how many would cover what is on it while they show. Whether that matters is the author's call, and the shape of the frame does not prove what is in it. Measuring flatness to tell a screen share from a camera was tried and dropped: on real footage the camera half of the frame reads *flatter* than the screen half, because a person against a wall has fewer edges than a code editor |
 | `templates.save` | Create or replace a user template. Takes a whole document, or `from` an existing template with `id`, `name` and `overrides` to save a variation |
 | `templates.delete` | Remove a user template. Built-ins cannot be deleted, only overridden |
 | `template.plan` | Dry run. Returns the sentences, which get a picture, and what it would look for. Writes nothing, needs no network |

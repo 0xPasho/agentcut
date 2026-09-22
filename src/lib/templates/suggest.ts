@@ -156,6 +156,13 @@ function score(template: TemplateRecord, signals: SequenceSignals, slots: Record
     }
     if (template.images.mode === "auto") { points += 10; why.push("illustrates only where it helps"); }
     if (template.images.mode === "every") { points -= 10; why.push("illustrates every sentence it can, which is a lot"); }
+    // Said, not scored. A picture over a talking head is the point of a picture; a
+    // picture over a screen recording covers the thing the video is about, and whether
+    // that matters is the author's call — but they cannot make it without being told.
+    // The shape of the footage is all the evidence there is: wide enough for a screen
+    // and a speaker is the same test the framing bonus makes.
+    if (signals.hasFootage && template.layout.mode !== "split" && (signals.sourceAspect ?? 0) >= 1.2)
+      why.push(`this footage is a wide frame, the shape a screen recording has, and ${expectedImages} ${expectedImages === 1 ? "picture" : "pictures"} would cover what is on it while they show`);
   }
 
   if (sources.includes("frame")) {

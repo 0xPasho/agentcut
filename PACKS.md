@@ -63,6 +63,10 @@ Then again, from nothing, on a different recording: three more shorts, eighteen 
 checks, none failed. The agent judged the pack's rule to hold on every clip both times,
 which is what a rule written as a sentence is for.
 
+And a third time, on seven minutes of a second stream nothing in this workspace had seen:
+three shorts, twenty-one checks, none failed — the caption-margin check among them. The
+agent judged the rule to hold on all three again.
+
 ## Export
 
 **Export** writes `workspace/exports/packs/<id>/` from what is in this workspace: chosen

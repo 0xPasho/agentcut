@@ -901,3 +901,26 @@ test("taking an asset out of the library is the agent's to do, and is refused wh
   assert.deepEqual(await tools.executeEditorTool(id, { tool: "assets.delete", id: card.id }), { deleted: true });
   await assert.rejects(() => tools.executeEditorTool(id, { tool: "assets.delete", id: card.id }), /No asset with id/);
 });
+
+test("what a template would cover is part of the case for it", async () => {
+  // A picture over a talking head is the point of a picture. A picture over a screen
+  // recording covers the thing the video is about, and whether that matters is the
+  // author's call — one they cannot make without being told. Said, never scored: the
+  // shape of the frame is the only evidence there is, and it does not prove what is
+  // in it.
+  const { id, sequenceId } = await project();
+  const suggested = await tools.executeEditorTool(id, { tool: "templates.suggest", sequenceId }) as {
+    signals: { sourceAspect: number | null };
+    suggestions: Array<{ templateId: string; why: string[]; expectedImages: number }>;
+  };
+  assert.ok((suggested.signals.sourceAspect ?? 0) > 1.2, `the fixture is wide: ${suggested.signals.sourceAspect}`);
+
+  const covered = suggested.suggestions.filter((s) => s.why.some((w) => w.includes("would cover what is on it")));
+  assert.ok(covered.length, "something here places pictures over the footage");
+  for (const one of covered) assert.ok(one.expectedImages > 0, `${one.templateId} says it covers but places nothing`);
+
+  // A template that reframes the shot rather than covering it says the other thing.
+  const split = suggested.suggestions.find((s) => s.templateId === "stream-short")!;
+  assert.ok(split.why.some((w) => w.includes("which is what a split is for")), split.why.join(" | "));
+  assert.ok(!split.why.some((w) => w.includes("would cover what is on it")), split.why.join(" | "));
+});
