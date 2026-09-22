@@ -51,7 +51,13 @@ export function buildTimeMap(clip: Clip): TimeMap {
     out += clipDuration - cursor;
   }
   if (!spans.length) {
-    return { spans: [{ srcStart: 0, srcEnd: clipDuration, outStart: 0 }], duration: clipDuration };
+    // Nothing survived: either the cuts cover the shot — which `validateEdl` refuses, so
+    // only an EDL written before it could arrive here — or the shot is shorter than the
+    // shortest span worth keeping. Either way the honest answer is the least it can play,
+    // not the whole of it with every cut ignored.
+    const kept = Math.min(clipDuration, Math.max(MIN_SPAN, clipDuration - (merged[0]?.end ?? 0)));
+    const from = Math.max(0, clipDuration - kept);
+    return { spans: [{ srcStart: from, srcEnd: clipDuration, outStart: 0 }], duration: kept };
   }
   return { spans, duration: out };
 }

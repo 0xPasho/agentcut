@@ -93,6 +93,23 @@ function validateClip(clip: Clip, bounds: ClipBounds) {
       throw new Error(bounds.durationSec === null ? "Framing rectangles must fit inside the output frame" : "Crop rectangles must fit inside the source");
   }
   if (clip.crop.some((k, i) => k.t < 0 || (i > 0 && k.t <= clip.crop[i - 1].t))) throw new Error("Crop keyframes must have increasing, nonnegative times");
+  // Cuts that cover the whole shot leave nothing to play. The time map has to answer
+  // something for a clip that already exists, and what it answers is the whole shot
+  // uncut — so a set of cuts saying "remove everything" would come out as a shot with no
+  // cuts at all, which is the opposite of what was asked. Refused where it is written.
+  if (clip.edits.some((edit) => edit.type === "silence")) {
+    const span = clip.end - clip.start;
+    let covered = 0;
+    let cursor = 0;
+    for (const cut of clip.edits.filter((edit) => edit.type === "silence")
+      .map((edit) => ({ from: Math.max(0, edit.t), to: Math.min(span, edit.t + edit.d) }))
+      .filter((cut) => cut.to > cut.from).sort((a, b) => a.from - b.from)) {
+      covered += Math.max(0, cut.to - Math.max(cursor, cut.from));
+      cursor = Math.max(cursor, cut.to);
+    }
+    if (span - covered < 0.05)
+      throw new Error(`The cuts on “${clip.title}” remove all ${span.toFixed(1)}s of it, leaving nothing to play. Shorten them, or remove the shot instead.`);
+  }
 }
 
 /**

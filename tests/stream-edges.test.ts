@@ -786,3 +786,30 @@ test("a dry run hears the hole in the footage before anything is rendered", asyn
     total + Math.max(0, Math.min(w.t + w.d, span.srcEnd) - Math.max(w.t, span.srcStart)), 0);
   for (const word of clip.words) assert.ok(kept(word) > word.d - 0.02, `"${word.w}" was cut away by a warning`);
 });
+
+test("cuts that remove the whole shot are refused, not silently ignored", async () => {
+  // The time map has to answer something for a clip that exists, and what it answered was
+  // the whole shot uncut — so "remove everything" came out as a shot with no cuts at all.
+  const { id, sequenceId, itemId } = await project(source, speak(SCRIPT), 10);
+  const before = store.readEditor(id).revision;
+  assert.throws(() => store.editProject(id, { expectedRevision: before, operations: [
+    { type: "item.patch", sequenceId, itemId, patch: { edits: [{ type: "silence", t: 0, d: 10, by: "" }] } },
+  ] }), /remove all 10.0s of it/);
+
+  // In two pieces that meet, which is the same thing said twice.
+  assert.throws(() => store.editProject(id, { expectedRevision: before, operations: [
+    { type: "item.patch", sequenceId, itemId, patch: { edits: [
+      { type: "silence", t: 0, d: 6, by: "" }, { type: "silence", t: 5.5, d: 4.5, by: "" }] } },
+  ] }), /leaving nothing to play/);
+
+  // Leaving something is fine, and so is leaving it in the middle.
+  store.editProject(id, { expectedRevision: before, operations: [
+    { type: "item.patch", sequenceId, itemId, patch: { edits: [
+      { type: "silence", t: 0, d: 4, by: "" }, { type: "silence", t: 6, d: 4, by: "" }] } },
+  ] });
+  const { buildTimeMap } = await import("../src/lib/timeline");
+  const clip = store.readEditor(id).edl.sequences.find((s) => s.id === sequenceId)!.items.find((i) => i.id === itemId)!.clip;
+  const map = buildTimeMap(clip);
+  assert.equal(map.spans.length, 1);
+  assert.ok(Math.abs(map.duration - 2) < 0.01, `${map.duration}s of a 10s shot survives`);
+});

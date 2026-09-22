@@ -143,6 +143,10 @@ playhead marks, the ruler's slider value and the lit transcript word follow it.
 - `templates.list`, `templates.get`, `templates.schema`, `templates.save`, `templates.delete`
 - `templates.suggest` (rank the templates against this video's own material)
 - `templates.looks` (named caption looks), `templates.preview` (schematic SVG of a template's layout)
+- Cuts that remove the whole of a shot are refused where they are written. The time map
+  has to answer something for a clip that exists, and what it answered was the whole shot
+  uncut — so a set of cuts saying "remove everything" came out as a shot with no cuts at
+  all, which is the opposite of what was asked.
 - `style.audit` reads an exported video back out of its own pixels and checks it against
   what its template said: the pane framed where the layout says at the moment the cuts
   say, the hook held across the body and off the end card, a word drawn into the caption
