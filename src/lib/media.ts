@@ -122,7 +122,8 @@ export async function audioLevel(src: string, span?: { start?: number; duration?
     const max = stderr.match(/max_volume:\s*(-?[0-9.]+) dB/);
     if (!max) return null;
     const mean = stderr.match(/mean_volume:\s*(-?[0-9.]+) dB/);
-    return { maxDb: Number(max[1]), meanDb: mean ? Number(mean[1]) : Number(max[1]) };
+    const maxDb = Number(max[1]);
+    return { maxDb, meanDb: mean ? Number(mean[1]) : maxDb };
   } catch {
     return null;
   }

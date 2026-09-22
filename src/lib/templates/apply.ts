@@ -356,9 +356,8 @@ async function resolveBookend(
  * headroom for it, one already mixed loud does not, and clipping a video to hit a number
  * is worse than being a decibel under it.
  */
-/** Where a peak should land, and how far a transient may go past it before it counts. */
+/** Where the loudest sample should land: a decibel below full scale. */
 const PEAK_CEILING_DB = -1;
-const TRANSIENT_DB = 3;
 
 export async function targetLevel(
   template: VideoTemplate,
@@ -374,13 +373,13 @@ export async function targetLevel(
   if (measured === null) return null;
   const wanted = 10 ** ((target - measured) / 20);
   // A decibel of headroom below full scale, which is what a platform's own encoder wants.
-  // Two things about it. It is a ceiling on turning a video *up*, never a reason to turn
-  // one down: loudness is gated and integrated, a peak is one sample, and a single mouse
-  // click at full scale in a quiet stream would otherwise place every shot quieter than
-  // it was recorded. And a transient is allowed to overshoot it by a few decibels, for
-  // the same reason — leaving a whole video five decibels quiet so that one click does
-  // not clip is the trade nobody wants.
-  const headroom = peaks ? Math.max(1, 10 ** ((PEAK_CEILING_DB + TRANSIENT_DB - peaks.maxDb) / 20)) : Infinity;
+  // It is a ceiling on turning a video *up*, and never a reason to turn one down.
+  // Loudness is integrated and gated while a peak is a single sample, so a stream
+  // recorded at -27 with one mouse click at full scale in it would otherwise be placed
+  // quieter than it was recorded — the opposite of what the template asked for. Such a
+  // stream is left where it is instead: reaching the target would mean limiting it, and
+  // a limiter nobody asked for is not what a loudness target is.
+  const headroom = peaks ? Math.max(1, 10 ** ((PEAK_CEILING_DB - peaks.maxDb) / 20)) : Infinity;
   // A shot's volume is a multiplier the timeline bounds at two, and that bound is the
   // renderer's: footage too quiet to reach the target lands as close as it can rather
   // than being written a number the editor would refuse.

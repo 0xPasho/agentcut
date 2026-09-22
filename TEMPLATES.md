@@ -78,16 +78,15 @@ it decides which one the material wants.
   not the whole four-hour recording, whose loudest second says nothing about this forty
   and costs a minute to find — and placed at the target, with the bookends levelled
   against where it now plays rather than where it was recorded.
-  Never at the cost of clipping: the gain is capped so the footage's own peaks stay about
-  a decibel below full scale, and capped again at twice, which is the most a shot's volume
+  Never at the cost of clipping: the gain is capped so the footage's own peaks stay a
+  decibel below full scale, and capped again at twice, which is the most a shot's volume
   can be. Stream audio with peaks near full scale and a low average — a microphone with
-  no compressor on it — reaches about -20 rather than -16, and saying so is better than
-  a limiter nobody asked for. Two things that cap is *not*. It never turns a video down:
-  loudness is integrated and gated, a peak is a single sample, and one mouse click at full
-  scale in a stream recorded at -29 would otherwise place every shot quieter than it was
-  recorded — the opposite of what the template asked for. And a transient may overshoot it
-  by three decibels, because leaving a whole video five decibels quiet so that one click
-  does not clip is the trade nobody wants. `null` leaves the sound exactly as recorded.
+  no compressor on it — reaches about -19 rather than -16, and saying so is better than
+  a limiter nobody asked for. What that cap never does is turn a video *down*: loudness is
+  integrated and gated while a peak is a single sample, so a stream recorded at -27 with
+  one mouse click at full scale in it would otherwise be placed quieter than it was
+  recorded, which is the opposite of what the template asked for. Such a stream is left
+  where it is. `null` leaves the sound exactly as recorded.
 
   What is measured is the video, never a card in front of it: re-applying a template that
   opens on an intro would otherwise read the sting and level the whole timeline to it. A
@@ -651,6 +650,14 @@ that normalises to about -14 is the difference between being heard and being scr
 past. With `audio.targetLufs` the same clip exports at -20.1 and still peaks at -1.1 —
 the rest of the gap is a microphone with no compressor on it, and a limiter to close it
 is not something a template should do without being asked.
+
+That last sentence was tested rather than assumed. Basing the ceiling on the body of the
+sound instead of its loudest sample — the level all but a thousandth of the samples are
+below — lets the same clips reach the target: two of them exported at -16.6 and -16.7
+LUFS, three decibels louder, and peaking at -0.9 and 0.0dB. Zero is clipping. Re-exported
+with the ceiling back on the peak they read -16.7 and -18.7 LUFS and peak at exactly -1.0,
+which is the trade taken: this material reaches -16 only through a limiter, and a template
+that quietly installs one is not honest about what it did.
 
 `story-arc` was rendered with both cards filled: the hook holds at the top, the turn card
 sits in the middle of the frame, and the closing card lands in its own band with the last

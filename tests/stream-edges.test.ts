@@ -412,10 +412,25 @@ test("a single peak in quiet footage is not a reason to make the whole video qui
   const { targetLevel } = await import("../src/lib/templates/apply");
   const template = (await import("../src/lib/templates/resolve")).resolveTemplate(
     await registry.getTemplate("stream-short"), { aspect: "9:16" });
+  // The click fills the headroom, so this material cannot be turned up: reaching the
+  // target would mean limiting it. What it must never do is be turned *down* — the
+  // template asked for louder, and a single sample is not a reason to deliver quieter.
   const level = await targetLevel({ ...template, audio: { targetLufs: -22 } },
     { file: clicked, start: 0, duration: 10 });
-  assert.ok(level && level.gain > 1, `the template asked for louder and got louder: ${level?.gain}`);
-  assert.ok(level!.lufs > measured!, `and says where it now plays: ${level!.lufs.toFixed(1)} from ${measured!.toFixed(1)}`);
+  assert.ok(level === null || level.gain >= 1,
+    `asked for louder, so never quieter: ${level ? `${level.gain} → ${level.lufs}` : "left alone"}`);
+
+  // The same footage without the click is turned up, which is what says the click is
+  // the only thing standing between it and the target.
+  const clean = path.join(workspace, "unclicked.mp4");
+  const quietly = spawnSync(FFMPEG, ["-y",
+    "-f", "lavfi", "-i", "color=0x102040:size=1728x1116:rate=15:duration=10",
+    "-f", "lavfi", "-i", "aevalsrc=0.05*sin(2*PI*1000*t):d=10",
+    "-map", "0:v", "-map", "1:a", "-pix_fmt", "yuv420p", "-shortest", "-c:a", "aac", clean], { encoding: "utf8" });
+  assert.equal(quietly.status, 0, quietly.stderr);
+  const raised = await targetLevel({ ...template, audio: { targetLufs: -22 } }, { file: clean, start: 0, duration: 10 });
+  assert.ok(raised && raised.gain > 1, `without the click it reaches for the target: ${raised?.gain}`);
+  assert.ok(raised!.lufs > measured!, `and says where it now plays: ${raised!.lufs.toFixed(1)}`);
 });
 
 test("the loudness is read off the video, not off the card somebody put in front of it", async () => {
