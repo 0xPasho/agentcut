@@ -19,6 +19,21 @@ export const PackAsset = z.object({
   id: z.string().optional(),
 }).strict();
 
+/**
+ * A reference video or picture: what a finished video in this style looks like. The
+ * agents cannot watch a video, so a video example is read as a sheet of stills taken
+ * across it, beside the note that says what to take from it.
+ */
+export const PackExample = z.object({
+  /** Path inside the pack, e.g. `examples/dos-tipos-de-ingeniero.mp4`. */
+  file: z.string().min(1),
+  kind: z.enum(["image", "video"]),
+  title: z.string().default(""),
+  /** What to notice: "the question from the chat opens it; the sentence stays up, the spoken word is yellow". */
+  note: z.string().default(""),
+}).strict();
+export type PackExample = z.infer<typeof PackExample>;
+
 export const QuickAction = z.object({
   label: z.string().min(1).max(40),
   /** The message sent to the agent. `{selection}` is replaced with the selected clip's title, or "this video". */
@@ -40,6 +55,13 @@ export const PackManifest = z.object({
   glossary: z.array(GlossaryTerm).default([]),
   assets: z.array(PackAsset).default([]),
   quickActions: z.array(QuickAction).default([]),
+  /**
+   * The pack's style guide: who the videos are for, what a good one is, how its hooks
+   * sound and what it never does — in prose, the part of an editor's judgement a template
+   * cannot hold. A Markdown file in the pack, usually `STYLE.md`. Empty is none.
+   */
+  style: z.string().default(""),
+  examples: z.array(PackExample).default([]),
 }).strict();
 export type PackManifest = z.infer<typeof PackManifest>;
 
@@ -60,5 +82,29 @@ export const InstalledPack = z.object({
   assets: z.record(z.string(), z.string()).default({}),
   glossary: z.array(z.string()).default([]),
   quickActions: z.array(QuickAction).default([]),
+  /**
+   * Everything the pack's manifest names, whether or not installing it wrote the file:
+   * a template this workspace already had is still the pack's template, and the style
+   * guide that belongs to a video is found through it.
+   */
+  provides: z.object({ templates: z.array(z.string()).default([]), rules: z.array(z.string()).default([]) }).prefault({}),
+  /** The examples, with `file` relative to the pack's folder in the workspace. */
+  examples: z.array(PackExample).default([]),
 }).strict();
 export type InstalledPack = z.infer<typeof InstalledPack>;
+
+/** A pack's style guide as the editor and the tools return it: each example with the still to open. */
+export type PackStyle = {
+  pack: string;
+  name: string;
+  text: string;
+  examples: Array<PackExample & { still: string }>;
+};
+
+/** Which guide a project's videos are made to, and why. */
+export type ActiveStyleView = {
+  pack: string | null;
+  name: string;
+  reason: string;
+  choice: string | null;
+};

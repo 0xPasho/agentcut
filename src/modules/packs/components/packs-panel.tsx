@@ -9,6 +9,8 @@ import { Button } from "../../../common/ui/button";
 import { Checkbox } from "@/common/ui/checkbox";
 import { Input } from "../../../common/ui/input";
 import { Label } from "../../../common/ui/label";
+import { Disclosure } from "@/common/ui/disclosure";
+import { StyleEditor } from "./style-editor";
 
 /**
  * Packs: what travels between people. Import shows everything a pack carries before
@@ -49,7 +51,8 @@ export function PacksPanel() {
           <div className="min-w-0 flex-1">
             <p className="font-medium">{p.name} <span className="text-xs text-muted-foreground">v{p.version}{p.author ? ` · ${p.author}` : ""}</span></p>
             <p className="truncate text-xs text-muted-foreground" title={p.source}>{p.source}</p>
-            <p className="text-xs text-muted-foreground">{[p.templates.length && `${p.templates.length} template${p.templates.length === 1 ? "" : "s"}`, p.rules.length && `${p.rules.length} rule${p.rules.length === 1 ? "" : "s"}`, Object.keys(p.assets).length && `${Object.keys(p.assets).length} asset${Object.keys(p.assets).length === 1 ? "" : "s"}`, p.glossary.length && `${p.glossary.length} glossary term${p.glossary.length === 1 ? "" : "s"}`, p.quickActions.length && `${p.quickActions.length} quick action${p.quickActions.length === 1 ? "" : "s"}`].filter(Boolean).join(" · ") || "nothing new"}</p>
+            <p className="text-xs text-muted-foreground">{[p.examples.length && `${p.examples.length} reference${p.examples.length === 1 ? "" : "s"}`, p.templates.length && `${p.templates.length} template${p.templates.length === 1 ? "" : "s"}`, p.rules.length && `${p.rules.length} rule${p.rules.length === 1 ? "" : "s"}`, Object.keys(p.assets).length && `${Object.keys(p.assets).length} asset${Object.keys(p.assets).length === 1 ? "" : "s"}`, p.glossary.length && `${p.glossary.length} glossary term${p.glossary.length === 1 ? "" : "s"}`, p.quickActions.length && `${p.quickActions.length} quick action${p.quickActions.length === 1 ? "" : "s"}`].filter(Boolean).join(" · ") || "nothing new"}</p>
+            <Disclosure variant="plain" summary="Style guide and references" className="mt-2"><StyleEditor packId={p.id} /></Disclosure>
           </div>
           <Button size="icon-sm" variant="ghost" aria-label={`Remove pack ${p.name}`} disabled={!!busy} onClick={() => run(`remove:${p.id}`, async () => { await api.workspace({ action: "packs.remove", id: p.id }); return `Removed ${p.name}. Its assets stay in the library.`; })}><Trash2 /></Button>
         </li>)}</ul> : <p className="text-xs text-muted-foreground">No packs yet. Import one by path or URL, or export your own below.</p>}
@@ -66,6 +69,9 @@ export function PacksPanel() {
           {preview.manifest.description && <p className="text-xs text-muted-foreground">{preview.manifest.description}</p>}
           {!!preview.templates.length && <div><p className="text-xs font-medium">Templates</p><ul className="text-xs text-muted-foreground">{preview.templates.map((t) => <li key={t.id}>{t.name}{t.extends ? ` (extends ${t.extends})` : ""}{t.exists ? " — you already have one with this id; it is kept unless you replace" : ""}{t.missingParent ? ` — it builds on “${t.missingParent}”, which is not on this machine, so it will not appear until that is` : ""}</li>)}</ul></div>}
           {!!preview.rules.length && <div><p className="text-xs font-medium">Rules — text an agent will follow</p><ul className="space-y-1 text-xs">{preview.rules.map((r) => <li key={r.id} className="rounded-lg border border-destructive/30 bg-destructive/5 p-2"><span className="font-medium">{r.name}</span> · when {r.when}{r.prompt ? <pre className="mt-1 whitespace-pre-wrap font-sans text-muted-foreground">{r.prompt}</pre> : null}{r.exists ? <span className="block text-muted-foreground">You already have this id.</span> : null}</li>)}</ul></div>}
+          {!!preview.style.text && <div><p className="text-xs font-medium">Style guide — the agents read this before choosing and editing</p><pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-lg border border-destructive/30 bg-destructive/5 p-2 text-xs">{preview.style.text}</pre></div>}
+          {!!preview.examples.length && <p className="text-xs text-muted-foreground">{preview.examples.length} reference video{preview.examples.length === 1 ? "" : "s"}: {preview.examples.map((e) => e.title || e.file).join(", ")}</p>}
+          {!!preview.style.problems.length && <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">This pack will not install: {preview.style.problems.map((p) => (p.line ? `line ${p.line} ${p.why}` : `its guide ${p.why}`)).join("; ")}.</p>}
           {!!preview.quickActions.length && <div><p className="text-xs font-medium">Quick actions — messages sent to the agent</p><ul className="space-y-1 text-xs">{preview.quickActions.map((a) => <li key={a.label} className="rounded-lg border border-destructive/30 bg-destructive/5 p-2"><span className="font-medium">{a.label}</span>: {a.text}</li>)}</ul></div>}
           {!!preview.assets.length && <p className="text-xs text-muted-foreground">Assets: {preview.assets.map((a) => `${a.name} (${a.kind})`).join(", ")}</p>}
           {!!preview.manifest.glossary.length && <p className="text-xs text-muted-foreground">Glossary: {preview.manifest.glossary.map((g) => g.term).join(", ")}</p>}

@@ -204,6 +204,25 @@ export async function grabFrame(src: string, atSec: number, dest: string, width 
   return dest;
 }
 
+/**
+ * A video as one picture: `frames` stills taken evenly across it, side by side, each
+ * stamped with its time. An agent can open a picture but not play a video, and a sheet
+ * shows the things a reference is for — how it opens, where the text sits, how it ends.
+ */
+export async function contactSheet(src: string, dest: string, frames = 8) {
+  const { durationSec } = await probe(src);
+  if (!durationSec) throw new Error(`${path.basename(src)} has no duration to sample`);
+  const columns = Math.min(frames, 4);
+  const rows = Math.ceil(frames / columns);
+  await run(FFMPEG, [
+    "-y", "-i", src,
+    "-vf", `fps=${frames}/${durationSec.toFixed(3)},scale=270:-2,drawtext=text='%{pts\\:hms}':x=8:y=8:fontsize=18:fontcolor=white:box=1:boxcolor=black@0.6,tile=${columns}x${rows}:padding=6:color=black`,
+    "-frames:v", "1", "-q:v", "4",
+    dest,
+  ]);
+  return dest;
+}
+
 /** Lossless-ish cut for previews. Real renders go through Remotion. */
 export async function cut(src: string, start: number, end: number, dest: string) {
   await run(FFMPEG, [

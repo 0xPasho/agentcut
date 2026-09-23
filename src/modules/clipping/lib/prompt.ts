@@ -11,6 +11,8 @@ export type SelectPromptInput = {
   chunks: string[];
   /** Owner rules: `select` ones constrain the choice; `edit` ones are judged per clip. */
   rules?: { select: Array<{ id: string; when: string; prompt: string }>; edit: Array<{ id: string; name: string; when: string }> };
+  /** The channel's style guide, already formatted as a prompt block. */
+  style?: string;
   /** The owner's preferences, already formatted as a prompt block. */
   preferences?: string;
   /** Names to spell exactly, already formatted. */
@@ -68,6 +70,7 @@ previous thought is not, and nothing downstream can fix it.
 Use the tools. Cross-reference \`peaks\` against the transcript to find reactions the text alone does not show.${i.hasFrames ? " Read frames around your candidates to confirm the speaker is actually on screen and to place the crop." : ""} You may run \`ffprobe\` and \`ffmpeg\` to inspect the source further.
 
 ${i.userBrief ? `## Additional direction from the user\n${i.userBrief}\n` : ""}
+${i.style ? `${i.style}\nChoose the moments a video in this style is made of: the guide says what a good one is for this channel.\n` : ""}
 ${i.preferences ? `${i.preferences}\n` : ""}
 ${i.glossary ? `## Names to spell exactly\n${i.glossary}\n` : ""}
 ${rulesSection(i.rules)}

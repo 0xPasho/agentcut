@@ -109,7 +109,16 @@ export const EditorToolCall = z.discriminatedUnion("tool", [
   z.object({ tool: z.literal("packs.remove"), id: z.string().min(1) }),
   z.object({ tool: z.literal("packs.export"), id: z.string().min(1), name: z.string().min(1), version: z.string().optional(), description: z.string().optional(), author: z.string().optional(),
     templates: z.array(z.string()).optional(), rules: z.array(z.string()).optional(), glossary: z.boolean().optional(), assetIds: z.array(z.string()).optional(),
-    quickActions: z.array(z.object({ label: z.string(), text: z.string() })).optional(), dir: z.string().optional() }),
+    quickActions: z.array(z.object({ label: z.string(), text: z.string() })).optional(), dir: z.string().optional(), stylePack: z.string().optional() }),
+  // A pack's style guide and reference videos, and which guide this project's videos are
+  // made to. The Settings → Packs editor and the project panel call these same tools.
+  z.object({ tool: z.literal("packs.style.get"), id: z.string().min(1) }),
+  z.object({ tool: z.literal("packs.style.set"), id: z.string().min(1), text: z.string() }),
+  z.object({ tool: z.literal("packs.examples.add"), id: z.string().min(1), file: z.string().min(1), title: z.string().optional(), note: z.string().optional() }),
+  z.object({ tool: z.literal("packs.examples.update"), id: z.string().min(1), file: z.string().min(1), title: z.string().optional(), note: z.string().optional() }),
+  z.object({ tool: z.literal("packs.examples.remove"), id: z.string().min(1), file: z.string().min(1) }),
+  z.object({ tool: z.literal("style.active"), sequenceId: z.string().optional() }),
+  z.object({ tool: z.literal("style.choose"), pack: z.string().min(1).nullable() }),
   z.object({ tool: z.literal("quickactions.list") }),
   z.object({ tool: z.literal("conversation.undo"), messageId: z.number().int().positive(), expectedRevision: z.number().int().nonnegative().optional() }),
   z.object({ tool: z.literal("conversation.read"), limit: z.number().int().positive().max(500).default(50) }),
@@ -390,6 +399,13 @@ export async function executeEditorTool(projectId: string, raw: unknown, onActiv
       const { effectiveSelection } = await import("../../agent/server/selection");
       return reviewObservations(projectId, { ...effectiveSelection(projectId, {}, "observations"), onEvent: (e) => { if (e.kind !== "log") report(e.text.slice(0, 2000), e.kind); } });
     }
+    case "packs.style.get": { const { readStyle } = await import("../../packs/server/style"); return readStyle(call.id); }
+    case "packs.style.set": { const { saveStyle } = await import("../../packs/server/style"); return saveStyle(call.id, call.text); }
+    case "packs.examples.add": { const { addExample } = await import("../../packs/server/style"); return addExample(call.id, call.file, call); }
+    case "packs.examples.update": { const { updateExample } = await import("../../packs/server/style"); return updateExample(call.id, call.file, call); }
+    case "packs.examples.remove": { const { removeExample } = await import("../../packs/server/style"); return removeExample(call.id, call.file); }
+    case "style.active": { const { activeStyle } = await import("../../packs/server/style"); return activeStyle(projectId, call.sequenceId); }
+    case "style.choose": { const { chooseStyle } = await import("../../packs/server/style"); return chooseStyle(projectId, call.pack); }
     case "packs.list": { const { listPacks } = await import("../../packs/server/packs"); return listPacks(); }
     case "packs.inspect": { const { inspectPack } = await import("../../packs/server/packs"); return inspectPack(call.source); }
     case "packs.import": { const { importPack } = await import("../../packs/server/packs"); return importPack(call.source, { replace: call.replace }); }

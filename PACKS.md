@@ -11,6 +11,8 @@ streamer-kit/
   rules/gaming.json
   rules/gaming.md          # a rule's promptFile, beside it
   assets/a_1234abcd.mp4    # named in pack.json with its kind and the id it had
+  STYLE.md                 # the style guide: how videos in this pack are made
+  examples/reference.mp4   # reference videos and pictures
 ```
 
 `pack.json`:
@@ -29,6 +31,43 @@ streamer-kit/
 
 Nothing in a pack is code. Templates are the same documents as in `workspace/templates/`
 (a sparse `extends` document travels sparse); rules are the same as in `workspace/rules/`.
+
+## Style guide and references
+
+A template holds the mechanics of a video — where the hook sits, how the captions read,
+what is cut. It cannot hold the judgement: who the videos are for, what a good clip is,
+how the hooks sound, what the channel never does. That is `STYLE.md`, a page of prose
+the pack carries, with `examples/` beside it: reference videos and pictures, each with a
+note on what to take from it.
+
+```json
+"style": "STYLE.md",
+"examples": [{ "file": "examples/git-worktrees.mp4", "kind": "video", "title": "Git worktrees",
+               "note": "The hook is the topic in two words, only at the start." }]
+```
+
+- **Who reads it.** The clip-selection agent, which is where the judgement matters most,
+  and the editing agent. Both get it before the owner's preferences, and are told the
+  preferences win where the two disagree. An agent cannot watch a video, so a video
+  reference is read as a sheet of eight stills taken across it (`contactSheet`), stamped
+  with their times, beside the note.
+- **Which guide a video uses.** The project's own choice (**Video → Rules and
+  preferences → Preferences**, or `style.choose`); else the pack that owns the template
+  the video is made in; else the only installed pack with a guide. Two packs with guides
+  and nothing to choose between them is none, and `style.active` says so: two voices in
+  one prompt contradict each other.
+- **Why it is not called SOUL.md.** OpenClaw and Hermes give the *agent* a soul — who the
+  assistant on your computer is. Here the agent stays the same and the channel changes;
+  what changes is the style guide it edits to.
+- **Trust.** The guide is the one thing in a pack that speaks to the agent directly, so
+  it is held to 4000 characters and scanned for lines that only make sense as an attack —
+  "ignore previous instructions", a credential, a command to run, "delete the project".
+  A pack whose guide fails the scan is refused whole, before anything is copied, and the
+  import preview shows the guide in full. Saving one by hand is scanned the same way.
+- **Editing.** **Settings → Packs → Style guide and references**, or `packs.style.get`,
+  `packs.style.set`, `packs.examples.add`, `packs.examples.update`,
+  `packs.examples.remove`. An installed pack keeps them in `workspace/packs/<id>/`;
+  `packs.export` with `stylePack` writes them into the exported folder.
 
 ## Import
 

@@ -9,7 +9,9 @@ import { VideoTemplate } from "../../templates/types";
 import { listRules, saveRule, deleteRule, rulesDir } from "../../rules/server/registry";
 import { Rule } from "../../rules/types";
 import { readGlossaryLevel, saveGlossary } from "../../rules/server/glossary";
-import { InstalledPack, PackManifest, type QuickAction } from "../types";
+import { InstalledPack, PackManifest, type PackExample, type QuickAction } from "../types";
+import { scanStyle, styleRefusal, type StyleProblem } from "../lib/style";
+import { contactSheet } from "../../media/server/ffmpeg";
 
 /**
  * Packs come in by path or URL and are copied into the workspace with their origin
@@ -19,6 +21,8 @@ import { InstalledPack, PackManifest, type QuickAction } from "../types";
  * until the owner has looked at it.
  */
 export const packsDir = () => path.join(WORKSPACE, "packs");
+/** Where an installed pack keeps what is not a template, rule or asset: its style guide and examples. */
+export const packFolder = (id: string) => path.join(packsDir(), id);
 
 type Source = { kind: "url"; base: string } | { kind: "dir"; base: string };
 
@@ -51,6 +55,9 @@ export type PackPreview = {
   rules: Array<{ id: string; name: string; when: string; stage: string; prompt: string; exists: boolean }>;
   assets: Array<{ file: string; kind: string; name: string }>;
   quickActions: QuickAction[];
+  /** The style guide in full, because it is text the agents will read, and what is wrong with it. */
+  style: { text: string; problems: StyleProblem[] };
+  examples: PackExample[];
   /** Always true for anything that did not come from this workspace. */
   untrusted: true;
 };
@@ -80,7 +87,12 @@ export async function inspectPack(sourceText: string): Promise<PackPreview> {
     const prompt = rule.then.promptFile ? (await readEntry(source, `rules/${rule.then.promptFile}`)).toString("utf8") : rule.then.prompt ?? "";
     rules.push({ id: rule.id, name: rule.name, when: rule.when, stage: rule.stage, prompt, exists: existingRules.has(rule.id) });
   }
-  return { manifest, source: sourceText, hash, templates, rules, assets: manifest.assets.map((a) => ({ file: a.file, kind: a.kind, name: a.name })), quickActions: manifest.quickActions, untrusted: true };
+  const styleText = manifest.style ? (await readEntry(source, manifest.style)).toString("utf8") : "";
+  const exampleText = manifest.examples.map((e) => `${e.title}\n${e.note}`).join("\n");
+  return {
+    manifest, source: sourceText, hash, templates, rules, assets: manifest.assets.map((a) => ({ file: a.file, kind: a.kind, name: a.name })), quickActions: manifest.quickActions,
+    style: { text: styleText, problems: scanStyle(`${styleText}\n${exampleText}`) }, examples: manifest.examples, untrusted: true,
+  };
 }
 
 /** Copy a pack into the workspace. Existing user templates and rules with the same id are replaced only with `replace`. */
@@ -88,6 +100,8 @@ export async function importPack(sourceText: string, options: { replace?: boolea
   const preview = await inspectPack(sourceText);
   const source = await resolveSource(sourceText);
   const { manifest } = preview;
+  // Refused before anything is copied: a pack whose guide talks to the agent is not installed at all.
+  if (preview.style.problems.length) throw new Error(styleRefusal(preview.style.problems));
   await ensureLibrary();
   // Assets first, so a template or rule that names one finds it under its new id.
   const assetIds: Record<string, string> = {};
@@ -129,9 +143,22 @@ export async function importPack(sourceText: string, options: { replace?: boolea
     for (const term of manifest.glossary) if (!byTerm.has(term.term.toLowerCase()) || options.replace) { byTerm.set(term.term.toLowerCase(), term); glossary.push(term.term); }
     await saveGlossary({ terms: [...byTerm.values()] }, "workspace");
   }
+  // The guide and the examples go in the pack's own folder, replacing what an earlier version left.
+  const folder = packFolder(manifest.id);
+  await fs.rm(folder, { recursive: true, force: true });
+  await fs.mkdir(path.join(folder, "examples"), { recursive: true });
+  if (preview.style.text.trim()) await fs.writeFile(path.join(folder, "STYLE.md"), preview.style.text.trim() + "\n");
+  const examples: PackExample[] = [];
+  for (const example of manifest.examples) {
+    const file = `examples/${path.basename(example.file)}`;
+    await fs.writeFile(path.join(folder, file), await readEntry(source, example.file));
+    if (example.kind === "video") await contactSheet(path.join(folder, file), path.join(folder, `${file}.jpg`));
+    examples.push({ ...example, file });
+  }
   const installed = InstalledPack.parse({
     id: manifest.id, name: manifest.name, version: manifest.version, description: manifest.description, author: manifest.author,
     source: sourceText, hash: preview.hash, installedAt: Date.now(), templates, rules, assets: assetIds, glossary, quickActions: manifest.quickActions,
+    provides: { templates: manifest.templates, rules: manifest.rules }, examples,
   });
   await fs.mkdir(packsDir(), { recursive: true });
   await fs.writeFile(path.join(packsDir(), `${manifest.id}.json`), JSON.stringify(installed, null, 2));
@@ -155,6 +182,7 @@ export async function removePack(id: string): Promise<{ removed: boolean }> {
   for (const t of pack.templates) await deleteTemplate(t).catch(() => undefined);
   for (const r of pack.rules) await deleteRule(r, "workspace").catch(() => undefined);
   await fs.rm(path.join(packsDir(), `${id}.json`), { force: true });
+  await fs.rm(packFolder(id), { recursive: true, force: true });
   return { removed: true };
 }
 
@@ -166,6 +194,8 @@ export async function packQuickActions(): Promise<Array<QuickAction & { pack: st
 export type ExportRequest = {
   id: string; name: string; version?: string; description?: string; author?: string;
   templates?: string[]; rules?: string[]; glossary?: boolean; assetIds?: string[]; quickActions?: QuickAction[];
+  /** An installed pack whose style guide and examples the export carries — usually the one being re-exported. */
+  stylePack?: string;
   /** Where to write the pack folder. Defaults to `<workspace>/exports/packs/<id>`. */
   dir?: string;
 };
@@ -205,9 +235,21 @@ export async function exportPack(request: ExportRequest): Promise<{ dir: string;
     await fs.copyFile(toAbs(asset.path), path.join(dir, file));
     assets.push({ file, kind: asset.kind, name: asset.name, tags: asset.tags, license: asset.license ?? "", attribution: asset.attribution ?? "", id: asset.id });
   }
+  let style = "";
+  let examples: PackExample[] = [];
+  if (request.stylePack) {
+    const pack = (await listPacks()).find((p) => p.id === request.stylePack);
+    if (!pack) throw new Error(`No installed pack named ${request.stylePack}`);
+    const text = await fs.readFile(path.join(packFolder(pack.id), "STYLE.md"), "utf8").catch(() => "");
+    if (text.trim()) { await fs.writeFile(path.join(dir, "STYLE.md"), text); style = "STYLE.md"; }
+    await fs.mkdir(path.join(dir, "examples"), { recursive: true });
+    for (const example of pack.examples) await fs.copyFile(path.join(packFolder(pack.id), example.file), path.join(dir, example.file));
+    examples = pack.examples;
+  }
   const manifest = PackManifest.parse({
     id: request.id, name: request.name, version: request.version, description: request.description, author: request.author,
     templates: chosenTemplates, rules: chosenRules, glossary: request.glossary ? (await readGlossaryLevel("workspace")).terms : [], assets, quickActions: request.quickActions ?? [],
+    style, examples,
   });
   await fs.writeFile(path.join(dir, "pack.json"), JSON.stringify(manifest, null, 2));
   return { dir, manifest };

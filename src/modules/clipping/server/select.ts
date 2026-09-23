@@ -69,6 +69,9 @@ export async function selectClips(o: SelectOptions): Promise<Edl> {
   const editRules = candidateRules(allRules, "edit").map((r) => ({ id: r.id, name: r.name, when: r.when }));
   const preferences = preferencesBlock(await readPreferences(o.projectId));
   const glossary = await readGlossary(o.projectId);
+  // Which moments are worth a clip is the style guide's first question.
+  const { styleForRun } = await import("../../packs/server/style");
+  const style = await styleForRun(o.projectId, dir).catch(() => "");
   await Promise.all([
     fs.writeFile(path.join(dir, "transcript.txt"), toAgentText(transcript)),
     fs.writeFile(path.join(dir, "transcript.json"), JSON.stringify(transcript)),
@@ -90,7 +93,7 @@ export async function selectClips(o: SelectOptions): Promise<Edl> {
   const provider = await resolveProvider(o.provider);
   const result = await provider.run({
     cwd: dir,
-    prompt: buildSelectPrompt({ probe, targetClipCount, minSec, maxSec, userBrief, hasFrames, chunks, rules: { select: selectRules, edit: editRules }, preferences, glossary: glossaryBrief(glossary) }),
+    prompt: buildSelectPrompt({ probe, targetClipCount, minSec, maxSec, userBrief, hasFrames, chunks, rules: { select: selectRules, edit: editRules }, style, preferences, glossary: glossaryBrief(glossary) }),
     allowedTools: shellEnabled() ? [...ALLOWED_TOOLS, ...SHELL_TOOLS] : ALLOWED_TOOLS,
     deniedTools: shellEnabled() ? DENIED_TOOLS : [...DENIED_TOOLS, "Bash"],
     model: o.model,

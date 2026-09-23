@@ -17,6 +17,7 @@ import { Disclosure } from "@/common/ui/disclosure";
 import { Input } from "../../../common/ui/input";
 import { Label } from "../../../common/ui/label";
 import { Textarea } from "../../../common/ui/textarea";
+import { StyleChoice } from "@/modules/packs/components/style-choice";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../common/ui/select";
 import { Separator } from "../../../common/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../../common/ui/tabs";
@@ -96,6 +97,7 @@ export function RulesPanel({ projectId, sequenceId, beforeApply, afterApply }: {
           onSave={(glossary, level) => run("glossary", () => write({ tool: "glossary.save", glossary, level }, { action: "glossary.save", glossary }))} />
       </TabsContent>
       <TabsContent value="preferences" className="space-y-4 pt-4">
+        {projectId && <StyleChoice projectId={projectId} sequenceId={sequenceId} />}
         <PreferencesEditor label={projectId ? "In general (every project)" : "How you like your videos"} text={data.preferences.workspace} pending={pending === "prefs:workspace"}
           onSave={(text) => run("prefs:workspace", () => write({ tool: "preferences.set", text, level: "workspace" }, { action: "preferences.set", text }))} />
         {projectId && <PreferencesEditor label="For this project" text={data.preferences.project} pending={pending === "prefs:project"}

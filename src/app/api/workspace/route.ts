@@ -3,6 +3,7 @@ import { saveGlossary } from "@/modules/rules/server/glossary";
 import { savePreferences } from "@/modules/rules/server/preferences";
 import { reviewObservations } from "@/modules/rules/server/observations";
 import { onboardingState, runOnboarding, skipOnboarding, saveOnboardingAnswers, reopenOnboarding, dismissOnboardingReminder, ONBOARDING_QUESTIONS } from "@/modules/onboarding/server/onboarding";
+import { readStyle, saveStyle, addExample, updateExample, removeExample } from "@/modules/packs/server/style";
 import { inspectPack, importPack, removePack, exportPack } from "@/modules/packs/server/packs";
 import { effectiveSelection, applySelection, selectionOverview } from "@/modules/agent/server/selection";
 import { setProviderKey } from "@/common/server/secrets";
@@ -15,7 +16,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const body = (await req.json().catch(() => ({}))) as { action?: string; rule?: unknown; id?: string; glossary?: unknown; text?: string; answers?: unknown; source?: string; replace?: boolean; pack?: Parameters<typeof exportPack>[0]; scope?: string; task?: string; provider?: string; model?: string; value?: string };
+  const body = (await req.json().catch(() => ({}))) as { action?: string; rule?: unknown; id?: string; glossary?: unknown; text?: string; answers?: unknown; source?: string; replace?: boolean; pack?: Parameters<typeof exportPack>[0]; scope?: string; task?: string; provider?: string; model?: string; value?: string; file?: string; title?: string; note?: string };
   try {
     switch (body.action) {
       case "rules.save": return Response.json(await saveRule(body.rule, "workspace"));
@@ -34,6 +35,11 @@ export async function POST(req: Request) {
       case "packs.import": return Response.json(await importPack(String(body.source ?? ""), { replace: !!body.replace }));
       case "packs.remove": return Response.json(await removePack(String(body.id ?? "")));
       case "packs.export": return Response.json(await exportPack(body.pack as Parameters<typeof exportPack>[0]));
+      case "packs.style.get": return Response.json(await readStyle(String(body.id ?? "")));
+      case "packs.style.set": return Response.json(await saveStyle(String(body.id ?? ""), String(body.text ?? "")));
+      case "packs.examples.add": return Response.json(await addExample(String(body.id ?? ""), String(body.file ?? ""), { title: body.title, note: body.note }));
+      case "packs.examples.update": return Response.json(await updateExample(String(body.id ?? ""), String(body.file ?? ""), { title: body.title, note: body.note }));
+      case "packs.examples.remove": return Response.json(await removeExample(String(body.id ?? ""), String(body.file ?? "")));
       // The same functions the agent tools call, with the level fixed at workspace.
       case "agents.select": { applySelection({ scope: body.scope ?? "workspace", task: body.task, provider: body.provider ?? "", model: body.model ?? "" }); return Response.json(selectionOverview()); }
       case "providerkeys.set": return Response.json(setProviderKey(String(body.id ?? ""), String(body.value ?? "")));
