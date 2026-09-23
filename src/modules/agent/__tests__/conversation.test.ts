@@ -333,3 +333,44 @@ test("the sampling plan holds its caps: 360 on the short side, and a long video 
   assert.ok(long.cadenceSec > 2, `the cadence widened to ${long.cadenceSec}s`);
   assert.ok(long.frames.at(-1)! / 30 > 280, "and the end of a five-minute video is still sampled, not dropped");
 });
+
+/**
+ * The transport owes the agent an answer to every request it writes.
+ *
+ * A run was lost to this: the agent asked for a transcription, polled `response-*` three
+ * hundred and seventy-four times and was killed by a wall-clock timer while the host was
+ * still working. Whatever goes wrong on our side — including a watcher of the run that
+ * throws — a response is written and the next request is still served.
+ */
+test("every request is answered, even when telling the watcher about it throws", async () => {
+  await project("transport");
+  const { runEditorAgent } = await import("../server/editor-agent");
+  const answers: unknown[] = [];
+  const runner: AgentProvider = { id: "test", label: "Test", available: async () => true, run: async (o) => {
+    const call = async (n: string, body: unknown) => {
+      await fs.writeFile(path.join(o.cwd, `request-${n}.json`), JSON.stringify(body));
+      for (let i = 0; i < 200; i++) {
+        try { return JSON.parse(await fs.readFile(path.join(o.cwd, `response-${n}.json`), "utf8")); } catch { await new Promise((r) => setTimeout(r, 20)); }
+      }
+      throw new Error(`no response to request-${n}`);
+    };
+    // The fence the run is confined by, checked where it is actually handed over: under
+    // `dontAsk` everything unnamed is auto-approved, so a door left out is a door open.
+    for (const tool of ["Bash", "Monitor", "Task", "Agent", "WebFetch", "WebSearch"]) {
+      assert.ok(o.deniedTools?.includes(tool), `${tool} is denied`);
+    }
+    assert.deepEqual(o.allowedTools, ["Read", "Write", "Glob", "Grep"]);
+    answers.push(await call("0001", { tool: "project.read" }));
+    answers.push(await call("0002", { tool: "project.read" }));
+    return { provider: "test", text: "Read twice.", events: [], durationMs: 1 };
+  } };
+  let told = 0;
+  const result = await runEditorAgent("transport", "Read the project", {
+    runner, media: false,
+    onEvent: () => { told += 1; throw new Error("the watcher fell over"); },
+  } as never);
+  assert.equal(result.text, "Read twice.");
+  assert.equal(answers.length, 2);
+  assert.ok(answers.every((a) => (a as { ok: boolean }).ok), "both reads answered ok");
+  assert.ok(told >= 2, "the watcher was told about both, and its failure changed nothing");
+});

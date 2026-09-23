@@ -10,6 +10,7 @@ import { readPreferences, preferencesBlock } from "./preferences";
 import { readGlossary } from "./glossary";
 import { listRules } from "./registry";
 import { RuleMatches, type RuleRecord, type RuleStage } from "../types";
+import { AGENT_SANDBOX_TOOLS } from "../../agent/data";
 
 /**
  * The judgement half of a rule. An agent reads each rule's `when` against what the
@@ -86,7 +87,7 @@ export async function evaluateRules(projectId: string, target: { sequenceId?: st
     cwd: dir,
     prompt: buildEvaluatePrompt(rules.length, preferencesBlock(await readPreferences(projectId))),
     allowedTools: ["Read", "Write", "Glob", "Grep"],
-    deniedTools: ["Bash", "WebFetch", "WebSearch", "Task", "NotebookEdit"],
+    deniedTools: AGENT_SANDBOX_TOOLS,
     model: o.model,
     onEvent: o.onEvent,
   });

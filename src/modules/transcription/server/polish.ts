@@ -3,6 +3,7 @@ import path from "node:path";
 import { z } from "zod";
 import { resolveProvider, type AgentEvent } from "../../agent/server/providers";
 import { Transcript, type Segment, type Word } from "../lib/transcript";
+import { AGENT_SANDBOX_TOOLS } from "../../agent/data";
 
 /**
  * Whisper reports how sure it was about each word. Below this it is usually a real
@@ -19,7 +20,7 @@ const Corrections = z.object({
 
 /** The same tool budget as clip selection: files inside the run's own directory, no network. */
 const ALLOWED_TOOLS = ["Read", "Write", "Glob", "Grep"];
-const DENIED_TOOLS = ["WebFetch", "WebSearch", "Task", "NotebookEdit", "Bash"];
+const DENIED_TOOLS = AGENT_SANDBOX_TOOLS;
 
 export type PolishOptions = {
   dir: string;

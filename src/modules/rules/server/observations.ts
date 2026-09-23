@@ -10,6 +10,7 @@ import type { EditorOperation } from "../../editor/lib/operations";
 import { isGeneratedAuthor, describeAuthor } from "../../editor/lib/authorship";
 import { Rule } from "../types";
 import { GlossaryTerm } from "./glossary";
+import { AGENT_FILE_TOOLS, AGENT_SANDBOX_TOOLS } from "../../agent/data";
 
 /**
  * The observation bank: what the owner corrected, one line each, written without
@@ -152,7 +153,7 @@ export async function reviewObservations(projectId: string | undefined, o: { run
   ]);
   const provider = o.runner ?? await resolveProvider(o.provider);
   await provider.run({
-    cwd: dir, allowedTools: ["Read", "Write", "Glob", "Grep"], deniedTools: ["Bash", "WebFetch", "WebSearch", "Task", "NotebookEdit"], model: o.model, onEvent: o.onEvent,
+    cwd: dir, allowedTools: AGENT_FILE_TOOLS, deniedTools: AGENT_SANDBOX_TOOLS, model: o.model, onEvent: o.onEvent,
     prompt: [
       "You are reviewing what a video editor's owner has corrected over time, to propose standing preferences. Read observations.json (one line per correction, newest last), rules.json (rules that already exist), rule.schema.json, glossary.json and preferences.md.",
       "Propose only what the evidence repeats: a correction made once is taste, made three times is a rule. Never propose a rule that already exists. A spelling fixed more than once is a glossary entry. A habit that is not a condition (\"always short hooks\") is a preferences line.",

@@ -82,3 +82,25 @@ export const SHAPES = [
   { id: "1:1", label: "Square", note: "1:1", w: 28, h: 28 },
   { id: "16:9", label: "Wide", note: "16:9", w: 32, h: 18 },
 ];
+
+/**
+ * What an agent of ours may touch.
+ *
+ * `--permission-mode dontAsk` auto-approves everything that is not denied, so an
+ * allowlist alone confines nothing: the denial is the fence. Transcripts come from
+ * third-party video and are attacker-controlled text, so the fence has to cover every
+ * way out of the working directory, not just the obvious one. A harness grows tools
+ * between releases — a run was seen reaching for `Monitor` to run `node` once `Bash`
+ * said no — so every door to a shell, a delegate or the network is named here, whether
+ * or not the installed CLI has it yet.
+ */
+export const AGENT_FILE_TOOLS = ["Read", "Write", "Glob", "Grep"];
+export const AGENT_DENIED_TOOLS = [
+  "WebFetch", "WebSearch", "NotebookEdit",
+  // Delegation: a subagent does not inherit this denial, so it is a way around it.
+  "Task", "Agent", "Workflow", "SlashCommand", "Skill",
+  // Shells, under each of the names one has gone by.
+  "BashOutput", "KillShell", "KillBash", "Monitor",
+];
+/** The same fence with the shell itself shut, which is everywhere but clip selection. */
+export const AGENT_SANDBOX_TOOLS = [...AGENT_DENIED_TOOLS, "Bash"];

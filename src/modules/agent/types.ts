@@ -23,7 +23,16 @@ export type AgentRunOptions = {
    */
   deniedTools?: string[];
   model?: string;
+  /** A ceiling on the whole run. Silence, not wall-clock time, is what ends a working agent. */
   timeoutMs?: number;
+  /** How long the harness may say nothing before it is treated as hung. */
+  idleMs?: number;
+  /**
+   * True while the host is running a tool this agent asked for. A transcription or a
+   * render takes many minutes, and the agent is silent for all of them because it is
+   * waiting on us — silence like that is not a hang.
+   */
+  busy?: () => boolean;
   onEvent?: (e: AgentEvent) => void;
 };
 

@@ -9,6 +9,7 @@ import { readGlossaryLevel, saveGlossary, GlossaryTerm } from "../../rules/serve
 // The markers and the two functions that respect them live apart from this module so
 // the settings editor can use exactly the same split in the browser.
 import { mergeOnboardingPreferences } from "../../rules/lib/preferences-section";
+import { AGENT_FILE_TOOLS, AGENT_SANDBOX_TOOLS } from "../../agent/data";
 export { mergeOnboardingPreferences, splitOnboardingPreferences } from "../../rules/lib/preferences-section";
 
 /**
@@ -176,7 +177,7 @@ export async function runOnboarding(raw: unknown = {}, o: { runner?: AgentProvid
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(path.join(dir, "answers.json"), JSON.stringify(filled, null, 2));
     await provider.run({
-      cwd: dir, allowedTools: ["Read", "Write", "Glob", "Grep"], deniedTools: ["Bash", "WebFetch", "WebSearch", "Task", "NotebookEdit"], model: o.model, onEvent: o.onEvent,
+      cwd: dir, allowedTools: AGENT_FILE_TOOLS, deniedTools: AGENT_SANDBOX_TOOLS, model: o.model, onEvent: o.onEvent,
       prompt: [
         "Someone is setting up a video editor that is driven by an agent. Read answers.json: their answers about what they make, for whom, what they record, where it goes and what annoys them.",
         "Write profile.json as {\"preferences\":\"<markdown>\",\"glossary\":[{\"term\":\"\",\"aliases\":[],\"note\":\"\"}]}.",

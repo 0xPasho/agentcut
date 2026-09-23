@@ -14,6 +14,7 @@ import { listRules } from "../../rules/server/registry";
 import { candidateRules } from "../../rules/server/evaluate";
 import { readPreferences, preferencesBlock } from "../../rules/server/preferences";
 import { readGlossary, glossaryBrief } from "../../rules/server/glossary";
+import { AGENT_DENIED_TOOLS } from "../../agent/data";
 
 /** Where buildEdl leaves the agent's per-clip rule matches for the host to execute after publishing. */
 export const ruleMatchesFile = (dir: string) => path.join(dir, "rule-matches.json");
@@ -32,7 +33,7 @@ export async function readRuleMatches(dir: string): Promise<Record<string, strin
  */
 const ALLOWED_TOOLS = ["Read", "Write", "Glob", "Grep"];
 const SHELL_TOOLS = ["Bash(ffprobe:*)", "Bash(ffmpeg:*)"];
-const DENIED_TOOLS = ["WebFetch", "WebSearch", "Task", "NotebookEdit"];
+const DENIED_TOOLS = AGENT_DENIED_TOOLS;
 
 const shellEnabled = () => process.env.AGENTCUT_AGENT_SHELL === "1";
 

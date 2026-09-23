@@ -51,7 +51,9 @@ export const cursorProvider: AgentProvider = {
 
     const res = await spawnStream(spawnable("cursor"), args, {
       cwd: opts.cwd,
-      timeoutMs: opts.timeoutMs ?? 15 * 60_000,
+      idleMs: opts.idleMs ?? 10 * 60_000,
+      maxMs: opts.timeoutMs ?? 2 * 60 * 60_000,
+      busy: opts.busy,
       onStderr: (c) => emit(makeEvent("log", c)),
       onLine: (line) => {
         let msg: Record<string, unknown>;

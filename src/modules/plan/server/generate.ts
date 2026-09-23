@@ -14,6 +14,7 @@ import { readPreferences, preferencesBlock } from "../../rules/server/preference
 import { readGlossary } from "../../rules/server/glossary";
 import { Beat, BeatKind, type SequencePlan, type ProjectPlan } from "../types";
 import type { EditorOperation } from "../../editor/lib/operations";
+import { AGENT_FILE_TOOLS, AGENT_SANDBOX_TOOLS } from "../../agent/data";
 
 /**
  * The agent writes the plan; the host validates it and commits it as an ordinary
@@ -23,7 +24,7 @@ import type { EditorOperation } from "../../editor/lib/operations";
  * plan is a separate, deterministic step.
  */
 
-const TOOLS = { allowedTools: ["Read", "Write", "Glob", "Grep"], deniedTools: ["Bash", "WebFetch", "WebSearch", "Task", "NotebookEdit"] };
+const TOOLS = { allowedTools: AGENT_FILE_TOOLS, deniedTools: AGENT_SANDBOX_TOOLS };
 
 export type GenerateOptions = { provider?: string; model?: string; runner?: AgentProvider; onEvent?: (e: AgentEvent) => void };
 
