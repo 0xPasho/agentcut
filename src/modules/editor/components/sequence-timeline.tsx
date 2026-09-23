@@ -22,7 +22,7 @@ import { describeAuthor, isAgentAuthor } from "@/modules/editor/lib/authorship";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel, ContextMenuSeparator, ContextMenuTrigger, Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "../../../common/ui/context-menu";
 import { LABEL_WIDTH, NO_MORE_FOOTAGE, EMPTY_MEDIA, STRIP_FRAMES } from "../data";
 import { type Drag, type Ghost, type Hover, type ExternalDrop } from "../types";
-import { timeLabel, sourceAt } from "../lib/sequence-timeline";
+import { timeLabel, sourceAt, laneBoxes, MIN_JOINT_PX } from "../lib/sequence-timeline";
 /* Everything below follows the playhead. They are separate components, and small ones,
    because each of them re-renders as the preview plays and the timeline around them
    must not. See src/modules/editor/hooks/playhead.ts. */
@@ -727,7 +727,9 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
           </Ruler>
         </div>
         {newTrackRow({ layer: newLayer, kind: "video" }, "Drop a clip here for a new track", "border-b")}
-        {lanes.map((lane, position) => { const layer = lane.layer, first = lane.kind === "audio" && lanes[position - 1]?.kind !== "audio"; return <div key={layer} data-timeline-layer={layer} data-timeline-kind={lane.kind} className={`flex border-b border-white/5 ${first ? "border-t border-t-white/15" : ""}`} {...dropHandlers(lane)}>
+        {lanes.map((lane, position) => { const layer = lane.layer, first = lane.kind === "audio" && lanes[position - 1]?.kind !== "audio";
+          const boxes = laneBoxes(layout.items.filter(entry => (entry.item.layer ?? 0) === layer).map(({ item, from, duration }) => ({ id: item.id, from, duration })), scale / fps);
+          return <div key={layer} data-timeline-layer={layer} data-timeline-kind={lane.kind} className={`flex border-b border-white/5 ${first ? "border-t border-t-white/15" : ""}`} {...dropHandlers(lane)}>
           <Menu>
             <MenuTrigger render={<button type="button" aria-label={`${laneName(layer)} track actions` } className="sticky left-0 z-20 flex w-[76px] shrink-0 items-center gap-1.5 bg-card px-2 text-left text-[11px] text-muted-foreground transition-colors hover:bg-white/8 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring aria-expanded:bg-white/10 aria-expanded:text-foreground" />}>
               {lane.kind === "audio" ? <Music2 className="size-3.5" aria-hidden /> : layer === 0 ? <Film className="size-3.5" aria-hidden /> : <Layers className="size-3.5" aria-hidden />}{laneName(layer)}
@@ -752,7 +754,7 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
               const detached = !!item.mediaId && !!item.hidden;
               const audio = audioOnly(item);
               const active = selection.has(item.id), primary = selectedId === item.id;
-              const clipWidth = Math.max(40, duration / fps * scale);
+              const clipWidth = boxes.get(item.id)?.width ?? duration / fps * scale;
               // Both trim grips are cut out of the clip's own body, so a fixed width ate the
               // short ones: twelve pixels each on a forty-pixel clip, twenty-four each once
               // the clip passed sixty-four, left barely a sliver in the middle — and trying
@@ -832,6 +834,11 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
               // A shot pinned to a fixed time can only blend over the overlap it already has.
               const room = Math.min(joint.maxFrames, joint.overlapFrames ?? joint.maxFrames);
               if (!current && room < 1) return null;
+              // Zoomed out, the cuts of a fast sequence land within a few pixels of each other and
+              // their handles pile up into one blob. A joint whose neighbour is too close to draw
+              // beside waits for a zoom in; one that already has a transition stays, so a set
+              // transition is never invisible.
+              if (!current && (boxes.get(entry.item.id)?.room ?? Infinity) < MIN_JOINT_PX) return null;
               return <TransitionJointControl key={`joint-${entry.item.id}`} left={entry.from / fps * scale} width={(entry.transition?.frames ?? 0) / fps * scale}
                 current={current} title={shotName(entry.item)} previousTitle={shotName(joint.previous)} maxSeconds={room / fps}
                 onSet={transition => commit([{ type: "item.transition", sequenceId: sequence.id, itemId: entry.item.id, transition, before: current }],
