@@ -1,7 +1,7 @@
 import { CaptionStyle, centerCrop, SELECTION_AUTHOR, type Clip, type SequenceItem } from "../../editor/types";
 import type { Beat } from "../../plan/types";
 import { wordsForClip, type Transcript } from "../../transcription/lib/transcript";
-import { tightenBoundaries } from "./boundaries";
+import { tightenBoundaries, type SpeechSpan } from "./boundaries";
 import type { AgentSectionProposal, AgentSegment } from "../types";
 
 /**
@@ -60,6 +60,8 @@ export function sectionTimeline(
     mediaId: string;
     /** Loudness peaks, so a boundary is never tightened past a reaction. */
     peaks?: number[];
+    /** Where the audio is speech, so a boundary never lands inside a word's sound. */
+    speech?: SpeechSpan[];
     /** Written as chapters on the sequence's plan. */
     chapters: boolean;
     itemId: (index: number) => string;
@@ -76,7 +78,7 @@ export function sectionTimeline(
   const beats: Beat[] = [];
   for (const [index, segment] of segments.entries()) {
     const [start, end] = tightenBoundaries(o.transcript.words, segment.start, segment.end, {
-      duration: o.probe.durationSec, fps: o.probe.fps, peaks: o.peaks ?? [],
+      duration: o.probe.durationSec, fps: o.probe.fps, peaks: o.peaks ?? [], speech: o.speech ?? [],
     });
     if (end - start < o.minSegmentSec) {
       warnings.push(`dropped "${segment.title || `stretch ${index + 1}`}": nothing left of it once its boundaries settled`);

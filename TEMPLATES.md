@@ -407,6 +407,9 @@ stop — they are the streamer's voice reading it.
   ~450 → 1250 Hz in 25 ms, gone by 60 — the reference's pop, measured. Starter sounds a
   later version ships now install into an existing library; one the owner deleted stays
   deleted.
+- **Its opening.** A clip the selection agent judged under a rule that puts a pop comment
+  on it keeps `delaySec` of the silence before the reading (`openingSec` in
+  `tightenBoundaries`), so the video has its beat of clip-and-hook before the message lands.
 - **Either editor.** `comments.place` takes `style`; the panel's **Pops in over it / Opens
   the video** is that field, and switching it re-places the same message the other way.
 

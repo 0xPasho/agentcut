@@ -1,7 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { grabFrame, type Probe } from "../../media/server/ffmpeg";
+import { extractAudio, grabFrame, type Probe } from "../../media/server/ffmpeg";
+import { speechRunsFromWav, type SpeechRun } from "../../transcription/server/align";
 import { toAgentText, wordsForClip, type Transcript } from "../../transcription/lib/transcript";
 import { AgentClipProposals, CaptionStyle, Edl, centerCrop, type Clip, SELECTION_AUTHOR } from "../../editor/types";
 import { resolveProvider, type AgentEvent } from "../../agent/server/providers";
@@ -135,6 +136,7 @@ export async function buildSection(o: {
 }): Promise<Edl> {
   const { dir, probe, transcript, videoPath, spec } = o;
   const peaks = (o.signals ?? (await readSignals(dir))).peaks.map((p) => p.t);
+  const speech = await speechOf(dir, videoPath);
   const raw = await fs.readFile(path.join(dir, "video.json"), "utf8");
   const { video } = AgentSectionProposals.parse(JSON.parse(raw));
 
@@ -142,7 +144,7 @@ export async function buildSection(o: {
   const sequenceId = randomUUID().slice(0, 8);
   const { items, beats, keptSec, warnings } = sectionTimeline(video, {
     transcript, probe, output: spec.output, minSegmentSec: spec.minSegmentSec,
-    peaks, chapters: spec.chapters, mediaId,
+    peaks, speech, chapters: spec.chapters, mediaId,
     itemId: (index) => `s${String(index + 1).padStart(2, "0")}_${randomUUID().slice(0, 4)}`,
   });
   // Said, not enforced: a video ten minutes over the template's ceiling is a judgement
@@ -200,15 +202,18 @@ export async function buildEdl(o: {
   const minSec = o.spec?.minSec ?? o.minSec ?? 20;
   const output = o.spec?.output ?? { width: 1080, height: 1920, fps: probe.fps };
   const peaks = (o.signals ?? (await readSignals(dir))).peaks.map((p) => p.t);
+  const speech = await speechOf(dir, videoPath);
   const raw = await fs.readFile(path.join(dir, "clips.json"), "utf8");
   const proposals = AgentClipProposals.parse(JSON.parse(raw));
   const fallbackCrop = centerCrop(probe.width, probe.height, output.width, output.height);
 
   const matches: Record<string, string[]> = {};
+  const openings = await popOpenings(o.projectId);
   const clips: Clip[] = proposals.clips
     .map((p) => {
+      const openingSec = Math.max(0, ...p.rules.map((rule) => openings.get(rule) ?? 0));
       const [start, end] = tightenBoundaries(transcript.words, p.start, p.end, {
-        duration: probe.durationSec, fps: probe.fps, peaks,
+        duration: probe.durationSec, fps: probe.fps, peaks, speech, openingSec,
       });
       const id = randomUUID().slice(0, 8);
       if (p.rules.length) matches[id] = [...new Set(p.rules)];
@@ -329,6 +334,37 @@ function fmtClock(sec: number) {
 }
 
 /** The run's own signals, for a buildEdl called on its own after the agent finished. */
+/**
+ * The rules that put a `pop` comment on a clip, and how far into it the comment lands.
+ * A clip the agent judged one of these keeps that much of the clip before its first word,
+ * so the video opens on the streamer and the hook before the message pops in over them —
+ * rather than having the silence trimmed away and the message land on the first frame.
+ */
+async function popOpenings(projectId: string): Promise<Map<string, number>> {
+  const { getTemplate } = await import("../../templates/server/registry");
+  const openings = new Map<string, number>();
+  for (const rule of await listRules(projectId)) {
+    const override = ((rule.then.overrides as Record<string, unknown> | undefined)?.comment ?? {}) as { style?: string; enabled?: boolean; delaySec?: number };
+    const template = rule.then.template ? await getTemplate(rule.then.template).catch(() => null) : null;
+    const style = override.style ?? template?.comment.style;
+    const enabled = override.enabled ?? template?.comment.enabled;
+    if (style === "pop" && enabled) openings.set(rule.id, override.delaySec ?? template?.comment.delaySec ?? 0.6);
+  }
+  return openings;
+}
+
+/**
+ * Where the source's audio is speech, for settling clip edges on the sound. The recogniser
+ * leaves its audio in the project; a transcript somebody provided does not, so it is
+ * extracted once. Without it the edges are settled on the words alone, as before.
+ */
+async function speechOf(dir: string, videoPath: string): Promise<SpeechRun[]> {
+  const wav = path.join(dir, "audio.wav");
+  const have = await fs.stat(wav).then((stat) => stat.size > 44, () => false);
+  if (!have && !(await extractAudio(videoPath, wav).then(() => true, () => false))) return [];
+  return speechRunsFromWav(wav).catch(() => []);
+}
+
 async function readSignals(dir: string): Promise<Signals> {
   try {
     return JSON.parse(await fs.readFile(path.join(dir, "signals.json"), "utf8")) as Signals;

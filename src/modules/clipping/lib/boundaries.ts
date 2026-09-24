@@ -1,5 +1,8 @@
 import type { Word } from "../../transcription/lib/transcript";
 
+/** A stretch of the source's audio loud enough to be speech, in seconds. */
+export type SpeechSpan = { start: number; end: number };
+
 /**
  * Where a clip actually starts and ends, once the words are consulted.
  *
@@ -26,7 +29,24 @@ export type BoundaryLimits = {
   tailSec?: number;
   /** Dead air tolerated at either end before it is worth tightening. */
   maxDeadSec?: number;
+  /**
+   * Where the sound says somebody is speaking, in order. The recogniser guesses where a
+   * word ends; the audio knows. With these the first word starts no later than its sound
+   * does and the last one is not cut before its sound stops.
+   */
+  speech?: SpeechSpan[];
+  /**
+   * Seconds of the clip to keep before the first word when something happens there — a
+   * viewer's comment popping in over the hook before it is read out. Taken from the
+   * silence before the word, never from the word said before it.
+   */
+  openingSec?: number;
 };
+
+/** Past the recogniser's own end, the sound may carry a word this much further before it is a different phrase. */
+const SOUND_REACH_SEC = 0.6;
+/** Kept after the sound of the last word stops, so the decay is heard rather than chopped. */
+const SOUND_TAIL_SEC = 0.08;
 
 /** A word the recogniser heard, not a gap between two of them. */
 const EPS = 0.05;
@@ -37,7 +57,10 @@ export function tightenBoundaries(
   end: number,
   limits: BoundaryLimits,
 ): [number, number] {
-  const { duration, fps = 30, peaks = [], leadSec = 0.25, tailSec = 0.35, maxDeadSec = 0.6 } = limits;
+  const { duration, fps = 30, peaks = [], tailSec = 0.35, speech = [], openingSec = 0 } = limits;
+  // An opening needs its silence: neither trimmed away as dead air nor cut short of it.
+  const leadSec = Math.max(limits.leadSec ?? 0.25, openingSec);
+  const maxDeadSec = Math.max(limits.maxDeadSec ?? 0.6, openingSec + 0.1);
   // The last frame of a container is routinely undecodable; ending on it is a black frame.
   const ceiling = Math.max(0, duration - 1 / fps);
 
@@ -82,6 +105,27 @@ export function tightenBoundaries(
   e = Math.min(Math.max(e, lastEnd + Math.min(tailSec, 0.12)), room, ceiling);
 
   s = Math.max(0, Math.min(s, first.t));
+
+  // The sound has the last word. "rápido" reported as ending at 2033.40 was still
+  // sounding at 2033.76, and a cut on the reported end kept "rapi". The speech run the
+  // last word is in carries the end to where the sound stops — not into the next word,
+  // and not further than a word can plausibly run on.
+  const tail = speech.find((run) => run.start <= lastEnd + EPS && run.end >= last.t);
+  if (tail && tail.end > lastEnd && tail.end <= lastEnd + SOUND_REACH_SEC)
+    e = Math.min(Math.max(e, tail.end + SOUND_TAIL_SEC), room, ceiling);
+  // And the first: a word the recogniser starts late opens on half a syllable.
+  const previous = [...words].reverse().find((w) => w.t + w.d <= first.t - EPS);
+  const head = speech.find((run) => run.start <= first.t + EPS && run.end >= first.t);
+  if (head && head.start < s && head.start >= first.t - SOUND_REACH_SEC && (!previous || head.start > previous.t + previous.d))
+    s = Math.max(0, head.start - 0.03);
+
+  // Room for the opening, reached back into the silence before the first word — never
+  // into the word before it, which would open on the end of another sentence.
+  if (openingSec > 0) {
+    const before = [...words].reverse().find((w) => w.t + w.d <= first.t - EPS);
+    s = Math.min(s, Math.max(0, first.t - openingSec, before ? before.t + before.d + 0.1 : 0));
+  }
+
   if (e <= s) e = Math.min(ceiling, s + 0.5);
   return [round(s), round(e)];
 }

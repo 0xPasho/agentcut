@@ -227,3 +227,48 @@ test("loud moments are one peak each, and they come from the whole recording", a
   assert.ok(capped[0].t > 5000, `the loudest 400 are the late ones here, so the first kept is late: ${capped[0].t}`);
   assert.ok(capped.at(-1)!.t > 9900, "and the very last one survives");
 });
+
+test("the last word ends where its sound does, not where the recogniser guessed — \"rapi\" is not \"rápido\"", () => {
+  // Measured on a real stream: the recogniser ended "rápido." at 2033.40, and the sound
+  // of it ran until 2033.76. Cutting on the words kept "rapi".
+  const said = words([[2032.8, 0.18, "tokens"], [2032.99, 0.06, "muy"], [2033.24, 0.16, "rápido."]]);
+  const speech = [{ start: 2032.78, end: 2033.1 }, { start: 2033.22, end: 2033.76 }];
+  const [, onWords] = tightenBoundaries(said, 2030, 2033.4, { duration: 18000, fps: 30 });
+  assert.ok(onWords < 2033.76, `on the words alone it still stops early: ${onWords}`);
+  const [, end] = tightenBoundaries(said, 2030, 2033.4, { duration: 18000, fps: 30, speech });
+  assert.ok(end >= 2033.76 + 0.07, `the whole word, and its decay: ${end}`);
+});
+
+test("the sound carries a word to its end, but never into the next one or a whole phrase further", () => {
+  const said = words([[10, 0.3, "fin."], [10.6, 0.4, "siguiente"]]);
+  // One run over both words: the gap between them is too short for the envelope to see.
+  const [, end] = tightenBoundaries(said, 5, 10.3, { duration: 600, fps: 30, speech: [{ start: 9.95, end: 11.1 }] });
+  assert.ok(end <= 10.55 + 1e-9, `stops before the next word starts: ${end}`);
+  // A run that goes on for seconds is somebody still talking, not the last word decaying.
+  const alone = words([[20, 0.3, "fin."]]);
+  const [, far] = tightenBoundaries(alone, 15, 20.3, { duration: 600, fps: 30, speech: [{ start: 19.9, end: 24 }] });
+  assert.ok(far < 21, `does not follow a run that is another phrase: ${far}`);
+});
+
+test("the first word starts no later than its sound, so the clip does not open on half a syllable", () => {
+  const said = words([[2003.06, 0.15, "¿Pagas"], [2003.35, 0.25, "Claude?"]]);
+  const [start] = tightenBoundaries(said, 2003.06, 2010, { duration: 18000, fps: 30, speech: [{ start: 2002.98, end: 2003.62 }] });
+  assert.ok(start <= 2002.96, `opens on the onset: ${start}`);
+});
+
+test("a clip whose comment pops in keeps the beat of silence before the reading, and only silence", () => {
+  const said = words([[1990, 0.4, "anterior."], [2003.06, 0.15, "¿Pagas"], [2003.35, 0.25, "Claude?"]]);
+  // Without an opening the dead air before the first word goes, down to a quarter second.
+  const [plain] = tightenBoundaries(said, 2002.45, 2010, { duration: 18000, fps: 30 });
+  assert.ok(Math.abs(plain - 2002.81) < 1e-9, `${plain}`);
+  // With one, the video keeps 0.6 s of itself and its hook before the message lands...
+  const [opened] = tightenBoundaries(said, 2002.45, 2010, { duration: 18000, fps: 30, openingSec: 0.6 });
+  assert.ok(opened <= 2002.46 + 1e-9 && opened >= 2002.4, `at least 0.6 s of it, as proposed: ${opened}`);
+  // ...reaching back for it when the proposal started on the word...
+  const [reached] = tightenBoundaries(said, 2003.06, 2010, { duration: 18000, fps: 30, openingSec: 0.6 });
+  assert.ok(Math.abs(reached - 2002.46) < 1e-9, `${reached}`);
+  // ...but never into the sentence before it.
+  const close = words([[2002.5, 0.4, "anterior."], [2003.06, 0.15, "¿Pagas"]]);
+  const [bounded] = tightenBoundaries(close, 2003.06, 2010, { duration: 18000, fps: 30, openingSec: 0.6 });
+  assert.ok(bounded >= 2002.9 + 0.1 - 1e-9, `${bounded}`);
+});
