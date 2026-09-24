@@ -152,8 +152,8 @@ watched on TikTok, not inside the app.
   four shared causes, not twelve: fix the primitive, never the panel. `PopoverContent` is a
   panel — 12px inside a 24px corner — and the menu popovers opt into menu padding
   (`rounded-2xl p-1.5`) so a row runs the full width of the surface. Two raw `<details>` in
-  `review/components/review-panel.tsx` and the settings `Toggle` wrapping its own checkbox
-  are bugs to close, not precedent.
+  `review/components/review-panel.tsx` are a bug to close, not precedent. The switch is
+  `switch.tsx` (2026-09-24), built like the checkbox: the native input does the work, hidden.
 - A link that looks like a button is `<a href>` wearing `buttonVariants` (exported from
   `button.tsx`). The shared `Button` is never patched to accept link semantics: that stamped
   `role="button"` onto real navigation.

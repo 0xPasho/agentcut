@@ -8,6 +8,7 @@ import { Button } from "@/common/ui/button";
 import { Input } from "@/common/ui/input";
 import { Label } from "@/common/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/common/ui/tabs";
+import { Glass } from "@/common/ui/glass";
 import { Empty, ErrorLine, Loading, Panel, SectionHeader } from "./components/section-header";
 import { SubjectForm, Swatches } from "./components/subject-form";
 import { useWorkspaceSettings } from "./hooks";
@@ -86,7 +87,7 @@ export function GlossarySettings() {
   }
 
   const addName = <Button size="sm" type="button" variant="outline" onClick={() => { setShow("all"); setFilter(""); setRows([...(rows ?? []), { term: "", aliases: "", note: "" }]); }}><Plus />Add name</Button>;
-  const newSubject = <Button size="sm" type="button" disabled={dirty} onClick={() => setLook({ term: { term: "", aliases: [], note: "", brand: EMPTY_KIT }, isNew: true })}><Palette />New subject</Button>;
+  const newSubject = <Button size="sm" type="button" variant="outline" disabled={dirty} onClick={() => setLook({ term: { term: "", aliases: [], note: "", brand: EMPTY_KIT }, isNew: true })}><Palette />New subject</Button>;
 
   let list: React.ReactNode = <Loading label="Loading your glossary" />;
   if (rows && rows.length === 0) list = (
@@ -159,7 +160,7 @@ export function GlossarySettings() {
           ))}
         </ul>
       )}
-      <p className="text-xs text-muted-foreground">
+      <p className="max-w-prose text-xs text-muted-foreground">
         Separate the mishearings with commas. A term with capitals also fixes its own lowercase, so
         “Claude” catches “claude” without being listed twice. {subjects ? `${count(subjects, "name")} ${subjects === 1 ? "has" : "have"} a look of ${subjects === 1 ? "its" : "their"} own.` : ""}
       </p>
@@ -174,23 +175,22 @@ export function GlossarySettings() {
         run("glossary", () => api.workspace({ action: "glossary.save", glossary: rowsToGlossary(rows ?? []) }));
       }}
     >
-      <SectionHeader title="Glossary" action={<>{addName}{newSubject}</>}>
-        Names spelled exactly this way in captions, titles and hooks. The recogniser gets them as a
-        hint before it listens, and anything it still mishears is corrected afterwards. A name you
-        give a look to becomes a subject: a project about it starts with its colours, fonts and logo.
+      <SectionHeader title="Glossary" action={rows?.length ? <>{addName}{newSubject}</> : undefined}>
+        Names the captions must spell right. Give one a look and projects about it start from its colours.
       </SectionHeader>
 
       {list}
 
       <ErrorLine>{error}</ErrorLine>
       {dirty && (
-        <div className="sticky bottom-4 flex flex-wrap items-center gap-3 rounded-2xl bg-card px-4 py-3 ring-1 ring-primary/40">
+        // The one floating control panel on the page, so it is glass, like the header.
+        <Glass shape="card" className="sticky bottom-4 flex flex-wrap items-center gap-3 px-4 py-3">
           <p className="min-w-0 flex-1 text-sm">Unsaved changes <span className="text-muted-foreground">— save the list before giving a name a look.</span></p>
           <Button type="button" variant="ghost" size="sm" onClick={() => setRows(saved)}>Discard</Button>
           <Button type="submit" size="sm" disabled={pending === "glossary"}>
             {pending === "glossary" && <Loader2 aria-hidden className="motion-safe:animate-spin" />}Save glossary
           </Button>
-        </div>
+        </Glass>
       )}
     </form>
   );

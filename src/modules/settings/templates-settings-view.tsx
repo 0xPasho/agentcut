@@ -33,8 +33,7 @@ export function TemplatesSettings() {
   return (
     <section className="flex flex-col gap-5">
       <SectionHeader title="Templates">
-        The layouts a video can be made in. A template is chosen in the editor, or by a rule, and
-        saved from there as a variation of your own; a pack brings its own.
+        The layouts a video can be made in. Choose one in the editor or by a rule; save your own from there.
       </SectionHeader>
 
       {!data && <Loading label="Loading your templates" />}
@@ -74,7 +73,7 @@ function TemplateCard({ template, packName, usedBy, pending, onDelete }: { templ
   const aspect = template.output ? aspectOf(template.output) : "9:16";
   const tall = template.output ? template.output.height >= template.output.width : true;
   return (
-    <li className="flex flex-col gap-3 rounded-2xl bg-card p-3 ring-1 ring-foreground/10">
+    <li className="flex flex-col gap-3 rounded-3xl bg-card p-3 ring-1 ring-foreground/10">
       {/* The schematic is drawn on a near-black ground, so it sits on a lighter well with its own edge. */}
       <div className={`flex items-center justify-center overflow-hidden rounded-xl bg-foreground/[0.06] ${tall ? "h-44" : "h-32"}`}>
         {/* eslint-disable-next-line @next/next/no-img-element -- a schematic the app draws, not an optimisable remote image */}
@@ -83,9 +82,9 @@ function TemplateCard({ template, packName, usedBy, pending, onDelete }: { templ
       <div className="flex min-w-0 flex-col gap-1 px-1">
         <p className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium">{template.name}</span>
-          {template.builtin && <Badge variant="secondary" className="text-[10px]">Built in</Badge>}
-          {!template.builtin && packName && <Badge variant="outline" className="gap-1 text-[10px] font-normal"><Package aria-hidden className="size-3" />{packName}</Badge>}
-          {!template.builtin && !packName && <Badge variant="outline" className="text-[10px] font-normal">Yours</Badge>}
+          {template.builtin && <Badge variant="secondary">Built in</Badge>}
+          {!template.builtin && packName && <Badge variant="outline" className="gap-1 font-normal"><Package aria-hidden className="size-3" />{packName}</Badge>}
+          {!template.builtin && !packName && <Badge variant="outline" className="font-normal">Yours</Badge>}
         </p>
         {template.description && <p className="text-xs text-muted-foreground">{template.description}</p>}
         <p className="text-xs text-muted-foreground">

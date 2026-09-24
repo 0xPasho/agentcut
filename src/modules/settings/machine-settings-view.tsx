@@ -80,7 +80,7 @@ function TranscribeOnImport({ machine, pending, onChange }: { machine: Machine; 
   return (
     <Panel className="flex flex-col gap-3">
       <PanelHeading title="Transcription on import" icon={<Captions className="size-4" />}>
-        Whether a source recognises itself when it lands, so captions, silence cuts and the glossary see it at once. A project can choose differently from its editor.
+        Whether footage is transcribed as soon as it lands. A project can choose differently in its editor.
       </PanelHeading>
       <div className="grid gap-2 sm:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] sm:items-center sm:gap-4">
         <Select value={value} onValueChange={(v) => onChange(v ? String(v) : null)} disabled={fromEnv || pending}>
@@ -116,7 +116,7 @@ function ChatSource({ machine, pending, onSave }: { machine: Machine; pending: b
   return (
     <Panel as="form" className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); onSave(draft); }}>
       <PanelHeading title="Stream chat" icon={<MessageSquareText className="size-4" />}>
-        The SQLite database a chat recorder writes during a stream. A clip cut from a stream opens on the comment it answers.
+        The database a chat recorder writes during a stream, so a clip opens on the comment it answers.
       </PanelHeading>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor={`${id}-chat`}>Chat database</Label>

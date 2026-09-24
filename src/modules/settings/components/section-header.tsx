@@ -19,13 +19,13 @@ export function SectionHeader({ title, children, action, eyebrow }: { title: str
 }
 
 /**
- * A solid surface in the content layer: a card, never glass. Everything on these
- * pages that groups controls is one of these, so the corner, the hairline and the
- * inset are decided once.
+ * A solid surface in the content layer: the same geometry as `<Card>` (24px, 16px
+ * inset), never glass. Everything on these pages that groups controls is one of
+ * these, so the corner, the hairline and the inset are decided once.
  */
 export function Panel({ className, children, as: Tag = "div", ...props }: { className?: string; children: ReactNode; as?: "div" | "section" | "form" | "fieldset" | "li" | "article" } & Omit<React.HTMLAttributes<HTMLElement>, "className" | "children">) {
   return (
-    <Tag className={cn("rounded-2xl bg-card px-4 py-4 ring-1 ring-foreground/10", className)} {...props}>
+    <Tag className={cn("rounded-3xl bg-card px-4 py-4 ring-1 ring-foreground/10", className)} {...props}>
       {children}
     </Tag>
   );
@@ -48,7 +48,7 @@ export function PanelHeading({ title, children, action, icon }: { title: ReactNo
 /** A section that has nothing in it yet: what this place is, and the one way to fill it. */
 export function Empty({ title, children, action }: { title: string; children: ReactNode; action?: ReactNode }) {
   return (
-    <div className="flex flex-col items-start gap-2 rounded-2xl bg-card px-5 py-8 ring-1 ring-foreground/10">
+    <div className="flex flex-col items-start gap-2 rounded-3xl bg-card px-5 py-8 ring-1 ring-foreground/10">
       <p className="text-sm font-medium">{title}</p>
       <p className="max-w-prose text-sm text-muted-foreground">{children}</p>
       {action && <div className="mt-2">{action}</div>}
@@ -61,7 +61,7 @@ export function Loading({ rows = 3, label }: { rows?: number; label: string }) {
   return (
     <div role="status" aria-label={label} className="flex flex-col gap-2">
       {Array.from({ length: rows }, (_, i) => (
-        <div key={i} aria-hidden className="h-16 rounded-2xl bg-card ring-1 ring-foreground/5 motion-safe:animate-pulse" />
+        <div key={i} aria-hidden className="h-16 rounded-3xl bg-card ring-1 ring-foreground/5 motion-safe:animate-pulse" />
       ))}
       <span className="sr-only">{label}</span>
     </div>

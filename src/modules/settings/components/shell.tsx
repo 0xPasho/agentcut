@@ -80,7 +80,7 @@ function Rail() {
                 <span className="flex min-w-0 flex-col">
                   <span className={cn("leading-tight", active && "font-medium")}>{section.label}</span>
                   {/* Two lines only where there is room for two; a chip says its name and nothing else. */}
-                  <span aria-hidden={!summary} className="hidden truncate text-[11px] leading-tight text-muted-foreground/80 md:block">{summary || " "}</span>
+                  <span aria-hidden={!summary} title={summary} className="hidden truncate text-xs leading-tight text-muted-foreground/80 md:block">{summary || " "}</span>
                 </span>
               </Link>
             </li>

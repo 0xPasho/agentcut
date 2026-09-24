@@ -101,14 +101,14 @@ function Contents({ pack, data }: { pack: InstalledPack; data: WorkspaceSettings
   const groups = [
     { key: "templates", label: "Templates", icon: LayoutTemplate, href: "/settings/templates", items: templates, gone: "deleted since" },
     { key: "rules", label: "Rules", icon: Scale, href: "/settings/rules", items: rules, gone: "deleted since" },
-    { key: "names", label: "Names", icon: BookA, href: "/settings/glossary", items: names, gone: "removed since" },
+    { key: "names", label: "Glossary", icon: BookA, href: "/settings/glossary", items: names, gone: "removed since" },
     { key: "assets", label: "Assets", icon: Images, href: "/library", items: assets, gone: "deleted since" },
   ].filter((g) => g.items.length);
 
   return (
     <Panel className="flex flex-col gap-4">
       <PanelHeading title="What it brought">
-        Copied into this workspace when it was installed. Each is edited where it lives now; removing the pack takes its templates and rules and leaves the assets and names.
+        Copied into this workspace when it was installed. Each is edited where it lives now; deleting the pack takes its templates and rules and leaves the assets and names.
       </PanelHeading>
       {groups.length ? (
         <div className="grid gap-4 sm:grid-cols-2">
@@ -119,10 +119,13 @@ function Contents({ pack, data }: { pack: InstalledPack; data: WorkspaceSettings
                 <Link href={group.href} className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
                   <Icon aria-hidden className="size-3.5" />{group.label} <span className="tabular-nums">{group.items.length}</span>
                 </Link>
+                {/* Capsules are for things you can click: each one opens where the thing is edited. */}
                 <ul className="flex flex-wrap gap-1.5">
                   {group.items.map((item) => (
-                    <li key={item.id} className={`rounded-full px-2.5 py-1 text-xs ring-1 ${item.here ? "bg-foreground/5 ring-foreground/10" : "text-muted-foreground line-through ring-foreground/5"}`} title={item.id}>
-                      {item.name}{!item.here && <span className="no-underline"> ({group.gone})</span>}
+                    <li key={item.id}>
+                      <Link href={group.href} title={item.id} className={`inline-block rounded-full px-2.5 py-1 text-xs ring-1 transition-colors hover:bg-foreground/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring motion-reduce:transition-none ${item.here ? "bg-foreground/5 ring-foreground/10" : "text-muted-foreground line-through ring-foreground/5"}`}>
+                        {item.name}{!item.here && <span className="no-underline"> ({group.gone})</span>}
+                      </Link>
                     </li>
                   ))}
                 </ul>
@@ -154,11 +157,11 @@ function RemovePack({ pack, pending, onRemove }: { pack: InstalledPack; pending:
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button size="sm" variant="ghost" />}>
-        <Trash2 aria-hidden />Remove pack
+        <Trash2 aria-hidden />Delete pack
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Remove {pack.name}?</DialogTitle>
+          <DialogTitle>Delete {pack.name}?</DialogTitle>
           <DialogDescription>
             {takes ? `The ${takes} it installed go with it, along with its style guide and references. ` : "Its style guide and references go with it. "}
             Its assets stay in the library and its names stay in the glossary. Videos already made with it do not change.
@@ -167,7 +170,7 @@ function RemovePack({ pack, pending, onRemove }: { pack: InstalledPack; pending:
         <DialogFooter>
           <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
           <Button variant="destructive" disabled={pending} onClick={() => { onRemove(); setOpen(false); }}>
-            {pending && <Loader2 aria-hidden className="motion-safe:animate-spin" />}Remove pack
+            {pending && <Loader2 aria-hidden className="motion-safe:animate-spin" />}Delete pack
           </Button>
         </DialogFooter>
       </DialogContent>

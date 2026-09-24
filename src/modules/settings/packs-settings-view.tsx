@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useId, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, ChevronRight, Download, FolderOpen, Globe, Loader2, Package, Upload } from "lucide-react";
+import { ArrowLeft, ChevronRight, Download, FolderOpen, Globe, Loader2, Package, TriangleAlert, Upload } from "lucide-react";
 import { api } from "@/common/api/client";
 import type { InstalledPack } from "@/modules/packs/types";
 import type { PackPreview } from "@/modules/packs/server/packs";
@@ -43,14 +43,13 @@ export function PacksSettings() {
 
   return (
     <section className="flex flex-col gap-5">
-      <SectionHeader title="Packs" action={actions}>
-        Templates, rules, names, assets, a style guide and the standard its videos are held to,
-        travelling together. Import one from a folder or a URL — you read everything it carries
-        before anything is installed — or export yours to send.
+      <SectionHeader title="Packs" action={data?.packs.length ? actions : undefined}>
+        A way of editing that travels: templates, rules, names, assets and a style guide in one folder.
+        Import one from a folder or a URL, or export yours to send.
       </SectionHeader>
 
       {/* Always in the tree, so a screen reader is listening when the text arrives. */}
-      <p role="status" className={notice ? "rounded-2xl bg-primary/10 px-4 py-3 text-sm ring-1 ring-primary/30" : "sr-only"}>{notice}</p>
+      <p role="status" className={notice ? "rounded-3xl bg-card px-4 py-3 text-sm ring-1 ring-foreground/10" : "sr-only"}>{notice}</p>
 
       {!data && <Loading label="Loading your packs" />}
       {data && data.packs.length > 0 && (
@@ -76,7 +75,7 @@ function PackRow({ pack }: { pack: InstalledPack }) {
     <li>
       <Link
         href={`/settings/packs/${encodeURIComponent(pack.id)}`}
-        className="group flex items-center gap-3 rounded-2xl bg-card px-4 py-3.5 ring-1 ring-foreground/10 transition-[box-shadow,background-color] motion-reduce:transition-none hover:bg-foreground/[0.04] hover:ring-foreground/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        className="group flex items-center gap-3 rounded-3xl bg-card px-4 py-3.5 ring-1 ring-foreground/10 transition-[box-shadow,background-color] motion-reduce:transition-none hover:bg-foreground/[0.04] hover:ring-foreground/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       >
         <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-xl bg-foreground/5 text-muted-foreground group-hover:text-primary">
           <Package className="size-5" strokeWidth={1.75} />
@@ -150,7 +149,7 @@ function ImportFlow({ onBack, onInstalled, run, pending, error }: {
           <Panel className="flex flex-col gap-2">
             <div className="flex flex-wrap items-center gap-2">
               <p className="flex-1 text-base font-medium">{preview.manifest.name} <span className="text-xs font-normal text-muted-foreground">v{preview.manifest.version}{preview.manifest.author ? ` · ${preview.manifest.author}` : ""}</span></p>
-              <Badge variant="destructive" className="text-[10px]">Untrusted until you read it</Badge>
+              <Badge variant="destructive">Untrusted until you read it</Badge>
             </div>
             {preview.manifest.description && <p className="text-sm text-muted-foreground">{preview.manifest.description}</p>}
             <p className="text-xs text-muted-foreground">
@@ -204,7 +203,7 @@ function ImportFlow({ onBack, onInstalled, run, pending, error }: {
                 {preview.review.review.checks.map((c) => <li key={c.id}><span className="font-mono text-foreground">{c.metric}</span> {c.is !== undefined ? `is ${c.is}` : [c.min !== undefined ? `at least ${c.min}` : "", c.max !== undefined ? `at most ${c.max}` : ""].filter(Boolean).join(", ")} — {c.severity}</li>)}
                 {preview.review.review.rubric.map((r) => <li key={r.id} className="rounded-xl border border-destructive/30 bg-destructive/5 p-2 text-foreground">{r.ask}{r.fix ? <span className="text-muted-foreground"> — {r.fix}</span> : ""}</li>)}
               </ul>
-              {!!preview.review.warnings.length && <ul className="space-y-1 rounded-xl border border-amber-500/40 bg-amber-500/10 p-2">{preview.review.warnings.map((w) => <li key={w} className="text-xs text-amber-300">{w}</li>)}</ul>}
+              {!!preview.review.warnings.length && <ul className="space-y-1 rounded-xl bg-foreground/[0.04] p-2">{preview.review.warnings.map((w) => <li key={w} className="flex items-start gap-1.5 text-xs text-muted-foreground"><TriangleAlert aria-hidden className="mt-0.5 size-3 shrink-0" />{w}</li>)}</ul>}
               {!!preview.review.problems.length && <p role="alert" className="text-xs text-destructive">This pack will not install: what it asks of the agent {preview.review.problems.map((p) => (p.line ? `on line ${p.line} ${p.why}` : p.why)).join("; ")}.</p>}
             </Panel>
           )}
@@ -289,7 +288,7 @@ function ExportFlow({ data, onBack, onDone, run, pending, error }: {
           <Input id={`${id}-name`} required value={draft.name} placeholder="Streamer kit" onChange={(e) => set({ name: e.target.value })} />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor={`${id}-id`}>Id</Label>
+          <Label htmlFor={`${id}-id`}>ID</Label>
           <Input id={`${id}-id`} required pattern="[a-z0-9][a-z0-9\-]*" value={draft.id} placeholder="streamer-kit" aria-describedby={`${id}-id-help`} onChange={(e) => { setIdTouched(true); set({ id: e.target.value }); }} />
           <p id={`${id}-id-help`} className="text-xs text-muted-foreground">Lowercase letters, digits and dashes. The folder is named after it.</p>
         </div>
@@ -327,7 +326,7 @@ function ExportFlow({ data, onBack, onDone, run, pending, error }: {
           <div key={kind} className="flex flex-col gap-1">
             <p className="text-xs font-medium text-muted-foreground">{kind === "video" ? "Video" : kind === "image" ? "Images" : "Sounds"}</p>
             <div className="grid gap-x-4 sm:grid-cols-2">
-              {named(kind).map((a) => <Checkbox key={a.id} className="min-h-8 text-sm" checked={draft.assets.has(a.id)} onCheckedChange={(on) => toggle("assets", a.id, on)}><span className="truncate">{a.name}</span></Checkbox>)}
+              {named(kind).map((a) => <Checkbox key={a.id} className="min-h-8 text-sm" checked={draft.assets.has(a.id)} onCheckedChange={(on) => toggle("assets", a.id, on)}><span className="break-words">{a.name}</span></Checkbox>)}
             </div>
           </div>
         ) : null)}

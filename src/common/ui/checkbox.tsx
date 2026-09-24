@@ -13,7 +13,7 @@ import { cn } from "cn";
  * a light-mode square that no dark surface can absorb, and `accent-color` cannot give
  * it a radius or a border.
  *
- * The same box as `<Toggle>`'s switch, for the same reason: on and off are a colour
+ * The same box as `<Switch>`'s track, for the same reason: on and off are a colour
  * *and* a mark, never colour alone.
  */
 export function Checkbox({

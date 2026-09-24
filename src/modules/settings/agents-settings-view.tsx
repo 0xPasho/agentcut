@@ -37,8 +37,7 @@ export function AgentsSettings() {
           </Button>
         }
       >
-        Every edit an agent makes here runs a coding CLI already on this machine. Nothing is uploaded and
-        no account is created — the agent signs in where it always did.
+        Every edit runs a coding agent already signed in on this machine. Nothing is uploaded.
       </SectionHeader>
 
       <div className="flex flex-col gap-2">
@@ -106,14 +105,14 @@ function HarnessRow({ harness }: { harness: HarnessStatus }) {
   if (harness.installed) state = "Signed out";
   if (harness.ready) state = "Ready";
   return (
-    <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl bg-card px-4 py-3.5 ring-1 ring-foreground/10", !harness.ready && "opacity-70")}>
+    <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-2 rounded-3xl bg-card px-4 py-3.5 ring-1 ring-foreground/10", !harness.ready && "opacity-70")}>
       <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-xl bg-foreground/5">
         {Mark ? <Mark className="size-4.5" /> : <Terminal className="size-4.5" strokeWidth={2} />}
       </span>
       <div className="min-w-0 flex-1">
         <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
           {harness.label}
-          {harness.accountLabel && <Badge variant="outline" className="text-[10px] font-normal">{harness.accountLabel}</Badge>}
+          {harness.accountLabel && <Badge variant="outline" className="font-normal">{harness.accountLabel}</Badge>}
         </p>
         <p className="text-xs text-muted-foreground">
           {harness.ready
@@ -121,7 +120,8 @@ function HarnessRow({ harness }: { harness: HarnessStatus }) {
             : harness.reason}
         </p>
       </div>
-      <span className={cn("flex shrink-0 items-center gap-1.5 text-xs", harness.ready ? "text-primary" : "text-muted-foreground")}>
+      {/* A status never wears the accent: ready is a neutral word with a check beside it. */}
+      <span className={cn("flex shrink-0 items-center gap-1.5 text-xs", harness.ready ? "text-foreground" : "text-muted-foreground")}>
         {harness.ready ? <CircleCheck aria-hidden className="size-4" /> : <CircleSlash aria-hidden className="size-4" />}
         {state}
       </span>

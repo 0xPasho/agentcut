@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { Loader2, Trash2, Upload } from "lucide-react";
+import { Loader2, Pause, Play, Trash2, Upload } from "lucide-react";
 import { Button } from "@/common/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/common/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose, DialogTrigger } from "@/common/ui/dialog";
@@ -91,9 +91,8 @@ export function LibraryView({ packs, onChanged }: { packs: InstalledPack[]; onCh
         </div>
       )}
 
-      <SectionHeader title="Library" action={uploadButton}>
-        Images, sounds and reusable video — intros, outros, stings, b-roll — for every project. A rule
-        can hand one to a template, and a pack carries the ones it names.
+      <SectionHeader title="Library" action={assets?.length ? uploadButton : undefined}>
+        Images, sounds and reusable video for every project: logos, end cards, stings, b-roll.
       </SectionHeader>
 
       <input ref={fileInput} type="file" multiple accept="image/*,audio/*,video/*" className="hidden" onChange={(e) => upload(e.target.files)} />
@@ -120,7 +119,7 @@ export function LibraryView({ packs, onChanged }: { packs: InstalledPack[]; onCh
 
       <ErrorLine>{error}</ErrorLine>
 
-      <p className="text-xs text-muted-foreground">
+      <p className="max-w-prose text-xs text-muted-foreground">
         Anything dropped into <code className="font-mono">workspace/library/</code> is picked up automatically.
         Deleting a file here deletes it from that folder.
       </p>
@@ -132,7 +131,7 @@ function Grid({ kind, assets, origin, onRemove }: { kind: Kind; assets: AssetSum
   if (kind === "image") return (
     <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
       {assets.map((a) => (
-        <li key={a.id} className="flex flex-col overflow-hidden rounded-2xl bg-card ring-1 ring-foreground/10">
+        <li key={a.id} className="flex flex-col overflow-hidden rounded-3xl bg-card ring-1 ring-foreground/10">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={assetFileUrl(a.id)} alt="" loading="lazy" className="aspect-square w-full bg-black/30 object-cover outline-1 -outline-offset-1 outline-white/10" />
           <div className="flex items-center gap-2 px-3 py-2">
@@ -150,12 +149,12 @@ function Grid({ kind, assets, origin, onRemove }: { kind: Kind; assets: AssetSum
   if (kind === "audio") return (
     <ul className="flex flex-col gap-2">
       {assets.map((a) => (
-        <li key={a.id} className="flex flex-row flex-wrap items-center gap-3 rounded-2xl bg-card px-4 py-3 ring-1 ring-foreground/10">
+        <li key={a.id} className="flex flex-row flex-wrap items-center gap-3 rounded-3xl bg-card px-4 py-3 ring-1 ring-foreground/10">
+          <PlayButton src={assetFileUrl(a.id)} name={a.name} kind="audio" />
           <div className="min-w-0 flex-1">
             <p className="break-words text-sm font-medium">{a.name}</p>
             <Meta asset={a} origin={origin(a)} />
           </div>
-          <audio controls preload="none" src={assetFileUrl(a.id)} aria-label={`Preview ${a.name}`} className="order-last h-9 w-full sm:order-none sm:max-w-[240px]" />
           <DeleteAsset asset={a} onRemove={onRemove} />
         </li>
       ))}
@@ -165,8 +164,8 @@ function Grid({ kind, assets, origin, onRemove }: { kind: Kind; assets: AssetSum
   return (
     <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       {assets.map((a) => (
-        <li key={a.id} className="flex flex-col gap-2 rounded-2xl bg-card p-3 ring-1 ring-foreground/10">
-          <video controls preload="metadata" src={assetFileUrl(a.id)} aria-label={`Preview ${a.name}`} className="aspect-video w-full rounded-lg bg-black object-contain" />
+        <li key={a.id} className="flex flex-col gap-2 rounded-3xl bg-card p-3 ring-1 ring-foreground/10">
+          <VideoPreview src={assetFileUrl(a.id)} name={a.name} />
           <div className="flex items-center gap-2 px-1">
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium" title={a.name}>{a.name}</p>
@@ -180,6 +179,52 @@ function Grid({ kind, assets, origin, onRemove }: { kind: Kind; assets: AssetSum
   );
 }
 
+/**
+ * Our own play control, because the platform's media chrome is a light-mode strip no
+ * dark card can absorb (DESIGN.md: no raw browser controls; the player draws none).
+ * One button, the word beside the icon changing with the state; the element itself
+ * has no controls and is only the sound.
+ */
+function PlayButton({ src, name, kind }: { src: string; name: string; kind: "audio" }) {
+  const media = useRef<HTMLAudioElement>(null);
+  const [playing, setPlaying] = useState(false);
+  void kind;
+  const toggle = () => {
+    const el = media.current;
+    if (!el) return;
+    if (el.paused) void el.play(); else el.pause();
+  };
+  return (
+    <>
+      <audio ref={media} preload="none" src={src} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} />
+      <Button size="icon-sm" variant="outline" aria-label={`${playing ? "Pause" : "Play"} ${name}`} aria-pressed={playing} onClick={toggle}>
+        {playing ? <Pause aria-hidden className="size-4" /> : <Play aria-hidden className="size-4" />}
+      </Button>
+    </>
+  );
+}
+
+/** The frame with a play button over it; a click anywhere on the picture plays or pauses. */
+function VideoPreview({ src, name }: { src: string; name: string }) {
+  const media = useRef<HTMLVideoElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const toggle = () => {
+    const el = media.current;
+    if (!el) return;
+    if (el.paused) void el.play(); else el.pause();
+  };
+  return (
+    <div className="relative overflow-hidden rounded-xl bg-black">
+      <video ref={media} preload="metadata" src={src} playsInline className="aspect-video w-full object-contain" onClick={toggle}
+        onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} />
+      <Button size="icon" variant="outline" className={playing ? "absolute bottom-2 left-2 opacity-0 transition-opacity hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none" : "absolute bottom-2 left-2"}
+        aria-label={`${playing ? "Pause" : "Play"} ${name}`} aria-pressed={playing} onClick={toggle}>
+        {playing ? <Pause aria-hidden className="size-4" /> : <Play aria-hidden className="size-4" />}
+      </Button>
+    </div>
+  );
+}
+
 /** One muted line: where it came from, how big, how long, and its licence when it has one. */
 function Meta({ asset, origin }: { asset: AssetSummary; origin: string }) {
   const parts = [
@@ -189,7 +234,7 @@ function Meta({ asset, origin }: { asset: AssetSummary; origin: string }) {
     asset.license ?? "",
   ].filter(Boolean);
   if (!parts.length) return null;
-  return <span className="block truncate font-mono text-[11px] text-muted-foreground" title={parts.join(" · ")}>{parts.join(" · ")}</span>;
+  return <span className="block truncate font-mono text-xs text-muted-foreground" title={parts.join(" · ")}>{parts.join(" · ")}</span>;
 }
 
 function DeleteAsset({ asset, onRemove }: { asset: AssetSummary; onRemove: (id: string) => Promise<void> }) {

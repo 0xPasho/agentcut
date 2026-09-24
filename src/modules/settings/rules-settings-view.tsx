@@ -74,10 +74,9 @@ export function RulesSettings() {
 
   return (
     <section className="flex flex-col gap-5">
-      <SectionHeader title="Rules" action={newRule}>
-        A rule is a sentence the agent judges against your material, and something it does when the
-        sentence holds. These apply to every project; rules for one project or one video live in the
-        editor, next to what they are about.
+      <SectionHeader title="Rules" action={rules.length ? newRule : undefined}>
+        A sentence the agent judges against every video, and what it does when the sentence holds.
+        Rules for one project or one video live in the editor, beside what they are about.
       </SectionHeader>
 
       {!data && <Loading label="Loading your rules" />}
@@ -101,7 +100,7 @@ export function RulesSettings() {
               />
             ))}
           </ol>
-          <p className="text-xs text-muted-foreground">
+          <p className="max-w-prose text-xs text-muted-foreground">
             They run from the top down. The first rule that names a template wins that choice; everything
             else each matched rule asks for is added on top, in this order.
           </p>
@@ -123,8 +122,8 @@ function RuleRow({ rule, index, last, templates, pending, packName, onMove, onTo
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-medium">{rule.name}</span>
-            <Badge variant="secondary" className="text-[10px]">{STAGE_LABELS[rule.stage]}</Badge>
-            {rule.subject && <Badge variant="outline" className="text-[10px] font-normal">About {rule.subject}</Badge>}
+            <Badge variant="secondary">{STAGE_LABELS[rule.stage]}</Badge>
+            {rule.subject && <Badge variant="outline" className="font-normal">About {rule.subject}</Badge>}
           </p>
           <p className="mt-1 text-sm text-muted-foreground">When {rule.when}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">{describe(rule, templates)}</p>
@@ -227,7 +226,7 @@ function RuleForm({ initial, isNew, templates, assets, terms, pending, error, on
               onChange={(e) => set({ name: e.target.value, ...(idTouched ? {} : { id: slug(e.target.value) }) })} />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor={`${id}-id`}>Id</Label>
+            <Label htmlFor={`${id}-id`}>ID</Label>
             <Input id={`${id}-id`} required pattern="[a-z0-9][a-z0-9\-]*" value={rule.id} disabled={!isNew}
               aria-describedby={`${id}-id-help`} onChange={(e) => { setIdTouched(true); set({ id: e.target.value }); }} />
             <p id={`${id}-id-help`} className="text-xs text-muted-foreground">

@@ -44,8 +44,7 @@ export function ProfileSettings() {
   return (
     <section className="flex flex-col gap-5">
       <SectionHeader title="You">
-        What you make, who it is for, and how you like it done. Every agent reads this before it
-        decides anything — it is your text, never treated as untrusted material.
+        What you make, who it is for, and how you like it done. Every agent reads this before it decides anything.
       </SectionHeader>
 
       <Answers
@@ -136,7 +135,7 @@ function Answers({ questions, initial, status, hasSection, pending, onSave, onRe
         ))}
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="submit" size="sm" variant={dirty ? "default" : "outline"} disabled={!dirty || busy}>
+        <Button type="submit" size="sm" variant="outline" disabled={!dirty || busy}>
           {pending === "answers" && <Loader2 aria-hidden className="motion-safe:animate-spin" />}Save answers
         </Button>
         <Button type="button" size="sm" variant="outline" disabled={!canRewrite || busy} onClick={() => onRewrite(answers)}>
