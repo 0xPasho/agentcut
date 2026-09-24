@@ -174,6 +174,21 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
   const localAt = (seconds: number) => Math.max(0, Math.min(map.duration, seconds-itemOffset));
   const targetId = sequence?.id ?? clipId;
 
+  /**
+   * A hidden tab stops playing rather than pretending to.
+   *
+   * The Player runs off `requestAnimationFrame` and falls back to a timer when the tab
+   * goes to the background — a timer every browser throttles to about once a second, so
+   * a preview left playing there advances one frame a second while the sound keeps its
+   * own time. Nothing can make a hidden tab play thirty frames a second, so the choice
+   * is between crawling and stopping, and coming back to the frame you left is worth
+   * more than coming back forty seconds adrift of it.
+   */
+  useEffect(() => {
+    const hide = () => { if (document.visibilityState !== "visible") player.current?.pause(); };
+    document.addEventListener("visibilitychange", hide);
+    return () => document.removeEventListener("visibilitychange", hide);
+  }, []);
   useEffect(() => {
     const p = player.current; if (!p) return;
     const onFrame = () => playhead.set(p.getCurrentFrame()/output.fps);

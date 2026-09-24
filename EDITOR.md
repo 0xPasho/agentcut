@@ -233,7 +233,13 @@ picker — and knows nothing about projects. A `ChatController` (`src/modules/ag
 the only difference between surfaces:
 
 - `useProjectChat` is the panel in the editor: the project's shared thread, its live
-  feed, and edits that run against the open sequence.
+  feed, and edits that run against the open sequence. The editor opens it and hands it to
+  both the panel and the timeline — a project has one conversation and one job at a time,
+  and two controllers over it would be two pollers and two accounts of what is running.
+  The timeline needs it to ask the agent about a clip beside that clip, and to draw what
+  it is working on around the clip it is working on; both are read out of the conversation
+  (`src/modules/agent/lib/ask-agent.ts`), because `context.selection` travels with the
+  message and so survives a reload, a second window and a run started over MCP.
 - `useStartChat` is `/chat`, the empty window. The first message decides what to make:
   a link clips it (`/api/projects` then analyse), dropped footage is imported into a new
   project, and words alone create an empty canvas — all through the endpoints the home
@@ -383,6 +389,27 @@ by the next one instead of blocking exports until somebody deletes `render.lock`
 
 `scripts/render.ts path/to/edl.json` remains an explicit standalone snapshot render.
 It does not represent the latest state of a project in the database.
+
+### Why the footage is cut up before it is rendered
+
+`OffthreadVideo` does not stream. The first frame naming a source sends Remotion's own
+proxy to copy that *whole file* into its temp directory before a single pixel comes back,
+and its downloader accepts nothing but `http(s)` — so serving the workspace over loopback,
+the only way to hand it a multi-gigabyte recording at all, cannot avoid the copy. A
+26-minute export cut from a five-hour stream copied five hours to read 26 minutes, and
+Remotion's 28-second default expired in the middle of it. Frames now get a day
+(`FRAME_TIMEOUT_MS`), which stopped the failure; `src/modules/render/server/conform.ts`
+stops the waste.
+
+Before a render, the stretches its sequences actually play are cut out of each source with
+ffmpeg, merged where they nearly meet, and the composition is pointed at those. Only the
+props of that one render are rewritten — the EDL is the authority and is never touched —
+and a shot's times move by exactly what its footage moved. Nothing else needs adjusting: a
+crop is in source pixels, and words and edits are in clip-relative seconds measured from
+the shot's own start. Cuts are re-encoded rather than copied, because `-c copy` starts at
+the keyframe before the cut and leaves an offset nothing downstream could learn; the
+re-encode also lays down a keyframe a second, which is what makes extraction quick. A
+source under `CONFORM_MIN_BYTES`, or one a video plays most of, is left exactly as it was.
 
 ### Why a cut does not go black in the Player
 

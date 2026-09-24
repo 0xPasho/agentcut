@@ -46,10 +46,15 @@ In the editor:
   the shot edits beside it — punch-in, emphasis, silence cut — act on the picked clip.
 - Use **Captions** and **Add** for common shot edits. Source-frame
   capture uses the selected shot’s media, through the same `assets.capture` tool.
-- Select a clip and its controls appear in the bar under the frame: hook, colours, mute,
+- Select a clip and its controls appear in the bar under the frame: its text, colours, mute,
   separate audio, split, duplicate, remove. The picture itself carries nothing but the
   layer's own handles, so every part of it can be dragged. Nothing selected means an empty
   column — the plan, templates, rules and format live behind **Video** in the header.
+- A clip holds as many lines of text as it wants, and both panels list all of them with
+  their words, placement, duration, colours and size. There is no separate "hook": a hook
+  is a title that comes first, and the model has only ever had `text` edits. A line added
+  to a shot with footage goes inside it; one added anywhere else becomes a scene of its
+  own, on the track the other titles are already on rather than on a track of its own.
 - Separate a shot’s audio to move, trim or level it on its own track. Every clip backed by
   footage draws that footage’s waveform.
 - Find sounds online from the editor: free-licence search, downloaded into the project with
@@ -579,7 +584,11 @@ places items freely along any track or between tracks through `buildTimelineMove
 which pins automatic neighbors to preserve their timing. Alt-drag onto Main inserts
 between neighboring clips and closes gaps through `item.reorder`. Drag the ends of a clip to trim it.
 The shared `buildTimelineTrim` adapter maps output movement through silence cuts,
-bounds source footage, and resizes a standalone title/image/audio layer’s content.
+bounds source footage, and resizes a standalone title/image/audio layer’s content. A scene
+with no footage under it has no material to uncover, so dragging its head left lengthens the
+scene and starts it earlier instead — written as a longer span and an earlier placement,
+never as a negative `start`. A trim that really has hit a wall says which one through
+`trimRefusal`, because a drag refused in silence reads as a broken edge.
 Main-track trims ripple following clips; overlay timing stays fixed. `buildTimelineSlip`
 changes which part of the footage a clip shows without moving it or changing its length: it is
 one `item.patch` that moves both bounds and passes the author's overlays through unchanged, so
@@ -589,6 +598,11 @@ it, so slipping needs no hidden modifier and no new operation. Selected clip
 effects appear under the same ruler rather than on a second timeline, and each one has the same
 two edges a clip has: dragging them changes how long that title, zoom or sound runs, in the
 clip's own source time, bounded by the clip that carries it.
+
+Zoom 1 is the whole video across the panel and the ceiling is whatever reaches twelve
+pixels a frame, so a long video gets a longer way in rather than the same multiple of a
+different thing. Past a tenth of a second per tick the ruler counts in frames, and it draws
+only the ticks inside the scrolled window. Trim fields take either seconds or `h:mm:ss:ff`.
 
 Dragging snaps: a moved clip, a trimmed edge and an incoming asset all lock onto the
 origin, the playhead and any other item's edges through the shared `snapTargets`/`snapSpan`
