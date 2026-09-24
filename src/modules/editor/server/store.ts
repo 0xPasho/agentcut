@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { db, q } from "../../../common/server/db";
 import { projectDir } from "../../../common/server/config";
-import { applyOperations, EditRequest, repairWordTimes, validateEdl, type EditorSnapshot } from "../lib/operations";
+import { applyOperations, EditRequest, repairWordTimes, validateEdl, type EditorOperation, type EditorSnapshot } from "../lib/operations";
 import { Edl } from "../types";
 import { observeHumanEdit, recordObservation } from "../../rules/server/observations";
 
@@ -99,10 +99,41 @@ export function editProject(projectId: string, request: unknown, options: { acto
   return saved;
 }
 /** Selection adds clips; it never replaces edits in existing clips. */
+/**
+ * Publish what a selection run proposed into the project.
+ *
+ * A run proposes either a pack of clips or one long video, and both arrive here as an
+ * EDL: the clips, the source media they need, and any finished sequence. Onto a project
+ * that already has state it goes through the ordinary operations, so a second run adds
+ * to what is there instead of replacing it — and so a long video is published by the
+ * same path a person adding a shot uses.
+ */
 export function publishClips(projectId: string, proposal: Edl): EditorSnapshot {
   const row = q.getProject(projectId);
   if (!row) throw new Error("Project not found");
-  return commit(projectId, row.revision, current => current
-    ? applyOperations(current, proposal.clips.map(clip => ({ type: "clip.add", clip })))
-    : proposal);
+  return commit(projectId, row.revision, current => {
+    if (!current) return proposal;
+    const operations: EditorOperation[] = [
+      ...proposal.media
+        .filter(media => !current.media.some(existing => existing.id === media.id || existing.file === media.file))
+        .map(media => ({ type: "media.add" as const, media })),
+      ...proposal.clips.map(clip => ({ type: "clip.add" as const, clip })),
+      ...proposal.sequences
+        .filter(sequence => !current.sequences.some(existing => existing.id === sequence.id))
+        .map(sequence => ({ type: "sequence.add" as const, sequence })),
+    ];
+    // A proposal whose media the project already holds under another id would point its
+    // shots at nothing. Rewrite them onto the copy that is there.
+    const rewritten = operations.map(operation => {
+      if (operation.type !== "sequence.add") return operation;
+      const items = operation.sequence.items.map(item => {
+        if (!item.mediaId || current.media.some(m => m.id === item.mediaId)) return item;
+        const byFile = proposal.media.find(m => m.id === item.mediaId);
+        const existing = byFile ? current.media.find(m => m.file === byFile.file) : undefined;
+        return existing ? { ...item, mediaId: existing.id } : item;
+      });
+      return { ...operation, sequence: { ...operation.sequence, items } };
+    });
+    return applyOperations(current, rewritten);
+  });
 }

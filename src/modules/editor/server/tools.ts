@@ -117,6 +117,18 @@ export const EditorToolCall = z.discriminatedUnion("tool", [
   z.object({ tool: z.literal("media.transcription") }),
   z.object({ tool: z.literal("media.transcription.set"), mode: z.enum(["audio", "always", "off"]).nullable(), level: RuleLevel.default("workspace") }),
   z.object({ tool: z.literal("project.batch"), brief: z.string().optional(), force: z.boolean().optional() }),
+  // Ask the source for something. Which kind of video comes out is the template's
+  // decision, not this tool's: `mode` and the numbers only bend what it asked for. The
+  // human form posts the same options, so neither interface can reach a shape the
+  // other cannot.
+  z.object({ tool: z.literal("project.analyze"),
+    templateId: z.string().optional(),
+    mode: z.enum(["clips", "section"]).optional(),
+    count: z.number().int().positive().max(50).optional(),
+    targetMinutes: z.number().positive().max(600).optional(),
+    minMinutes: z.number().positive().max(600).optional(),
+    maxMinutes: z.number().positive().max(600).optional(),
+    brief: z.string().optional() }),
   z.object({ tool: z.literal("observations.read"), limit: z.number().int().positive().max(500).default(100), allProjects: z.boolean().default(true) }),
   z.object({ tool: z.literal("observations.review") }),
   z.object({ tool: z.literal("packs.list") }),
@@ -451,6 +463,22 @@ export async function executeEditorTool(projectId: string, raw: unknown, onActiv
       const { saveTranscribeMode, transcribeSettings } = await import("../../transcription/server/settings");
       saveTranscribeMode(call.mode, call.level === "project" ? projectId : undefined);
       return transcribeSettings(projectId);
+    }
+    case "project.analyze": {
+      // A job, not a call: it transcribes, samples frames and runs an agent over hours
+      // of material, and it reports through the project's events like every other one.
+      const { startJob } = await import("../../project/server/jobs");
+      const selection: Record<string, unknown> = {};
+      if (call.mode) selection.mode = call.mode;
+      if (call.targetMinutes) selection.targetSec = call.targetMinutes * 60;
+      if (call.minMinutes) selection.minSec = call.minMinutes * 60;
+      if (call.maxMinutes) selection.maxSec = call.maxMinutes * 60;
+      return { job: startJob(projectId, "analyze", {
+        templateId: call.templateId,
+        selection: Object.keys(selection).length ? selection : undefined,
+        targetClipCount: call.count,
+        userBrief: call.brief,
+      }) };
     }
     case "project.batch": {
       // A job, not a call: it runs for minutes and reports through the project's events.

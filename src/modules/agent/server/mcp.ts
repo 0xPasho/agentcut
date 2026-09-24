@@ -90,6 +90,7 @@ const DESCRIPTIONS: Record<string, string> = {
   "media.transcribe": "Transcribe imported media and put the words on every shot cut from it. background:true queues it and returns at once; force ignores both the cached transcript and the skip rules.",
   "media.transcription": "Where every source's words stand — done, still running, waiting, failed with its reason, or skipped with its reason — and the setting that decides whether a newly imported source transcribes itself.",
   "media.transcription.set": "Whether newly imported sources transcribe themselves: audio (only when the file has sound), always, or off. mode:null inherits.",
+  "project.analyze": "Ask the source for something and publish it. What comes out is the template's decision: a template whose selection.mode is `clips` gives a pack of short videos, one whose mode is `section` gives ONE long video cut from a stretch of the recording, in order, with the dead parts dropped — which is what to use for 'make a YouTube video out of this stream'. templateId picks it (templates.list shows what each makes); targetMinutes says how long the finished video should run; brief is the owner's own direction and wins over the template — say which part of the recording if they told you. Returns a job; watch project.status.",
   "project.batch": "Start the batch: transcribe, plan and edit every pending video under the shared plan. Returns a job.",
   "glossary.get": "Names and how they are spelled.",
   "glossary.save": "Write the glossary at a level.",

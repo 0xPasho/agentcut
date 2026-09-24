@@ -1,6 +1,7 @@
 import { VideoTemplate } from "../types";
 
 const VERTICAL = { width: 1080, height: 1920, fps: 30 };
+const HORIZONTAL = { width: 1920, height: 1080, fps: 30 };
 
 /**
  * The templates the product ships with. They are ordinary template documents —
@@ -358,6 +359,193 @@ const DEFINITIONS: unknown[] = [
         description: "The whole point: it plays across every cut. Not ducked — nobody is talking." },
     ],
   },
+  /**
+   * The long ones. Everything above dresses a moment somebody else found; these two say
+   * what to find — `selection.mode: "section"` — which is the only reason a five-hour
+   * stream can come out as one video instead of a pack of shorts. They are ordinary
+   * template documents, so "a two-hour video, but with my captions" is a copy of one
+   * with two fields changed, not a code change.
+   */
+  {
+    id: "stream-to-youtube",
+    name: "Stream to YouTube",
+    description:
+      "One long horizontal video out of a stream: the part of the session that is about one thing, kept in order, with the setup, the waiting and the breaks dropped. Chapters from what each stretch is about, dead air trimmed, loudness set for the platform.",
+    tags: ["horizontal", "long-form", "youtube", "stream", "section"],
+    output: HORIZONTAL,
+    selection: {
+      mode: "section",
+      count: 1,
+      // Twenty minutes is the floor at which this is a video rather than a long clip;
+      // two and a half hours is the ceiling past which nobody finishes it.
+      minSec: 1200,
+      maxSec: 9000,
+      targetSec: null,
+      // One sitting. Above three hours of source the video stops being about one thing.
+      sourceSpanSec: 10800,
+      minSegmentSec: 45,
+      chapters: true,
+      brief:
+        "A video for the people who came for this subject. Find the stretch of the session where it is actually being worked on or explained, open where the promise is stated, and keep the order it happened in. Drop the setup, the waiting, the tangents and the breaks whole.",
+    },
+    // A long video is read, not skimmed: burned captions across two hours are noise,
+    // and the platform draws its own. A channel that wants them copies this and says so.
+    captions: { preset: "none" },
+    hook: { mode: "off" },
+    comment: { enabled: false },
+    images: { mode: "off" },
+    rhythm: {
+      // The one pass that always earns its place at this length: an hour of a stream is
+      // a few minutes of silence. Gentler than a short, and a long gap is left alone —
+      // at this length a pause is usually a scene, not dead air.
+      silence: { enabled: true, minGapSec: 0.7, keepSec: 0.18, maxGapSec: 3 },
+      redundancy: { enabled: true, maxGapSec: 1.5, minWords: 2 },
+      // A push-in every fifteen seconds for two hours is motion sickness.
+      punch: { enabled: false },
+      emphasis: { enabled: false },
+    },
+    music: { enabled: false },
+    sound: { mode: "off" },
+    // The feed normalises to about -14 LUFS, and a stream recorded at -23 arrives
+    // quiet under everything published beside it.
+    audio: { targetLufs: -14 },
+    intro: { enabled: false, slot: "intro", seconds: 5, level: "match" },
+    outro: { enabled: false, slot: "outro", seconds: 8, level: "match" },
+    slots: [
+      { id: "intro", label: "Your intro", kind: "video",
+        description: "Optional. Played whole before the video starts. Enable `intro` to use it." },
+      { id: "outro", label: "Your end card", kind: "video",
+        description: "Optional. Played whole at the end. Enable `outro` to use it." },
+      { id: "logo", label: "Your logo", kind: "image",
+        description: "Optional. Held in a corner for the whole video if `watermark` is enabled." },
+    ],
+  },
+  {
+    id: "stream-recap",
+    name: "Stream recap",
+    description:
+      "The twenty-minute version of a long session: the same section edit, cut much tighter, so a stream nobody watched live is still worth an evening. Chapters, captions on, and a push-in on the lines that land.",
+    tags: ["horizontal", "long-form", "recap", "stream", "section"],
+    extends: "stream-to-youtube",
+    selection: {
+      minSec: 600,
+      maxSec: 2400,
+      targetSec: 1200,
+      // A recap may range over the whole session — that is what makes it a recap.
+      sourceSpanSec: null,
+      minSegmentSec: 25,
+      brief:
+        "A recap: the moments that made the session worth watching, in the order they happened, with enough around each one that it makes sense. Not a highlight reel of reactions — every stretch has to say something.",
+    },
+    captions: { preset: "boxed", positionY: 0.82, fontSizePct: 3.4, maxWordsPerLine: 8, uppercase: false },
+    rhythm: {
+      silence: { enabled: true, minGapSec: 0.5, keepSec: 0.12, maxGapSec: 2.5 },
+      punch: { enabled: true, perMinute: 1, scale: 1.06, durationSec: 1.4 },
+      emphasis: { enabled: true, targets: ["numbers", "brands"] },
+    },
+  },
+  /**
+   * The news take. Not a stream and not a short: one person, one sitting, a screen full
+   * of the thing they are talking about, recorded straight through and published the
+   * same day. The whole difference between the recording and the video is what comes
+   * *out* of it — the stalls, the sentence started twice, the tangent that went nowhere
+   * — which is why this is the only built-in that turns on every cleanup pass at once.
+   *
+   * The numbers are measured, not chosen. A published 27-minute news video from the
+   * channel this is modelled on (measured with `pnpm exec tsx scripts/pace.ts`) reads
+   * at a median gap of 0.12s, p90 0.48s, p95 0.64s, and 24 pauses over a third of a
+   * second per minute: fast, but with room in it. Its stalls are gone — "uh" survives
+   * 0.04 times a minute — and so are its false starts, at 0.05 two-word repeats a
+   * minute, while "like" and "so" survive 1.3-1.8 times a minute each, because that is
+   * how the person talks. Cut the hesitation, keep the voice.
+   */
+  {
+    id: "news-desk",
+    name: "News desk",
+    description:
+      "One take about one story, tightened: the stalls, the false starts, the sentence said twice and the tangents that went nowhere all come out, and what is left is the argument in the order it was made. Horizontal, no burned captions, levelled for the feed.",
+    tags: ["horizontal", "long-form", "news", "talking-head", "section"],
+    output: HORIZONTAL,
+    selection: {
+      mode: "section",
+      count: 1,
+      // Under five minutes this is a short with a long name; past fifty, a story has
+      // stopped being one story.
+      minSec: 300,
+      maxSec: 3000,
+      targetSec: null,
+      // A news take is already one sitting: there is no "which part of the day" to
+      // decide, only which parts of it are the video.
+      sourceSpanSec: null,
+      // Small, because what is dropped here is a tangent or a lost thread, not an hour
+      // of setup. Below fifteen seconds a drop is the cleanup passes' job, not a cut.
+      minSegmentSec: 15,
+      chapters: true,
+      brief:
+        "One person covering one story, recorded in one take. Keep the order it was said in — the claim, the evidence, the verdict — and keep the parts where something is actually being shown or argued. Drop what went nowhere: the tangent they abandon, the tab they cannot find, the point they lose and pick up again a minute later, the setup before the video really starts. Do not cut across a sentence, and do not cut inside a clip they are playing: the reaction only makes sense on top of it.",
+    },
+    // The platform draws its own captions on a horizontal video, and burning a second
+    // set over a screen share covers the thing being talked about.
+    captions: { preset: "none" },
+    hook: { mode: "off" },
+    comment: { enabled: false },
+    // The screen is already the picture. A stock photograph over a screenshot of the
+    // article is not illustration, it is cover.
+    images: { mode: "off" },
+    rhythm: {
+      // Keeps every pause under 0.6s — which is where the published distribution sits —
+      // and takes out everything above it, however long: a minute of reading in silence
+      // is dead air, not a scene. The sound decides each one, so a word the recogniser
+      // missed is never cut out with the quiet around it.
+      silence: { enabled: true, minGapSec: 0.6, keepSec: 0.15, maxGapSec: 30 },
+      redundancy: { enabled: true, minWords: 2, maxGapSec: 1.5 },
+      filler: { enabled: true },
+      retake: { enabled: true },
+      // Zooming every fifteen seconds for half an hour is a tic. What movement this
+      // kind of video has comes from the screen, not from the frame.
+      punch: { enabled: false },
+      emphasis: { enabled: false },
+    },
+    music: { enabled: false },
+    sound: { mode: "off" },
+    // The feed normalises to about -14 LUFS; a take recorded at -23 arrives quiet.
+    audio: { targetLufs: -14 },
+    intro: { enabled: false, slot: "intro", seconds: 5, level: "match" },
+    outro: { enabled: false, slot: "outro", seconds: 8, level: "match" },
+    slots: [
+      { id: "intro", label: "Your intro", kind: "video",
+        description: "Optional. Played whole before the video starts. Enable `intro` to use it." },
+      { id: "outro", label: "Your end card", kind: "video",
+        description: "Optional. Played whole at the end. Enable `outro` to use it." },
+      { id: "logo", label: "Your logo", kind: "image",
+        description: "Optional. Held in a corner for the whole video if `watermark` is enabled." },
+    ],
+  },
 ];
 
-export const BUILTIN_TEMPLATES: VideoTemplate[] = DEFINITIONS.map((definition) => VideoTemplate.parse(definition));
+/**
+ * `extends` between two built-ins is resolved here, the same way the registry resolves
+ * it for a template on disk: a document that says "the long-form one, but twenty minutes
+ * and with captions" is that parent with those fields changed. Without this a built-in
+ * could only ever be written out in full, which is how a set of templates drifts.
+ */
+const isPlainObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const deepMerge = (base: unknown, patch: unknown): unknown => {
+  if (!isPlainObject(patch)) return patch;
+  const target: Record<string, unknown> = isPlainObject(base) ? { ...base } : {};
+  for (const [key, value] of Object.entries(patch)) target[key] = deepMerge(target[key], value);
+  return target;
+};
+
+const byId = new Map(DEFINITIONS.map((definition) => [String((definition as Record<string, unknown>).id), definition as Record<string, unknown>]));
+function flatten(raw: Record<string, unknown>, chain: string[]): Record<string, unknown> {
+  const parentId = typeof raw.extends === "string" ? raw.extends : null;
+  if (!parentId) return raw;
+  if (chain.includes(parentId)) throw new Error(`Built-in template ${chain[0]} extends itself through ${[...chain, parentId].join(" → ")}`);
+  const parent = byId.get(parentId);
+  if (!parent) throw new Error(`Built-in template ${raw.id} extends ${parentId}, which does not exist`);
+  return deepMerge(flatten(parent, [...chain, parentId]), raw) as Record<string, unknown>;
+}
+
+export const BUILTIN_TEMPLATES: VideoTemplate[] = DEFINITIONS.map((definition) =>
+  VideoTemplate.parse(flatten(definition as Record<string, unknown>, [String((definition as Record<string, unknown>).id)])));

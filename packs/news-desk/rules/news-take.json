@@ -1,0 +1,12 @@
+{
+  "id": "news-take",
+  "name": "A news take is edited as one",
+  "description": "One person, one story, one sitting: the video is the argument with everything that was not the argument taken out.",
+  "when": "the recording is one person covering a piece of news in one sitting — talking to camera, or over their own screen — rather than a stream, a stream highlight or a conversation",
+  "stage": "both",
+  "priority": 50,
+  "then": {
+    "template": "news-desk-daily",
+    "prompt": "Keep the order it was said in: the claim, then what was shown or run, then the verdict. Open on the claim, not on the warm-up, and end on the verdict rather than on the speaker running out of things to say."
+  }
+}

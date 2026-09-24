@@ -50,6 +50,7 @@ const SUBJECT: Record<string, string[]> = {
   "media.transcribe": ["mediaIds"],
   "media.transcription.set": ["mode"],
   "project.batch": ["brief"],
+  "project.analyze": ["templateId", "mode", "targetMinutes"],
   "packs.inspect": ["source"],
   "packs.import": ["source"],
   "packs.remove": ["id"],
@@ -79,6 +80,7 @@ const VERB: Record<string, string> = {
   "media.transcription": "checking which sources have words",
   "media.transcription.set": "changing when new sources are transcribed",
   "project.batch": "starting the batch",
+  "project.analyze": "looking through the recording",
 };
 
 /** `3 changes · item.patch ×2, item.place` — the shape of an edit, not its payload. */

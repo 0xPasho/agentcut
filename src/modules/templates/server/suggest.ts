@@ -5,6 +5,7 @@ import type { TemplateRecord, VideoTemplate } from "../types";
 import { analyzeSentences, toSentences } from "../lib/script";
 import { brandMentions, planTemplate, resolveTarget, slotFilled, type SlotValue, type TemplatePlan } from "./plan";
 import { promoteClipToSequence } from "../../editor/lib/editable-timeline";
+import { runtime } from "../../../common/lib/format";
 
 /**
  * Which template this video wants. The agent is handed the list of templates and
@@ -181,6 +182,22 @@ function score(template: TemplateRecord, signals: SequenceSignals, slots: Record
     } else {
       points += 25;
       why.push("this footage is a wide screen with room for a speaker in a corner of it, which is what a split is for");
+    }
+  }
+  // A template is written for a length now, and a length is evidence, not taste: the
+  // long-form document that cuts two hours of stream has nothing to say about a
+  // forty-second short, and offering it first is how a picker stops being useful.
+  const wants = template.selection;
+  if (signals.durationSec > 0) {
+    if (signals.durationSec < wants.minSec * 0.5) {
+      points -= 30;
+      why.push(`this video is ${runtime(signals.durationSec)} and this template is written for ${runtime(wants.minSec)} to ${runtime(wants.maxSec)}`);
+    } else if (signals.durationSec > wants.maxSec * 2) {
+      points -= 25;
+      why.push(`this video is ${runtime(signals.durationSec)}, far past the ${runtime(wants.maxSec)} this template is written for`);
+    } else if (wants.mode === "section") {
+      points += 10;
+      why.push("written for a video this long, kept in order rather than cut to a moment");
     }
   }
   if (signals.casing !== "mixed" && wantsPictures && !sources.includes("slot")) {

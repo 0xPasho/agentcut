@@ -133,9 +133,13 @@ export async function createVideoProject(name: string, inputs: MediaInput[] = []
     const item = (m: MediaSource) => { const itemId = `i_${randomUUID().slice(0, 8)}`; return {
       id: itemId, mediaId: m.id, clip: Clip.parse({ id: itemId, title: m.name, start: 0, end: m.durationSec, captions: { preset: "none" } }),
     }; };
+    // Nothing was dropped and no shape was asked for: the project has no frame yet, and
+    // says so, rather than pretending 1920x1080 was a decision somebody made. The first
+    // video imported settles it.
+    const undecided = !options.output && !first;
     const sequences = options.layout === "separate" && media.length
       ? media.map(m => ({ id: `s_${randomUUID().slice(0, 8)}`, title: m.name.replace(/\.[^.]+$/, ""), output: options.output ?? { width: m.width, height: m.height, fps: m.fps }, items: [item(m)] }))
-      : [{ id: `s_${randomUUID().slice(0, 8)}`, title: "Main video", output, items: media.map(item) }];
+      : [{ id: `s_${randomUUID().slice(0, 8)}`, title: "Main video", output, ...(undecided ? { autoOutput: true } : {}), items: media.map(item) }];
     publishClips(id, Edl.parse({ projectId: id, source: first, output, media, clips: [], sequences }));
     q.setProject(id, { status: "ready" });
     // Footage dropped on the home screen is exactly the footage whose words every

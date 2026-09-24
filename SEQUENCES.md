@@ -84,8 +84,8 @@ engine. UI and agent boundaries use the same validation.
 | `media.remove` | Remove unused media from the project; reject if still referenced |
 | `media.transcription` | Record where a source's own words stand; the one media field an edit may write |
 | `sequence.add` / `sequence.remove` | Create/delete an output timeline |
-| `sequence.patch` | Change the sequence name or output settings |
-| `item.add` | Insert a video or source-free canvas item at an index, or append it |
+| `sequence.patch` | Change the sequence name or output settings; naming a shape ends `autoOutput` |
+| `item.add` | Insert a video or source-free canvas item at an index, or append it. On a sequence still marked `autoOutput` — the "Default" shape, chosen by nobody — the first video placed sets the output and clears the flag |
 | `item.remove` | Remove an item without deleting its source |
 | `item.move` | Move an item to a zero-based destination index |
 | `item.patch` | Update changed clip properties; optional `before` protects staged edits |

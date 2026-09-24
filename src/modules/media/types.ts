@@ -24,5 +24,14 @@ export type AudioHit = { provider: string; id: string; title: string; durationSe
 
 export type SortKey = "name" | "size" | "kind" | "date";
 
-/** What `media.transcription` answers. The agent reads the same shape. */
-export type TranscriptionReport = { media: Array<TranscriptionState & { id: string; name: string }>; settings: { effective: { mode: string; scope: string } } };
+/**
+ * What `media.transcription` answers. The agent reads the same shape.
+ *
+ * `effective` is what is in force and `scope` says who decided it: a project
+ * override and the environment both outrank the workspace value, so a surface
+ * that only knows `effective` cannot tell whether its own save will take effect.
+ */
+export type TranscriptionReport = {
+  media: Array<TranscriptionState & { id: string; name: string }>;
+  settings: { effective: { mode: string; scope: string }; workspace: string | null; project: string | null; modes: string[] };
+};

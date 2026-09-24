@@ -415,6 +415,13 @@ export type SequenceItem = z.infer<typeof SequenceItem>;
 export const VideoSequence = z.object({
   id: z.string().regex(/^[a-zA-Z0-9_-]+$/), title: z.string().min(1),
   output: z.object({ width: z.number().int().positive(), height: z.number().int().positive(), fps: z.number().positive() }),
+  /**
+   * Nobody chose a shape for this video yet, so `output` is a placeholder: the first
+   * video placed on the timeline settles it, and the flag goes. Absent — which is
+   * every project whose author picked a shape, and every project made before this —
+   * means the frame is the author's decision and no import may move it.
+   */
+  autoOutput: z.boolean().optional(),
   items: z.array(SequenceItem).default([]),
   /** What the agent decided for this video and why. See plan/schema.ts. */
   plan: SequencePlan.prefault({}),

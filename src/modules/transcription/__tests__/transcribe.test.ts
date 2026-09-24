@@ -4,7 +4,6 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { frameLevels, readWavMono, rebaseOntoSource, refineWordTimes, speechRuns } from "../server/align";
-import { applyCorrections, retimeWords, suspectSegments } from "../server/polish";
 import { activeWordIndex, lineAt, toLines, visibleWords } from "../../editor/lib/timeline";
 import { Transcript, type Word } from "../lib/transcript";
 
@@ -158,7 +157,7 @@ test("each caption preset shows what it promises", () => {
 
 test("a corrected word inherits the timing of the word it replaces", () => {
   const original = [word("recomiendes", 1.0, 0.5, 0.3), word("una", 1.5, 0.2), word("app", 1.7, 0.3)];
-  const retimed = retimeWords(original, ["recomiendas", "una", "app"]);
+  const retimed = polish.retimeWords(original, ["recomiendas", "una", "app"]);
   assert.ok(retimed);
   assert.deepEqual(retimed.map((w) => w.w), ["recomiendas", "una", "app"]);
   assert.equal(retimed[1].t, 1.5);
@@ -168,7 +167,7 @@ test("a corrected word inherits the timing of the word it replaces", () => {
 
 test("a word the recogniser missed takes a share of its neighbours' time", () => {
   const original = [word("de", 1.0, 0.2), word("chats", 1.2, 0.6, 0.4)];
-  const retimed = retimeWords(original, ["de", "mis", "chats"]);
+  const retimed = polish.retimeWords(original, ["de", "mis", "chats"]);
   assert.ok(retimed);
   assert.deepEqual(retimed.map((w) => w.w), ["de", "mis", "chats"]);
   for (let i = 1; i < retimed.length; i++) assert.ok(retimed[i].t > retimed[i - 1].t, "times stay ordered");
@@ -177,7 +176,7 @@ test("a word the recogniser missed takes a share of its neighbours' time", () =>
 
 test("a rewrite that keeps nothing is refused", () => {
   const original = [word("uno", 1.0, 0.3), word("dos", 1.3, 0.3), word("tres", 1.6, 0.3)];
-  assert.equal(retimeWords(original, ["completely", "different", "sentence"]), null);
+  assert.equal(polish.retimeWords(original, ["completely", "different", "sentence"]), null);
 });
 
 test("corrections change text without moving the transcript", () => {
@@ -186,14 +185,14 @@ test("corrections change text without moving the transcript", () => {
     segments: [{ start: 1, end: 2, text: "recomiendes una app" }],
     words: [word("recomiendes", 1.0, 0.5, 0.3), word("una", 1.5, 0.2), word("app", 1.7, 0.3)],
   });
-  const { transcript: fixed, changed } = applyCorrections(transcript, [{ i: 0, text: "recomiendas una app" }]);
+  const { transcript: fixed, changed } = polish.applyCorrections(transcript, [{ i: 0, text: "recomiendas una app" }]);
   assert.equal(changed, 1);
   assert.equal(fixed.segments[0].text, "recomiendas una app");
   assert.equal(fixed.words[0].w, "recomiendas");
   assert.equal(fixed.words[2].t, 1.7);
   // An out-of-range index, and a no-op correction, are both ignored.
-  assert.equal(applyCorrections(transcript, [{ i: 9, text: "hola" }]).changed, 0);
-  assert.equal(applyCorrections(transcript, [{ i: 0, text: "recomiendes una app" }]).changed, 0);
+  assert.equal(polish.applyCorrections(transcript, [{ i: 9, text: "hola" }]).changed, 0);
+  assert.equal(polish.applyCorrections(transcript, [{ i: 0, text: "recomiendes una app" }]).changed, 0);
 });
 
 test("only segments the recogniser doubted are sent for proofreading", () => {
@@ -205,7 +204,7 @@ test("only segments the recogniser doubted are sent for proofreading", () => {
     ],
     words: [word("clear", 0.1, 0.5, 0.98), word("muddy", 1.1, 0.5, 0.2), word("ghost", 2.1, 0.5, 0.1)],
   });
-  assert.deepEqual(suspectSegments(transcript), [1]);
+  assert.deepEqual(polish.suspectSegments(transcript), [1]);
 });
 
 /**
@@ -217,6 +216,13 @@ let database: typeof import("../../../common/server/db");
 let store: typeof import("../../editor/server/store");
 let resync: typeof import("../server/resync");
 let engine: typeof import("../server/whispercpp");
+/**
+ * Loaded here rather than at the top of the file: proofreading reaches the harness
+ * providers, which read the workspace as they load. Imported statically, every run of
+ * this file wrote its fixtures into the real workspace — and then failed on the ids it
+ * had left there the run before.
+ */
+let polish: typeof import("../server/polish");
 
 before(async () => {
   workspace = await fs.mkdtemp(path.join(os.tmpdir(), "agentcut-transcribe-test-"));
@@ -225,6 +231,7 @@ before(async () => {
   store = await import("../../editor/server/store");
   resync = await import("../server/resync");
   engine = await import("../server/whispercpp");
+  polish = await import("../server/polish");
 });
 after(async () => {
   database.db.close();

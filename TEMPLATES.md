@@ -32,6 +32,70 @@ identical whether a person pressed **Apply** or an agent called the tool. The ag
 receives `templates.json` in its run directory, so it knows which templates exist before
 it decides which one the material wants.
 
+## What a template makes
+
+A template says what kind of video it is, not only how one looks. That is its
+`selection` block, and it is the reason a five-hour stream can come out as one
+publishable video instead of only as a pack of shorts.
+
+```json
+"selection": {
+  "mode": "section",
+  "count": 1,
+  "minSec": 1200,
+  "maxSec": 9000,
+  "targetSec": null,
+  "sourceSpanSec": 10800,
+  "minSegmentSec": 45,
+  "chapters": true,
+  "brief": "A video for the people who came for this subject…"
+}
+```
+
+| Field | What it decides |
+| --- | --- |
+| `mode` | `clips` — many independent outputs, one moment each. `section` — **one** output cut from a stretch of the recording, kept in order, with the dead parts dropped |
+| `count` | How many outputs to propose. A section is one video |
+| `minSec` / `maxSec` | How long one finished output may run. In `section` these are minutes to hours |
+| `targetSec` | What it should come out at, when the template has an opinion |
+| `sourceSpanSec` | `section`: how much of the recording one video may be drawn from. Above it the choice is *which part of the day to publish*, which is the first decision a long edit makes |
+| `minSegmentSec` | `section`: the shortest stretch worth keeping as its own shot. Under it a cut only makes the edit jumpy, so the stretch is kept whole or dropped whole |
+| `chapters` | `section`: write the kept stretches as the sequence's plan beats, so the video is navigated by what it is about |
+| `brief` | The template's own direction to whoever is choosing |
+
+Nothing downstream assumes shorts any more. The selection prompt is assembled from this
+block and from the template's `output`, so a horizontal template is never told to split a
+webcam out of a corner, and a long-form run is never told it is making shorts. A run with
+no template at all keeps the old default — six vertical clips of 20–75s — so an existing
+project behaves exactly as it did.
+
+The two long-form built-ins are `stream-to-youtube` (one horizontal video, 20 minutes to
+two and a half hours, chapters, dead air trimmed, loudness set to −14 LUFS, no hook card
+and no b-roll) and `stream-recap`, which `extends` it and is the twenty-minute version
+with captions and a slow push-in. `extends` resolves between built-ins as well as on disk,
+so "that one, but twenty minutes" is two fields, not a second document.
+
+### One long video, both interfaces
+
+| Interface | How |
+| --- | --- |
+| Human | The project's analyse form asks **what to make** — a pack of clips or one long video — then the template, then the one number that kind needs (how many, or how long), then the direction |
+| Agent | `project.analyze` with `templateId`, and optionally `mode`, `count`, `targetMinutes`, `minMinutes`, `maxMinutes` and `brief` |
+| Terminal | `tsx scripts/clip.ts <video> --template stream-to-youtube --minutes 90` |
+
+All three post the same options to the same job, so neither interface can ask for a shape
+the other cannot. The owner's `brief` is the instruction that wins: *"the two hours about
+the Postgres migration, skip the start"* is how you say which part of the day the video is.
+
+A `section` run publishes **one sequence of ordered stretches**, each an ordinary shot
+with its own words — not a clip proposal. Everything after that point treats it as an
+ordinary video: the template's own pass cuts its dead air, the timeline trims it by hand,
+the renderer exports it. There is no second editor for long videos, and the stretches the
+agent kept are exactly the ones you can drag afterwards. Overlapping, backwards or
+out-of-range stretches are settled before publishing, and an edit that lands far outside
+the length the template asked for is reported on the sequence's plan rather than silently
+cut short.
+
 ## Inheritance, looks, brand, bookends, aspects
 
 - **`extends`**: `{"id":"quiet-explainer","extends":"explainer-broll","name":"Quiet explainer","captions":{"uppercase":false}}`
@@ -588,6 +652,48 @@ each adopted asset and reported by `template.apply`.
   ese 10% extra. Ese 10% extra es donde mueren los proyectos" is a sentence finished and
   then picked up again, which is the line the clip was chosen for — a run that ended its
   sentence is kept.
+- `rhythm.filler` and `rhythm.retake` are the other two things in a recording that a video
+  does not have, and neither is silence, so no dead-air pass can reach them.
+
+  `filler` takes out the stall — "um", "uh", the hum before a sentence starts — and the
+  hesitation around it, because a stall is a hole rather than a word between two pauses.
+  `words` is a list, not a rule: which sound is a stall depends on the language, and
+  "este" is a Spanish stall *and* an ordinary word, so it is not a default. Two things
+  keep it from taking words with it. A sound that *ends* a sentence is a tag, not a
+  stall — "está chida, ¿eh?", "es un buen video, eh." — and over seven hours of a real
+  stream every "eh" but one was this, so a run is only cut when it opens a sentence or
+  sits inside one. And the cut reaches at most `maxWordSec` into the silence either
+  side: past that the hole is dead air, which belongs to `rhythm.silence`, because that
+  pass reads the sound before it cuts and this one cannot.
+
+  `retake` takes out a take that was abandoned and said again: *"as I said before, the—
+  as I said before, this model is the one"*. Both runs are speech, they are not word for
+  word, and a few words of the abandoned take sit between them, so the redundancy pass
+  cannot see it either. What marks it is the shape — a sentence opens, stops a few words
+  in, and the next run opens the same way and carries on — so a take is dropped whole when
+  what follows re-opens it over `minWords` words at `similarity` or better, has at most
+  `strayWords` past that shared opening, runs shorter than the run that replaces it, did
+  not finish its sentence, and is picked back up inside `maxGapSec`. Only the abandoned
+  take goes; the run that continues is the one that was meant.
+
+  Two of its rules are there because seven hours of real material broke the version
+  without them. The two runs must open on at least two *identical* words, or "para
+  preguntas o es solo" eats "para código o es solo" — four words of five line up and it
+  is a list of two alternatives. And what the abandoned take is left hanging on has to be
+  grammar rather than meaning: a take that stopped stopped on the way to something
+  ("como dije antes, el—"), while "puedes abrir un YouTube, puedes abrir un Software"
+  stops on a noun, and dropping it loses YouTube. On four hours of a stream the pass
+  makes about one cut every half hour, which is the right order for a thing that removes
+  words somebody said.
+
+  Both are **off unless a template asks for them**: a pass that removes spoken words is
+  not something to inherit by accident. `news-desk` turns them on.
+
+  What they should and should not touch is measured rather than guessed. Across three
+  published news videos of the channel `news-desk` is modelled on (95 minutes), "like"
+  survives 1.3-1.7 times a minute and "so" 1.4-1.8 — that is a voice, and scrubbing it
+  would leave a press release — while "uh" survives 0.04 times a minute and a two-word run
+  said twice in a row 0.05. Cut the hesitation, keep the voice.
 - `hook.mode` is `sticky` (its own layer, the whole video), `intro` (`seconds` only) or `off`.
   Its text comes from `hookText`, then the template's own `hook.text`, then a hook written
   on any shot, then a footage shot's title, then the video's own title — never a canvas
@@ -729,11 +835,14 @@ because a shortlist is a decision already made.
 | `news-brief` | Company marks and lit numbers, captions low, an impact on each cut and a riser to open |
 | `music-montage` | Footage with nobody talking: no captions, a bed across the whole thing, a whoosh on every cut. The one that needs no transcript |
 | `stream-short` | A short cut from a screen-share stream: the screen on top, the person below, a hook held for the whole video, the sentence being said above the seam with its spoken word lit yellow, and the card you end every video on. Square and 4:5 give the person a larger share, because a webcam is about as wide as it is tall and a third of a square frame is not |
+| `news-desk` | One take about one story, tightened: the agent drops the stretches that went nowhere, and the stalls, false starts and retakes come out of what is left. Horizontal, no burned captions, no pictures over the screen share, levelled to -14 LUFS |
 
-The last five carry a sound design out of the box, built from the sounds that ship with the
-app — so they work with no network and nothing to fill in. The first six are silent unless
-you give them a music slot, which is deliberate: they were here before sound was, and a
-template should not start making noise because the app was updated.
+`fast-cuts`, `quote-card`, `how-to-steps`, `news-brief`, `music-montage` and `stream-short`
+carry a sound design out of the box, built from the sounds that ship with the app — so they
+work with no network and nothing to fill in. The first six are silent unless you give them a
+music slot, which is deliberate: they were here before sound was, and a template should not
+start making noise because the app was updated. `news-desk` is silent on purpose rather than
+by age: a bed under somebody reading a release note is a podcast intro, not a news video.
 
 Copy one, change what you want, save it under a new `id` — or override a built-in by
 saving a template with its id. Saving a *variation* is `templates.save` with `from`,

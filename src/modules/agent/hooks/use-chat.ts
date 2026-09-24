@@ -93,7 +93,10 @@ export function useProjectChat(projectId: string, o: {
   // A turn left unanswered with no job behind it is not in progress — its process
   // died, or the app was closed mid-run. Spinning forever on it is a lie, and it locks
   // the composer for good.
-  const working = pending || !!job || (unanswered && sentAt !== null);
+  // Until the stream has said what this project is running, an unanswered turn is
+  // unknown, not dead: the editor opened straight from the home screen was telling
+  // people their run had died while the agent was still working on it.
+  const working = pending || !!job || (unanswered && (sentAt !== null || !stream.connected));
   const elapsed = useElapsed(job?.createdAt ?? sentAt);
 
   useEffect(() => {

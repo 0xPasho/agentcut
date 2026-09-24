@@ -33,7 +33,10 @@ export const EditorOperation = z.discriminatedUnion("type", [
   z.object({ type: z.literal("media.transcription"), mediaId: z.string(), transcription: MediaTranscription.nullable() }).strict(),
   z.object({ type: z.literal("sequence.add"), sequence: VideoSequence }).strict(),
   z.object({ type: z.literal("sequence.remove"), sequenceId: z.string() }).strict(),
-  z.object({ type: z.literal("sequence.patch"), sequenceId: z.string(), title: z.string().min(1).optional(), output: VideoSequence.shape.output.optional() }).strict(),
+  // `autoOutput` is how "no shape chosen yet" is set and cleared. Naming a shape clears
+  // it on its own, so only undo — putting the project back before its first import —
+  // ever asks for it back.
+  z.object({ type: z.literal("sequence.patch"), sequenceId: z.string(), title: z.string().min(1).optional(), output: VideoSequence.shape.output.optional(), autoOutput: z.boolean().optional() }).strict(),
   z.object({ type: z.literal("item.edit.add"), sequenceId: z.string(), itemId: z.string(), edit: Edit }).strict(),
   z.object({ type: z.literal("item.add"), sequenceId: z.string(), item: SequenceItem, index: z.number().int().nonnegative().optional() }).strict(),
   z.object({ type: z.literal("item.remove"), sequenceId: z.string(), itemId: z.string() }).strict(),
@@ -146,6 +149,21 @@ function validateOutput(output: { width: number; height: number; fps: number }) 
   if (!Number.isInteger(output.width) || !Number.isInteger(output.height)) throw new Error("Output dimensions must be integers");
   output.width -= output.width % 2;
   output.height -= output.height % 2;
+}
+
+/**
+ * Give a shape-less video the shape of the source just placed on it.
+ *
+ * Only a source with a real frame counts: a blank scene or a sound has nothing to
+ * offer, and the video keeps waiting for a video. Odd dimensions are evened the way
+ * every other output is, because an encoder refuses them.
+ */
+function adoptShape(sequence: VideoSequence, media: MediaSource | undefined) {
+  if (!media || media.width <= 0 || media.height <= 0 || media.fps <= 0) return;
+  const output = { width: Math.round(media.width), height: Math.round(media.height), fps: media.fps };
+  validateOutput(output);
+  sequence.output = output;
+  delete sequence.autoOutput;
 }
 
 /** Shared domain validation: browser preview, agent tools and persistence all use this. */
@@ -287,13 +305,19 @@ export function applyOperations(input: Edl, raw: unknown): Edl {
       if (op.type === "sequence.remove") { next.sequences = next.sequences.filter(s => s.id !== op.sequenceId); continue; }
       if (op.type === "sequence.patch") {
         if (op.title !== undefined) sequence.title = op.title;
-        if (op.output !== undefined) sequence.output = op.output;
+        // A named shape is a decision, so it ends the waiting for one.
+        if (op.output !== undefined) { sequence.output = op.output; delete sequence.autoOutput; }
+        if (op.autoOutput !== undefined) { if (op.autoOutput) sequence.autoOutput = true; else delete sequence.autoOutput; }
         continue;
       }
       if (op.type === "item.add") {
         const index = op.index ?? sequence.items.length;
         if (index > sequence.items.length) throw new Error("Insertion position is outside the timeline");
-        sequence.items.splice(index, 0, op.item); continue;
+        sequence.items.splice(index, 0, op.item);
+        // Nobody picked a frame, so the first video brings its own: the footage is not
+        // letterboxed into a guess, and the decision is made once rather than every import.
+        if (sequence.autoOutput) adoptShape(sequence, op.item.mediaId ? next.media.find(m => m.id === op.item.mediaId) : undefined);
+        continue;
       }
       if (!("itemId" in op)) throw new Error("Missing item ID");
       const index = sequence.items.findIndex(i => i.id === op.itemId);

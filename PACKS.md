@@ -70,6 +70,26 @@ note on what to take from it.
   `packs.examples.remove`. An installed pack keeps them in `workspace/packs/<id>/`;
   `packs.export` with `stylePack` writes them into the exported folder.
 
+## The one that ships: `news-desk`
+
+`packs/news-desk/` in this repository is a pack like any other — a folder with a
+`pack.json`, read by path, shown before it is installed, removable afterwards:
+
+```
+Settings → Packs → Read it → packs/news-desk
+```
+
+It carries the judgement a template cannot: `STYLE.md` says what a news take is, what
+comes out of one (the stalls, the sentence said twice, the tangent that went nowhere) and
+what stays (the voice, the pause before the verdict, the clip being played whole), and the
+selection agent reads it before it decides which stretches are the video. Beside it are
+three rules — a news take is edited as one, somebody else's clip runs whole, the sponsor
+read stays whole — and `news-desk-daily`, a template that builds on the built-in
+`news-desk` with a stall list covering English and Spanish.
+
+Nothing in it is code. The passes it switches on (`rhythm.filler`, `rhythm.retake`) ship
+with the app; the pack decides that a news video is where they belong, and says why.
+
 ## What correct looks like
 
 A template is what gets applied; it is not what gets verified. `STYLE.md` says what a good

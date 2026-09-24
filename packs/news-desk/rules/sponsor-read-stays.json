@@ -1,0 +1,11 @@
+{
+  "id": "sponsor-read-stays",
+  "name": "The sponsor read stays whole",
+  "description": "It is the one part of the video somebody has been paid to deliver in full.",
+  "when": "the take contains a sponsor read, an ad or a plug the speaker was paid for",
+  "stage": "edit",
+  "priority": 40,
+  "then": {
+    "prompt": "Keep the sponsor read where it sits and at its own length. Stalls and false starts inside it are cleaned like anything else; nothing is dropped from it, and it is never moved."
+  }
+}

@@ -1,3 +1,4 @@
+import { type Shape } from "./types";
 /**
  * The project's agent, as a chat.
  *
@@ -74,9 +75,13 @@ export const SUGGESTIONS = [
   { label: "A title card", text: "Start me a 9:16 video with a bold title card that says " },
 ];
 
-/** The shapes on offer. A video's frame is the one decision that is awkward to change later. */
-export const SHAPES = [
-  { id: "", label: "Blank", note: "16:9", w: 32, h: 18 },
+/**
+ * The shapes on offer. A video's frame is the one decision that is awkward to change
+ * later — which is exactly why the first card decides nothing: without a shape the
+ * video takes the shape of the first video put on it, and only then settles.
+ */
+export const SHAPES: Shape[] = [
+  { id: "", label: "Default", note: "your footage", auto: true, w: 30, h: 20 },
   { id: "9:16", label: "Vertical", note: "9:16", w: 18, h: 32 },
   { id: "4:5", label: "Portrait", note: "4:5", w: 24, h: 30 },
   { id: "1:1", label: "Square", note: "1:1", w: 28, h: 28 },

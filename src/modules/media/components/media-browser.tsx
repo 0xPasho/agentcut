@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, Film, Folder, ImageIcon, Loader2, Music, Plus, RefreshCw, Upload } from "lucide-react";
+import { ArrowUp, Check, Film, Folder, ImageIcon, Loader2, Music, Plus, RefreshCw, Upload } from "lucide-react";
 import { api, assetFileUrl, type AssetSummary } from "@/common/api/client";
 import type { Edl } from "@/modules/editor/types";
 import type { FolderListing } from "@/modules/media/server/local-assets";
@@ -83,7 +83,17 @@ export function MediaBrowser({ projectId, edl, beforeImport, afterImport, onBusy
     await api.editorTool(projectId, { tool: "media.transcribe", mediaIds: [mediaId], background: true, force });
     await readWords();
   }, false);
-  const setMode = (mode: string) => run(async () => { await api.editorTool(projectId, { tool: "media.transcription.set", mode, level: "workspace" }); await readWords(); }, false);
+  /**
+   * The choice is the workspace's, but a project override outranks it, so saving the
+   * workspace alone would store the answer and leave the panel showing the old one.
+   * Clearing the override is what choosing here means.
+   */
+  const setMode = (mode: string) => run(async () => {
+    const saved = await api.editorTool<TranscriptionReport["settings"]>(projectId, { tool: "media.transcription.set", mode, level: "workspace" });
+    if (saved.project && saved.project !== mode) await api.editorTool(projectId, { tool: "media.transcription.set", mode: null, level: "project" });
+    await readWords();
+    setNotice("Saved. New imports follow this from now on.");
+  }, false);
   /**
    * An import rewrites the project underneath the editor, so it holds the rest of the editor
    * still until it lands. Only an import: reading a folder or the asset list changes nothing,
@@ -153,7 +163,13 @@ export function MediaBrowser({ projectId, edl, beforeImport, afterImport, onBusy
         <p className="text-[11px] text-muted-foreground">{busyWords?`Listening to ${words.media.filter(m=>m.status==='running'||m.status==='queued').length} of ${words.media.length} sources. You can keep editing.`:'Imported videos are transcribed so captions, silence cuts and the agent can read what is said.'}</p>
         {/* A stable region, empty until a source lands, so the same news announces twice. */}
         <p role="status" className="sr-only">{announcement}</p>
-        <div role="group" aria-label="Transcribe new sources" className="flex flex-wrap gap-1">{[['audio','When they have sound'],['always','Always'],['off','Never']].map(([value,label])=><Button key={value} variant={words.settings.effective.mode===value?'secondary':'ghost'} size="xs" aria-pressed={words.settings.effective.mode===value} disabled={pending} onClick={()=>setMode(value)}>{label}</Button>)}</div>
+        <div role="group" aria-label="Transcribe new sources" className="flex flex-wrap gap-1">{[['audio','When they have sound'],['always','Always'],['off','Never']].map(([value,label])=>{
+          const chosen = words.settings.effective.mode===value;
+          // A saved choice has to look saved: a tick and a filled pill, against the rest
+          // dimmed. Three equally bright labels read as a question nobody answered.
+          return <Button key={value} variant={chosen?'secondary':'ghost'} size="xs" aria-pressed={chosen} className={chosen?'border-white/25':'text-muted-foreground'} disabled={pending||words.settings.effective.scope==='env'} onClick={()=>setMode(value)}>{chosen&&<Check aria-hidden />}{label}</Button>;
+        })}</div>
+        {words.settings.effective.scope==='env' && <p className="text-[11px] text-muted-foreground">This machine sets it through AGENTCUT_TRANSCRIBE_ON_IMPORT, so it cannot be changed here.</p>}
       </section>}{children}</TabsContent>
       <TabsContent value="library" className="space-y-3">{viewer}</TabsContent>
       <TabsContent value="folders" className="space-y-3 pt-3">

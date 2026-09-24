@@ -40,3 +40,13 @@ export const FILTERS: Array<{ value: SequenceStatus | "all"; label: string }> = 
   { value: "all", label: "All" },
   ...STATUSES.map((value) => ({ value, label: STATUS[value].label })),
 ];
+
+/**
+ * The two kinds of thing a recording can become. They are not a list of features: each
+ * one is a `selection.mode` some template on this machine declares, and a template that
+ * declares neither cannot be reached from here.
+ */
+export const MAKES: Array<{ mode: "clips" | "section"; label: string; note: string }> = [
+  { mode: "clips", label: "A pack of clips", note: "Many short videos, one moment each" },
+  { mode: "section", label: "One long video", note: "A section of the recording, kept in order" },
+];

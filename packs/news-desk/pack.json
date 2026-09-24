@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "id": "news-desk",
+  "name": "News desk",
+  "version": "1.0.0",
+  "author": "openopusclip",
+  "description": "Turn a raw take about one story into a publishable news video: the stalls, the false starts, the sentence said twice and the stretches that went nowhere come out, the voice and the pauses that are doing work stay. Horizontal, no captions burned, levelled for the feed.",
+  "templates": ["news-desk-daily"],
+  "rules": ["news-take", "play-the-clip-whole", "sponsor-read-stays"],
+  "style": "STYLE.md",
+  "quickActions": [
+    { "label": "Tighten this take", "text": "Apply the News desk — daily template to {selection}: cut the stalls, the false starts, the retakes and the dead air, and leave the voice alone." },
+    { "label": "Drop what went nowhere", "text": "Go through {selection} and drop the stretches that are not about the story — the warm-up, the tangent that was abandoned, the part where the thread was lost. Cut on sentence boundaries and keep the order." },
+    { "label": "Open on the claim", "text": "Find where {selection} first states what happened and what you think of it, and start the video there. Everything before it goes." }
+  ]
+}

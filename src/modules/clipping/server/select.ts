@@ -8,7 +8,11 @@ import { resolveProvider, type AgentEvent } from "../../agent/server/providers";
 import { trim } from "../../editor/lib/operations";
 import { resolveQuery } from "../../media/server/search";
 import { buildSelectPrompt } from "../lib/prompt";
+import { runtime } from "../../../common/lib/format";
 import { tightenBoundaries } from "../lib/boundaries";
+import { keptSeconds, sectionTimeline } from "../lib/section";
+import { AgentSectionProposals, SelectionSpec } from "../types";
+import { emptySequencePlan } from "../../plan/types";
 import type { Signals } from "./signals";
 import { listRules } from "../../rules/server/registry";
 import { candidateRules } from "../../rules/server/evaluate";
@@ -44,9 +48,12 @@ export type SelectOptions = {
   probe: Probe;
   transcript: Transcript;
   signals: Signals;
-  targetClipCount?: number;
-  minSec?: number;
-  maxSec?: number;
+  /**
+   * What to choose and in what shape, from the template the project is made in. Its
+   * `mode` decides whether this run proposes a pack of clips or one long video, so it
+   * is the one option that changes what comes back.
+   */
+  selection: SelectionSpec;
   userBrief?: string;
   frameEvery?: number;
   provider?: string;
@@ -57,8 +64,7 @@ export type SelectOptions = {
 export async function selectClips(o: SelectOptions): Promise<Edl> {
   const {
     dir, probe, transcript, signals, videoPath,
-    targetClipCount = 6, minSec = 20, maxSec = 75,
-    userBrief = "", frameEvery = 30,
+    selection: spec, userBrief = "", frameEvery = 30,
   } = o;
 
   await fs.mkdir(dir, { recursive: true });
@@ -87,25 +93,89 @@ export async function selectClips(o: SelectOptions): Promise<Edl> {
     .then((n) => n > 0)
     .catch(() => false);
 
-  // A stale clips.json from a previous run would silently pass validation.
-  const clipsPath = path.join(dir, "clips.json");
-  await fs.rm(clipsPath, { force: true });
+  // A stale answer from a previous run would silently pass validation.
+  const answerName = spec.mode === "section" ? "video.json" : "clips.json";
+  const answerPath = path.join(dir, answerName);
+  await fs.rm(answerPath, { force: true });
 
   const provider = await resolveProvider(o.provider);
   const result = await provider.run({
     cwd: dir,
-    prompt: buildSelectPrompt({ probe, targetClipCount, minSec, maxSec, userBrief, hasFrames, chunks, rules: { select: selectRules, edit: editRules }, style, preferences, glossary: glossaryBrief(glossary) }),
+    prompt: buildSelectPrompt({ probe, spec, userBrief, hasFrames, chunks, rules: { select: selectRules, edit: editRules }, style, preferences, glossary: glossaryBrief(glossary) }),
     allowedTools: shellEnabled() ? [...ALLOWED_TOOLS, ...SHELL_TOOLS] : ALLOWED_TOOLS,
     deniedTools: shellEnabled() ? DENIED_TOOLS : [...DENIED_TOOLS, "Bash"],
     model: o.model,
     onEvent: o.onEvent,
   });
 
-  await fs.readFile(clipsPath, "utf8").catch(() => {
-    throw new Error(`agent did not write clips.json. Last message: ${result.text.slice(0, 500)}`);
+  await fs.readFile(answerPath, "utf8").catch(() => {
+    throw new Error(`agent did not write ${answerName}. Last message: ${result.text.slice(0, 500)}`);
   });
 
-  return buildEdl({ projectId: o.projectId, videoPath, dir, probe, transcript, minSec, signals });
+  if (spec.mode === "section") return buildSection({ projectId: o.projectId, videoPath, dir, probe, transcript, spec, signals });
+  return buildEdl({ projectId: o.projectId, videoPath, dir, probe, transcript, spec, signals });
+}
+
+/**
+ * Turn the agent's video.json into a project holding one long video.
+ *
+ * It arrives as a sequence rather than as clips because that is what it is: one output,
+ * many shots, in order. Everything after this point — the template pass, the timeline,
+ * the renderer — treats it as an ordinary video, which is the whole reason a long edit
+ * did not need a second editor.
+ */
+export async function buildSection(o: {
+  projectId: string;
+  videoPath: string;
+  dir: string;
+  probe: Probe;
+  transcript: Transcript;
+  spec: SelectionSpec;
+  signals?: Signals;
+}): Promise<Edl> {
+  const { dir, probe, transcript, videoPath, spec } = o;
+  const peaks = (o.signals ?? (await readSignals(dir))).peaks.map((p) => p.t);
+  const raw = await fs.readFile(path.join(dir, "video.json"), "utf8");
+  const { video } = AgentSectionProposals.parse(JSON.parse(raw));
+
+  const mediaId = "original-source";
+  const sequenceId = randomUUID().slice(0, 8);
+  const { items, beats, keptSec, warnings } = sectionTimeline(video, {
+    transcript, probe, output: spec.output, minSegmentSec: spec.minSegmentSec,
+    peaks, chapters: spec.chapters, mediaId,
+    itemId: (index) => `s${String(index + 1).padStart(2, "0")}_${randomUUID().slice(0, 4)}`,
+  });
+  // Said, not enforced: a video ten minutes over the template's ceiling is a judgement
+  // call for the owner, and silently dropping the end of it would be worse than long.
+  if (keptSec > spec.maxSec * 1.15) warnings.push(`the edit runs ${runtime(keptSec)}, past the ${runtime(spec.maxSec)} this template asks for — trim a stretch or raise the ceiling`);
+  if (keptSec < spec.minSec * 0.85) warnings.push(`the edit runs ${runtime(keptSec)}, short of the ${runtime(spec.minSec)} this template asks for`);
+
+  const edl = Edl.parse({
+    version: 1,
+    projectId: o.projectId,
+    source: { file: videoPath, width: probe.width, height: probe.height, fps: probe.fps, durationSec: probe.durationSec },
+    output: spec.output,
+    clips: [],
+    media: [{ id: mediaId, name: "Original source", file: videoPath, width: probe.width, height: probe.height, fps: probe.fps, durationSec: probe.durationSec }],
+    sequences: [{
+      id: sequenceId,
+      title: video.title,
+      output: spec.output,
+      items,
+      plan: {
+        ...emptySequencePlan(),
+        summary: video.summary,
+        tags: [...new Set(video.tags.map((t) => t.toLowerCase().trim()).filter(Boolean))],
+        score: video.score,
+        beats,
+        reasons: { ...(video.reason ? { selection: video.reason } : {}), ...(warnings.length ? { warnings: warnings.join("; ") } : {}) },
+        generatedAt: Date.now(),
+      },
+    }],
+  });
+
+  await fs.writeFile(ruleMatchesFile(dir), JSON.stringify(video.rules.length ? { [sequenceId]: [...new Set(video.rules)] } : {}, null, 2));
+  return edl;
 }
 
 /**
@@ -120,15 +190,19 @@ export async function buildEdl(o: {
   dir: string;
   probe: Probe;
   transcript: Transcript;
+  /** What was asked for. The output shape decides the fallback crop, so it is not optional in spirit. */
+  spec?: SelectionSpec;
   minSec?: number;
   /** Loudness peaks, so a boundary is never tightened past a reaction. Read from the run when absent. */
   signals?: Signals;
 }): Promise<Edl> {
-  const { dir, probe, transcript, videoPath, minSec = 20 } = o;
+  const { dir, probe, transcript, videoPath } = o;
+  const minSec = o.spec?.minSec ?? o.minSec ?? 20;
+  const output = o.spec?.output ?? { width: 1080, height: 1920, fps: probe.fps };
   const peaks = (o.signals ?? (await readSignals(dir))).peaks.map((p) => p.t);
   const raw = await fs.readFile(path.join(dir, "clips.json"), "utf8");
   const proposals = AgentClipProposals.parse(JSON.parse(raw));
-  const fallbackCrop = centerCrop(probe.width, probe.height, 1080, 1920);
+  const fallbackCrop = centerCrop(probe.width, probe.height, output.width, output.height);
 
   const matches: Record<string, string[]> = {};
   const clips: Clip[] = proposals.clips
@@ -180,6 +254,7 @@ export async function buildEdl(o: {
       fps: probe.fps,
       durationSec: probe.durationSec,
     },
+    output,
     clips,
   });
 

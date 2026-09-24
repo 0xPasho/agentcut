@@ -12,6 +12,7 @@ import {
   analyzeSentences, emphasisBeats, punchBeats, redundancyCuts, selectImageCues, silenceCuts, toSentences,
   type BrandMention, type Heard, type ImageCue, type SentenceAnalysis,
 } from "../lib/script";
+import { fillerCuts, retakeCuts } from "../lib/cleanup";
 
 /**
  * Planning is separated from applying on purpose. A plan needs no network, writes
@@ -69,6 +70,10 @@ export type PlannedItem = {
   silences: Array<{ type: "silence"; t: number; d: number }>;
   /** Phrases said twice in a row, removed. Also silence edits — a cut is a cut. */
   redundancies: Array<{ type: "silence"; t: number; d: number }>;
+  /** Stall words — "um", "uh" — with the hesitation around them. */
+  fillers: Array<{ type: "silence"; t: number; d: number }>;
+  /** Takes that were abandoned and said again, dropped whole. */
+  retakes: Array<{ type: "silence"; t: number; d: number }>;
   punches: Array<{ type: "punch"; t: number; d: number; scale: number }>;
   emphasis: Array<{ type: "emphasis"; t: number; d: number; words: string[]; color: string }>;
 };
@@ -91,7 +96,7 @@ export type TemplatePlan = {
   framing: { mode: "source" | "crop" | "split"; seam: number | null; camera: "top" | "bottom" };
   /** The viewer comment the video opens on, once the chat has been read. */
   comment: PlannedComment | null;
-  totals: { sentences: number; images: number; silences: number; redundancies: number; punches: number; emphasis: number };
+  totals: { sentences: number; images: number; silences: number; redundancies: number; fillers: number; retakes: number; punches: number; emphasis: number };
   warnings: string[];
 };
 
@@ -297,7 +302,15 @@ export async function planTemplate(
     const casing = transcriptCasing(sentences.map(s => s.text).join(" "));
     if (casing !== "mixed" && sentences.length)
       casings.add(casing);
-    const analyses = sentences.length ? analyzeSentences(sentences, await brandMentions(sentences, casing), casing) : [];
+    // Brand matching exists to answer "what picture illustrates this sentence" and "which
+    // words get coloured". A template that places neither — a long-form edit is one — has
+    // nothing to do with the answer, and over two hours of transcript that is thousands of
+    // sentences matched against every brand for a plan nobody reads.
+    const wantsBrands = template.images.mode !== "off"
+      || (template.rhythm.emphasis.enabled && template.rhythm.emphasis.targets.some(t => t === "brands" || t === "entities"));
+    const analyses = sentences.length
+      ? analyzeSentences(sentences, wantsBrands ? await brandMentions(sentences, casing) : new Map(), casing)
+      : [];
     // Which sources could answer this shot without being told what to look for.
     const subjectFree = (sourceKinds.includes("slot") && hasPool) || (sourceKinds.includes("frame") && item.mediaId !== null);
     const cues = sentences.length
@@ -318,6 +331,8 @@ export async function planTemplate(
       cues,
       silences: silenceCuts(item.clip.words, template.rhythm.silence, duration, heardUnder(envelopes, item)),
       redundancies: redundancyCuts(item.clip.words, template.rhythm.redundancy, duration),
+      fillers: fillerCuts(item.clip.words, template.rhythm.filler, duration),
+      retakes: retakeCuts(item.clip.words, template.rhythm.retake, duration, template.rhythm.filler.words),
       punches: punchBeats(analyses, template.rhythm.punch, duration),
       emphasis: emphasisBeats(analyses, template.rhythm.emphasis, duration),
     });
@@ -329,10 +344,12 @@ export async function planTemplate(
       images: sum.images + item.cues.length,
       silences: sum.silences + item.silences.length,
       redundancies: sum.redundancies + item.redundancies.length,
+      fillers: sum.fillers + item.fillers.length,
+      retakes: sum.retakes + item.retakes.length,
       punches: sum.punches + item.punches.length,
       emphasis: sum.emphasis + item.emphasis.length,
     }),
-    { sentences: 0, images: 0, silences: 0, redundancies: 0, punches: 0, emphasis: 0 },
+    { sentences: 0, images: 0, silences: 0, redundancies: 0, fillers: 0, retakes: 0, punches: 0, emphasis: 0 },
   );
   // Room noise the transcript claims as speech. Nothing here can fix it — the words are
   // real and their clock is wrong — but a person choosing whether to publish this clip
@@ -711,6 +728,8 @@ export function templateOperations(
     const generated = [
       ...planned.silences.map((edit) => ({ ...edit, by })),
       ...planned.redundancies.map((edit) => ({ ...edit, by })),
+      ...planned.fillers.map((edit) => ({ ...edit, by })),
+      ...planned.retakes.map((edit) => ({ ...edit, by })),
       ...planned.punches.map((edit) => ({ ...edit, by })),
       ...(sounds.punch ? planned.punches.map((edit) => ({ type: "sfx" as const, t: edit.t, d: Math.min(sfx.durationSec, edit.d), src: sounds.punch!.src, gain: sfx.gain, by })) : []),
       ...planned.emphasis.map((edit) => ({ ...edit, by })),

@@ -1,0 +1,24 @@
+{
+  "id": "news-desk-daily",
+  "name": "News desk — daily",
+  "description": "The same take, cut for the same-day upload: eight to thirty minutes about one story, every stall and false start out, nothing added. Stall list covers English and Spanish.",
+  "extends": "news-desk",
+  "tags": ["horizontal", "news", "daily", "talking-head", "section"],
+  "selection": {
+    "minSec": 480,
+    "maxSec": 1800,
+    "minSegmentSec": 12,
+    "brief": "A same-day take on one story. Open where the claim is stated, keep the part where the thing is actually shown, run or read, and end on the verdict. Drop the warm-up, the tangent that went nowhere and the stretch where the thread was lost and picked up again — keep the run where it was said properly. Never cut inside a clip being played, and never across a sentence."
+  },
+  "rhythm": {
+    "silence": { "enabled": true, "minGapSec": 0.6, "keepSec": 0.15, "maxGapSec": 30 },
+    "redundancy": { "enabled": true, "minWords": 2, "maxGapSec": 1.5 },
+    "filler": {
+      "enabled": true,
+      "words": ["um", "umm", "uh", "uhh", "uhm", "erm", "hmm", "mmm", "mm", "eh", "ehh", "ehm", "em"],
+      "keepSec": 0.1,
+      "maxWordSec": 1.2
+    },
+    "retake": { "enabled": true, "maxGapSec": 2.5, "minWords": 3, "similarity": 0.7, "strayWords": 2, "keepSec": 0.1, "maxWords": 30 }
+  }
+}

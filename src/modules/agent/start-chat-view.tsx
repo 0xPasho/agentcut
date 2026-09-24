@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Check, ChevronDown, ListChecks, Scissors, Wand2, X } from "lucide-react";
+import { Check, ChevronDown, ListChecks, Wand2, X } from "lucide-react";
 import { AgentcutIcon } from "@/common/components/agentcut-mark";
 import { useStartChat } from "@/modules/agent/hooks/use-chat";
 import { type StartOptions } from "@/modules/agent/types";
@@ -136,53 +136,37 @@ function TemplateChip({ value, onChange }: { value: string[]; onChange: (ids: st
   );
 }
 
-function StartFrom({ value, onChange, onClips }: { value: string; onChange: (aspect: string) => void; onClips: () => void }) {
-  const [open, setOpen] = useState(true);
+function StartFrom({ value, onChange }: { value: string; onChange: (aspect: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const selected = SHAPES.find(shape => shape.id === value) ?? SHAPES[0];
   return (
-    <section className="-mx-3 -mb-3 mt-3 rounded-b-xl border-t border-white/5 bg-black/25 px-3 py-3">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-      >
-        Start from <ChevronDown className={cn("size-3 transition-transform duration-150 motion-reduce:transition-none", open && "rotate-180")} />
+    <fieldset className="mt-4 border-t border-border/60 pt-3">
+      <legend className="sr-only">Video format</legend>
+      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="flex min-h-10 items-center gap-2 rounded-full px-3 text-xs text-muted-foreground hover:bg-white/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        Video format <span className="text-foreground">{selected.label}</span>
+        <ChevronDown aria-hidden className={cn("size-3", open && "rotate-180")} />
       </button>
-      {open ? (
-        <div className="mt-3 flex flex-wrap gap-2">
-          {SHAPES.map(shape => (
-            <button
-              key={shape.label}
-              type="button"
-              aria-pressed={value === shape.id}
-              onClick={() => onChange(shape.id)}
-              className={cn(
-                "flex w-24 flex-col items-center gap-2 rounded-xl border p-3 transition-[background-color,border-color] duration-150 motion-reduce:transition-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
-                value === shape.id ? "border-primary/60 bg-primary/10" : "border-white/10 hover:bg-white/5",
-              )}
-            >
-              <span aria-hidden className="flex h-9 items-center justify-center">
-                <span className="rounded-[3px] border border-white/25 bg-white/5" style={{ width: shape.w, height: shape.h }} />
-              </span>
-              <span className="text-xs">{shape.label}</span>
-              <span className="text-[10px] text-muted-foreground">{shape.note}</span>
-            </button>
-          ))}
+      {open && <div className="mt-2 flex flex-wrap items-center gap-1">
+        {SHAPES.map(shape => (
           <button
+            key={shape.label}
             type="button"
-            onClick={onClips}
-            className="flex w-24 flex-col items-center gap-2 rounded-xl border border-dashed border-white/15 p-3 hover:bg-white/5 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            aria-pressed={value === shape.id}
+            aria-label={`${shape.label}: ${shape.note}`}
+            onClick={() => onChange(shape.id)}
+            className={cn(
+              "inline-flex min-h-10 items-center gap-2 rounded-full border px-2.5 text-xs transition-[background-color,border-color] duration-150 motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+              value === shape.id ? "border-white/10 bg-white/12 text-foreground shadow-(--control-highlight)" : "border-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+            )}
           >
-            <span aria-hidden className="flex h-9 items-center justify-center"><Scissors className="size-6 text-muted-foreground" /></span>
-            <span className="text-xs">Clips</span>
-            <span className="text-[10px] text-muted-foreground">long video</span>
+            <span aria-hidden className="flex size-4 items-center justify-center">
+              <span className={cn("rounded-[2px] border border-current", shape.auto && "border-dashed")} style={{ width: shape.w / 2, height: shape.h / 2 }} />
+            </span>
+            {shape.label}
           </button>
-        </div>
-      ) : null}
-      <p className="mt-3 text-[11px] text-muted-foreground">
-        Attach videos with <span className="font-medium text-foreground">+</span> to start from footage, or paste a link to clip one.
-      </p>
-    </section>
+        ))}
+      </div>}
+    </fieldset>
   );
 }
 
@@ -202,22 +186,22 @@ export function StartChatPanel({ heading = "What are we making?", onClips }: { h
   return (
     <div className="flex flex-1 flex-col justify-end gap-6">
       {!controller.messages.length ? (
-        <div className="space-y-2 pt-6 text-center">
-          <h2 className="text-balance font-heading text-4xl leading-tight font-medium sm:text-5xl">{heading}</h2>
+        <div className="space-y-3 text-center">
+          <h1 className="text-balance font-heading text-3xl leading-tight font-medium tracking-tight sm:text-4xl">{heading}</h1>
           <p className="text-pretty text-sm leading-relaxed text-muted-foreground">
-            Describe it, drop a video or an image, or paste a link. It lands in the editor with this conversation already going.
+            Describe your video, attach footage, or start with an idea.
           </p>
         </div>
       ) : null}
-      <Glass shape="panel" thickness="thin" className="rounded-2xl p-3">
+      <Glass shape="panel" thickness="thin" className="p-3 sm:p-4">
         <Chat
           controller={controller}
           suggestions={SUGGESTIONS}
-          autoFocus
+          composerLabel="Describe your video"
           threadHidden={!controller.messages.length}
           threadClassName="h-[22rem]"
           tools={<TemplateChip value={templateIds} onChange={setTemplateIds} />}
-          below={!controller.messages.length && onClips ? <StartFrom value={aspect} onChange={setAspect} onClips={onClips} /> : null}
+          below={!controller.messages.length && onClips ? <StartFrom value={aspect} onChange={setAspect} /> : null}
         />
       </Glass>
     </div>
@@ -229,7 +213,7 @@ export function StartChat() {
     <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 px-4 pt-4 pb-10 sm:px-6">
       <Glass shape="capsule" thickness="thick" className="sticky top-4 z-20 flex items-center gap-2 px-3 py-3 sm:gap-3 sm:px-5">
         <AgentcutIcon className="size-7 shrink-0" />
-        <h1 className="text-xl font-bold tracking-[-0.04em]">agentcut</h1>
+        <span className="text-xl font-bold tracking-[-0.04em]">agentcut</span>
         <Button variant="ghost" size="sm" nativeButton={false} className="ml-auto" render={<Link href="/" />}>Projects</Button>
       </Glass>
       <StartChatPanel />

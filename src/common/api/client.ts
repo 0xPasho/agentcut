@@ -15,6 +15,7 @@ export type ProjectSummary = {
   createdAt: number;
   clipCount: number;
   sequenceCount?: number;
+  thumbnailPath?: string;
 };
 
 

@@ -143,6 +143,53 @@ export const TemplateRhythm = z.object({
     /** Left before the second run so the join does not sound clipped. */
     keepSec: z.number().min(0).default(0.08),
   }).prefault({}),
+  /**
+   * The stall a mouth makes while the head catches up: "um", "uh". It is speech, so no
+   * silence pass can see it, and it is the single most audible thing between a recording
+   * and a video.
+   *
+   * `words` is stalls only, never discourse markers, and that is measured rather than
+   * chosen: across three published news videos of this kind, "like" survives 1.3-1.7 times
+   * a minute and "so" 1.4-1.8 — that is how the person talks — while "uh" survives 0.04.
+   * Cutting "like" and "so" out of somebody would not tighten the video, it would remove
+   * the voice from it. The list is a list because which sound is a stall depends on the
+   * language: "este" is a Spanish stall *and* an ordinary word, so it is not a default.
+   *
+   * Off unless a template asks for it: a pass that removes spoken words is not something
+   * to inherit by accident.
+   */
+  filler: z.object({
+    enabled: z.boolean().default(false),
+    words: z.array(z.string()).default(["um", "umm", "uh", "uhh", "uhm", "erm", "hmm", "mmm", "ehh", "mm"]),
+    /** Left either side of the hole so the join does not click. */
+    keepSec: z.number().min(0).default(0.1),
+    /** Longer than this it is not a stall: a hum held on purpose, a groan at what is on screen. */
+    maxWordSec: z.number().positive().default(1.2),
+  }).prefault({}),
+  /**
+   * A take abandoned and started again: "as I said before, the model— as I said before,
+   * this model is the one". The second run is not word-for-word the first, so the
+   * redundancy pass cannot see it, and both runs are speech, so the silence pass cannot
+   * either. What marks it is the shape: a sentence opens, stops a few words in, and the
+   * next one opens the same way and finishes. The abandoned take goes whole.
+   *
+   * Off unless a template asks for it, for the same reason as `filler`.
+   */
+  retake: z.object({
+    enabled: z.boolean().default(false),
+    /** How long the restart may take. Past this, saying it again is a decision. */
+    maxGapSec: z.number().min(0).default(2.5),
+    /** The shortest shared opening that counts as the same sentence started twice. */
+    minWords: z.number().int().min(2).max(12).default(3),
+    /** How much of that opening has to be the same word in the same place. */
+    similarity: z.number().min(0.5).max(1).default(0.7),
+    /** What the abandoned take may have past the shared opening before it is its own sentence. */
+    strayWords: z.number().int().min(0).max(6).default(2),
+    /** Left before the second take so the join does not sound clipped. */
+    keepSec: z.number().min(0).default(0.1),
+    /** The longest abandoned take worth dropping whole; past it, a restatement is deliberate. */
+    maxWords: z.number().int().min(3).max(60).default(30),
+  }).prefault({}),
   punch: z.object({
     enabled: z.boolean().default(true),
     perMinute: z.number().min(0).max(30).default(4),
@@ -331,6 +378,55 @@ export const TemplateComment = z.object({
 }).strict();
 export type TemplateComment = z.infer<typeof TemplateComment>;
 
+/**
+ * What a template asks to be *chosen* out of a long recording, before anything is
+ * dressed.
+ *
+ * Without this a template is only a coat of paint on a decision somebody else made:
+ * the selection agent was told, in code, to find six vertical moments of twenty to
+ * seventy-five seconds, and every template could do was style them. So a five-hour
+ * stream could become a clip pack and nothing else — not the two hours about one
+ * subject that a channel publishes as one video, not a twenty-minute recap.
+ *
+ * `clips` is many independent outputs, one moment each. `section` is one output cut
+ * from a stretch of the source, kept in order, with the dead parts dropped — which is
+ * what a long video is. Both run through the same agent, the same operations and the
+ * same renderer; only this block differs.
+ */
+export const TemplateSelection = z.object({
+  mode: z.enum(["clips", "section"]).default("clips"),
+  /** How many outputs to propose. A section is one video, so one. */
+  count: z.number().int().min(1).max(50).default(6),
+  /**
+   * How long one finished output may run. In `clips` these are the clip's own bounds;
+   * in `section` they bound the whole video, so hours are ordinary values here.
+   */
+  minSec: z.number().positive().default(20),
+  maxSec: z.number().positive().default(75),
+  /** What the finished video should come out at, when the template has an opinion. */
+  targetSec: z.number().positive().nullable().default(null),
+  /**
+   * `section` only: the stretch of source the video may be drawn from. Above it the
+   * agent is choosing which part of the day to publish, not only how to trim it — a
+   * five-hour stream and a two-hour video is the case this exists for.
+   */
+  sourceSpanSec: z.number().positive().nullable().default(null),
+  /**
+   * `section` only: the shortest stretch worth keeping as its own shot. Under it a cut
+   * only makes the edit jumpy, so the stretch is either kept whole or dropped whole.
+   */
+  minSegmentSec: z.number().positive().default(20),
+  /**
+   * `section` only: write the kept stretches as the sequence's plan beats, so a long
+   * video is navigated by what it is about rather than scrubbed. They are ordinary
+   * beats — editable, and the same ones the plan panel shows.
+   */
+  chapters: z.boolean().default(false),
+  /** One line of the template's own direction to whoever is choosing. */
+  brief: z.string().default(""),
+}).strict();
+export type TemplateSelection = z.infer<typeof TemplateSelection>;
+
 export const TemplateCard = z.object({
   id: z.string().regex(/^[a-zA-Z0-9_-]+$/),
   /** 0 = first frame, 1 = last frame, measured on the finished timeline. */
@@ -358,6 +454,8 @@ export const VideoTemplate = z.object({
     height: z.number().int().positive(),
     fps: z.number().positive(),
   }).optional(),
+  /** What this template asks to be chosen from a source: a pack of clips, or one long section. */
+  selection: TemplateSelection.prefault({}),
   captions: TemplateCaptions.default({}),
   /** How the source fills the frame: left alone, centre-cropped, or split. */
   layout: TemplateLayout.prefault({}),
@@ -385,6 +483,17 @@ export const VideoTemplate = z.object({
   slots: z.array(TemplateSlot).default([]),
 });
 export type VideoTemplate = z.infer<typeof VideoTemplate>;
+
+/**
+ * A template as a picker needs it: enough to choose by, and — since a template now says
+ * what kind of video it makes — enough for a form to ask the right question. A screen
+ * that wanted to offer "clips or one long video" used to have to know the answer in code.
+ */
+export type TemplateSummary = {
+  id: string; name: string; description: string; tags: string[]; builtin: boolean;
+  output: VideoTemplate["output"] | null;
+  makes: TemplateSelection;
+};
 
 /** A stored template plus where it came from. `builtin` templates cannot be overwritten in place. */
 export type TemplateRecord = VideoTemplate & { builtin: boolean; file: string | null };

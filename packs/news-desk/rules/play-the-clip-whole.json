@@ -1,0 +1,11 @@
+{
+  "id": "play-the-clip-whole",
+  "name": "Somebody else's clip runs whole",
+  "description": "A reaction only makes sense on top of the thing being reacted to.",
+  "when": "the speaker plays somebody else's video, stream, demo or interview on screen and talks over or after it",
+  "stage": "edit",
+  "priority": 60,
+  "then": {
+    "prompt": "While a clip of somebody else is on screen, cut nothing inside it — not the pauses in it, not the quiet where the speaker is only listening. It is the evidence the reaction is about. Trim at its edges if it runs long, and keep the reaction that follows it attached to it."
+  }
+}

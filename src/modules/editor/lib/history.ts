@@ -93,7 +93,10 @@ function invertOne(edl: Edl, op: EditorOperation): EditorOperation[] {
     case "sequence.patch": {
       const sequence = edl.sequences.find(s => s.id === op.sequenceId);
       if (!sequence) return [];
-      return [{ type: "sequence.patch", sequenceId: op.sequenceId, ...(op.title !== undefined ? { title: sequence.title } : {}), ...(op.output !== undefined ? { output: sequence.output } : {}) }];
+      // Whoever names a shape also ends "no shape chosen", so undoing has to hand both back.
+      const shape = op.output !== undefined || op.autoOutput !== undefined;
+      return [{ type: "sequence.patch", sequenceId: op.sequenceId, ...(op.title !== undefined ? { title: sequence.title } : {}),
+        ...(op.output !== undefined ? { output: sequence.output } : {}), ...(shape ? { autoOutput: sequence.autoOutput ?? false } : {}) }];
     }
     case "output.patch": return [{ type: "output.patch", patch: pick(edl.output, Object.keys(op.patch) as (keyof typeof edl.output)[]) }];
     case "plan.patch": return [{ type: "plan.patch", patch: pick(edl.plan, Object.keys(op.patch) as (keyof typeof edl.plan)[]) }];
@@ -121,7 +124,10 @@ function invertOne(edl: Edl, op: EditorOperation): EditorOperation[] {
   }
   const sequence = edl.sequences.find(s => s.id === op.sequenceId);
   if (!sequence) return [];
-  if (op.type === "item.add") return [{ type: "item.remove", sequenceId: op.sequenceId, itemId: op.item.id }];
+  // Adding the first video to a shape-less timeline also settles its frame, so taking
+  // that video back off puts the frame — and the waiting — back as they were.
+  if (op.type === "item.add") return [{ type: "item.remove", sequenceId: op.sequenceId, itemId: op.item.id },
+    ...(sequence.autoOutput ? [{ type: "sequence.patch", sequenceId: op.sequenceId, output: sequence.output, autoOutput: true } as EditorOperation] : [])];
   const index = sequence.items.findIndex(i => i.id === op.itemId);
   const item = sequence.items[index];
   if (!item) return [];

@@ -357,3 +357,39 @@ test("a pack's style guide and references install, reach the agents, export, and
   await packs.removePack("second");
   await assert.rejects(fs.stat(path.join(packs.packFolder("second"), "STYLE.md")));
 });
+
+test("the news pack that ships with the product installs, and its template cuts what a take has in it that a video does not", async () => {
+  // The pack in the repo, read the way anybody else's pack is read: by path, untrusted,
+  // shown before anything is copied. If this breaks, the folder we tell people to install
+  // is broken.
+  const shipped = path.resolve(import.meta.dirname, "../../../../packs/news-desk");
+  const preview = await packs.inspectPack(shipped);
+  assert.equal(preview.manifest.id, "news-desk");
+  assert.deepEqual(preview.style.problems, [], "a guide that fails the scan refuses the whole pack");
+  assert.ok(preview.style.text.length > 500, "the style guide is the judgement a template cannot hold");
+  assert.deepEqual(preview.templates.map((t) => t.missingParent), [undefined], "its parent is a built-in, so it is on every machine");
+  assert.deepEqual(preview.rules.map((r) => r.id).sort(), ["news-take", "play-the-clip-whole", "sponsor-read-stays"]);
+
+  await packs.importPack(shipped);
+  const template = await registry.getTemplate("news-desk-daily");
+  assert.equal(template.extends, "news-desk");
+  assert.equal(template.output?.width, 1920, "a news video is horizontal, from the built-in it extends");
+  assert.equal(template.selection.mode, "section", "the agent chooses which stretches are the video");
+  assert.equal(template.rhythm.filler.enabled, true);
+  assert.equal(template.rhythm.retake.enabled, true);
+  assert.ok(template.rhythm.filler.words.includes("eh"), "the pack's own list covers Spanish as well as English");
+  assert.equal(template.captions.preset, "none", "the platform draws its own over a screen share");
+
+  // And the passes it turns on are the ones that read a transcript rather than silence.
+  const { fillerCuts, retakeCuts } = await import("../../templates/lib/cleanup");
+  const words = [
+    { t: 0, d: 0.3, w: "como" }, { t: 0.35, d: 0.3, w: "dije" }, { t: 0.7, d: 0.4, w: "antes" }, { t: 1.15, d: 0.2, w: "el" },
+    { t: 1.6, d: 0.3, w: "eh" },
+    { t: 2.1, d: 0.3, w: "como" }, { t: 2.45, d: 0.3, w: "dije" }, { t: 2.8, d: 0.4, w: "antes" }, { t: 3.25, d: 0.3, w: "este" },
+    { t: 3.6, d: 0.4, w: "modelo" }, { t: 4.05, d: 0.2, w: "es" }, { t: 4.3, d: 0.4, w: "bueno." },
+  ];
+  assert.equal(fillerCuts(words, template.rhythm.filler, 5).length, 1, "the stall goes");
+  assert.equal(retakeCuts(words, template.rhythm.retake, 5, template.rhythm.filler.words).length, 1, "and the take that was abandoned goes whole");
+
+  await packs.removePack("news-desk");
+});

@@ -22,14 +22,14 @@ import { classifyFile } from "@/modules/editor/lib/dnd";
 export function NewProject() {
   const [flow, setFlow] = useState("make");
   return (
-    <Tabs value={flow} onValueChange={value => setFlow(String(value))} className="gap-5">
-      <TabsList className="mx-auto" aria-label="Start a project">
-        <TabsTrigger value="make"><Sparkles />Make something</TabsTrigger>
+    <Tabs value={flow} onValueChange={value => setFlow(String(value))} className="gap-7">
+      <TabsList className="mx-auto max-w-full" aria-label="Start a project">
+        <TabsTrigger value="make"><Sparkles />Create a video</TabsTrigger>
         <TabsTrigger value="clips"><Scissors />Clip a long video</TabsTrigger>
       </TabsList>
       {/* Say it, drop it, or shape it first — one box, and the shape and look are chosen
           beside it rather than on a screen of their own. */}
-      <TabsContent value="make"><StartChatPanel onClips={() => setFlow("clips")} /></TabsContent>
+      <TabsContent value="make"><StartChatPanel heading="What video will you make?" onClips={() => setFlow("clips")} /></TabsContent>
       <TabsContent value="clips"><ClippingStart /></TabsContent>
     </Tabs>
   );
@@ -101,14 +101,14 @@ function ClippingStart() {
         dragging ? "border-primary/70 shadow-[0_0_0_4px_var(--glass-specular)]" : "border-white/15"
       }`}
     >
-      <CardContent className="flex flex-col items-center gap-7 py-8 sm:py-12">
+      <CardContent className="flex flex-col items-center gap-5 py-6 sm:py-8">
         <div aria-hidden className="flex size-16 items-center justify-center rounded-[20px] border border-white/15 bg-linear-to-b from-white/10 to-white/3 shadow-(--control-highlight)">
           {pending ? <Loader2 className="size-7 motion-safe:animate-spin text-muted-foreground" /> : <FileVideo className="size-7 text-foreground/80" />}
         </div>
         <div className="space-y-2 text-center">
-          <h2 className="text-balance text-2xl font-semibold tracking-tight sm:text-3xl">
+          <h1 className="text-balance text-2xl font-semibold tracking-tight sm:text-3xl">
             {dragging ? "Drop your video here" : "Turn a long video into clips"}
-          </h2>
+          </h1>
           <p className="max-w-sm text-pretty text-sm leading-relaxed text-muted-foreground">
             Drop a stream or a talk, paste a YouTube link, or choose a file. Every clip it finds opens in the editor.
           </p>

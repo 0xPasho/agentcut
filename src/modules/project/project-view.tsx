@@ -42,8 +42,10 @@ import { useProjectStream } from "@/common/hooks/use-project-stream";
 import { count, runtime } from "@/common/lib/format";
 import { projectVideos, SORTS, sortVideos, statusCounts, type ProjectVideo, type VideoSort } from "@/modules/project/lib/overview";
 import type { Edit } from "@/modules/editor/types";
-import { BUSY, STATUSES, FILTERS } from "./data";
-import { editHref } from "./lib/project-view";
+import { useTemplates } from "@/common/hooks/use-templates";
+import { BUSY, STATUSES, FILTERS, MAKES } from "./data";
+import type { MakeChoice } from "./types";
+import { analyzeOptions, editHref } from "./lib/project-view";
 
 export function ProjectView({ initial }: { initial: ProjectDetail }) {
   const router = useRouter();
@@ -51,7 +53,9 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
   const sortId = useId();
   const [project, setProject] = useState(initial);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [clipCount, setClipCount] = useState(6);
+  // What to make out of the source, not just how many: the templates on this machine say
+  // whether that is a pack of clips or one long video, and this is the answer to that.
+  const [make, setMake] = useState<MakeChoice>({ mode: "clips", templateId: "", count: 6, minutes: 0 });
   const [brief, setBrief] = useState("");
   const [finding, setFinding] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -151,7 +155,11 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
     run(async () => {
       if (!edl) return;
       const id = crypto.randomUUID().slice(0, 8);
-      editor.dispatch([{ type: "sequence.add", sequence: { id, title: "New video", output: edl.output, items: [], plan: emptySequencePlan() } }]);
+      // A second video in a project that never chose a shape is still waiting for one:
+      // it takes the shape of the first video put on it, like the first one did.
+      const like = edl.sequences[0];
+      editor.dispatch([{ type: "sequence.add", sequence: { id, title: "New video", output: like?.output ?? edl.output,
+        ...(like?.autoOutput ? { autoOutput: true } : {}), items: [], plan: emptySequencePlan() } }]);
       if (await editor.save()) router.push(`/p/${initial.id}/edit?sequence=${id}`);
     });
 
@@ -195,14 +203,14 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
         <AnalyzePanel
           projectId={initial.id}
           busy={busy}
-          clipCount={clipCount}
-          onClipCount={setClipCount}
+          make={make}
+          onMake={setMake}
           brief={brief}
           onBrief={setBrief}
           cancel={edl ? () => setFinding(false) : null}
           onAnalyze={() => {
             setFinding(false);
-            void run(() => api.analyze(initial.id, { targetClipCount: clipCount, userBrief: brief }));
+            void run(() => api.analyze(initial.id, analyzeOptions(make, brief)));
           }}
         />
       ) : null}
@@ -486,12 +494,18 @@ function MenuItem({
   );
 }
 
-/** Asking the agent for highlights: the one form on this screen, so it says so. */
+/**
+ * Asking the agent for something out of the source.
+ *
+ * The form used to be one number, because there was one answer: six vertical clips. A
+ * template says what kind of video it makes now, so this asks which of those and then
+ * the one question that kind has — how many clips, or how long the video runs.
+ */
 function AnalyzePanel({
   projectId,
   busy,
-  clipCount,
-  onClipCount,
+  make,
+  onMake,
   brief,
   onBrief,
   cancel,
@@ -499,22 +513,70 @@ function AnalyzePanel({
 }: {
   projectId: string;
   busy: boolean;
-  clipCount: number;
-  onClipCount: (n: number) => void;
+  make: MakeChoice;
+  onMake: (choice: MakeChoice) => void;
   brief: string;
   onBrief: (s: string) => void;
   cancel: (() => void) | null;
   onAnalyze: () => void;
 }) {
+  const { templates } = useTemplates();
   const countId = useId();
   const briefId = useId();
+  const templateFieldId = useId();
+  const forMode = useMemo(() => templates.filter(t => t.makes.mode === make.mode), [templates, make.mode]);
+  const chosen = forMode.find(t => t.id === make.templateId) ?? null;
+  const section = make.mode === "section";
+  const minutes = make.minutes || Math.round((chosen?.makes.targetSec ?? ((chosen?.makes.minSec ?? 1200) + (chosen?.makes.maxSec ?? 5400)) / 2) / 60);
+
+  // Choosing a kind chooses a template for it, because a long video without one has no
+  // shape to be cut to: the only thing that knows a section is wanted is a template.
+  const pickMode = (mode: MakeChoice["mode"]) => {
+    const first = templates.find(t => t.makes.mode === mode);
+    onMake({ ...make, mode, templateId: mode === "section" ? first?.id ?? "" : "", minutes: 0 });
+  };
+
   return (
     <Card className="gap-4 p-5">
       <div>
-        <h2 className="text-base font-medium">Find the highlights</h2>
+        <h2 className="text-base font-medium">{section ? "Cut one long video" : "Find the highlights"}</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          The agent watches the source and proposes the moments worth cutting.
+          {section
+            ? "The agent reads the whole recording, decides which part of it is the video, and keeps the stretches that belong in it — in order, with the rest dropped."
+            : "The agent watches the source and proposes the moments worth cutting."}
         </p>
+      </div>
+      <div className="flex flex-col gap-2">
+        <Label className="text-xs text-muted-foreground">What to make</Label>
+        <div className="flex flex-wrap gap-2">
+          {MAKES.map(option => (
+            <button
+              key={option.mode}
+              type="button"
+              aria-pressed={make.mode === option.mode}
+              onClick={() => pickMode(option.mode)}
+              className={cn(
+                "flex min-w-40 flex-col items-start gap-0.5 rounded-xl border px-3 py-2 text-left transition-colors",
+                make.mode === option.mode ? "border-primary/60 bg-primary/10" : "border-white/10 hover:bg-white/5",
+              )}
+            >
+              <span className="text-sm">{option.label}</span>
+              <span className="text-[11px] leading-snug text-muted-foreground">{option.note}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor={templateFieldId} className="text-xs text-muted-foreground">Template</Label>
+        <Select value={make.templateId || "none"} onValueChange={value => onMake({ ...make, templateId: value && value !== "none" ? value : "", minutes: 0 })}>
+          <SelectTrigger id={templateFieldId} className="w-full sm:w-80"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {!section && <SelectItem value="none">No template — clips as found</SelectItem>}
+            {forMode.map(template => <SelectItem key={template.id} value={template.id}>{template.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        {chosen?.description ? <p className="text-[11px] leading-snug text-muted-foreground">{chosen.description}</p> : null}
+        {section && !forMode.length ? <p className="text-[11px] leading-snug text-muted-foreground">No template on this machine makes a long video yet. Save one whose <code>selection.mode</code> is <code>section</code>.</p> : null}
       </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor={briefId} className="text-xs text-muted-foreground">Direction (optional)</Label>
@@ -523,18 +585,28 @@ function AnalyzePanel({
           rows={2}
           value={brief}
           onChange={(e) => onBrief(e.target.value)}
-          placeholder="Focus on the pricing discussion. Punchy cuts, no long setups."
+          placeholder={section
+            ? "The two hours about the Postgres migration. Skip the start, I was waiting on a build."
+            : "Focus on the pricing discussion. Punchy cuts, no long setups."}
         />
+        {section ? <p className="text-[11px] leading-snug text-muted-foreground">Say which part of the recording, if you already know. It is the instruction that wins over everything else.</p> : null}
       </div>
       <AgentPicker projectId={projectId} locked={busy} lockedReason="the analysis is running" />
       <div className="flex flex-wrap items-end gap-3">
-        <div className="flex w-28 flex-col gap-2">
-          <Label htmlFor={countId} className="text-xs text-muted-foreground">How many</Label>
-          <Input id={countId} type="number" min={1} max={20} value={clipCount} onChange={(e) => onClipCount(Number(e.target.value))} />
-        </div>
-        <Button disabled={busy} onClick={onAnalyze}>
+        {section ? (
+          <div className="flex w-36 flex-col gap-2">
+            <Label htmlFor={countId} className="text-xs text-muted-foreground">How long (minutes)</Label>
+            <Input id={countId} type="number" min={5} max={240} value={minutes} onChange={(e) => onMake({ ...make, minutes: Number(e.target.value) })} />
+          </div>
+        ) : (
+          <div className="flex w-28 flex-col gap-2">
+            <Label htmlFor={countId} className="text-xs text-muted-foreground">How many</Label>
+            <Input id={countId} type="number" min={1} max={20} value={make.count} onChange={(e) => onMake({ ...make, count: Number(e.target.value) })} />
+          </div>
+        )}
+        <Button disabled={busy || (section && !make.templateId)} onClick={onAnalyze}>
           {busy ? <Loader2 aria-hidden className="motion-safe:animate-spin" /> : <Sparkles aria-hidden />}
-          Find highlights
+          {section ? "Cut the video" : "Find highlights"}
         </Button>
         {cancel && (
           <Button variant="ghost" onClick={cancel}>Cancel</Button>

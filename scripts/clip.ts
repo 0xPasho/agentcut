@@ -1,6 +1,10 @@
 /**
  * End-to-end: video in -> EDL out.
  *   npx tsx scripts/clip.ts <video> [--clips 6] [--min 20] [--max 75] [--brief "..."] [--provider claude|codex]
+ *
+ * Or one long video out of a long recording, which is the same run asked a different
+ * question — the template decides which:
+ *   npx tsx scripts/clip.ts <video> --template stream-to-youtube [--minutes 90]
  */
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -12,6 +16,7 @@ import { probe, extractAudio } from "../src/modules/media/server/ffmpeg";
 import { transcribe, available as whisperAvailable, DEFAULT_MODEL } from "../src/modules/transcription/server/whispercpp";
 import { computeSignals } from "../src/modules/clipping/server/signals";
 import { selectClips } from "../src/modules/clipping/server/select";
+import { resolveSelection } from "../src/modules/clipping/server/selection";
 import { Transcript } from "../src/modules/transcription/lib/transcript";
 import { fmt } from "../src/modules/transcription/lib/transcript";
 
@@ -55,7 +60,16 @@ async function main() {
   const signals = await computeSignals(videoPath, meta);
   console.log(`  ${signals.scenes.length} scene cuts, ${signals.peaks.length} loudness peaks`);
 
-  step("agent: selecting clips");
+  const minutes = arg("minutes");
+  const selection = await resolveSelection({
+    templateId: arg("template"),
+    selection: minutes ? { targetSec: Number(minutes) * 60 } : undefined,
+    targetClipCount: process.argv.includes("--clips") ? Number(arg("clips")) : undefined,
+    minSec: process.argv.includes("--min") ? Number(arg("min")) : undefined,
+    maxSec: process.argv.includes("--max") ? Number(arg("max")) : undefined,
+  });
+
+  step(`agent: ${selection.summary}`);
   const edl = await selectClips({
     projectId,
     videoPath,
@@ -63,9 +77,7 @@ async function main() {
     probe: meta,
     transcript,
     signals,
-    targetClipCount: Number(arg("clips", "6")),
-    minSec: Number(arg("min", "20")),
-    maxSec: Number(arg("max", "75")),
+    selection: selection.spec,
     userBrief: arg("brief", "")!,
     provider: arg("provider"),
     onEvent: (e) => {
@@ -74,10 +86,18 @@ async function main() {
     },
   });
 
-  step(`${edl.clips.length} clips`);
-  for (const c of edl.clips) {
-    console.log(`  \x1b[1m${String(c.score).padStart(3)}\x1b[0m  ${fmt(c.start)}–${fmt(c.end)}  ${c.title}`);
-    if (c.reason) console.log(`       \x1b[90m${c.reason}\x1b[0m`);
+  if (edl.sequences.length) {
+    for (const sequence of edl.sequences) {
+      const kept = sequence.items.reduce((total, item) => total + (item.clip.end - item.clip.start), 0);
+      step(`${sequence.title} — ${Math.round(kept / 60)} min from ${sequence.items.length} stretches`);
+      for (const item of sequence.items) console.log(`  ${fmt(item.clip.start)}–${fmt(item.clip.end)}  ${item.clip.title}`);
+    }
+  } else {
+    step(`${edl.clips.length} clips`);
+    for (const c of edl.clips) {
+      console.log(`  \x1b[1m${String(c.score).padStart(3)}\x1b[0m  ${fmt(c.start)}–${fmt(c.end)}  ${c.title}`);
+      if (c.reason) console.log(`       \x1b[90m${c.reason}\x1b[0m`);
+    }
   }
   // Register it so the run shows up in the web UI, not just on disk.
   q.upsertProject({

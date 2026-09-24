@@ -17,6 +17,14 @@ function log(projectId: string, jobId: string, kind: string, text: string, name?
 }
 
 export type AnalyzeOptions = {
+  /**
+   * What to make out of the source. The template decides it — a pack of shorts, or one
+   * long video cut from a stretch — and these are the caller's changes to that. Nothing
+   * here assumes a short any more; a run with no template keeps the old defaults.
+   */
+  templateId?: string;
+  templateIds?: string[];
+  selection?: Record<string, unknown>;
   targetClipCount?: number;
   minSec?: number;
   maxSec?: number;
@@ -185,6 +193,15 @@ async function analyze(job: JobRow, sourcePath: string, dir: string, options: An
   const signals = await computeSignals(sourcePath, meta, (text) => log(pid, job.id, "log", text));
   log(pid, job.id, "log", `${signals.scenes.length} scene cuts, ${signals.peaks.length} loudness peaks`);
 
+  // What is being made is a template's decision, resolved once, before the agent is
+  // told anything. The old constants live on only as the no-template default.
+  const { resolveSelection } = await import("../../clipping/server/selection");
+  const selection = await resolveSelection({
+    templateId: options.templateId, templateIds: options.templateIds, selection: options.selection,
+    targetClipCount: options.targetClipCount, minSec: options.minSec, maxSec: options.maxSec,
+  });
+  log(pid, job.id, "log", `making ${selection.summary}`);
+
   stage("agent", 0.55);
   const edl = await selectClips({
     projectId: pid,
@@ -193,9 +210,7 @@ async function analyze(job: JobRow, sourcePath: string, dir: string, options: An
     probe: meta,
     transcript,
     signals,
-    targetClipCount: options.targetClipCount ?? 6,
-    minSec: options.minSec ?? 20,
-    maxSec: options.maxSec ?? 75,
+    selection: selection.spec,
     userBrief: options.userBrief ?? "",
     provider: options.provider,
     model: options.model,
@@ -206,16 +221,41 @@ async function analyze(job: JobRow, sourcePath: string, dir: string, options: An
   });
 
   publishClips(pid, edl);
-  if (options.userBrief?.trim()) {
+  const { editProject } = await import("../../editor/server/store");
+  {
     const current = readEditor(pid);
-    if (!current.edl.plan.brief.goal) {
-      const { editProject } = await import("../../editor/server/store");
-      editProject(pid, { expectedRevision: current.revision, operations: [{ type: "plan.patch", patch: { brief: { ...current.edl.plan.brief, goal: options.userBrief.trim() } } }] });
-    }
+    const patch: Record<string, unknown> = {};
+    if (options.userBrief?.trim() && !current.edl.plan.brief.goal) patch.brief = { ...current.edl.plan.brief, goal: options.userBrief.trim() };
+    // The template the material was chosen for is the template it is edited in. Recording
+    // it is what lets the panel, the agent and a later batch pick up where this left off.
+    if (selection.templateId && !current.edl.plan.template) patch.template = selection.templateId;
+    if (selection.templateIds.length && !current.edl.plan.templates.length) patch.templates = selection.templateIds;
+    if (Object.keys(patch).length) editProject(pid, { expectedRevision: current.revision, operations: [{ type: "plan.patch", patch }] });
   }
   await applyMatchedRules(pid, dir, (kind, text) => log(pid, job.id, kind, text, "rules"));
+
+  // A long video arrives as a finished timeline of stretches, so the template that asked
+  // for it is applied here rather than left for the owner to find: the edit it describes —
+  // the dead-air pass, the loudness, its own captions — is what makes it publishable.
+  if (edl.sequences.length && selection.templateId) {
+    stage("template", 0.9);
+    for (const sequence of edl.sequences) {
+      try {
+        const { applyTemplate } = await import("../../templates/server/apply");
+        const { revision } = readEditor(pid);
+        const result = await applyTemplate(pid, { templateId: selection.templateId, sequenceId: sequence.id }, revision);
+        log(pid, job.id, "tool", `${sequence.title}: ${selection.templateId} applied — ${result.plan.totals.silences + result.plan.totals.redundancies + result.plan.totals.fillers + result.plan.totals.retakes} cuts, ${result.applied.images} pictures`);
+      } catch (error) {
+        log(pid, job.id, "error", `${sequence.title}: ${selection.templateId} failed — ${(error as Error).message}. The edit is published; apply the template by hand.`);
+      }
+    }
+  }
+
   q.setProject(pid, { status: "ready", error: null });
-  log(pid, job.id, "stage", `ready — ${edl.clips.length} clips`);
+  const sections = edl.sequences.length;
+  log(pid, job.id, "stage", sections
+    ? `ready — ${sections === 1 ? edl.sequences[0].title : `${sections} videos`}, ${edl.sequences.reduce((n, s) => n + s.items.length, 0)} stretches kept`
+    : `ready — ${edl.clips.length} clips`);
 }
 
 /**

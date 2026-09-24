@@ -14,6 +14,9 @@ export async function GET() {
     const templates = (await listTemplates()).map(t => ({
       id: t.id, name: t.name, description: t.description, tags: t.tags,
       builtin: t.builtin, output: t.output ?? null,
+      // What this template asks to be chosen from a source, so a form can ask for a
+      // clip count or a running time without guessing which one applies.
+      makes: t.selection,
     }));
     return Response.json({ templates });
   } catch (error) {

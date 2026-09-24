@@ -106,7 +106,9 @@ export function extractJson(text: string): unknown {
 export type PromptComposerHandle = { focus: () => void };
 
 
-export type TemplateSummary = { id: string; name: string; description: string; tags: string[]; builtin: boolean };
+// The picker's view of a template belongs to the templates module; this is where the
+// chat surface reads it from.
+export type { TemplateSummary } from "../templates/types";
 
 
 /** One kind of work, what it resolves to today, and whether that is its own choice. */
@@ -191,6 +193,15 @@ export type ChatController = {
  */
 /** What the home screen decided before a word was typed: the shape, and the look. */
 export type StartOptions = { aspect?: string; templateIds?: string[] };
+
+/**
+ * One card under “Start from”. `id` is the aspect the project is created with; the
+ * empty one is the default, which chooses no shape at all and lets the first video
+ * decide. `w`/`h` draw the little frame on the card.
+ */
+export type Shape = { id: string; label: string; note: string; w: number; h: number; auto?: boolean };
+
+
 /**
  * What an agent's reply is made of.
  *

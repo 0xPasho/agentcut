@@ -308,3 +308,42 @@ test("motion is one editor: HTTP and agent write the same move, and a bad keyfra
   await assert.rejects(tools.executeEditorTool(id, { tool: "project.edit", expectedRevision: both.revision, operations: [refused] }), /past the end/);
   assert.deepEqual(store.readEditor(id), both, "nothing in the refused batch landed");
 });
+
+test("a project with no shape chosen takes the shape of its first video, and undo gives the waiting back", async () => {
+  // What the home screen's "Default" card creates: no footage, no aspect asked for.
+  const { id } = await mediaService.createVideoProject("Default shape");
+  const blank = store.readEditor(id);
+  const seq = blank.edl.sequences[0];
+  assert.equal(seq.autoOutput, true);
+  assert.deepEqual(seq.output, { width: 1920, height: 1080, fps: 30 });
+
+  // A title card decides nothing: there is still no video to take a shape from.
+  const withText = store.editProject(id, { expectedRevision: blank.revision, operations: [{ type: "item.add", sequenceId: seq.id, item: {
+    id: "i_card", mediaId: null, clip: Clip.parse({ id: "i_card", title: "Card", start: 0, end: 3, captions: { preset: "none" } }) } }] });
+  assert.equal(withText.edl.sequences[0].autoOutput, true);
+  assert.deepEqual(withText.edl.sequences[0].output, { width: 1920, height: 1080, fps: 30 });
+
+  const imported = await tools.executeEditorTool(id, { tool: "media.import", file: source, expectedRevision: withText.revision, place: { sequenceId: seq.id, at: null, layer: 0 } });
+  const settled = (imported as { edl: Edl }).edl.sequences[0];
+  assert.equal(settled.autoOutput, undefined);
+  assert.deepEqual(settled.output, { width: 160, height: 90, fps: 10 });
+
+  // Taking that video back off is the undo of the import, and it is not allowed to
+  // leave the project stuck in the shape of footage it no longer holds.
+  const { invertOperations } = await import("../lib/history");
+  const batch = [
+    { type: "media.add" as const, media: store.readEditor(id).edl.media[0] },
+    { type: "item.add" as const, sequenceId: seq.id, item: { id: "i_shot", mediaId: store.readEditor(id).edl.media[0].id,
+      clip: Clip.parse({ id: "i_shot", title: "Shot", start: 0, end: 1, captions: { preset: "none" } }) } },
+  ];
+  const undone = applyOperations(applyOperations(withText.edl, batch), invertOperations(withText.edl, batch));
+  assert.equal(undone.sequences[0].autoOutput, true);
+  assert.deepEqual(undone.sequences[0].output, { width: 1920, height: 1080, fps: 30 });
+
+  // A shape that was asked for is the author's, and no import may move it.
+  const chosen = await mediaService.createVideoProject("Vertical", [], { output: { width: 1080, height: 1920, fps: 30 } });
+  const vertical = store.readEditor(chosen.id);
+  assert.equal(vertical.edl.sequences[0].autoOutput, undefined);
+  await tools.executeEditorTool(chosen.id, { tool: "media.import", file: source, expectedRevision: vertical.revision, place: { sequenceId: vertical.edl.sequences[0].id, at: null, layer: 0 } });
+  assert.deepEqual(store.readEditor(chosen.id).edl.sequences[0].output, { width: 1080, height: 1920, fps: 30 });
+});
