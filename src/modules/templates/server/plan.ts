@@ -7,7 +7,9 @@ import { LOUDNESS_STEP_SEC } from "../../media/server/ffmpeg";
 import { sequenceFrames } from "../../editor/lib/sequences";
 import { coarsen, deadAir } from "../lib/quiet";
 import { brandsInText, transcriptCasing, type Casing } from "../../media/server/search/brand";
-import { VideoTemplate, type TemplateRegion } from "../types";
+import { VideoTemplate, type CommentReading, type TemplateRegion } from "../types";
+import { blurUnder, popCommentItem, popWindow } from "../lib/comment";
+import { COMMENT_AUTHOR } from "../data/comment";
 import {
   analyzeSentences, emphasisBeats, punchBeats, redundancyCuts, selectImageCues, silenceCuts, toSentences,
   type BrandMention, type Heard, type ImageCue, type SentenceAnalysis,
@@ -621,12 +623,16 @@ export const isSelectionEdit = (edit: { by: string }) => edit.by === SELECTION_A
 export type TemplateItemState = "owned" | "moved" | "hand";
 /** An intro or outro: a picture for some seconds, or a library video played whole (added as media when new). */
 export type Bookend = { src: string; seconds: number } | { media: MediaSource; addMedia: boolean; seconds: number; gain?: number };
+/** The blur a hand-placed pop comment put under its card: part of the comment, not a person's styling of the layer. */
+const isCommentBlur = (edit: Edit) => edit.type === "blur" && edit.by === COMMENT_AUTHOR;
+
 export function templateItemState(item: SequenceItem): TemplateItemState {
   // A video bookend has footage and no edits; its mark is on the clip itself.
   if (item.mediaId !== null && isBookendTitle(item.clip.title) && item.clip.reason.startsWith("template:") && !item.clip.edits.length)
     return item.at !== null && item.at !== undefined ? "moved" : "owned";
-  if (item.mediaId !== null || !item.clip.edits.length || !item.clip.edits.some(isTemplateEdit)) return "hand";
-  if (!item.clip.edits.every(isTemplateEdit)) return "hand";
+  const edits = item.clip.edits.filter((edit) => !isCommentBlur(edit));
+  if (item.mediaId !== null || !edits.length || !edits.some(isTemplateEdit)) return "hand";
+  if (!edits.every(isTemplateEdit)) return "hand";
   const t = item.transform;
   const placed = !!t && (t.x !== DEFAULT_ITEM_TRANSFORM.x || t.y !== DEFAULT_ITEM_TRANSFORM.y ||
     t.width !== DEFAULT_ITEM_TRANSFORM.width || t.height !== DEFAULT_ITEM_TRANSFORM.height || t.rotation !== DEFAULT_ITEM_TRANSFORM.rotation);
@@ -668,8 +674,11 @@ export function templateOperations(
   sounds: { punch?: { src: string } | null; transitions?: { src: string } | null; opener?: { src: string } | null } = {},
   /** The gain that puts the footage at the loudness the template asks for. */
   level?: { gain: number } | null,
-  /** The viewer comment to open on, already drawn as a picture. */
-  comment?: { src: string } | null,
+  /**
+   * The viewer comment to open on, already drawn as a picture; for a `pop` comment, where
+   * the streamer reads it out and the sound it lands with.
+   */
+  comment?: { src: string; reading?: CommentReading | null; sound?: { src: string } | null } | null,
 ): EditorOperation[] {
   const by = author ?? templateAuthor(template.id);
   if (!isTemplateEdit({ by })) throw new Error("A template author must start with template:");
@@ -822,9 +831,13 @@ export function templateOperations(
   // somebody chose or placed by hand is theirs: the template neither replaces it nor adds
   // a second, but still waits for it before showing the hook.
   const theirs = sequenceOf().items.find((item) => item.clip.title === COMMENT_TITLE && templateItemState(item) !== "owned");
-  const opening = theirs ? Math.max(0, (theirs.at ?? 0) + theirs.clip.end - theirs.clip.start - bodyStart)
-    : comment?.src ? Math.min(template.comment.seconds, body * 0.5) : 0;
-  if (comment?.src && !theirs) push(commentItem(plan.sequenceId, newId("i"), comment.src, bodyStart, opening, topLayer + 6, template.comment, by));
+  // A `pop` comment lands over the hook rather than before it, so the hook never waits for
+  // one. A comment somebody placed keeps its own way in: one that opens the video (it is
+  // animated; a pop is not) still holds the hook back, whatever this template does.
+  const pops = template.comment.style === "pop";
+  const opening = theirs ? (theirs.keyframes?.length ? Math.max(0, (theirs.at ?? 0) + theirs.clip.end - theirs.clip.start - bodyStart) : 0)
+    : comment?.src && !pops ? Math.min(template.comment.seconds, body * 0.5) : 0;
+  if (comment?.src && !theirs && !pops) push(commentItem(plan.sequenceId, newId("i"), comment.src, bodyStart, opening, topLayer + 6, template.comment, by));
 
   if (plan.hook && !kept.has("Hook")) {
     const hook = canvasItem(topLayer + 1, bodyStart, plan.hook.seconds === null ? body : plan.hook.seconds + opening, "Hook", plan.hook.text, template.hook.position, template.hook.style);
@@ -925,6 +938,35 @@ export function templateOperations(
   }
   if (sounds.opener && !kept.has("Opener"))
     push(soundLayer("Opener", sounds.opener.src, template.sound.opener.gain, [{ t: 0, d: Math.min(template.sound.opener.durationSec, duration) }]));
+
+  // A pop somebody placed stays, and so does the blur under it — laid again over the
+  // layers this application just replaced, as strong as they had it.
+  if (theirs && !theirs.keyframes?.length) {
+    const amount = sequenceOf().items.flatMap((item) => item.clip.edits).find(isCommentBlur);
+    for (const item of sequenceOf().items) {
+      const edits = item.clip.edits.filter((edit) => !isCommentBlur(edit));
+      if (edits.length !== item.clip.edits.length) push({ type: "item.patch", sequenceId: plan.sequenceId, itemId: item.id, patch: { edits } });
+    }
+    // The layers just added stack from the top, so the card is lifted back over them: a
+    // pop is read over everything, the hook included.
+    const above = sequenceOf().items.filter((item) => item.id !== theirs.id).reduce((top, item) => Math.max(top, item.layer ?? 0), 0);
+    const layer = Math.max(theirs.layer ?? 0, above + 1);
+    if (layer !== (theirs.layer ?? 0)) push({ type: "item.place", sequenceId: plan.sequenceId, itemId: theirs.id, patch: { layer } });
+    const at = theirs.at ?? 0;
+    const blur = amount?.type === "blur" ? amount.amount : template.comment.blur;
+    push(...blurUnder(sequenceOf(), { at, end: at + theirs.clip.end - theirs.clip.start }, blur, layer, COMMENT_AUTHOR));
+  }
+
+  // Last, over everything else: the card is on top, and every layer under it — the
+  // footage, the hook, a watermark — blurs for as long as it is up.
+  if (pops && comment?.src && !theirs) {
+    const look = template.comment;
+    const window = popWindow(sequenceOf(), look, { start: bodyStart, end: bodyEnd }, comment.reading);
+    const layer = topLayer + 6;
+    const sound = comment.sound ? { src: comment.sound.src, gain: look.sound.gain, durationSec: look.sound.durationSec } : null;
+    push(...blurUnder(sequenceOf(), window, look.blur, layer, by));
+    push(popCommentItem(plan.sequenceId, newId("i"), comment.src, window, layer, look, sound, COMMENT_TITLE, by));
+  }
 
   return operations;
 }

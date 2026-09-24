@@ -21,6 +21,8 @@ export type CommentCardProps = {
   text: string;
   /** A data URL, so the render never depends on a CDN link that expires. Empty draws initials. */
   avatar: string;
+  /** `light`: the white card the hook uses. `chat`: the dark bubble a live chat draws, avatar beside the words. */
+  look?: "light" | "chat";
 };
 
 const PLATFORM: Record<CommentCardProps["platform"], { label: string; color: string; fg: string; glyph: number; path: string }> = {
@@ -47,9 +49,21 @@ export const CARD = {
   maxRows: 5,
 };
 
+/** The chat bubble: the words run beside the avatar rather than under it. */
+export const CHAT = {
+  padding: 30,
+  avatar: 84,
+  gap: 26,
+  nameSize: 34,
+  textSize: 44,
+  lineHeight: 1.2,
+};
+
 /** How many rows the comment wraps to at the card's width, estimated the way captions are. */
-export function commentRows(text: string): number {
-  const room = (CARD.width - CARD.margin * 2 - CARD.padding * 2) / CARD.textSize;
+export function commentRows(text: string, look: CommentCardProps["look"] = "light"): number {
+  const room = look === "chat"
+    ? (CARD.width - CARD.margin * 2 - CHAT.padding * 2 - CHAT.avatar - CHAT.gap) / CHAT.textSize
+    : (CARD.width - CARD.margin * 2 - CARD.padding * 2) / CARD.textSize;
   let rows = 1;
   let used = 0;
   for (const word of text.split(/\s+/).filter(Boolean)) {
@@ -60,14 +74,63 @@ export function commentRows(text: string): number {
   return Math.min(rows, CARD.maxRows);
 }
 
-export const commentCardHeight = (text: string) =>
-  Math.ceil(CARD.margin * 2 + CARD.padding * 2 + CARD.avatar + CARD.gap + commentRows(text) * CARD.textSize * CARD.lineHeight);
+export const commentCardHeight = (text: string, look: CommentCardProps["look"] = "light") => look === "chat"
+  ? Math.ceil(CARD.margin * 2 + CHAT.padding * 2 + Math.max(CHAT.avatar, CHAT.nameSize * 1.25 + 6 + commentRows(text, look) * CHAT.textSize * CHAT.lineHeight))
+  : Math.ceil(CARD.margin * 2 + CARD.padding * 2 + CARD.avatar + CARD.gap + commentRows(text) * CARD.textSize * CARD.lineHeight);
 
 const initials = (name: string) => name.replace(/[^\p{L}\p{N}]/gu, "").slice(0, 2).toUpperCase() || "?";
 
-export const CommentCard: React.FC<CommentCardProps> = ({ platform, name, text, avatar }) => {
+/** The avatar with the platform's mark on its corner, at any size. */
+const Avatar: React.FC<{ meta: (typeof PLATFORM)[keyof typeof PLATFORM]; name: string; avatar: string; size: number; ring: string }> = ({ meta, name, avatar, size, ring }) => {
+  const chip = Math.round(size * 0.42);
+  return (
+    <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
+      {avatar
+        ? <Img src={avatar} style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }} />
+        : <div style={{ width: "100%", height: "100%", borderRadius: "50%", background: meta.color, color: meta.fg,
+            display: "grid", placeItems: "center", fontSize: Math.round(size * 0.37), fontWeight: 800 }}>{initials(name)}</div>}
+      <div style={{
+        position: "absolute", right: -6, bottom: -6, width: chip, height: chip, borderRadius: "50%",
+        background: meta.color, border: `4px solid ${ring}`, display: "grid", placeItems: "center",
+      }}>
+        <svg viewBox="0 0 24 24" width={chip * meta.glyph * 0.8} height={chip * meta.glyph * 0.8} fill={meta.fg}><path d={meta.path} /></svg>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * The chat bubble a stream short cuts to when the streamer reads a viewer out: dark and a
+ * little see-through over the blurred frame, the avatar beside the name and the words,
+ * the way the live chat itself draws a message.
+ */
+const ChatBubble: React.FC<CommentCardProps> = ({ platform, name, text, avatar }) => {
   const meta = PLATFORM[platform] ?? PLATFORM.tiktok;
-  const chip = Math.round(CARD.avatar * 0.42);
+  return (
+    <div style={{ position: "absolute", inset: 0, padding: CARD.margin, fontFamily: inter }}>
+      <div style={{
+        background: "rgba(24,24,27,0.88)", borderRadius: 34, padding: CHAT.padding,
+        display: "flex", alignItems: "flex-start", gap: CHAT.gap,
+        boxShadow: "0 12px 32px rgba(0,0,0,0.45)", border: "1.5px solid rgba(255,255,255,0.08)",
+      }}>
+        <Avatar meta={meta} name={name} avatar={avatar} size={CHAT.avatar} ring="#18181b" />
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: CHAT.nameSize, fontWeight: 700, color: "rgba(255,255,255,0.72)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.25 }}>{name}</div>
+          <div style={{
+            marginTop: 6, fontSize: CHAT.textSize, fontWeight: 700, lineHeight: CHAT.lineHeight, color: "#ffffff",
+            display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: CARD.maxRows, overflow: "hidden",
+            overflowWrap: "anywhere",
+          }}>{text}</div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export const CommentCard: React.FC<CommentCardProps> = (props) => {
+  if (props.look === "chat") return <ChatBubble {...props} />;
+  const { platform, name, text, avatar } = props;
+  const meta = PLATFORM[platform] ?? PLATFORM.tiktok;
   return (
     <div style={{ position: "absolute", inset: 0, padding: CARD.margin, fontFamily: inter }}>
       <div style={{
@@ -75,18 +138,7 @@ export const CommentCard: React.FC<CommentCardProps> = ({ platform, name, text, 
         boxShadow: "0 10px 28px rgba(0,0,0,0.35)",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 24, height: CARD.avatar }}>
-          <div style={{ position: "relative", width: CARD.avatar, height: CARD.avatar, flexShrink: 0 }}>
-            {avatar
-              ? <Img src={avatar} style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }} />
-              : <div style={{ width: "100%", height: "100%", borderRadius: "50%", background: meta.color, color: meta.fg,
-                  display: "grid", placeItems: "center", fontSize: 36, fontWeight: 800 }}>{initials(name)}</div>}
-            <div style={{
-              position: "absolute", right: -6, bottom: -6, width: chip, height: chip, borderRadius: "50%",
-              background: meta.color, border: "4px solid #ffffff", display: "grid", placeItems: "center",
-            }}>
-              <svg viewBox="0 0 24 24" width={chip * meta.glyph * 0.8} height={chip * meta.glyph * 0.8} fill={meta.fg}><path d={meta.path} /></svg>
-            </div>
-          </div>
+          <Avatar meta={meta} name={name} avatar={avatar} size={CARD.avatar} ring="#ffffff" />
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: CARD.nameSize, fontWeight: 700, color: "#111111", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</div>
             <div style={{ fontSize: 26, fontWeight: 600, color: "#6b7280", marginTop: 2 }}>en {meta.label}</div>

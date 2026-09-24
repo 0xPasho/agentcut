@@ -161,3 +161,92 @@ test("choosing the comment by hand is the same layer, and a template applied aft
   assert.equal(after[0].id, chosen[0].id);
   assert.equal(hookStart(id, sequenceId), 4, "and the hook still waits for it");
 });
+
+// ─── the pop: the comment bursts in while it is read out ─────────────────────
+
+test("the reading is found in the words, and the card is timed to it without eating the opening beat", async () => {
+  const { popWindow } = await import("../../templates/lib/comment");
+  const { Clip } = await import("../../editor/types");
+  const reading = comments.readingSpan(WORDS, "Recomendaciones para primer saas?")!;
+  assert.equal(reading.t, 0.2);
+  assert.ok(Math.abs(reading.d - 1.54) < 1e-9, "from the first of its words said to the end of the last");
+  assert.equal(comments.readingSpan(WORDS, "que estas creando"), null, "never said, never timed");
+  // The answer uses the question's words again; that is the answer, not more of the reading.
+  const answered = [...speak("¿Pagas Claude? Dice Willman.", 0.6), ...speak("Pago la suscripción de Claude.", 2.6)];
+  const pagas = comments.readingSpan(answered, "pagas claude?")!;
+  assert.equal(pagas.t, 0.6);
+  assert.ok(Math.abs(pagas.t + pagas.d - (1.0 + 0.34)) < 1e-9, `ends on the first "Claude", not the second: ${JSON.stringify(pagas)}`);
+
+  const sequence = { id: "s", title: "S", output: { width: 1080, height: 1920, fps: 30 }, plan: undefined as never,
+    items: [{ id: "shot", mediaId: "m", at: 0, layer: 0, clip: Clip.parse({ id: "shot", title: "Shot", start: 0, end: 20 }) }] } as never;
+  const look = { delaySec: 0.6, seconds: 2.4, followReading: true };
+  const body = { start: 0, end: 20 };
+  // Read from the first word: it still waits half a second, and holds at least 2.4 s.
+  assert.deepEqual(popWindow(sequence, look, body, { itemId: "shot", t: 0.2, d: 1.5 }), { at: 0.6, end: 3 });
+  // Read later and longer: it lands on the first word and leaves just after the last.
+  const late = popWindow(sequence, look, body, { itemId: "shot", t: 1.2, d: 3.5 });
+  assert.equal(late.at, 1.2);
+  assert.ok(Math.abs(late.end - 5) < 1e-9, `${late.end}`);
+  // Not read at all: the template's own beat.
+  assert.deepEqual(popWindow(sequence, look, body, null), { at: 0.6, end: 3 });
+});
+
+test("a pop comment lands over the hook and a blurred frame with its sound, and either editor can switch it", { timeout: 180_000 }, async () => {
+  await registry.saveTemplate({ id: "chat-pop", extends: "stream-short", name: "Chat pop", outro: { enabled: false },
+    layout: { mode: "crop" }, rhythm: { silence: { enabled: false } },
+    comment: { enabled: true, style: "pop", card: "chat", seconds: 2.4, delaySec: 0.6, blur: 24, sound: { enabled: true, starter: "bubble" } } });
+  const { id, sequenceId } = await project();
+  await tools.executeEditorTool(id, { tool: "template.apply", templateId: "chat-pop", sequenceId, expectedRevision: store.readEditor(id).revision });
+
+  const all = layers(id, sequenceId);
+  const comment = all.find((item) => item.clip.title === "Comment")!;
+  assert.ok(Math.abs((comment.at ?? 0) - 0.6) < 0.01, `lands at ${comment.at}`);
+  assert.ok(Math.abs(comment.clip.end - comment.clip.start - 2.4) < 0.01, "held while it is read, at least 2.4 s");
+  assert.equal(comment.keyframes?.length ?? 0, 0, "on and off on the frame: nothing eases");
+  const image = comment.clip.edits.find((edit) => edit.type === "image")!;
+  assert.match(database.q.getAsset(image.type === "image" ? image.src : "")!.tags, /look:chat/, "drawn as the dark chat bubble");
+  const pop = comment.clip.edits.find((edit) => edit.type === "sfx")!;
+  assert.equal(pop.t, 0, "the sound is on the frame it lands");
+  assert.equal(database.q.getAsset(pop.type === "sfx" ? pop.src : "")!.name, "Bubble");
+
+  assert.equal(hookStart(id, sequenceId), 0, "the hook is there from the first frame and never waits");
+  const blurOf = (title: string) => all.find((item) => item.clip.title === title)!.clip.edits.filter((edit) => edit.type === "blur");
+  const footage = all.find((item) => item.mediaId)!;
+  const [under] = footage.clip.edits.filter((edit) => edit.type === "blur");
+  assert.ok(under && Math.abs(under.t - 0.6) < 0.01 && Math.abs(under.d - 2.4) < 0.01, `the footage blurs under it: ${JSON.stringify(under)}`);
+  assert.equal(blurOf("Hook").length, 1, "and so does the hook");
+  assert.equal(blurOf("Comment").length, 0, "but never the card itself");
+
+  const listed = await tools.executeEditorTool(id, { tool: "comments.list", sequenceId }) as import("../server/place").CommentChoices;
+  assert.equal(listed.current?.style, "pop");
+  assert.equal(listed.current?.commentId, 1);
+
+  // The panel's other style, on the same message: it opens the video, and the blur goes with the pop.
+  await tools.executeEditorTool(id, { tool: "comments.place", sequenceId, commentId: 1, style: "open", expectedRevision: store.readEditor(id).revision });
+  const opened = layers(id, sequenceId);
+  assert.equal(opened.find((item) => item.clip.title === "Comment")!.keyframes?.length, 4);
+  assert.equal(opened.flatMap((item) => item.clip.edits).filter((edit) => edit.type === "blur").length, 0);
+  assert.ok(hookStart(id, sequenceId) > 2, "an opening comment holds the hook back");
+
+  // And back, by hand: the same pop the template makes, with its blur and its sound.
+  await tools.executeEditorTool(id, { tool: "comments.place", sequenceId, commentId: 1, style: "pop", expectedRevision: store.readEditor(id).revision });
+  const popped = layers(id, sequenceId);
+  const again = popped.find((item) => item.clip.title === "Comment")!;
+  assert.ok(Math.abs((again.at ?? 0) - 0.6) < 0.01);
+  assert.equal(again.keyframes?.length ?? 0, 0);
+  assert.ok(again.clip.edits.some((edit) => edit.type === "sfx"));
+  assert.ok(popped.find((item) => item.mediaId)!.clip.edits.some((edit) => edit.type === "blur" && edit.by === "comment"));
+  assert.equal(hookStart(id, sequenceId), 0);
+
+  // A template applied after keeps the person's pop, and does not hold the hook for it.
+  await tools.executeEditorTool(id, { tool: "template.apply", templateId: "chat-pop", sequenceId, expectedRevision: store.readEditor(id).revision });
+  const kept = layers(id, sequenceId);
+  assert.equal(kept.filter((item) => item.clip.title === "Comment").length, 1);
+  assert.equal(kept.find((item) => item.clip.title === "Comment")!.id, again.id);
+  assert.equal(kept.filter((item) => item.clip.title === "Hook").length, 1, "one hook, not the old one emptied beside a new one");
+  const layerOf = (title: string) => kept.find((item) => item.clip.title === title)!.layer ?? 0;
+  assert.ok(layerOf("Comment") > layerOf("Hook"), "the card is read over the hook, not under it");
+  assert.equal(hookStart(id, sequenceId), 0);
+  const blurs = kept.flatMap((item) => item.clip.edits.map((edit) => ({ title: item.clip.title, edit }))).filter(({ edit }) => edit.type === "blur");
+  assert.deepEqual(blurs.map(({ title }) => title).sort(), ["Corte", "Hook"], "the blur is still under their card, on the new hook too, once each");
+});

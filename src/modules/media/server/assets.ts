@@ -117,15 +117,22 @@ export async function registerAsset(input: RegisterInput): Promise<AssetRow> {
  * The marker is what makes deleting one stick.
  */
 const STARTER_MARKER = ".starter-sounds";
-export const STARTER_SOUNDS = ["whoosh", "ding", "pop", "impact", "riser", "click", "swipe", "sparkle"] as const;
+export const STARTER_SOUNDS = ["whoosh", "ding", "pop", "bubble", "impact", "riser", "click", "swipe", "sparkle"] as const;
 
+/**
+ * The marker lists every starter sound this library has been offered. A name in it is
+ * never copied again, so a deleted one stays deleted; a name missing from it is one a
+ * later version shipped, and it arrives the next time the library is read.
+ */
 export async function installStarterSounds(): Promise<number> {
   await ensureLibrary();
   const dir = libraryDirFor("audio");
   const marker = path.join(dir, STARTER_MARKER);
-  if (await fs.stat(marker).then(() => true, () => false)) return 0;
+  const offered = new Set((await fs.readFile(marker, "utf8").catch(() => "")).split("\n").map((line) => line.trim()).filter(Boolean));
+  const fresh = STARTER_SOUNDS.filter((name) => !offered.has(name));
+  if (!fresh.length) return 0;
   let added = 0;
-  for (const name of STARTER_SOUNDS) {
+  for (const name of fresh) {
     const from = path.join(ROOT, "public", "sfx", `${name}.mp3`);
     const to = path.join(dir, `${name}.mp3`);
     try {
@@ -136,7 +143,7 @@ export async function installStarterSounds(): Promise<number> {
       // Already there, or shipped without the files: neither is worth failing a library read over.
     }
   }
-  await fs.writeFile(marker, `${STARTER_SOUNDS.join("\n")}\n`);
+  await fs.writeFile(marker, `${[...offered, ...fresh].join("\n")}\n`);
   return added;
 }
 

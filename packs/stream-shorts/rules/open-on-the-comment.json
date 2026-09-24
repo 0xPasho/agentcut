@@ -1,12 +1,13 @@
 {
   "id": "open-on-the-comment",
-  "name": "A clip that answers somebody opens on them",
-  "description": "The viewer message the clip answers, drawn the way the chat showed it, held for the first seconds; the hook comes in as it goes.",
+  "name": "A clip that answers somebody shows their message as it is read out",
+  "description": "The viewer message the clip answers pops in over a blurred frame as the streamer reads it, drawn the way the chat showed it, and leaves when they finish; the hook stays on screen throughout.",
   "when": "the clip was cut from a stream recording and answers something a viewer said in the chat",
   "stage": "edit",
   "priority": 30,
   "then": {
-    "overrides": { "comment": { "enabled": true } },
-    "prompt": "If the clip answers a message from the chat, the video opens on that message and the hook comes in after it. If nobody asked, do not invent one: the clip opens on the hook instead."
+    "template": "stream-shorts-clip",
+    "overrides": { "comment": { "enabled": true, "style": "pop" } },
+    "prompt": "If the clip answers a message from the chat, the streamer reads it out near the start: that message pops in over the video while they read it, and the hook stays on screen the whole time. If nobody asked, do not invent one: the clip runs on the hook alone."
   }
 }

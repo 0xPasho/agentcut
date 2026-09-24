@@ -31,8 +31,9 @@ trim behavior, and UI adapter. Both interfaces use these operations:
 | `output.patch` | Change only supplied output dimensions/frame rate |
 | `media.transcription` | Record where an imported source's own words stand |
 
-All seven edit types are supported: silence, punch, emphasis, text, image, sound effect,
-and music.
+All eight edit types are supported: silence, punch, blur, emphasis, text, image, sound
+effect, and music. `blur` blurs a shot's picture and what is drawn on it for a span —
+never its captions — and is what a `pop` comment lays under its card.
 
 Picture and sound are separate tracks. A layer is still a plain z-order integer in the
 EDL, and both interfaces write the same `layer`; `src/modules/editor/lib/tracks.ts` is how that
@@ -188,7 +189,7 @@ playhead marks, the ruler's slider value and the lit transcript word follow it.
 - `template.plan` (a dry run over the transcript), `template.apply` (commits it)
 - `rules.list`, `rules.get`, `rules.schema`, `rules.save`, `rules.delete`
 - `rules.evaluate` (an agent judges which rules hold for a video), `rules.apply` (executes them as a template application)
-- `comments.list` (the stream chat around a video, ranked by what the clip reads out), `comments.place` (open the video on one, or on none), `chat.source` / `chat.setSource` (where the chat database is). The panel's **Video → Opening comment** is these tools; see TEMPLATES.md, "Opening on the comment a clip answers"
+- `comments.list` (the stream chat around a video, ranked by what the clip reads out), `comments.place` (open the video on one, or on none; `style: "pop"` bursts it in over the hook and a blurred frame while it is read out), `chat.source` / `chat.setSource` (where the chat database is). The panel's **Video → Opening comment** is these tools; see TEMPLATES.md, "Opening on the comment a clip answers"
 - `glossary.get`, `glossary.save`, `preferences.get`, `preferences.set` (see [RULES.md](./RULES.md))
 - `plan.read`, `plan.generate` (an agent writes a sequence plan or the shared project plan), `plan.apply`
   (executes a plan as a template application; `all: true` reaches every video). Plans are part of the

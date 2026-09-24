@@ -24,12 +24,17 @@ inside the clip.
 
 ## How it opens
 
-- If the clip answers somebody, it opens on **their message**, drawn the way the chat
-  showed it, held for the first seconds. The hook comes in as the message goes.
+- The first frame is the clip itself with its **hook** on it. The hook stays on screen for
+  the whole video.
+- If the clip answers somebody, it starts just before the streamer reads their message
+  out. About half a second in, the **message pops in** — drawn the way the chat showed it,
+  over the frame blurred behind it, with a short bubble-burst — and it stays exactly as
+  long as it is being read, then it is gone on the frame. The captions keep running under
+  it: they are the streamer's voice reading it.
 - The hook is what the clip is about in two to six words, or the question itself. No
   clickbait, no shouting in capitals, no "wait for it".
-- Never open on a message nobody wrote. A hook invented to sound good is a promise the
-  video cannot keep, and the clip opens on the speaker instead.
+- Never show a message nobody wrote. A hook invented to sound good is a promise the
+  video cannot keep, and the clip runs on the hook alone instead.
 
 ## The cut
 

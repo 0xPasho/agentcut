@@ -1,7 +1,8 @@
 /**
  * The starter sounds that ship with the app, synthesised rather than downloaded so
  * they carry no licence and work with no network. Run `node scripts/make-sfx.mjs`
- * after changing one; the files it writes are committed.
+ * after changing one (or `node scripts/make-sfx.mjs <name>` for just that one); the
+ * files it writes are committed.
  */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -17,6 +18,9 @@ const out = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "publi
 const SOUNDS = [
   { name: "ding", d: 1.4, expr: "0.5*sin(2*PI*880*t)*exp(-5*t)+0.25*sin(2*PI*1320*t)*exp(-8*t)" },
   { name: "pop", d: 0.35, expr: "0.8*sin(2*PI*(180+700*exp(-30*t))*t)*exp(-22*t)" },
+  // A bubble bursting: the pitch climbs from ~450 Hz to ~1250 Hz in the first 25 ms and
+  // the sound is gone by 60 — the pop a stream short makes when the viewer's comment lands.
+  { name: "bubble", d: 0.16, expr: "0.95*sin(2*PI*(1250*t-8*(1-exp(-100*t))))*(1-exp(-900*t))*exp(-70*t)" },
   { name: "impact", d: 1.2, expr: "0.9*sin(2*PI*(55+45*exp(-12*t))*t)*exp(-5*t)" },
   { name: "riser", d: 1.6, expr: "0.4*sin(2*PI*(220+950*t*t)*t)*(t/1.6)" },
   { name: "click", d: 0.12, expr: "0.7*(random(0)*2-1)*exp(-90*t)" },
@@ -26,7 +30,9 @@ const SOUNDS = [
 ];
 
 await mkdir(out, { recursive: true });
-for (const sound of SOUNDS) {
+// `node scripts/make-sfx.mjs bubble` writes only the sounds named, leaving the rest as committed.
+const only = process.argv.slice(2);
+for (const sound of SOUNDS.filter((entry) => !only.length || only.includes(entry.name))) {
   const fade = Math.min(0.05, sound.d / 4);
   const chain = [sound.af, `afade=t=out:st=${(sound.d - fade).toFixed(3)}:d=${fade.toFixed(3)}`].filter(Boolean).join(",");
   const file = path.join(out, `${sound.name}.mp3`);

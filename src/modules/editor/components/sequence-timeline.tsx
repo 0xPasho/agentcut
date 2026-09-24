@@ -977,7 +977,7 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
         </div>; })}
         {newTrackRow({ layer: newAudioLayer, kind: "audio" }, "Drop a sound here for a new audio track", "border-t")}
         {selected && selectedMap && effectTypes.map(type => <div key={type} className="flex border-b border-white/5">
-          <span className="sticky left-0 z-20 flex w-[76px] shrink-0 items-center bg-card px-2 text-[10px] text-muted-foreground">{({ silence: "Cuts", punch: "Punch-ins", emphasis: "Emphasis", text: "Titles", image: "Images", music: "Music", sfx: "Sounds" })[type]}</span>
+          <span className="sticky left-0 z-20 flex w-[76px] shrink-0 items-center bg-card px-2 text-[10px] text-muted-foreground">{({ silence: "Cuts", punch: "Punch-ins", blur: "Blur", emphasis: "Emphasis", text: "Titles", image: "Images", music: "Music", sfx: "Sounds" })[type]}</span>
           <div className="relative h-8" style={{ width }} onPointerDown={event => { if (event.button === 0 && event.target === event.currentTarget) seekAt(event.clientX); }}>
             {selected.item.clip.edits.map((edit, index) => {
               if (edit.type !== type) return null;

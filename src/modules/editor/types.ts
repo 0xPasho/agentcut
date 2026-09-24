@@ -119,6 +119,21 @@ export const PunchEdit = z.object({
   by: EditAuthor,
 });
 
+/**
+ * The picture out of focus for a span: the footage and anything drawn on it, never the
+ * captions. A comment read out over a stream is shown this way — the frame behind it
+ * blurred so the card is the one thing to read, while the words being said stay sharp.
+ * `amount` is pixels of blur on a 1080-wide frame; other sizes scale it.
+ */
+export const BlurEdit = z.object({
+  type: z.literal("blur"),
+  t: z.number(),
+  d: z.number().default(2.4),
+  amount: z.number().min(1).max(80).default(24),
+  by: EditAuthor,
+});
+export type BlurEdit = z.infer<typeof BlurEdit>;
+
 export const EmphasisEdit = z.object({
   type: z.literal("emphasis"),
   t: z.number(),
@@ -246,6 +261,7 @@ export const MusicEdit = z.object({
 export const Edit = z.discriminatedUnion("type", [
   SilenceEdit,
   PunchEdit,
+  BlurEdit,
   EmphasisEdit,
   TextEdit,
   ImageEdit,

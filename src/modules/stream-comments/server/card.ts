@@ -35,9 +35,9 @@ const MAX_CHARS = 180;
  * comment draws the same pixels, and the asset library keys on content, so choosing it
  * again reuses the picture already there instead of stacking copies.
  */
-export async function commentCardAsset(projectId: string, comment: ChatComment): Promise<AssetRow> {
+export async function commentCardAsset(projectId: string, comment: ChatComment, look: "light" | "chat" = "light"): Promise<AssetRow> {
   const text = comment.text.length > MAX_CHARS ? `${comment.text.slice(0, MAX_CHARS - 1).trimEnd()}…` : comment.text;
-  const inputProps = { platform: comment.platform, name: comment.name, text, avatar: await avatarData(comment.avatar) };
+  const inputProps = { platform: comment.platform, name: comment.name, text, avatar: await avatarData(comment.avatar), look };
   const serveUrl = await getBundle();
   const composition = await selectComposition({ serveUrl, id: "CommentCard", inputProps });
   const dir = path.join(projectDir(projectId), "assets");
@@ -47,7 +47,7 @@ export async function commentCardAsset(projectId: string, comment: ChatComment):
     await renderStill({ composition, serveUrl, output: file, inputProps, imageFormat: "png" });
     const asset = await registerAsset({
       file, kind: "image", scope: "project", projectId, source: "chat",
-      name: `Comentario de ${comment.name}.png`, tags: `chat comment ${comment.platform} chat:${comment.id}`,
+      name: `Comentario de ${comment.name}.png`, tags: `chat comment ${comment.platform} chat:${comment.id} look:${look}`,
     });
     // A picture already in the library under another file keeps that one.
     if (path.resolve(toAbs(asset.path)) !== path.resolve(file)) await fs.rm(file, { force: true });

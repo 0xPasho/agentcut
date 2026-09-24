@@ -373,6 +373,43 @@ A clip cut from a stream is usually an answer, and the question was typed into t
   replaces it nor adds a second, and its hook still waits for it. `template.apply` takes
   `commentId` too.
 
+### The pop: the message bursts in while it is read out
+
+`style: "open"` (the default above) opens the video on the message. `style: "pop"` is how a
+stream short that reads a viewer out looks, measured off a real one: the first frame is
+the clip with its hook; about 0.6 s in the message lands with a bubble-burst over the
+frame blurred behind it; it holds while the streamer reads it and is gone on the frame
+they finish (~3 s in on the reference); the hook never leaves and the captions never
+stop — they are the streamer's voice reading it.
+
+```json
+"comment": { "enabled": true, "style": "pop", "card": "chat", "seconds": 2.4, "delaySec": 0.6,
+  "followReading": true, "blur": 24, "y": 0.42, "widthPct": 94,
+  "sound": { "enabled": true, "starter": "bubble", "gain": 1.4, "durationSec": 0.3 } }
+```
+
+- **When.** `readingSpan` finds the reading in the words: from the first of the message's
+  words said to the last, each said once — it ends when the answer starts reusing them, or
+  at a pause. The card lands on that first word but never before `delaySec`, and leaves
+  0.3 s after the last, holding at least `seconds`. Not read out, it holds `delaySec` to
+  `delaySec + seconds`. The math is `src/modules/templates/lib/comment.ts`, shared by the
+  template and `comments.place`.
+- **What.** `card: "chat"` draws the dark live-chat bubble — avatar beside the name and the
+  words — instead of the white card. The layer has no keyframes: on and off on the frame.
+  Its `sfx` sits on it at `t: 0`, so moving the card moves the pop.
+- **The blur.** Every layer under the card gets a `blur` edit over the seconds it is up,
+  written in that layer's own source seconds so cuts carry it. `blur` blurs a layer's
+  picture and whatever is drawn on it, never its captions. A pop placed by hand writes its
+  blur as `by: "comment"`; replacing or re-styling the comment removes it, and a template
+  applied over a person's pop lifts their card back above its own new layers and lays the
+  blur again.
+- **The sound.** `bubble` is a starter sound (`scripts/make-sfx.mjs`): pitch climbing
+  ~450 → 1250 Hz in 25 ms, gone by 60 — the reference's pop, measured. Starter sounds a
+  later version ships now install into an existing library; one the owner deleted stays
+  deleted.
+- **Either editor.** `comments.place` takes `style`; the panel's **Pops in over it / Opens
+  the video** is that field, and switching it re-places the same message the other way.
+
 ## Choosing one
 
 Neither a person opening the panel nor an agent reading `templates.json` can see the

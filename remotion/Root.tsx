@@ -39,7 +39,7 @@ export const RemotionRoot: React.FC = () => (
   <Composition id="CommentCard" component={CommentCard}
     defaultProps={{ platform: "tiktok", name: "viewer", text: "¿Qué me recomiendas para empezar?", avatar: "" } as CommentCardProps}
     width={CARD.width} height={400} fps={30} durationInFrames={1}
-    calculateMetadata={({ props }) => ({ height: commentCardHeight(props.text) })}
+    calculateMetadata={({ props }) => ({ height: commentCardHeight(props.text, props.look) })}
   />
   </>
 );

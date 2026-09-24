@@ -2,9 +2,9 @@
   "schema": 1,
   "id": "stream-shorts",
   "name": "Stream shorts",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "openopusclip",
-  "description": "Vertical shorts cut from a screen-share stream: one complete thing each — a question with its whole answer, or one idea explained — opening on the message from the chat it answers, the screen above and the camera below, and your own end card at the end.",
+  "description": "Vertical shorts cut from a screen-share stream: one complete thing each — a question with its whole answer, or one idea explained — the screen above and the camera below, the hook on screen throughout, the chat message it answers popping in over a blurred frame while it is read out, and your own end card at the end.",
   "templates": [
     "stream-shorts-clip"
   ],
@@ -21,8 +21,8 @@
       "text": "Find the complete moments in {selection} — a question from the chat with its whole answer, or one idea explained on its own — and cut them with the Stream shorts — clip template."
     },
     {
-      "label": "Open on the chat",
-      "text": "For {selection}, find the message from the chat it answers and open the clip on it, with the hook coming in after."
+      "label": "Show the chat message",
+      "text": "For {selection}, find the message from the chat it answers and pop it in over the video while it is read out, with the hook staying on screen."
     },
     {
       "label": "Start where the thought starts",

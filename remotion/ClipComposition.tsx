@@ -170,6 +170,17 @@ export const ClipComposition: React.FC<ClipProps> = ({
     );
   }, 1);
 
+  // A blur is on or off, never eased: it arrives with the card it frames and leaves with
+  // it, on the frame. It is sized for a 1080-wide frame so a derive keeps the same look.
+  const blurPx = clip.edits.reduce((most, e) => {
+    if (e.type !== "blur") return most;
+    const { t: from, d } = mapWindow(map, e.t, e.d);
+    return d > 0 && t >= from && t < from + d ? Math.max(most, e.amount * (width / 1080)) : most;
+  }, 0);
+  // Blurring a picture darkens its edges into the black around it; pushing in a little
+  // keeps the soft border outside the frame.
+  const blurred: React.CSSProperties | undefined = blurPx ? { filter: `blur(${blurPx}px)`, transform: "scale(1.06)" } : undefined;
+
   const shared = { sourceUrl, sourceWidth, sourceHeight, clipStart: clip.start, map, zoom, volume: perFrame ? gainAt : (volume as number), muted };
 
   let video: React.ReactNode = null;
@@ -209,7 +220,7 @@ export const ClipComposition: React.FC<ClipProps> = ({
 
   return (
     <AbsoluteFill className="overflow-hidden" style={{ backgroundColor: transparent ? "transparent" : "black" }}>
-      <AbsoluteFill style={{ visibility: hideVisuals ? "hidden" : "visible" }}>{video}</AbsoluteFill>
+      <AbsoluteFill style={{ visibility: hideVisuals ? "hidden" : "visible", ...blurred }}>{video}</AbsoluteFill>
 
       {music.map((m, i) => {
         const from = Math.round(srcToOut(map, m.t) * fps);
@@ -247,6 +258,8 @@ export const ClipComposition: React.FC<ClipProps> = ({
       })}
 
       <AbsoluteFill style={{ visibility: hideVisuals ? "hidden" : "visible" }}>
+      {/* What is drawn on the picture blurs with it; the captions below this do not. */}
+      <AbsoluteFill style={blurPx ? { filter: `blur(${blurPx}px)` } : undefined}>
       {images.map((im, i) => {
         const start = srcToOut(map, im.t);
         const end = srcToOut(map, im.t + im.d);
@@ -374,6 +387,7 @@ export const ClipComposition: React.FC<ClipProps> = ({
         );
       })}
 
+      </AbsoluteFill>
       <Captions words={words} style={clip.captions} emphasis={emphasis} />
       </AbsoluteFill>
     </AbsoluteFill>

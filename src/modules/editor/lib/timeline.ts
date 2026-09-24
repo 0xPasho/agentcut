@@ -103,6 +103,20 @@ export function srcToOut(map: TimeMap, t: number): number {
 }
 
 /**
+ * Output seconds -> clip-relative source seconds: the inverse of `srcToOut`. A moment
+ * chosen on the programme — where a comment is shown, say — becomes the source second
+ * an edit is written at, so the cuts under it move it with the footage.
+ */
+export function outToSrc(map: TimeMap, t: number): number {
+  for (const s of map.spans) {
+    const length = s.srcEnd - s.srcStart;
+    if (t <= s.outStart + length) return s.srcStart + Math.max(0, t - s.outStart);
+  }
+  const last = map.spans.at(-1);
+  return last ? last.srcEnd : 0;
+}
+
+/**
  * An edit's window on the output clock.
  *
  * Everything a clip carries — edits, crop keyframes, words — is authored in

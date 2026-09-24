@@ -19,9 +19,9 @@
       "fix": "What is on the screen is the content; a picture over it covers the thing being talked about." }
   ],
   "rubric": [
-    { "id": "opens-on-the-ask", "severity": "critical", "evidence": "timestamp",
-      "ask": "If the clip answers somebody, does it open on their message, with the hook coming in as it goes? If nobody asked, does it open on the hook rather than on an invented comment?",
-      "fix": "Extend the head to the message, or drop the comment and open on the hook." },
+    { "id": "shows-the-ask", "severity": "critical", "evidence": "timestamp",
+      "ask": "If the clip answers somebody, does their message appear while it is read out — a beat after the start, over the blurred frame, gone when the reading ends — with the hook on screen the whole time? If nobody asked, does it run on the hook alone rather than on an invented comment?",
+      "fix": "Start the clip just before the message is read out, or drop the comment and run on the hook." },
     { "id": "stands-alone", "severity": "critical", "evidence": "quote",
       "ask": "Does the clip make sense to somebody who has never watched the stream — no missing question, no reference to something said before it starts?",
       "fix": "Move the start back to where the thing being answered is stated, or pick a moment that carries its own context." },

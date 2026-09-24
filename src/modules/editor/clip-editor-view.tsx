@@ -765,7 +765,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
             </div>
             {canvasSelected&&item&&<div role="group" aria-labelledby={clipGroupId} className="flex flex-wrap items-center gap-1.5">
               <span id={clipGroupId} className="pr-0.5 text-[11px] font-medium text-muted-foreground">This clip</span>
-              {([["punch","Punch-in","Push in on the picture at the playhead"],["emphasis","Emphasis","Colour the words being said at the playhead"],["silence","Silence cut","Take out a pause at the playhead"]] as const).map(([kind,label,hint])=>
+              {([["punch","Punch-in","Push in on the picture at the playhead"],["blur","Blur","Blur the picture from the playhead, keeping the captions sharp"],["emphasis","Emphasis","Colour the words being said at the playhead"],["silence","Silence cut","Take out a pause at the playhead"]] as const).map(([kind,label,hint])=>
                 <Button key={kind} size="xs" variant="outline" aria-label={`Add ${label.toLowerCase()}`} title={hint} onClick={()=>addEdit(kind)}>{label}</Button>)}
             </div>}
           </div>

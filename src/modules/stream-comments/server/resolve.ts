@@ -1,8 +1,8 @@
 import type { Edl, SequenceItem } from "../../editor/types";
 import { probe } from "../../media/server/ffmpeg";
 import type { PlannedComment } from "../../templates/server/plan";
-import type { VideoTemplate } from "../../templates/types";
-import { answers, chatSource, chatWindow, commentById, rankComments, readComments, type ChatComment, type RankedComment } from "./comments";
+import type { CommentReading, VideoTemplate } from "../../templates/types";
+import { answers, chatSource, chatWindow, commentById, rankComments, readComments, readingSpan, type ChatComment, type RankedComment } from "./comments";
 
 /**
  * Which comment a video opens on, and why — or why none.
@@ -65,24 +65,30 @@ export const plannedComment = (comment: RankedComment | ChatComment, clipStart: 
  * The comment a template application opens on. `commentId` from the request wins; a
  * template that opens on comments finds one; otherwise there is none and nothing is said.
  */
+export const commentReading = (item: SequenceItem | null, comment: ChatComment): CommentReading | null => {
+  if (!item) return null;
+  const span = readingSpan(item.clip.words, comment.text);
+  return span ? { itemId: item.id, ...span } : null;
+};
+
 export async function resolveTemplateComment(
   edl: Edl, sequenceId: string, template: VideoTemplate, commentId: number | "none" | undefined,
-): Promise<{ comment: ChatComment | null; planned: PlannedComment | null; warning: string | null }> {
-  if (commentId === "none" || (commentId === undefined && !template.comment.enabled)) return { comment: null, planned: null, warning: null };
+): Promise<{ comment: ChatComment | null; planned: PlannedComment | null; reading: CommentReading | null; warning: string | null }> {
+  if (commentId === "none" || (commentId === undefined && !template.comment.enabled)) return { comment: null, planned: null, reading: null, warning: null };
   if (typeof commentId === "number") {
     const source = chatSource();
     const found = source.path ? commentById(source.path, commentId) : null;
     if (!found) throw new Error(`There is no chat message ${commentId}${source.path ? "" : " — no chat database is set"}.`);
     const lookup = await lookupComments(edl, sequenceId, template.comment.lookbackSec);
     const planned = plannedComment(lookup.ranked.find((r) => r.id === found.id) ?? found, lookup.item?.clip.start ?? 0, lookup.recordedAt ?? found.ts, "request");
-    return { comment: found, planned, warning: null };
+    return { comment: found, planned, reading: commentReading(lookup.item, found), warning: null };
   }
   const lookup = await lookupComments(edl, sequenceId, template.comment.lookbackSec);
-  if (lookup.problem) return { comment: null, planned: null, warning: `No comment to open on: ${lookup.problem}` };
+  if (lookup.problem) return { comment: null, planned: null, reading: null, warning: `No comment to open on: ${lookup.problem}` };
   const best = lookup.ranked.find(answers);
   if (!best) {
-    return { comment: null, planned: null, warning:
+    return { comment: null, planned: null, reading: null, warning:
       `No comment to open on: none of the ${lookup.ranked.length} messages around this clip is one the streamer reads out. Choose one by hand if it answers somebody.` };
   }
-  return { comment: best, planned: plannedComment(best, lookup.item!.clip.start, lookup.recordedAt!, "matched"), warning: null };
+  return { comment: best, planned: plannedComment(best, lookup.item!.clip.start, lookup.recordedAt!, "matched"), reading: commentReading(lookup.item, best), warning: null };
 }

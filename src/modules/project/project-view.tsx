@@ -603,7 +603,7 @@ function AnalyzePanel({
         ) : (
           <div className="flex w-28 flex-col gap-2">
             <Label htmlFor={countId} className="text-xs text-muted-foreground">How many</Label>
-            <Input id={countId} type="number" min={1} max={20} value={make.count} onChange={(e) => onMake({ ...make, count: Number(e.target.value) })} />
+            <Input id={countId} type="number" min={1} max={200} value={make.count} onChange={(e) => onMake({ ...make, count: Number(e.target.value) })} />
           </div>
         )}
         <Button disabled={busy || (section && !make.templateId)} onClick={onAnalyze}>

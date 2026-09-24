@@ -2,12 +2,16 @@
   "id": "stream-shorts-clip",
   "extends": "stream-short",
   "name": "Stream shorts — clip",
-  "description": "A vertical short cut from a screen-share stream: the screen above, the camera below, the viewer message the clip answers held at the start, the hook for the rest, and your own end card. Stalls and false starts come out; the voice stays.",
+  "description": "A vertical short cut from a screen-share stream: the screen above, the camera below, the hook on screen from the first frame to the last. When the clip answers somebody, their message pops in over a blurred frame half a second in — with a bubble-burst — held while you read it out, and gone on the frame you finish; the captions never stop. Stalls and false starts come out; the voice stays.",
   "tags": ["vertical", "stream", "shorts", "clips"],
   "selection": {
-    "brief": "One complete thing out of hours of a stream: a question from the chat with its whole answer, or one idea explained on its own. Start where the thought starts, end where it lands, and never cut the payoff. A clip has to make sense to somebody who has never seen the stream."
+    "brief": "One complete thing out of hours of a stream: a question from the chat read out with its whole answer, or one idea explained on its own. When it answers a chat message, start about half a second before you begin reading it out, so the clip opens on you and the hook before the message lands. End where the answer lands, and never cut the payoff. A clip has to make sense to somebody who has never seen the stream."
   },
-  "comment": { "enabled": true },
+  "comment": {
+    "enabled": true, "style": "pop", "card": "chat", "seconds": 2.4, "delaySec": 0.6, "followReading": true,
+    "blur": 24, "y": 0.42, "widthPct": 94,
+    "sound": { "enabled": true, "starter": "bubble", "gain": 1.4, "durationSec": 0.3 }
+  },
   "rhythm": {
     "filler": {
       "enabled": true,

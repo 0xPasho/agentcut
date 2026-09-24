@@ -11,6 +11,7 @@ export const MIN_PREVIEW_PX = 80;
 export const NEW_EDIT: Record<string, (t: number) => Edit> = {
   silence: t => ({ type: "silence", t, d: 0.4, by: "" }),
   punch: t => ({ type: "punch", t, d: 1.2, scale: 1.12, by: "" }),
+  blur: t => ({ type: "blur", t, d: 2.4, amount: 24, by: "" }),
   emphasis: t => ({ type: "emphasis", t, d: 1, words: [], color: "#ffe600", by: "" }),
   text: t => ({ type: "text", t, d: 3, text: "New title", position: "top", x: null, y: null, style: "card", color: "", background: "", fontScale: 1, by: "" }),
 };
@@ -132,6 +133,7 @@ export const GROUPS: { title: string; rows: [string, string][] }[] = [
 export const LANES: Array<{ type: Edit["type"]; label: string; className: string }> = [
   { type: "silence", label: "Silence", className: "bg-destructive/80 text-white" },
   { type: "punch", label: "Punch", className: "bg-[#ffda2a] text-black" },
+  { type: "blur", label: "Blur", className: "bg-[#5fb3d9] text-black" },
   { type: "emphasis", label: "Emphasis", className: "bg-[#ed8445] text-white" },
   { type: "text", label: "Title", className: "bg-white text-black" },
   { type: "image", label: "Image", className: "bg-[#7c6cf5] text-white" },

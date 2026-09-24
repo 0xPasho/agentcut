@@ -83,7 +83,7 @@ Settings → Packs → Import a pack → packs/stream-shorts → Read it
 | Pack | For | Carries |
 | --- | --- | --- |
 | `news-desk` | One take about one story, tightened into a video | `news-desk-daily`, which builds on the built-in `news-desk` with a stall list in English and Spanish, and three rules: a news take is edited as one, somebody else's clip runs whole, the sponsor read stays whole |
-| `stream-shorts` | Vertical shorts out of a screen-share stream | `stream-shorts-clip`, which builds on the built-in `stream-short`, opens on the chat message the clip answers and cuts stalls and retakes, and three rules: open on the comment, end on your card, nothing covers the screen |
+| `stream-shorts` | Vertical shorts out of a screen-share stream | `stream-shorts-clip`, which builds on the built-in `stream-short`, keeps the hook up throughout, pops the chat message the clip answers in over a blurred frame while it is read out (`comment.style: "pop"`) and cuts stalls and retakes, and three rules: show the comment as it is read, end on your card, nothing covers the screen |
 
 What they carry that a template cannot is `STYLE.md` — what a good one *is*, what comes out
 of a recording and what has to stay — which the selection agent reads before it decides

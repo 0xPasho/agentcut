@@ -176,6 +176,37 @@ export const answers = (comment: RankedComment) =>
   comment.matched.length >= READ_OUT_WORDS ||
   (comment.score >= MIN_SCORE && (comment.matched.length >= 2 || (comment.matched.length === 1 && contentWords(comment.text).length === 1 && comment.matched[0].length >= 5)));
 
+/** A pause longer than this inside a reading means the streamer has moved on to answering. */
+const READING_GAP_SEC = 1.5;
+
+/**
+ * When the streamer reads the comment out, in the clip's own seconds: from the first of
+ * its words they say to the last. A reading says each of the comment's words once, so it
+ * ends when every one has been said, when one comes round a second time — the answer
+ * using the question's words — or at a pause. Null when they never say it.
+ */
+export function readingSpan(words: Word[], text: string, listenSec = 30): { t: number; d: number } | null {
+  const wanted = new Set(contentWords(text));
+  if (!wanted.size) return null;
+  const said = new Set<string>();
+  let first: Word | null = null;
+  let last: Word | null = null;
+  for (const word of words) {
+    if (word.t > listenSec) break;
+    const hits = contentWords(word.w).filter((w) => wanted.has(w));
+    if (!hits.length) {
+      if (last && word.t - (last.t + last.d) > READING_GAP_SEC) break;
+      continue;
+    }
+    if (last && (word.t - (last.t + last.d) > READING_GAP_SEC || hits.every((w) => said.has(w)))) break;
+    for (const hit of hits) said.add(hit);
+    first ??= word;
+    last = word;
+    if (said.size === wanted.size) break;
+  }
+  return first && last ? { t: first.t, d: last.t + last.d - first.t } : null;
+}
+
 /** The window of chat a clip could be answering, in epoch ms. */
 export function chatWindow(clip: { start: number; end: number }, recordedAt: number, lookbackSec = LOOKBACK_SEC) {
   return {

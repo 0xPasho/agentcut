@@ -7,7 +7,7 @@ import { Badge } from "../../../common/ui/badge";
 import { Button } from "../../../common/ui/button";
 import { Input } from "../../../common/ui/input";
 import { Label } from "../../../common/ui/label";
-import { PLATFORMS } from "../data";
+import { PLATFORMS, STYLES } from "../data";
 
 /**
  * The viewer comment a stream video opens on. The list is the chat around the clip,
@@ -26,6 +26,8 @@ export function CommentPanel({ projectId, sequenceId, beforeApply, afterApply }:
   const [path, setPath] = useState("");
   const [pending, setPending] = useState<string | number | null>(null);
   const [error, setError] = useState("");
+  /** How the next comment chosen enters. Starts as whatever the video's comment does now. */
+  const [style, setStyle] = useState<"open" | "pop">("pop");
 
   const load = useCallback(async () => {
     setError("");
@@ -33,17 +35,18 @@ export function CommentPanel({ projectId, sequenceId, beforeApply, afterApply }:
       const listed = await api.editorTool<CommentChoices>(projectId, { tool: "comments.list", sequenceId });
       setChoices(listed);
       setPath(listed.source ?? "");
+      if (listed.current) setStyle(listed.current.style);
     } catch (reason) { setError((reason as Error).message); }
   }, [projectId, sequenceId]);
   useEffect(() => { void load(); }, [load]);
 
-  const place = async (commentId: number | "none") => {
+  const place = async (commentId: number | "none", as = style) => {
     setPending(commentId);
     setError("");
     try {
       if (!(await beforeApply())) return;
       const current = await api.getProject(projectId);
-      await api.editorTool(projectId, { tool: "comments.place", sequenceId, commentId, expectedRevision: current.revision });
+      await api.editorTool(projectId, { tool: "comments.place", sequenceId, commentId, style: as, expectedRevision: current.revision });
       await afterApply();
       await load();
     } catch (reason) { setError((reason as Error).message); }
@@ -64,15 +67,38 @@ export function CommentPanel({ projectId, sequenceId, beforeApply, afterApply }:
   return (
     <div className="flex flex-col gap-4 text-sm">
       <p className="text-muted-foreground">
-        The comment the video opens on, before the hook. Messages the clip reads out are marked; choosing one draws it as the chat showed it.
+        The viewer message this video answers. Messages the clip reads out are marked; choosing one draws it as the chat showed it.
       </p>
 
       {choices?.problem && <p className="rounded-2xl border border-white/8 bg-white/5 px-3 py-2 text-muted-foreground">{choices.problem}</p>}
       {error && <p role="alert" className="rounded-2xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-destructive">{error}</p>}
 
+      <div role="radiogroup" aria-label="How the comment enters" className="flex flex-col gap-2">
+        <div className="flex flex-wrap gap-2">
+          {STYLES.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              role="radio"
+              aria-checked={style === option.value}
+              disabled={pending !== null}
+              onClick={() => {
+                setStyle(option.value);
+                // The comment already on the video changes with it: same message, the other way in.
+                if (openedOn?.commentId != null && openedOn.style !== option.value) void place(openedOn.commentId, option.value);
+              }}
+              className={`flex min-w-36 flex-1 flex-col items-start gap-0.5 rounded-xl border px-3 py-2 text-left transition-colors ${style === option.value ? "border-primary/60 bg-primary/10" : "border-white/10 hover:bg-white/5"}`}
+            >
+              <span className="text-sm">{option.label}</span>
+              <span className="text-[11px] leading-snug text-muted-foreground">{option.note}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       {openedOn && (
         <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-white/5 px-3 py-2">
-          <span>Opens on a comment for {openedOn.seconds.toFixed(1)}s.</span>
+          <span>{openedOn.style === "pop" ? `Pops in for ${openedOn.seconds.toFixed(1)}s while it is read out.` : `Opens on a comment for ${openedOn.seconds.toFixed(1)}s.`}</span>
           <Button variant="ghost" size="sm" disabled={pending !== null} onClick={() => void place("none")}>
             {pending === "none" ? <Loader2 className="motion-safe:animate-spin" /> : <MessageSquareOff />}Remove
           </Button>

@@ -602,7 +602,14 @@ export async function applyTemplate(
   if (opening.warning) plan.warnings.push(opening.warning);
   // Drawing it needs the renderer's bundle, so it is loaded only for a video that has one.
   const comment = opening.comment
-    ? { src: (await (await import("../../stream-comments/server/card")).commentCardAsset(projectId, opening.comment)).id }
+    ? {
+      src: (await (await import("../../stream-comments/server/card")).commentCardAsset(projectId, opening.comment, template.comment.card)).id,
+      reading: opening.reading,
+      // A `pop` lands with its sound; the switch that silences a template silences this too.
+      sound: template.comment.style === "pop" && !silent
+        ? await resolveSound(template.comment.sound, request.slots, "Comment sound", projectId, "sfx", sounds)
+        : null,
+    }
     : null;
   const operations = templateOperations(current.edl, template, plan, resolved, (prefix) => `${prefix}_${randomUUID().slice(0, 8)}`, music, watermark, options.author, { intro, outro }, sound, level, comment);
   if (!operations.length) throw new Error("This template would not change anything on this video.");

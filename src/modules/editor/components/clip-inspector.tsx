@@ -85,6 +85,19 @@ export function ClipInspector({
         </Field>
       ) : null}
 
+      {edit.type === "blur" ? (
+        <Field label="Blur" value={`${Math.round(edit.amount)} px`}>
+          <Slider aria-label="Blur"
+            aria-valuetext={`${Math.round(edit.amount)} pixels`}
+            min={1}
+            max={80}
+            step={1}
+            value={[edit.amount]}
+            onValueChange={(v) => patch({ amount: num(v) } as Partial<Edit>)}
+          />
+        </Field>
+      ) : null}
+
       {edit.type === "emphasis" ? (
         <div className="flex flex-col gap-2">
           <Label className="text-xs text-muted-foreground">Words to highlight</Label>

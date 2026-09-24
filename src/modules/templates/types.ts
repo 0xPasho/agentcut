@@ -367,8 +367,36 @@ export type TemplateAudio = z.infer<typeof TemplateAudio>;
  */
 export const TemplateComment = z.object({
   enabled: z.boolean().default(false),
-  /** How long the comment holds; the hook appears when it goes. */
+  /**
+   * How the comment enters the video.
+   *
+   * `open`: the video opens on the comment, which grows in and fades, and the hook's words
+   * wait until it has gone.
+   *
+   * `pop`: the video opens on the hook and the footage; a beat later the comment bursts in
+   * over a blurred frame with a pop, held while the streamer reads it out, and leaves on
+   * the frame. The hook never leaves the screen and the captions never stop — they are the
+   * streamer's voice reading it.
+   */
+  style: z.enum(["open", "pop"]).default("open"),
+  /** How long the comment holds. `open`: the hook appears when it goes. `pop`: used when the reading is not found. */
   seconds: z.number().positive().max(10).default(3),
+  /** `pop`: when the comment lands if the streamer is not heard reading it — seconds into the video. */
+  delaySec: z.number().min(0).max(5).default(0.6),
+  /**
+   * `pop`: time the card to the streamer reading it — it lands on their first word of it
+   * and leaves just after the last. Off, it always holds `delaySec` to `delaySec + seconds`.
+   */
+  followReading: z.boolean().default(true),
+  /** `pop`: pixels of blur on the frame behind the card, on a 1080-wide frame. 0 keeps it sharp. */
+  blur: z.number().min(0).max(80).default(24),
+  /** `pop`: the sound it lands with. */
+  sound: TemplateSoundSource.extend({
+    gain: z.number().min(0).max(2).default(0.9),
+    durationSec: z.number().positive().default(0.3),
+  }).prefault({}),
+  /** The card: `light` is the white card the hook uses, `chat` is the dark bubble of a live chat. */
+  card: z.enum(["light", "chat"]).default("light"),
   /** The card's centre, as a share of the output height. Over the screen, clear of the captions. */
   y: z.number().min(0).max(1).default(0.26),
   /** The card's width, as a share of the output width. */
@@ -377,6 +405,9 @@ export const TemplateComment = z.object({
   lookbackSec: z.number().min(10).max(1800).default(240),
 }).strict();
 export type TemplateComment = z.infer<typeof TemplateComment>;
+
+/** Where the streamer reads a comment out: on which shot, in that shot's own source seconds. */
+export type CommentReading = { itemId: string; t: number; d: number };
 
 /**
  * What a template asks to be *chosen* out of a long recording, before anything is
@@ -396,7 +427,7 @@ export type TemplateComment = z.infer<typeof TemplateComment>;
 export const TemplateSelection = z.object({
   mode: z.enum(["clips", "section"]).default("clips"),
   /** How many outputs to propose. A section is one video, so one. */
-  count: z.number().int().min(1).max(50).default(6),
+  count: z.number().int().min(1).max(200).default(6),
   /**
    * How long one finished output may run. In `clips` these are the clip's own bounds;
    * in `section` they bound the whole video, so hours are ordinary values here.
