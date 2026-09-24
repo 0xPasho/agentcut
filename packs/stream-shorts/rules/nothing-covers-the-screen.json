@@ -1,0 +1,11 @@
+{
+  "id": "nothing-covers-the-screen",
+  "name": "Nothing covers what is being shown",
+  "description": "On a screen-share clip the screen is the content, so no picture is placed over it.",
+  "when": "the clip shows a screen share — code, a terminal, a browser, a game, a design tool",
+  "stage": "edit",
+  "priority": 40,
+  "then": {
+    "prompt": "Do not place pictures over the screen: what is on it is the thing being talked about. Keep the captions clear of the seam between the screen and the camera, and leave the speaker's own frame alone."
+  }
+}

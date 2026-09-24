@@ -1,0 +1,12 @@
+{
+  "id": "end-on-your-card",
+  "name": "Every clip ends on the channel's card",
+  "description": "The card the channel ends every video on, played whole after the last word — from the endcard slot, so it is yours rather than the pack author's.",
+  "when": "the clip was cut from a stream recording",
+  "stage": "edit",
+  "priority": 20,
+  "then": {
+    "template": "stream-shorts-clip",
+    "prompt": "The clip ends on the card in the `endcard` slot, played whole after the last word. If the slot is empty the clip ends on the last word; do not substitute anything for it."
+  }
+}

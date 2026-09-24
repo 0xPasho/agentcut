@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "id": "stream-shorts",
+  "name": "Stream shorts",
+  "version": "1.0.0",
+  "author": "openopusclip",
+  "description": "Vertical shorts cut from a screen-share stream: one complete thing each — a question with its whole answer, or one idea explained — opening on the message from the chat it answers, the screen above and the camera below, and your own end card at the end.",
+  "templates": [
+    "stream-shorts-clip"
+  ],
+  "rules": [
+    "open-on-the-comment",
+    "end-on-your-card",
+    "nothing-covers-the-screen"
+  ],
+  "style": "STYLE.md",
+  "review": "review.json",
+  "quickActions": [
+    {
+      "label": "Cut shorts from this stream",
+      "text": "Find the complete moments in {selection} — a question from the chat with its whole answer, or one idea explained on its own — and cut them with the Stream shorts — clip template."
+    },
+    {
+      "label": "Open on the chat",
+      "text": "For {selection}, find the message from the chat it answers and open the clip on it, with the hook coming in after."
+    },
+    {
+      "label": "Start where the thought starts",
+      "text": "Check the edges of {selection}: move the start to where the thought actually begins and the end to just after it lands. Nothing mid-sentence at either end."
+    }
+  ]
+}

@@ -70,25 +70,33 @@ note on what to take from it.
   `packs.examples.remove`. An installed pack keeps them in `workspace/packs/<id>/`;
   `packs.export` with `stylePack` writes them into the exported folder.
 
-## The one that ships: `news-desk`
+## The ones that ship
 
-`packs/news-desk/` in this repository is a pack like any other — a folder with a
+`packs/` in this repository holds two, and each is a pack like any other — a folder with a
 `pack.json`, read by path, shown before it is installed, removable afterwards:
 
 ```
 Settings → Packs → Import a pack → packs/news-desk → Read it
+Settings → Packs → Import a pack → packs/stream-shorts → Read it
 ```
 
-It carries the judgement a template cannot: `STYLE.md` says what a news take is, what
-comes out of one (the stalls, the sentence said twice, the tangent that went nowhere) and
-what stays (the voice, the pause before the verdict, the clip being played whole), and the
-selection agent reads it before it decides which stretches are the video. Beside it are
-three rules — a news take is edited as one, somebody else's clip runs whole, the sponsor
-read stays whole — and `news-desk-daily`, a template that builds on the built-in
-`news-desk` with a stall list covering English and Spanish.
+| Pack | For | Carries |
+| --- | --- | --- |
+| `news-desk` | One take about one story, tightened into a video | `news-desk-daily`, which builds on the built-in `news-desk` with a stall list in English and Spanish, and three rules: a news take is edited as one, somebody else's clip runs whole, the sponsor read stays whole |
+| `stream-shorts` | Vertical shorts out of a screen-share stream | `stream-shorts-clip`, which builds on the built-in `stream-short`, opens on the chat message the clip answers and cuts stalls and retakes, and three rules: open on the comment, end on your card, nothing covers the screen |
 
-Nothing in it is code. The passes it switches on (`rhythm.filler`, `rhythm.retake`) ship
-with the app; the pack decides that a news video is where they belong, and says why.
+What they carry that a template cannot is `STYLE.md` — what a good one *is*, what comes out
+of a recording and what has to stay — which the selection agent reads before it decides
+anything, and `review.json` beside it: the part of that judgement with a number on it
+(length, the longest pause left in, captions crossing the seam) and the part that has to be
+asked (does it open on the message it answers; is the whole video about one story). Neither ships an asset, so the card at the end is yours: the `endcard` slot is
+empty until you fill it, and a clip with nothing in it ends on the last word rather than on
+somebody else's sting.
+
+Nothing in either is code. The passes they switch on (`rhythm.filler`, `rhythm.retake`)
+ship with the app; a pack is what decides where they belong, and says why. Both are
+installed from the repository by the tests, so a folder we point people at cannot quietly
+stop working.
 
 ## What correct looks like
 

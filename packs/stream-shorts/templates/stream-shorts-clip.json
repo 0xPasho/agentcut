@@ -1,0 +1,18 @@
+{
+  "id": "stream-shorts-clip",
+  "extends": "stream-short",
+  "name": "Stream shorts — clip",
+  "description": "A vertical short cut from a screen-share stream: the screen above, the camera below, the viewer message the clip answers held at the start, the hook for the rest, and your own end card. Stalls and false starts come out; the voice stays.",
+  "tags": ["vertical", "stream", "shorts", "clips"],
+  "selection": {
+    "brief": "One complete thing out of hours of a stream: a question from the chat with its whole answer, or one idea explained on its own. Start where the thought starts, end where it lands, and never cut the payoff. A clip has to make sense to somebody who has never seen the stream."
+  },
+  "comment": { "enabled": true },
+  "rhythm": {
+    "filler": {
+      "enabled": true,
+      "words": ["um", "umm", "uh", "uhh", "uhm", "erm", "hmm", "mmm", "mm", "eh", "ehh", "ehm", "em"]
+    },
+    "retake": { "enabled": true }
+  }
+}

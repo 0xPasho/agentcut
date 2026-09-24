@@ -358,16 +358,52 @@ test("a pack's style guide and references install, reach the agents, export, and
   await assert.rejects(fs.stat(path.join(packs.packFolder("second"), "STYLE.md")));
 });
 
+/** The pack folders in the repository, which are the ones we tell people to install. */
+const shippedPacks = path.resolve(import.meta.dirname, "../../../../packs");
+
+test("every pack that ships with the product can be read and installed from the repository", async () => {
+  // Read the way anybody else's pack is read: by path, untrusted, everything shown before
+  // anything is copied. A shipped pack that fails this is a folder we point people at and
+  // that refuses to install.
+  const ids = (await fs.readdir(shippedPacks, { withFileTypes: true })).filter((e) => e.isDirectory()).map((e) => e.name).sort();
+  assert.deepEqual(ids, ["news-desk", "stream-shorts"], "a new pack folder joins this list and these checks");
+  for (const id of ids) {
+    const preview = await packs.inspectPack(path.join(shippedPacks, id));
+    assert.equal(preview.manifest.id, id, `${id}: the folder and the manifest disagree`);
+    assert.equal(preview.untrusted, true);
+    assert.deepEqual(preview.style.problems, [], `${id}: a guide that fails the scan refuses the whole pack`);
+    assert.ok(preview.style.text.length > 500, `${id}: the style guide is the judgement a template cannot hold`);
+    assert.deepEqual(preview.templates.map((t) => t.missingParent), preview.templates.map(() => undefined),
+      `${id}: it builds on a template that is not on every machine`);
+    assert.ok(preview.rules.every((rule) => rule.prompt.trim() || rule.stage === "select"), `${id}: a rule with nothing to say`);
+    // A shipped pack says what correct looks like, and says it in terms the host can
+    // actually measure or ask: a standard that never runs is decoration.
+    assert.deepEqual(preview.review.warnings, [], `${id}: its standard does not hold up`);
+    assert.deepEqual(preview.review.problems, [], `${id}: its standard talks to the agent`);
+    assert.ok(preview.review.review.checks.length && preview.review.review.rubric.length, `${id}: nothing is checked and nothing is asked`);
+    await packs.importPack(path.join(shippedPacks, id));
+    for (const template of preview.templates) await registry.getTemplate(template.id);
+    await packs.removePack(id);
+  }
+});
+
+test("the shorts pack opens a clip on the message it answers", async () => {
+  const shipped = path.join(shippedPacks, "stream-shorts");
+  await packs.importPack(shipped);
+  const template = await registry.getTemplate("stream-shorts-clip");
+  assert.equal(template.extends, "stream-short");
+  assert.equal(template.comment?.enabled, true, "the built-in leaves this off; the pack is what turns it on");
+  assert.equal(template.selection?.mode, "clips", "shorts, not one long video");
+  assert.equal(template.rhythm?.filler.enabled, true, "a stumble in a forty-second clip is the whole clip");
+  assert.equal(template.rhythm?.retake.enabled, true);
+  assert.equal(template.outro?.slot, "endcard", "the card is the installer's, not the pack author's");
+  assert.equal(template.outro?.assetId, "", "and the pack ships none");
+  await packs.removePack("stream-shorts");
+});
+
 test("the news pack that ships with the product installs, and its template cuts what a take has in it that a video does not", async () => {
-  // The pack in the repo, read the way anybody else's pack is read: by path, untrusted,
-  // shown before anything is copied. If this breaks, the folder we tell people to install
-  // is broken.
-  const shipped = path.resolve(import.meta.dirname, "../../../../packs/news-desk");
+  const shipped = path.join(shippedPacks, "news-desk");
   const preview = await packs.inspectPack(shipped);
-  assert.equal(preview.manifest.id, "news-desk");
-  assert.deepEqual(preview.style.problems, [], "a guide that fails the scan refuses the whole pack");
-  assert.ok(preview.style.text.length > 500, "the style guide is the judgement a template cannot hold");
-  assert.deepEqual(preview.templates.map((t) => t.missingParent), [undefined], "its parent is a built-in, so it is on every machine");
   assert.deepEqual(preview.rules.map((r) => r.id).sort(), ["news-take", "play-the-clip-whole", "sponsor-read-stays"]);
 
   await packs.importPack(shipped);

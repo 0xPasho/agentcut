@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "checks": [
+    { "id": "length", "metric": "video.durationSec", "min": 300, "max": 3000, "severity": "critical",
+      "fix": "Under five minutes this is a short with a long name; past fifty it has stopped being one story." },
+    { "id": "no-dead-air", "metric": "silence.longestGapSec", "max": 2, "severity": "critical",
+      "fix": "Two seconds of nothing in a take is the speaker reading or hunting for a tab. Cut it." },
+    { "id": "no-burned-captions", "metric": "captions.on", "is": false, "severity": "suggestion",
+      "fix": "The platform draws its own over a horizontal video, and a second set covers the screen being talked about." },
+    { "id": "screen-stays-clear", "metric": "images.perMin", "max": 0, "severity": "suggestion",
+      "fix": "A stock picture over a screenshot of the article is not illustration, it is cover." }
+  ],
+  "rubric": [
+    { "id": "one-story", "severity": "critical", "evidence": "quote",
+      "ask": "Is the whole video about one story, with a through-line that holds from the first minute to the last?",
+      "fix": "Keep the stronger story and leave the other for its own video." },
+    { "id": "opens-on-the-claim", "severity": "critical", "evidence": "timestamp",
+      "ask": "Do the first thirty seconds say what happened and what the speaker thinks of it?",
+      "fix": "Start where the claim is stated; everything before it is warm-up." },
+    { "id": "order-kept", "severity": "critical", "evidence": "field",
+      "ask": "Are the kept stretches in the order they were recorded — the claim before the evidence, the question before the answer?",
+      "fix": "Put the segments back in source order; in a news take the order is the reasoning." },
+    { "id": "clip-runs-whole", "severity": "suggestion", "evidence": "timestamp",
+      "ask": "Where somebody else's clip is played, does it run whole with the reaction on top of it?",
+      "fix": "Restore the cuts made inside the clip; the reaction is about the thing being shown." },
+    { "id": "ends-on-the-verdict", "severity": "suggestion", "evidence": "timestamp",
+      "ask": "Does the video end on the verdict rather than on the speaker running out of things to say?",
+      "fix": "Move the end to the last sentence that says something." }
+  ]
+}
