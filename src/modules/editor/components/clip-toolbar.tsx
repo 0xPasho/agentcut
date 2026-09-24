@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { Copy, Music2, Palette, Scissors, Trash2, Type, Volume2, VolumeX } from "lucide-react";
+import { Copy, Music2, Palette, Plus, Scissors, Trash2, Type, Volume2, VolumeX } from "lucide-react";
 import { Button } from "@/common/ui/button";
 import { Input } from "@/common/ui/input";
 import { Label } from "@/common/ui/label";
@@ -14,21 +13,28 @@ import { DEFAULT_PALETTE, POSITION_LABELS } from "../data";
 
 
 /**
- * The selected clip's own actions: the hook, the colours, mute, separate audio, split,
+ * The selected clip's own actions: its words, the colours, mute, separate audio, split,
  * duplicate, remove. They sit in a bar under the frame rather than on top of it — the
  * picture is where the layers are dragged, and a floating control there covers the very
  * thing it is meant to edit.
  *
  * Every button here dispatches the same shared operation its panel equivalent does; this is
  * a shortcut to the editor, not a second one.
+ *
+ * There is no "hook" here any more. A hook is a title that happens to come first: the model
+ * has only ever had `text` edits and a clip has always been allowed as many as it likes —
+ * the agent writes several routinely — but this bar showed `edits.find(text)`, so the
+ * second one was invisible and unreachable and the first one looked like a different kind
+ * of thing. A hook is still a hook where it means something: the shot a template names
+ * "Hook", and the line the stream's opening comment waits for.
  */
 export function ClipToolbar({
   item, clip, palette = DEFAULT_PALETTE, span, canDetach,
-  onChange, onMute, onSplit, onDuplicate, onDetachAudio, onRemove,
+  onChange, onMute, onSplit, onDuplicate, onDetachAudio, onRemove, onAddText,
 }: {
   item: SequenceItem;
   clip: Clip;
-  /** Swatches offered for the hook and the captions, usually the active template's brand kit. */
+  /** Swatches offered for the titles and the captions, usually the active template's brand kit. */
   palette?: string[];
   /**
    * Where this clip sits on the programme, in output seconds, or null when it is not
@@ -43,22 +49,21 @@ export function ClipToolbar({
   onDuplicate: () => void;
   onDetachAudio: () => void;
   onRemove: () => void;
+  /**
+   * Add one more line. The view decides where it lands, because that depends on what is
+   * picked: inside a shot that has footage, or as a scene of its own beside the titles
+   * already on the timeline.
+   */
+  onAddText: () => void;
 }) {
   const canSplit = usePlayheadSelector(seconds => !!span && seconds > span.from + .02 && seconds < span.until - .02);
-  const hook = clip.edits.find((e): e is TextEdit => e.type === "text");
-  const hookIndex = clip.edits.findIndex(e => e.type === "text");
-  const [draft, setDraft] = useState(hook?.text ?? "");
+  /** Every line on this clip, each with the index it holds among all of its edits. */
+  const texts = clip.edits.flatMap((edit, index) => edit.type === "text" ? [{ edit: edit as TextEdit, index }] : []);
 
-  const setHook = (text: string) => {
-    setDraft(text);
-    const next: TextEdit = {
-      type: "text", t: hook?.t ?? 0, d: hook?.d ?? 2.5, text,
-      position: hook?.position ?? "top", x: hook?.x ?? null, y: hook?.y ?? null,
-      style: hook?.style ?? "card", by: hook?.by ?? "",
-    };
-    if (hookIndex < 0) { if (text.trim()) onChange({ ...clip, edits: [...clip.edits, next] }); return; }
-    onChange({ ...clip, edits: clip.edits.flatMap((edit, index) => index !== hookIndex ? [edit] : text.trim() ? [next] : []) });
-  };
+  const setText = (index: number, patch: Partial<TextEdit>) =>
+    onChange({ ...clip, edits: clip.edits.map((edit, at) => at === index ? { ...edit, ...patch } as TextEdit : edit) });
+  const removeText = (index: number) =>
+    onChange({ ...clip, edits: clip.edits.filter((_, at) => at !== index) });
 
   const swatches = (label: string, current: string, apply: (color: string) => void) => (
     <div className="flex flex-col gap-1.5">
@@ -97,34 +102,44 @@ export function ClipToolbar({
       <Popover>
         <PopoverTrigger
           render={
-            <Button size="xs" variant={hook ? "secondary" : "ghost"} title="The line on top of the video">
-              <Type />Hook
+            <Button size="xs" variant={texts.length ? "secondary" : "ghost"} title="The words on top of the video">
+              <Type />Text{texts.length > 1 ? <span className="tabular-nums text-muted-foreground">{texts.length}</span> : null}
             </Button>
           }
         />
-        <PopoverContent className="w-72 space-y-3">
-          <Label htmlFor="quick-hook" className="text-xs">Hook</Label>
-          <Input
-            id="quick-hook"
-            value={draft}
-            autoFocus
-            placeholder="The line that stops the scroll"
-            onChange={e => setHook(e.target.value)}
-          />
-          {hook ? (
-            <div className="flex gap-1">
-              {(["top", "center", "bottom"] as const).map(position => (
-                <Button
-                  key={position}
-                  size="xs"
-                  variant={hook.position === position ? "secondary" : "outline"}
-                  aria-pressed={hook.position === position}
-                  onClick={() => onChange({ ...clip, edits: clip.edits.map((edit, index) => index === hookIndex ? { ...hook, position, y: null } : edit) })}
-                >{POSITION_LABELS[position]}</Button>
-              ))}
-            </div>
-          ) : null}
-          <p className="text-[11px] text-muted-foreground">Drag it on the frame to place it anywhere.</p>
+        {/* Tall enough for a few lines and then it scrolls, rather than growing off the screen. */}
+        <PopoverContent className="max-h-[min(24rem,60dvh)] w-80 space-y-3 overflow-y-auto">
+          {texts.length === 0
+            ? <p className="text-xs text-muted-foreground">Nothing is written on this clip yet.</p>
+            : texts.map(({ edit, index }, position) => (
+              <div key={index} className="space-y-1.5 border-s border-foreground/10 ps-2.5">
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    aria-label={texts.length > 1 ? `Text ${position + 1}` : "Text"}
+                    value={edit.text}
+                    autoFocus={position === 0}
+                    placeholder="The line that stops the scroll"
+                    onChange={e => setText(index, { text: e.target.value })}
+                  />
+                  <Button size="icon-xs" variant="ghost" aria-label={`Remove text ${position + 1}`} title="Remove this text" onClick={() => removeText(index)}><Trash2 /></Button>
+                </div>
+                <div className="flex gap-1">
+                  {(["top", "center", "bottom"] as const).map(place => (
+                    <Button
+                      key={place}
+                      size="xs"
+                      variant={edit.position === place && edit.y === null ? "secondary" : "outline"}
+                      aria-pressed={edit.position === place && edit.y === null}
+                      // Choosing a preset gives up the free placement a drag on the frame wrote,
+                      // which is the only way back to it once something has been moved by hand.
+                      onClick={() => setText(index, { position: place, x: null, y: null })}
+                    >{POSITION_LABELS[place]}</Button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          <Button size="xs" variant="outline" className="w-full" onClick={onAddText}><Plus />Add text</Button>
+          <p className="text-[11px] text-muted-foreground">Drag one on the frame to place it anywhere.</p>
         </PopoverContent>
       </Popover>
 

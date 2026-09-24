@@ -7,7 +7,7 @@ import { Player, type PlayerRef } from "@remotion/player";
 import { ArrowLeft, Check, ChevronLeft, ChevronRight, Download, FolderOpen, ImagePlus, Loader2, MousePointerClick, Music2, Plus, Redo2, Scissors, Settings2, Square, Type, Undo2, Wand2 } from "lucide-react";
 import { promoteClipToSequence } from "@/modules/editor/lib/editable-timeline";
 import { shotName } from "@/modules/editor/lib/canvas";
-import { audioLayer } from "@/modules/editor/lib/tracks";
+import { audioLayer, titleLayer } from "@/modules/editor/lib/tracks";
 import { LayerInspector } from "./components/layer-inspector";
 import { MotionInspector } from "./components/motion-inspector";
 import { CanvasGrid, CanvasSelection } from "./components/canvas-selection";
@@ -206,7 +206,12 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
     // A piece of music is not an overlay on the picture: it belongs on the audio track,
     // beside the rest of the sound, wherever it was asked for.
     const sound = edit?.type === "music" || edit?.type === "sfx";
-    const layer = placement?.layer ?? (sound ? audioLayer(sequence, at, duration) : topLayer());
+    // Sound belongs on the audio tracks and a title belongs with the other titles; only
+    // something that really is a new picture layer gets a track all to itself.
+    const layer = placement?.layer
+      ?? (sound ? audioLayer(sequence, at, duration)
+      : edit?.type === "text" ? titleLayer(sequence, at, duration)
+      : topLayer());
     const ops:EditorOperation[]=[{type:"item.add",sequenceId:sequence.id,item:{id,mediaId:null,at,layer,clip:ClipSchema.parse({id,title,start:0,end:duration,captions:{preset:"none"},edits:edit ? [{...edit,t:0}] : []})}}];
     if(layer===0)ops.push({type:"item.reorder",sequenceId:sequence.id,itemId:id,layer:0,index:allocation!.items.filter(i=>(i.item.layer??0)===0).sort((a,b)=>a.from-b.from).filter(i=>at>=(i.from+i.duration/2)/output.fps).length});
     dispatch(ops);
@@ -501,6 +506,25 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
     try { if(!(await save())) return; const p=await api.getProject(projectId); await api.render(projectId,[targetId],p.revision); setRendering(true); }
     catch(e){setActionError((e as Error).message);}
   };
+  /**
+   * One more line, wherever it makes sense for whatever is picked.
+   *
+   * On a shot with footage it goes inside the shot, at the playhead, so it travels with
+   * the picture it belongs to and there can be as many as the shot wants. On a scene with
+   * no footage it becomes a scene of its own beside the titles already on the timeline,
+   * rather than a second edit inside that one: a scene holding exactly one edit is what
+   * the timeline's name for it, the canvas handles and the trim all read as "this shot
+   * *is* that title", and a second edit would quietly take all three away.
+   */
+  const addText = () => {
+    if (!sequence) return;
+    if (item?.mediaId) {
+      dispatch([{type:"item.edit.add",sequenceId:sequence.id,itemId:item.id,edit:NEW_EDIT.text(playheadInSource())}]);
+      setSelected(clip.edits.length); setTab("edit");
+      return;
+    }
+    addCanvas(NEW_EDIT.text(0),"Title");
+  };
   const addEdit = (kind: string) => {
     if(kind === "text") { addCanvas(NEW_EDIT.text(0),"Title"); return; }
     if(!sequence || !item) return;
@@ -676,7 +700,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
               canDetach={!!item.mediaId && !item.muted && !item.hidden}
               onChange={update}
               onMute={muted=>dispatch([{type:"item.place",sequenceId:sequence.id,itemId:item.id,patch:{muted},before:{muted:item.muted??false}}])}
-              onSplit={()=>splitAtPlayhead()} onDuplicate={()=>duplicateSelected()} onDetachAudio={()=>detachAudio()}
+              onSplit={()=>splitAtPlayhead()} onDuplicate={()=>duplicateSelected()} onDetachAudio={()=>detachAudio()} onAddText={addText}
               onRemove={()=>{if(dispatched([{type:"item.remove",sequenceId:sequence.id,itemId:item.id}])){setActiveItemId("");notify(`${clip.title} removed from the timeline.`,"change");}}} />
             : <p className="px-2 text-xs text-muted-foreground">Pick a clip on the frame or the timeline to edit it.</p>}
         </div>}
@@ -689,7 +713,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <div role="group" aria-labelledby={addGroupId} className="flex flex-wrap items-center gap-1.5">
               <span id={addGroupId} className="pr-0.5 text-[11px] font-medium text-muted-foreground">Add</span>
-              <Button size="xs" variant="outline" disabled={!sequence} aria-label="Add a title" title="A text card on its own layer" onClick={()=>addEdit("text")}><Type />Title</Button>
+              <Button size="xs" variant="outline" disabled={!sequence} aria-label="Add text" title="A line of its own, on the track the other titles are on" onClick={()=>addEdit("text")}><Type />Text</Button>
               <Button size="xs" variant="outline" disabled={!sequence} aria-label="Add an image" title="Pictures in your project, your library and online" onClick={()=>browseAssets("image")}><ImagePlus />Image</Button>
               {/* Sound is not something a shot carries: it goes onto the audio track under the
                   picture, where it can span the cuts it plays across. */}
@@ -723,7 +747,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
             }} /></Disclosure>}
           <Card className="shrink-0 p-4"><Tabs value={tab} onValueChange={v=>setTab(v as typeof tab)}><TabsList className="w-full"><TabsTrigger value="captions" className="flex-1">Captions</TabsTrigger><TabsTrigger value="overlays" className="flex-1">Add</TabsTrigger><TabsTrigger value="edit" className="flex-1" disabled={selected===null}>Selected</TabsTrigger></TabsList>
             <TabsContent value="captions" className="pt-4"><CaptionControls value={clip.captions} onChange={captions=>update({...clip,captions})} /></TabsContent>
-            <TabsContent value="overlays" className="pt-4"><OverlayEditor key={clip.id} onPlaceBed={placeMusicBed} projectId={projectId} mediaId={savedEdl.media.some(m=>m.id===item?.mediaId) ? item?.mediaId ?? undefined : undefined} canCapture={!!source} clip={clip} atSec={playheadInSource} onChange={edits=>update({...clip,edits})} /></TabsContent>
+            <TabsContent value="overlays" className="pt-4"><OverlayEditor key={clip.id} onPlaceBed={placeMusicBed} onAddText={addText} projectId={projectId} mediaId={savedEdl.media.some(m=>m.id===item?.mediaId) ? item?.mediaId ?? undefined : undefined} canCapture={!!source} clip={clip} atSec={playheadInSource} onChange={edits=>update({...clip,edits})} /></TabsContent>
             <TabsContent value="edit" className="pt-4">{selected!==null&&clip.edits[selected]?<ClipInspector projectId={projectId} edit={clip.edits[selected]} onChange={edit=>update({...clip,edits:clip.edits.map((e,i)=>i===selected?edit:e)})} onRemove={()=>{update({...clip,edits:clip.edits.filter((_,i)=>i!==selected)});setSelected(null);setTab("captions");}} />:<p className="text-xs text-muted-foreground">Pick a block on the timeline.</p>}</TabsContent>
           </Tabs></Card>
           <Transcript clip={clip} map={map} itemOffset={itemOffset} onSeek={seek} onTrimStart={word=>update({...clip,start:clip.start+word.t})} />

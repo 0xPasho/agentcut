@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { ImagePlus, Loader2, Trash2 } from "lucide-react";
+import { ImagePlus, Loader2, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/common/ui/button";
 import { Input } from "@/common/ui/input";
 import { Label } from "@/common/ui/label";
@@ -25,11 +25,14 @@ export function OverlayEditor({
   atSec = () => 0,
   onChange,
   onPlaceBed,
+  onAddText,
 }: {
   projectId: string;
   mediaId?: string;
   canCapture?: boolean;
   clip: Clip;
+  /** One more line. The view decides whether it goes inside this shot or beside it. */
+  onAddText?: () => void;
   /** Put a music bed on the audio track instead of inside this shot. */
   onPlaceBed?: (assetId: string) => void;
   /** Where new overlays land, clip-relative. Read when one is added, so a playing
@@ -41,26 +44,13 @@ export function OverlayEditor({
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const hook = clip.edits.find((e): e is TextEdit => e.type === "text");
+  /** Every line on this clip, each with the index it holds among all of its edits. */
+  const texts = clip.edits.flatMap((edit, index) => edit.type === "text" ? [{ edit: edit as TextEdit, index }] : []);
   const images = clip.edits.filter((e): e is ImageEdit => e.type === "image");
-  const hookIndex = clip.edits.findIndex(e => e.type === "text");
 
-  const setHook = (patch: Partial<TextEdit>) => {
-    const next: TextEdit = {
-      type: "text",
-      t: hook?.t ?? 0,
-      d: hook?.d ?? 2.5,
-      text: hook?.text ?? "",
-      position: hook?.position ?? "top",
-      x: hook?.x ?? null,
-      y: hook?.y ?? null,
-      style: hook?.style ?? "card",
-      by: hook?.by ?? "",
-      ...patch,
-    };
-    if (hookIndex < 0) { if (next.text.trim()) onChange([...clip.edits, next]); }
-    else onChange(clip.edits.flatMap((edit, index) => index !== hookIndex ? [edit] : next.text.trim() ? [next] : []));
-  };
+  const setText = (index: number, patch: Partial<TextEdit>) =>
+    onChange(clip.edits.map((edit, at) => at === index ? { ...edit, ...patch } as TextEdit : edit));
+  const removeText = (index: number) => onChange(clip.edits.filter((_, at) => at !== index));
 
   const patchImage = (index: number, patch: Partial<ImageEdit>) => {
     let seen = -1;
@@ -107,48 +97,57 @@ export function OverlayEditor({
   return (
     <div className="flex flex-col gap-5">
       <section className="flex flex-col gap-3">
-        <Label className="text-xs text-muted-foreground">Hook title</Label>
-        <Textarea aria-label="Hook title"
-          rows={2}
-          value={hook?.text ?? ""}
-          onChange={(e) => setHook({ text: e.target.value })}
-          placeholder="¿Cuántos programadores realmente consiguen trabajo? 💻"
-        />
-        <div className="flex gap-2">
-          <Select
-            value={hook?.style ?? "card"}
-            onValueChange={(v) => setHook({ style: v as TextEdit["style"] })}
-          >
-            <SelectTrigger aria-label="Hook style" className="flex-1">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="card">White card</SelectItem>
-              <SelectItem value="plain">Plain text</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select
-            value={hook?.position ?? "top"}
-            onValueChange={(v) => setHook({ position: v as TextEdit["position"], x: null, y: null })}
-          >
-            <SelectTrigger aria-label="Hook position" className="flex-1">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="top">Top</SelectItem>
-              <SelectItem value="center">Center</SelectItem>
-              <SelectItem value="bottom">Bottom</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        {hook ? (
-          <div className="flex flex-col gap-2">
+        <Label className="text-xs text-muted-foreground">Text</Label>
+        {texts.length === 0 ? <p className="text-xs text-muted-foreground">Nothing is written on this clip yet.</p> : null}
+        {texts.map(({ edit, index }, position) => (
+          <div key={index} className="flex flex-col gap-2 border-s border-border ps-3">
+            <div className="flex items-start gap-2">
+              <Textarea aria-label={texts.length > 1 ? `Text ${position + 1}` : "Text"}
+                rows={2}
+                className="flex-1"
+                value={edit.text}
+                onChange={(e) => setText(index, { text: e.target.value })}
+                placeholder="¿Cuántos programadores realmente consiguen trabajo? 💻"
+              />
+              <Button size="icon-sm" variant="ghost" aria-label={`Remove text ${position + 1}`} title="Remove this text" onClick={() => removeText(index)}><Trash2 /></Button>
+            </div>
+            <div className="flex gap-2">
+              <Select
+                value={edit.style}
+                onValueChange={(v) => setText(index, { style: v as TextEdit["style"] })}
+              >
+                <SelectTrigger aria-label={`Text ${position + 1} style`} className="flex-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="card">White card</SelectItem>
+                  <SelectItem value="plain">Plain text</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select
+                value={edit.y === null ? edit.position : "free"}
+                onValueChange={(v) => setText(index, v === "free" ? {} : { position: v as TextEdit["position"], x: null, y: null })}
+              >
+                <SelectTrigger aria-label={`Text ${position + 1} position`} className="flex-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="top">Top</SelectItem>
+                  <SelectItem value="center">Center</SelectItem>
+                  <SelectItem value="bottom">Bottom</SelectItem>
+                  {/* Only offered once a drag on the frame has written one, and picking any of
+                      the three above is the way back from it. */}
+                  {edit.y !== null ? <SelectItem value="free">Placed by hand</SelectItem> : null}
+                </SelectContent>
+              </Select>
+            </div>
             <Label className="flex justify-between text-xs text-muted-foreground">
-              Shows for <span className="font-mono">{hook.d.toFixed(1)}s</span>
+              Shows for <span className="font-mono">{edit.d.toFixed(1)}s</span>
             </Label>
-            <Slider aria-label="Title duration" min={1} max={10} step={0.5} value={[hook.d]} onValueChange={(v) => setHook({ d: num(v) })} />
+            <Slider aria-label={`Text ${position + 1} duration`} min={1} max={10} step={0.5} value={[edit.d]} onValueChange={(v) => setText(index, { d: num(v) })} />
           </div>
-        ) : null}
+        ))}
+        {onAddText ? <Button size="sm" variant="outline" onClick={onAddText}><Plus />Add text</Button> : null}
       </section>
 
       <section className="flex flex-col gap-3 border-t border-border pt-4">

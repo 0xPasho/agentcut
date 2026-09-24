@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Clip, Edl, VideoSequence } from "../types";
 import { applyOperations } from "../lib/operations";
-import { audioLayer, audioOnly, laneLabels, routeLayer, trackLanes } from "../lib/tracks";
+import { audioLayer, audioOnly, laneLabels, routeLayer, titleLayer, trackLanes } from "../lib/tracks";
 
 const clip = (id: string, seconds: number, edits: unknown[] = []) =>
   Clip.parse({ id, title: id, start: 0, end: seconds, captions: { preset: "none" }, edits });
@@ -105,4 +105,33 @@ test("separating a shot's sound can be undone, both the new track and the silenc
   assert.deepEqual(back.map(item => item.id), ["shot"]);
   assert.equal(back[0].muted, false);
   assert.deepEqual(back[0].clip, edl.sequences[0].items[0].clip);
+});
+
+test("titles share a track with the titles already there, and never with anything else", () => {
+  const base = fixture();
+  // The track the first title is on is free after it, so the second one joins it.
+  assert.equal(titleLayer(base, 3, 2), 1);
+  // Over the top of it, there is nowhere on that track to stand.
+  assert.equal(titleLayer(base, 1, 2), 4);
+  // A track carrying a picture is not a titles track, however much text is also on it.
+  const withFootage = sequence([
+    { id: "shot", mediaId: "source", clip: clip("shot", 6) },
+    { id: "over", mediaId: "source", layer: 1, at: 0, clip: clip("over", 6) },
+  ]);
+  assert.equal(titleLayer(withFootage, 0, 2), 2);
+  // Neither is the audio region, and neither is Main, where a transparent scene would
+  // hold black frames for as long as the title lasts.
+  const soundOnly = sequence([{ id: "bed", mediaId: null, layer: 1, at: 0, clip: clip("bed", 6, music(6)) }]);
+  assert.equal(titleLayer(soundOnly, 0, 2), 2);
+  assert.equal(titleLayer(sequence([]), 0, 2), 1);
+});
+
+test("several titles land on one track instead of one track each", () => {
+  let seq = sequence([]);
+  for (const [index, at] of [0, 3, 6].entries()) {
+    const id = `t${index}`;
+    const layer = titleLayer(seq, at, 2);
+    seq = VideoSequence.parse({ ...seq, items: [...seq.items, { id, mediaId: null, layer, at, clip: clip(id, 2, [{ type: "text", t: 0, d: 2, text: id }]) }] });
+  }
+  assert.deepEqual(seq.items.map(item => item.layer), [1, 1, 1]);
 });

@@ -85,6 +85,37 @@ export function audioLayer(sequence: VideoSequence, at: number, duration: number
   return nextLayer(sequence);
 }
 
+/** A scene that is nothing but words: the shape every hand-added title has. */
+const titlesOnly = (item: Pick<SequenceItem, "mediaId" | "clip">) =>
+  item.mediaId === null && item.clip.edits.length > 0 && item.clip.edits.every(edit => edit.type === "text");
+
+/**
+ * Where a new title belongs: the first picture track above Main carrying nothing but
+ * titles and free at that moment, and a fresh track above everything when none of them
+ * is. Every title used to take a track of its own — five lines, five tracks, a timeline
+ * you could not see past — when they were never on top of each other to begin with.
+ *
+ * It answers with a track, never with an existing shot to append to, and that is the
+ * point. A template recognises its own work by the shot's title and replaces it whole
+ * when it is applied again, so a line written by hand inside the template's hook would
+ * be thrown out along with it. Standing beside it on the same track, it is nobody's but
+ * the author's — and the several places that read a scene holding exactly one edit as
+ * "this shot *is* that title" go on being true.
+ */
+export function titleLayer(sequence: VideoSequence, at: number, duration: number): number {
+  const fps = sequence.output.fps;
+  const placed = sequenceFrames(sequence).items;
+  for (const lane of trackLanes(sequence)) {
+    if (lane.kind !== "video" || lane.layer === 0) continue;
+    const onLane = sequence.items.filter(item => (item.layer ?? 0) === lane.layer);
+    if (!onLane.length || !onLane.every(titlesOnly)) continue;
+    const busy = placed.some(entry => (entry.item.layer ?? 0) === lane.layer
+      && entry.from / fps < at + duration - 1e-6 && (entry.from + entry.duration) / fps > at + 1e-6);
+    if (!busy) return lane.layer;
+  }
+  return nextLayer(sequence);
+}
+
 /**
  * The track a gesture actually lands on. Aiming a sound at the picture sends it to the
  * audio region and aiming a picture at the audio region sends it to a new track above,
