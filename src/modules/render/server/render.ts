@@ -11,6 +11,7 @@ import type { Edl, Clip, VideoSequence } from "../../editor/types";
 import { creditsFor } from "../../media/server/assets";
 import { serverAssetUrls } from "../../media/server/asset-urls";
 import { buildTimeMap, clipFrames } from "../../editor/lib/timeline";
+import { conformSequences, sweepConform, type Conform } from "./conform";
 
 const ENTRY = path.join(ROOT, "remotion", "index.ts");
 
@@ -44,7 +45,7 @@ export type RenderProgress = {
   total: number;
   /** 0..1 */
   progress: number;
-  stage: "bundling" | "rendering" | "done";
+  stage: "preparing" | "bundling" | "rendering" | "done";
 };
 
 let cachedBundle: Promise<string> | null = null;
@@ -101,13 +102,15 @@ export type RenderServe = {
   close: () => Promise<void>;
 };
 
-export async function openRenderServe(edl: Edl, dir: string): Promise<RenderServe> {
+export async function openRenderServe(edl: Edl, dir: string, conform: Conform | null = null): Promise<RenderServe> {
   // Serve the whole workspace: the source and the project's assets/ directory are
   // both under it, and a source picked from elsewhere in the workspace still resolves.
   const [serveUrl, files] = await Promise.all([getBundle(), serveDir(WORKSPACE, {
     // Only a project that has a primary source gets an alias for it.
     ...(edl.source ? { "/__primary_source": edl.source.file } : {}),
     ...Object.fromEntries((edl.media ?? []).map(m => [`/__media/${m.id}`, m.file])),
+    // A conformed render reads cuts of those sources instead, under names of their own.
+    ...Object.fromEntries(Object.entries(conform?.files ?? {}).map(([id, file]) => [`/__media/${id}`, file])),
   })]);
   const rel = (p: string) =>
     path
@@ -118,10 +121,13 @@ export async function openRenderServe(edl: Edl, dir: string): Promise<RenderServ
   const sourceUrl = edl.source ? `${files.url}/__primary_source` : "";
   const assetBase = `${files.url}/${rel(path.join(dir, "assets"))}/`;
   const assetUrls = serverAssetUrls(edl, edl.projectId, files.url);
-  const mediaUrls = Object.fromEntries((edl.media ?? []).map(m => [m.id, `${files.url}/__media/${m.id}`]));
+  const mediaUrls = Object.fromEntries([...(edl.media ?? []), ...(conform?.media ?? [])].map(m => [m.id, `${files.url}/__media/${m.id}`]));
+  const media = conform ? [...(edl.media ?? []), ...conform.media] : edl.media;
   return {
     serveUrl,
-    sequenceProps: (sequence) => ({ sequence, media: edl.media, mediaUrls, assetBase, assetUrls }),
+    // The cuts stand in for the recordings only in what this render is handed. The EDL
+    // itself is untouched, which is why the rewrite lives here and not in the store.
+    sequenceProps: (sequence) => ({ sequence: conform ? conform.rewrite(sequence) : sequence, media, mediaUrls, assetBase, assetUrls }),
     clipProps: (clip) => ({
       clip, sourceUrl, assetBase, assetUrls,
       sourceWidth: edl.source!.width, sourceHeight: edl.source!.height,
@@ -133,18 +139,29 @@ export async function openRenderServe(edl: Edl, dir: string): Promise<RenderServ
 export async function renderClips(
   edl: Edl,
   dir: string,
-  opts: { onProgress?: (p: RenderProgress) => void; only?: string[]; concurrency?: number } = {},
+  opts: { onProgress?: (p: RenderProgress) => void; only?: string[]; concurrency?: number; conformMinBytes?: number } = {},
 ) {
   const outDir = path.join(dir, "clips");
   await fs.mkdir(outDir, { recursive: true });
 
+  const all = [...edl.clips, ...(edl.sequences ?? [])];
+  const clips = opts.only?.length ? all.filter((c) => opts.only!.includes(c.id)) : all;
+
+  // Cut the parts of each recording this render plays out of it first, so Remotion copies
+  // and seeks in minutes of footage rather than hours. Nothing is conformed unless it
+  // pays for itself, and a failure here is not a failed export: the render falls back to
+  // the sources themselves, which is how every render worked before this.
+  const sequences = clips.filter((clip): clip is VideoSequence => "items" in clip);
+  const conform = await conformSequences(edl, dir, sequences, {
+    minBytes: opts.conformMinBytes,
+    onProgress: (done, total) => opts.onProgress?.({ clipId: "", title: "", index: done, total, progress: total ? done / total : 0, stage: "preparing" }),
+  }).catch(() => null);
+
   opts.onProgress?.({ clipId: "", title: "", index: 0, total: 0, progress: 0, stage: "bundling" });
-  const serve = await openRenderServe(edl, dir);
+  const serve = await openRenderServe(edl, dir, conform);
   const { serveUrl } = serve;
 
   try {
-  const all = [...edl.clips, ...(edl.sequences ?? [])];
-  const clips = opts.only?.length ? all.filter((c) => opts.only!.includes(c.id)) : all;
   const outputs: Array<{ clip: { id: string; title: string }; file: string }> = [];
 
   for (const [index, clip] of clips.entries()) {
@@ -194,6 +211,7 @@ export async function renderClips(
   }
 
   await writeCredits(edl, outDir);
+  await sweepConform(dir);
   return outputs;
   } finally {
     await serve.close();

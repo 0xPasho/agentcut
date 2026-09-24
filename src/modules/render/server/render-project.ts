@@ -32,7 +32,7 @@ export async function claimPidLock(lockPath: string, busy: string) {
 
 const claimRenderLock = (lockPath: string) => claimPidLock(lockPath, "This project already has a render in progress.");
 
-export async function renderProject(projectId: string, options: { only?: string[]; expectedRevision?: number; onProgress?: (p: RenderProgress) => void } = {}) {
+export async function renderProject(projectId: string, options: { only?: string[]; expectedRevision?: number; onProgress?: (p: RenderProgress) => void; conformMinBytes?: number } = {}) {
   const dir = projectDir(projectId);
   const lockPath = path.join(dir, "render.lock");
   const lock = await claimRenderLock(lockPath);

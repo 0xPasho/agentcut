@@ -250,6 +250,10 @@ async function render(job: JobRow, dir: string, only?: string[], expectedRevisio
   const rendered = await renderProject(pid, {
     only: targets, expectedRevision,
     onProgress: (p) => {
+      if (p.stage === "preparing") {
+        q.setJob(job.id, { stage: p.total ? `preparing footage ${p.index}/${p.total}` : "preparing footage", progress: p.progress });
+        return;
+      }
       if (p.stage === "bundling") {
         q.setJob(job.id, { stage: "bundling", progress: 0 });
         return log(pid, job.id, "stage", "bundling composition");
