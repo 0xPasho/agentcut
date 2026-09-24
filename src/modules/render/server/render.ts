@@ -14,6 +14,15 @@ import { buildTimeMap, clipFrames } from "../../editor/lib/timeline";
 
 const ENTRY = path.join(ROOT, "remotion", "index.ts");
 
+/**
+ * How long one frame may take to fetch and paint. A day, which is no limit in
+ * practice: we would rather wait than lose an export, and there is no telling how
+ * long a frame of somebody's project takes — the first shot of a five-hour recording
+ * has ffmpeg seeking gigabytes into the file, well past Remotion's 28-second default.
+ * A render that truly hangs now shows as progress that stops, not as an error.
+ */
+const FRAME_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+
 export type RenderProgress = {
   clipId: string;
   title: string;
@@ -147,6 +156,7 @@ export async function renderClips(
       outputLocation,
       inputProps,
       concurrency: opts.concurrency,
+      timeoutInMilliseconds: FRAME_TIMEOUT_MS,
       onProgress: ({ progress }) =>
         opts.onProgress?.({
           clipId: clip.id,
