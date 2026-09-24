@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ComponentProps, type PointerEvent } from "react";
-import { EyeOff, Eye, VolumeX, Volume2, Play, Pause, Plus, Film, Music2, Layers, Magnet, Minus, Copy, Scissors, Trash2, ArrowUp, ArrowDown, MousePointerClick, MessageSquare, Blend, Timer } from "lucide-react";
+import { EyeOff, Eye, VolumeX, Volume2, Play, Pause, Plus, Film, Gauge, Music2, Layers, Magnet, Minus, Copy, Scissors, Trash2, ArrowUp, ArrowDown, MousePointerClick, MessageSquare, Blend, Timer } from "lucide-react";
 import { Transition } from "@/modules/editor/types";
 import type { MediaSource, VideoSequence } from "@/modules/editor/types";
 import type { EditorOperation } from "@/modules/editor/lib/operations";
@@ -20,7 +20,7 @@ import { buildTimeMap, srcToOut } from "@/modules/editor/lib/timeline";
 import { Button } from "../../../common/ui/button";
 import { describeAuthor, isAgentAuthor } from "@/modules/editor/lib/authorship";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel, ContextMenuSeparator, ContextMenuTrigger, Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "../../../common/ui/context-menu";
-import { LABEL_WIDTH, NO_MORE_FOOTAGE, EMPTY_MEDIA, STRIP_FRAMES, TARGET_PX_PER_FRAME, TICK_WINDOW_PX, ZOOM_STEP } from "../data";
+import { LABEL_WIDTH, NO_MORE_FOOTAGE, EMPTY_MEDIA, PLAYBACK_RATES, STRIP_FRAMES, TARGET_PX_PER_FRAME, TICK_WINDOW_PX, ZOOM_STEP } from "../data";
 import { type Drag, type Ghost, type Hover, type ExternalDrop } from "../types";
 import { timeLabel, frameLabel, sourceAt, laneBoxes, MIN_JOINT_PX } from "../lib/sequence-timeline";
 /* Everything below follows the playhead. They are separate components, and small ones,
@@ -134,6 +134,9 @@ type Props = {
   onDropSearchHit?: (hit: NonNullable<DragPayload["search"]>, at: number, layer: number) => void;
   onReplaceMedia?: (itemId: string, mediaId: string) => void;
   onReplaceAsset?: (itemId: string, assetId: string, editIndex?: number) => void;
+  /** How fast the preview plays, and the way to change it. Absent hides the control. */
+  rate?: number;
+  onRateChange?: (rate: number) => void;
   onSplit?: (itemId: string) => void;
   onDuplicate?: (itemId: string) => void;
   /** Lift a shot's own sound onto its own track, so it can be moved, trimmed and levelled alone. */
@@ -203,7 +206,7 @@ function Waveform({ src }: { src: string }) {
   return <WaveShape peaks={peaks} className="pointer-events-none absolute inset-x-0 bottom-0 h-7 w-full fill-emerald-300/70 opacity-60" />;
 }
 
-export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, onSelect, onSeek, mediaUrls = {}, assetUrls = {}, media = EMPTY_MEDIA, selectedEdit, onSelectEdit, onDropMedia, onDropAsset, onDropFiles, onDropLocalFile, onDropSearchHit, onReplaceMedia, onReplaceAsset, onSplit, onDuplicate, onDetachAudio, onAskAgent, onNotify, playing = false, onPlayToggle }: Props) {
+export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, onSelect, onSeek, mediaUrls = {}, assetUrls = {}, media = EMPTY_MEDIA, selectedEdit, onSelectEdit, onDropMedia, onDropAsset, onDropFiles, onDropLocalFile, onDropSearchHit, onReplaceMedia, onReplaceAsset, onSplit, onDuplicate, onDetachAudio, onAskAgent, onNotify, playing = false, onPlayToggle, rate = 1, onRateChange }: Props) {
   // Reading the playhead here never re-renders the timeline; the parts that draw it
   // subscribe on their own, so a playing preview repaints a marker, not every clip.
   const playhead = usePlayheadStore();
@@ -760,6 +763,18 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
   return <div className="flex min-h-0 min-w-0 flex-col gap-2 overflow-hidden">
     <div className="flex flex-wrap items-center gap-2">
       {onPlayToggle && <Button size="icon-xs" variant="secondary" aria-label={playing ? "Pause" : "Play"} aria-pressed={playing} title={playing ? "Pause (Space)" : "Play (Space)"} disabled={!sequence.items.length} onClick={onPlayToggle}>{playing ? <Pause /> : <Play />}</Button>}
+      {onRateChange && <Menu>
+        <MenuTrigger render={
+          <Button size="xs" variant={rate === 1 ? "ghost" : "secondary"} aria-label={`Playback speed, ${rate} times`} title="How fast the preview plays (< and >)" disabled={!sequence.items.length}>
+            <Gauge /><span className="tabular-nums">{rate}×</span>
+          </Button>
+        } />
+        <MenuContent>
+          <MenuRadioGroup value={String(rate)} onValueChange={value => onRateChange(Number(value))}>
+            {PLAYBACK_RATES.map(value => <MenuRadioItem key={value} value={String(value)}>{value}× {value === 1 ? "· normal" : ""}</MenuRadioItem>)}
+          </MenuRadioGroup>
+        </MenuContent>
+      </Menu>}
       <h2 className="text-sm font-medium">Timeline <span className="ml-2 text-xs tabular-nums text-muted-foreground">{sequence.items.length ? <><PlayheadLabel /> / {timeLabel(seconds)}</> : "Empty"}</span></h2>
       {selection.size > 1
         ? <Button size="xs" variant="secondary" className="mr-auto" onClick={() => setExtra([])}>{selection.size} clips selected · Clear</Button>

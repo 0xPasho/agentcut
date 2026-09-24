@@ -60,7 +60,7 @@ import { Clip as ClipSchema, type Clip, type Edit, type Edl, type SequenceItem }
 import { emptySequencePlan } from "@/modules/plan/types";
 import { uid, sourceSecondsAt } from "./lib/clip-editor-view";
 import { type TemplateOption } from "./types";
-import { EMPTY, MIN_PREVIEW_PX, NEW_EDIT } from "./data";
+import { EMPTY, MIN_PREVIEW_PX, NEW_EDIT, PLAYBACK_RATES } from "./data";
 
 /** A single editor for generated clips, imported footage, and source-free canvases. */
 export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, clipId, sequenceId }: {
@@ -78,6 +78,13 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
   const dispatched = (ops: EditorOperation[]) => dispatch(ops) === true;
   const { save, dirty, saving } = editor;
   const [canvasSelected,setCanvasSelected]=useState(false),[playing,setPlaying]=useState(false);
+  /**
+   * How fast the preview runs. A review pass wants to be quicker than the video and
+   * finding the frame a cut belongs on wants to be slower, and neither is a different
+   * activity from watching it. It touches nothing but this player: the project, the
+   * export and the agent never hear about it.
+   */
+  const [rate,setRate]=useState(1);
   const [canvasPreview,setCanvasPreview]=useState<CanvasPreview>(null);
   const [activeItemId, setActiveItemId] = useState("");
   const sequence = edl.sequences.find(s => s.id === activeSequenceId);
@@ -443,6 +450,13 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
         const at = player.current ? player.current.getCurrentFrame() / output.fps : playhead.get();
         seek(Math.max(0, Math.min(duration, at + frames / output.fps)));
       };
+      // The shifted pair of the frame-step keys, which is where every editor puts this.
+      if (event.key === "<" || event.key === ">") {
+        event.preventDefault();
+        const order = event.key === ">" ? [...PLAYBACK_RATES] : [...PLAYBACK_RATES].reverse();
+        setRate(current => order.find(value => (event.key === ">" ? value > current : value < current)) ?? current);
+        return;
+      }
       if (event.key === "," ) return step(-1);
       if (event.key === "." ) return step(1);
       if (event.key === "k" || (event.key === " " && !owned)) {
@@ -687,7 +701,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
               <span className="absolute size-16 -translate-x-1/2 -translate-y-1/2 rounded-xl border-2 border-primary bg-primary/20" style={{left:`${canvasDrop.x*100}%`,top:`${canvasDrop.y*100}%`}} />
               <span className="absolute inset-x-0 bottom-4 text-center text-xs font-medium text-white">Drop to place it here</span>
             </div>}
-            {previewProps ? <Player ref={player} component={SequenceComposition} inputProps={previewProps} durationInFrames={allocation!.duration} fps={output.fps} compositionWidth={output.width} compositionHeight={output.height} spaceKeyToPlayOrPause={false} clickToPlay={false} acknowledgeRemotionLicense className="overflow-hidden rounded-2xl border border-border bg-black" style={{width:"100%",height:"100%"}} /> : null}
+            {previewProps ? <Player ref={player} component={SequenceComposition} inputProps={previewProps} playbackRate={rate} durationInFrames={allocation!.duration} fps={output.fps} compositionWidth={output.width} compositionHeight={output.height} spaceKeyToPlayOrPause={false} clickToPlay={false} acknowledgeRemotionLicense className="overflow-hidden rounded-2xl border border-border bg-black" style={{width:"100%",height:"100%"}} /> : null}
             {canvasSelected && !playing && item && sequence && (item.mediaId || clip.edits.some(e=>e.type==="text"||e.type==="image") || (clip.words.length>0&&clip.captions.preset!=="none")) && <CanvasSelection key={item.id} item={item} sequence={sequence} dispatch={dispatch} onPreview={setCanvasPreview} selectedEdit={selected} onSelectEdit={index=>{setSelected(index);setTab("edit");}} onSelectCaptions={()=>setTab("captions")} />}
           </div>}
         </div>
@@ -706,7 +720,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
             : <p className="px-2 text-xs text-muted-foreground">Pick a clip on the frame or the timeline to edit it.</p>}
         </div>}
         <Card className="min-h-0 max-h-[45dvh] min-w-0 shrink-0 overflow-hidden py-3"><CardContent className="flex min-h-0 flex-col gap-3 overflow-hidden px-4">
-          {sequence && <SequenceTimeline projectId={projectId} sequence={sequence} selectedId={item?.id} dispatch={dispatch} onSeek={seek} playing={playing} onPlayToggle={()=>{if(playing)player.current?.pause();else player.current?.play();}} media={edl.media} mediaUrls={mediaUrls} assetUrls={assetUrls} selectedEdit={selected} onSelectEdit={index=>{setSelected(index);setTab("edit");}} onDropMedia={(id,at,layer)=>appendVideo(id,layer>0,{at,layer})} onDropAsset={(id,at,layer)=>void dropAsset(id,at,layer)} onDropFiles={(files,at,layer)=>dropFiles(files,{at,layer})} onDropLocalFile={(file,kind,at,layer)=>dropLocalFile(file,kind,{at,layer})} onDropSearchHit={(hit,at,layer)=>dropSearchHit(hit,{at,layer})} onReplaceMedia={replaceMedia} onReplaceAsset={(itemId,assetId,editIndex)=>void replaceAsset(itemId,assetId,editIndex)} onSplit={splitAtPlayhead} onDuplicate={duplicateSelected} onDetachAudio={detachAudio} onAskAgent={id=>{const target=sequence?.items.find(i=>i.id===id);setActiveItemId(id);setCanvasSelected(true);setAgentPrefill({text:`About "${target?.clip.title??"this clip"}": `,nonce:Date.now()});}} onNotify={notify} onSelect={(id,t)=>{setActiveItemId(id);setCanvasSelected(true);player.current?.pause();if(t!==null)seek(t);resetSelection();}} />}
+          {sequence && <SequenceTimeline projectId={projectId} sequence={sequence} selectedId={item?.id} dispatch={dispatch} onSeek={seek} playing={playing} onPlayToggle={()=>{if(playing)player.current?.pause();else player.current?.play();}} rate={rate} onRateChange={setRate} media={edl.media} mediaUrls={mediaUrls} assetUrls={assetUrls} selectedEdit={selected} onSelectEdit={index=>{setSelected(index);setTab("edit");}} onDropMedia={(id,at,layer)=>appendVideo(id,layer>0,{at,layer})} onDropAsset={(id,at,layer)=>void dropAsset(id,at,layer)} onDropFiles={(files,at,layer)=>dropFiles(files,{at,layer})} onDropLocalFile={(file,kind,at,layer)=>dropLocalFile(file,kind,{at,layer})} onDropSearchHit={(hit,at,layer)=>dropSearchHit(hit,{at,layer})} onReplaceMedia={replaceMedia} onReplaceAsset={(itemId,assetId,editIndex)=>void replaceAsset(itemId,assetId,editIndex)} onSplit={splitAtPlayhead} onDuplicate={duplicateSelected} onDetachAudio={detachAudio} onAskAgent={id=>{const target=sequence?.items.find(i=>i.id===id);setActiveItemId(id);setCanvasSelected(true);setAgentPrefill({text:`About "${target?.clip.title??"this clip"}": `,nonce:Date.now()});}} onNotify={notify} onSelect={(id,t)=>{setActiveItemId(id);setCanvasSelected(true);player.current?.pause();if(t!==null)seek(t);resetSelection();}} />}
           {/* Everything a video can be given, in one row under the timeline it lands on.
               Split and duplicate are not here: they act on the selection, so they live with
               the selection in the bar under the frame. The second group does act on the

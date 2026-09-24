@@ -15,6 +15,16 @@ export const NEW_EDIT: Record<string, (t: number) => Edit> = {
   text: t => ({ type: "text", t, d: 3, text: "New title", position: "top", x: null, y: null, style: "card", color: "", background: "", fontScale: 1, by: "" }),
 };
 
+/**
+ * The speeds the preview plays at. A review pass is faster than the video and a hunt for
+ * the exact frame of a cut is slower than it, and both are the same job as watching it.
+ *
+ * The browser keeps the pitch where it is at every one of these, so the words stay
+ * words: `preservesPitch` is on by default on every engine this runs in, and nothing
+ * here turns it off.
+ */
+export const PLAYBACK_RATES = [0.25, 0.5, 1, 1.25, 1.5, 2] as const;
+
 export const SNAP_PX = 8;
 
 /**
@@ -102,6 +112,7 @@ export const GROUPS: { title: string; rows: [string, string][] }[] = [
   { title: "Playback", rows: [
     ["Space or K", "Play or pause"],
     [", and .", "Step one frame back or forward"],
+    ["< and >", "Play slower or faster, down to a quarter speed and up to double"],
     ["Up / Down", "Jump to the previous or next cut"],
     ["Home / End", "Jump to the start or the end"],
   ] },
