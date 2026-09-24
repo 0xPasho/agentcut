@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, JOB_ACTIVE, type Attachment, type Message, type MessageContext } from "../../../common/api/client";
+import { ingestFiles } from "../../../common/api/ingest";
 import { useProjectStream } from "../../../common/hooks/use-project-stream";
 import { isUrl } from "../../../common/lib/urls";
 import { type ChatController, type QueuedMessage, type StartOptions } from "../types";
@@ -9,11 +10,13 @@ import { type ChatController, type QueuedMessage, type StartOptions } from "../t
 const JOB_LABELS: Record<string, string> = { edit: "Editing", analyze: "Analysing", render: "Rendering", transcribe: "Re-syncing the transcript", batch: "Running the batch" };
 
 /**
- * Dropped files become ordinary library assets, through the same upload the asset
- * browser uses. They are uploaded on drop rather than on send so the person can see
- * that the file arrived, and so a big video is not paid for twice.
+ * Dropped files become ordinary assets, through the same ingestion the asset browser
+ * uses: found on this disk and cloned, or streamed in. Inside a project they are that
+ * project's; before there is a project (the home composer) they can only be the
+ * library's. They come in on drop rather than on send so the person can see that the
+ * file arrived, and so a big video is not paid for twice.
  */
-function useAttachments() {
+function useAttachments(projectId?: string) {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attaching, setAttaching] = useState(false);
   const [error, setError] = useState("");
@@ -24,14 +27,15 @@ function useAttachments() {
     void (async () => {
       for (const file of files) {
         try {
-          const { asset } = await api.uploadAsset(file);
+          const [{ asset }] = await ingestFiles([file], projectId ? { projectId, as: "assets" } : { library: true });
+          if (!asset) throw new Error("Attach a picture, a sound or a video");
           const kind = asset.kind as Attachment["kind"];
           setAttachments((prev) => (prev.some((a) => a.id === asset.id) ? prev : [...prev, { id: asset.id, name: asset.name ?? file.name, kind }]));
         } catch (e) { setError(`${file.name}: ${(e as Error).message}`); }
       }
       setAttaching(false);
     })();
-  }, []);
+  }, [projectId]);
 
   const removeAttachment = useCallback((id: string) => setAttachments((prev) => prev.filter((a) => a.id !== id)), []);
   const clear = useCallback(() => setAttachments([]), []);
@@ -71,7 +75,7 @@ export function useProjectChat(projectId: string, o: {
   const [queued, setQueued] = useState<QueuedMessage[]>([]);
   /** A queued send that failed holds the rest back: one wall is enough. */
   const held = useRef(false);
-  const { attachments, attaching, attach, removeAttachment, clear, attachError } = useAttachments();
+  const { attachments, attaching, attach, removeAttachment, clear, attachError } = useAttachments(projectId);
 
   const load = useCallback(async () => {
     try {

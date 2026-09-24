@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useId, useState } from "react";
 import { api, type AssetSummary } from "@/common/api/client";
+import { ingestFiles } from "@/common/api/ingest";
 import { Button } from "../../../common/ui/button";
 import { Disclosure } from "../../../common/ui/disclosure";
 import { Input } from "../../../common/ui/input";
@@ -27,7 +28,7 @@ export function ProjectAssets({ projectId, onChoose }: { projectId: string; onCh
       <Input type="file" accept="image/*,audio/*" disabled={pending} onChange={async e => {
         const chosen = e.target.files?.[0]; if (!chosen) return;
         setPending(true); setError("");
-        try { const { asset } = await api.uploadAsset(chosen); await refresh(); if (asset.kind === "image") onChoose(asset); }
+        try { const [{ asset }] = await ingestFiles([chosen], { projectId }); await refresh(); if (asset?.kind === "image") onChoose(asset); }
         catch(e) { setError((e as Error).message); } finally { setPending(false); }
       }} />
     </label>

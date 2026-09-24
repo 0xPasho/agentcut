@@ -355,9 +355,10 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
         const imported = await importFiles(projectId, files);
         await editor.reload();
         if (!importOnly) setPendingDrop({ queue: imported, placement, spot });
+        const linked = imported.every(entry => entry.linked) ? " Found on this computer, nothing uploaded." : "";
         toast.success(importOnly
-          ? `${imported.length === 1 ? imported[0].name : `${imported.length} files`} imported. Drag or add it where you want it.`
-          : imported.length === 1 ? `${imported[0].name} added.` : `${imported.length} files added.`, { id: pending, duration: 4000 });
+          ? `${imported.length === 1 ? imported[0].name : `${imported.length} files`} imported.${linked} Drag or add it where you want it.`
+          : `${imported.length === 1 ? `${imported[0].name} added.` : `${imported.length} files added.`}${linked}`, { id: pending, duration: 4000 });
       } catch (error) {
         // A multi-file import stops at the first failure, and the files before it are already
         // registered. Take the latest project so the next save is not rejected as stale.

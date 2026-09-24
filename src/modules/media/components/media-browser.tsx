@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowUp, Check, Film, Folder, ImageIcon, Loader2, Music, Plus, RefreshCw, Upload } from "lucide-react";
 import { api, assetFileUrl, type AssetSummary } from "@/common/api/client";
+import { ingestFiles, ingestNotice } from "@/common/api/ingest";
 import type { Edl } from "@/modules/editor/types";
 import type { FolderListing } from "@/modules/media/server/local-assets";
 import { Button } from "../../../common/ui/button";
@@ -122,19 +123,17 @@ export function MediaBrowser({ projectId, edl, beforeImport, afterImport, onBusy
     }
     await refresh(); setTab("project"); setKind("all"); setFilter(""); setNotice("Imported. Choose where to use it.");
   });
+  /**
+   * The Import button. Each file is found on this disk and cloned, or streamed when it
+   * is not here; video becomes project media, the rest the project's assets.
+   */
   const upload = (files: File[]) => run(async () => {
     if (!(await beforeImport())) return;
     let mediaChanged = false;
     try {
-      for (const file of files) {
-        if (/\.(mp4|mov|mkv|webm|m4v)$/i.test(file.name)) {
-          const p = await api.getProject(projectId); const form = new FormData(); form.append("file", file); form.append("expectedRevision", String(p.revision));
-          const response = await fetch(`/api/projects/${projectId}/media`, { method: "POST", body: form });
-          if (!response.ok) throw new Error((await response.json()).error);
-          mediaChanged = true;
-        } else await api.uploadAsset(file);
-      }
-      setTab(mediaChanged ? "project" : "library"); setNotice("Imported. Choose where to use it.");
+      const imported = await ingestFiles(files, { projectId });
+      mediaChanged = imported.some(entry => entry.kind === "video");
+      setTab("project"); setNotice(`${ingestNotice(imported)} Choose where to use it.`);
     } finally { if (mediaChanged) await afterImport(); await refresh(); }
   });
   const sources = [...(edl.media ?? [])];
@@ -173,7 +172,7 @@ export function MediaBrowser({ projectId, edl, beforeImport, afterImport, onBusy
       </section>}{children}</TabsContent>
       <TabsContent value="library" className="space-y-3">{viewer}</TabsContent>
       <TabsContent value="folders" className="space-y-3 pt-3">
-        <p className="text-xs leading-relaxed text-muted-foreground">Browse a folder on this computer. Drag a file onto the timeline to import it where you drop it, or use the add button to import it into the project. Imported files are copied into your workspace.</p>
+        <p className="text-xs leading-relaxed text-muted-foreground">Browse a folder on this computer. Drag a file onto the timeline to import it where you drop it, or use the add button to import it into the project. Importing clones the file: instant, no extra disk, and the original can move afterwards.</p>
         <form className="flex gap-2" onSubmit={e => { e.preventDefault(); void browse(folder); }}><Input aria-label="Folder path" value={folder} onChange={e => setFolder(e.target.value)} placeholder="~/Movies" /><Button type="submit" size="sm" variant="outline" disabled={pending}>Open</Button></form>
         <div className="flex flex-wrap gap-2"><Button size="xs" variant="outline" disabled={pending} onClick={() => browse()}>Home folder</Button><Button size="xs" variant="ghost" disabled={pending || !listing?.parent} onClick={() => browse(listing!.parent!)}><ArrowUp />Up</Button></div>
         {listing && <><p className="break-all text-[11px] text-muted-foreground">{listing.path}</p><ul className="space-y-1">{listing.entries.map(entry => <li key={entry.path} draggable={entry.kind !== "folder" && !pending}

@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
     if (req.headers.get("content-type")?.includes("multipart/form-data")) {
       const form = await req.formData();
       name = String(form.get("name") ?? name); brief = String(form.get("brief") ?? "");
-      inputs = await Promise.all(form.getAll("files").filter((f): f is File => f instanceof File).map(async f => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) })));
+      inputs = await Promise.all(form.getAll("files").filter((f): f is File => f instanceof File).map(async f => ({ name: f.name, stream: f.stream() })));
     } else {
       const body = await req.json();
       name = String(body.name ?? name); brief = String(body.brief ?? "");

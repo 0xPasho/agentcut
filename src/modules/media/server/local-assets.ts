@@ -3,6 +3,7 @@ import path from "node:path";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
 import { kindFor, registerAsset, toAbs } from "./assets";
+import { cloneFile } from "./ingest";
 import { projectDir } from "../../../common/server/config";
 export type FolderEntry = {
   name: string; path: string; kind: "folder" | "video" | "image" | "audio";
@@ -41,7 +42,11 @@ export async function browseLocalFolder(folder?: string, offset = 0, limit = 100
   }));
   return { path: root, parent: path.dirname(root) === root ? null : path.dirname(root), entries, total: found.length, offset, nextOffset: offset + limit < found.length ? offset + limit : null };
 }
-/** Imported media belongs to the workspace; originals are never modified. */
+/**
+ * Imported media belongs to the workspace; originals are never modified. The file is
+ * cloned in, so importing a picture from ~/Downloads costs nothing and the original
+ * can move afterwards.
+ */
 export async function importLocalAsset(projectId: string, source: string) {
   const original = await fs.realpath(localPath(source));
   const kind = kindFor(original);
@@ -50,7 +55,7 @@ export async function importLocalAsset(projectId: string, source: string) {
   await fs.mkdir(dir, { recursive: true });
   const file = path.join(dir, `${randomUUID()}${path.extname(original)}`);
   try {
-    await fs.copyFile(original, file);
+    await cloneFile(original, file);
     const asset = await registerAsset({ file, kind, name: path.basename(original), scope: "project", projectId, source: "local-import" });
     if (path.resolve(toAbs(asset.path)) !== path.resolve(file)) await fs.rm(file, { force: true });
     return asset;

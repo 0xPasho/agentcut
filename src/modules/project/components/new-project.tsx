@@ -11,7 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/common/ui/tabs";
 import { StartChatPanel } from "../../agent/start-chat-view";
 import { LocalFilePicker } from "../../media/components/local-file-picker";
 import { api } from "@/common/api/client";
-import { classifyFile } from "@/modules/editor/lib/dnd";
+import { ingestSource } from "@/common/api/ingest";
+import { classifyFile } from "@/common/lib/files";
 
 /**
  * Two ways into the same workspace: say what you want — with videos dropped in, a shape
@@ -67,13 +68,17 @@ function ClippingStart() {
     });
   };
 
-  /** A drop hands over bytes and no path, so those are copied in; a picked file is not. */
+  /**
+   * A drop hands over bytes and no path. The server finds the file on this disk from
+   * what the browser does say about it and clones it; only a file that is not here is
+   * streamed in.
+   */
   const upload = (file: File) => {
     if (pending) return;
     setError(null);
     start(async () => {
       try {
-        open((await api.uploadProject(file)).id);
+        open((await ingestSource(file)).id);
       } catch (e) {
         setError((e as Error).message);
       }
@@ -143,13 +148,13 @@ function ClippingStart() {
           <FolderOpen aria-hidden /> Choose from this computer
         </Button>
         <p role="status" className="min-h-5 text-xs text-muted-foreground">
-          {pending ? "Adding your video…" : "Your file stays where it is — the project just points at it."}
+          {pending ? "Adding your video…" : "Nothing is uploaded: the project keeps an instant clone, and your file stays where it is."}
         </p>
         <LocalFilePicker
           open={picking}
           onOpenChange={setPicking}
           title="Choose a video on this computer"
-          description="Nothing is copied or uploaded. The project reads the file where it already lives, and the agent gets the same path."
+          description="Nothing is uploaded. The project keeps an instant clone of the file, so the original can move, and the agent gets the same path."
           onPick={(file) => { setPicking(false); setSource(file.path); submit(file.path); }}
         />
       </CardContent>

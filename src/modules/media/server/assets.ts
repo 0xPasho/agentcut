@@ -4,6 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { ROOT, WORKSPACE, projectDir } from "../../../common/server/config";
 import { q, type AssetRow } from "../../../common/server/db";
 import { probe } from "./ffmpeg";
+import { classifyFile } from "../../../common/lib/files";
 
 export const LIBRARY = path.join(WORKSPACE, "library");
 
@@ -24,17 +25,8 @@ export const libraryDirFor = (kind: AssetKind) => path.join(LIBRARY, kind === "a
 export const toRel = (abs: string) => path.relative(WORKSPACE, path.resolve(abs));
 export const toAbs = (rel: string) => path.join(WORKSPACE, rel);
 
-const IMAGE_EXT = /\.(jpe?g|png|webp|gif|avif|svg)$/i;
-const AUDIO_EXT = /\.(mp3|wav|m4a|aac|ogg|flac)$/i;
 /** Reusable footage — intros, outros, stings, b-roll — lives in the library like any other asset. */
-const VIDEO_EXT = /\.(mp4|mov|mkv|webm|m4v)$/i;
-
-export function kindFor(file: string): AssetKind | null {
-  if (IMAGE_EXT.test(file)) return "image";
-  if (AUDIO_EXT.test(file)) return "audio";
-  if (VIDEO_EXT.test(file)) return "video";
-  return null;
-}
+export const kindFor = (file: string): AssetKind | null => classifyFile(file);
 
 async function sha256(file: string) {
   return createHash("sha256").update(await fs.readFile(file)).digest("hex");
@@ -193,14 +185,47 @@ export function creditsFor(refs: string[]): string[] {
 }
 
 
-/** Shared ingestion for uploads from either interface. Never overwrite an existing library file. */
-export async function uploadLibraryAsset(name: string, bytes: Uint8Array): Promise<AssetRow> {
+/** Bytes in hand, or a body still arriving: both are written without being held whole. */
+export type UploadData = Uint8Array | ReadableStream | NodeJS.ReadableStream;
+
+/**
+ * Shared ingestion for uploads from either interface. Never overwrite an existing file.
+ * Given a project the asset is that project's; without one it joins the library.
+ */
+export async function saveUploadedAsset(name: string, data: UploadData, options: { projectId?: string } = {}): Promise<AssetRow> {
   const kind = kindFor(name);
   if (!kind) throw new Error("Choose a supported image, audio or video file");
+  const dir = options.projectId ? path.join(projectDir(options.projectId), "assets") : libraryDirFor(kind);
+  if (options.projectId) await fs.mkdir(dir, { recursive: true }); else await ensureLibrary();
+  const file = path.join(dir, `${randomUUID()}-${path.basename(name)}`);
+  try {
+    if (data instanceof Uint8Array) await fs.writeFile(file, data);
+    else { const { saveStream } = await import("./ingest"); await saveStream(data, file); }
+    const scope = options.projectId ? "project" : "library";
+    const asset = await registerAsset({ file, kind, scope, projectId: options.projectId, name: path.basename(name), source: "upload" });
+    // The same bytes were already registered: the fresh file is a duplicate, not an asset.
+    if (path.resolve(toAbs(asset.path)) !== path.resolve(file)) await fs.rm(file, { force: true });
+    return asset;
+  } catch (error) { await fs.rm(file, { force: true }); throw error; }
+}
+
+export const uploadLibraryAsset = (name: string, data: UploadData) => saveUploadedAsset(name, data);
+
+/** A file on this machine joins the library by clone, never by upload. */
+export async function importLocalLibraryAsset(source: string): Promise<AssetRow> {
+  const { cloneFile } = await import("./ingest");
+  const { localPath } = await import("./local-assets");
+  const original = await fs.realpath(localPath(source));
+  const kind = kindFor(original);
+  if (!kind || !(await fs.stat(original)).isFile()) throw new Error("Choose an image, audio or video file.");
   await ensureLibrary();
-  const file = path.join(libraryDirFor(kind), `${randomUUID()}-${path.basename(name)}`);
-  await fs.writeFile(file, bytes);
-  return registerAsset({ file, kind, scope: "library", name: path.basename(name), source: "upload" });
+  const file = path.join(libraryDirFor(kind), `${randomUUID()}-${path.basename(original)}`);
+  try {
+    await cloneFile(original, file);
+    const asset = await registerAsset({ file, kind, scope: "library", name: path.basename(original), source: "local-import" });
+    if (path.resolve(toAbs(asset.path)) !== path.resolve(file)) await fs.rm(file, { force: true });
+    return asset;
+  } catch (error) { await fs.rm(file, { force: true }); throw error; }
 }
 
 /**

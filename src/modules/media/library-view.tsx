@@ -6,6 +6,7 @@ import { Button } from "@/common/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/common/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose, DialogTrigger } from "@/common/ui/dialog";
 import { api, assetFileUrl, type AssetSummary } from "@/common/api/client";
+import { ingestFiles } from "@/common/api/ingest";
 import { classifyFile, hasFileDrag } from "@/modules/editor/lib/dnd";
 import type { InstalledPack } from "@/modules/packs/types";
 import { Empty, ErrorLine, Loading, SectionHeader } from "@/modules/settings/components/section-header";
@@ -46,7 +47,7 @@ export function LibraryView({ packs, onChanged }: { packs: InstalledPack[]; onCh
     setError(null);
     start(async () => {
       try {
-        for (const file of files) await api.uploadAsset(file);
+        await ingestFiles(files, { library: true });
         setAssets((await api.listAssets(kind, "")).assets);
         // The count in the rail, and the assets a rule can name.
         onChanged?.();

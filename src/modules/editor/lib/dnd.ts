@@ -2,6 +2,8 @@
  * One drag vocabulary for every surface that can hand media to the timeline: the asset
  * browser, the preview canvas, the timeline itself, and files dragged in from the desktop.
  */
+import { classifyFile } from "../../../common/lib/files";
+
 export const MEDIA_TYPE = "application/x-agentcut-media";
 
 export type DragKind = "video" | "image" | "audio";
@@ -19,17 +21,8 @@ export type DragPayload = {
   durationSec?: number | null;
 };
 
-const VIDEO = /\.(mp4|mov|mkv|webm|m4v|avi)$/i;
-const IMAGE = /\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i;
-const AUDIO = /\.(mp3|wav|m4a|aac|ogg|flac|opus)$/i;
-
 /** What a desktop file would become in the editor, or null when it is not supported media. */
-export function classifyFile(name: string): DragKind | null {
-  if (VIDEO.test(name)) return "video";
-  if (IMAGE.test(name)) return "image";
-  if (AUDIO.test(name)) return "audio";
-  return null;
-}
+export { classifyFile };
 
 export function writeDrag(dataTransfer: DataTransfer, payload: DragPayload) {
   dataTransfer.effectAllowed = "copy";

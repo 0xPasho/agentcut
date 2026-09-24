@@ -1,37 +1,18 @@
 "use client";
 import { api, type AssetSummary } from "../../../common/api/client";
+import { ingestFiles, type Ingested } from "../../../common/api/ingest";
 import type { Edl } from "../types";
-import { classifyFile, type DragKind } from "../lib/dnd";
+import { type DragKind } from "../lib/dnd";
 import { type Imported } from "../types";
 
 /**
  * One ingestion path for the Import button, a desktop drop on the timeline, and a drop on
- * the canvas. Video lands as project media through the same revision-checked route the
- * browser uses; images and audio land in the shared asset library.
+ * the canvas: `ingestFiles`, which finds each file on this disk and clones it, or streams
+ * it when it is not here. Video lands as project media against the current revision;
+ * images and audio become the project's assets.
  */
-export async function importFiles(projectId: string, files: File[]): Promise<Imported[]> {
-  const imported: Imported[] = [];
-  for (const file of files) {
-    const kind = classifyFile(file.name);
-    if (!kind) continue;
-    if (kind === "video") {
-      const project = await api.getProject(projectId);
-      const form = new FormData();
-      form.append("file", file);
-      form.append("expectedRevision", String(project.revision));
-      const response = await fetch(`/api/projects/${projectId}/media`, { method: "POST", body: form });
-      const body = await response.json() as { error?: string; edl?: Edl };
-      if (!response.ok || !body.edl) throw new Error(body.error ?? `Could not import ${file.name}`);
-      const media = body.edl.media.at(-1);
-      if (!media) throw new Error(`Could not import ${file.name}`);
-      imported.push({ kind, media, name: media.name });
-    } else {
-      const { asset } = await api.uploadAsset(file);
-      imported.push({ kind, asset, name: asset.name });
-    }
-  }
-  if (!imported.length) throw new Error("Those files are not video, image or audio.");
-  return imported;
+export function importFiles(projectId: string, files: File[]): Promise<Array<Imported & Pick<Ingested, "linked">>> {
+  return ingestFiles(files, { projectId });
 }
 
 /** How much timeline an imported file will occupy, before any trim. */

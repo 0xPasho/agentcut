@@ -23,8 +23,9 @@ in/out, crop/split framing, transcript words, caption styling, and all supported
 
 Choose **Make something** on the home screen, pick a shape, and send.
 No footage is required. Optionally select starting videos (or enter local paths);
-they appear on the initial timeline in the selected order. Files are copied into the project's local `media/` folder, so moving
-the originals does not break the project. Invalid media rejects the import.
+they appear on the initial timeline in the selected order. Files are cloned into the project's local `media/` folder (free on
+APFS, a real copy elsewhere), so moving the originals does not break the project. A dropped file is found on this disk from its
+name, size and date and cloned too; only a file this machine does not have is streamed in. Invalid media rejects the import.
 
 Both flows render the same `ClipEditor` component. A project is the editable canvas
 and its assets, not a separate assembly interface. Start with **Add blank scene** or

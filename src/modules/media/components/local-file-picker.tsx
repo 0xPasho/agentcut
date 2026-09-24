@@ -13,10 +13,11 @@ import { type SortKey } from "../types";
 
 /**
  * The folders of this machine, listed by the server that will read the file anyway. A local
- * app has no reason to copy a two-hour recording into its workspace before it can look at
- * it: the human picks the file here and the project keeps its path, which is exactly what
- * the agent sees through `assets.browseLocal`. The browser's own file dialog cannot do
- * this — it hands JavaScript the bytes and hides the path.
+ * app has no reason to upload a two-hour recording to itself: the human picks the file
+ * here, the server clones it (free on APFS), and the agent sees the same path through
+ * `assets.browseLocal`. The browser's own file dialog hands JavaScript the bytes and
+ * hides the path; those are found again from the name, size and date, but this is the
+ * dialog for when you do not know where the file is.
  *
  * It is shaped like the Finder because that is the shape people already know: places down
  * the left, size, kind and date beside the name, sortable columns, and a gallery for when
@@ -99,7 +100,7 @@ export function LocalFilePicker({ open, onOpenChange, onPick, kinds = ["video"],
       >
         <DialogTitle className="sr-only">{title}</DialogTitle>
         <DialogDescription className="sr-only">
-          {description ?? "Nothing is copied. The project points at the file where it already lives."}
+          {description ?? "Nothing is uploaded. The project keeps an instant clone, so the original can move afterwards."}
         </DialogDescription>
 
         <div className="flex min-h-0 flex-1">

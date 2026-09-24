@@ -8,8 +8,18 @@ import { Clip, Edl, MediaSource, type MediaTranscription } from "../../editor/ty
 import { q } from "../../../common/server/db";
 import { editProject, publishClips, readEditor, RevisionConflict } from "../../editor/server/store";
 import type { EditorOperation } from "../../editor/lib/operations";
+import { cloneFile, saveStream } from "./ingest";
 
-export type MediaInput = { name: string; bytes: Uint8Array } | { file: string } | { assetId: string };
+/**
+ * Footage arrives as a path on this machine (cloned in), as a request body (streamed to
+ * disk as it arrives), as bytes already in memory (the agent's base64 upload, small by
+ * construction), or as a library video (referenced where it is).
+ */
+export type MediaInput =
+  | { name: string; bytes: Uint8Array }
+  | { name: string; stream: ReadableStream | NodeJS.ReadableStream }
+  | { file: string }
+  | { assetId: string };
 /** Where a new shot goes when it is imported straight onto a timeline. */
 export type MediaPlacement = { sequenceId: string; at?: number | null; layer?: number };
 /**
@@ -24,7 +34,11 @@ export type MediaPlacement = { sequenceId: string; at?: number | null; layer?: n
  * that merely happens to have no words.
  */
 export type ImportOptions = { transcribe?: boolean; by?: string };
-/** Copy source footage into the project so moving the original does not break edits. */
+/**
+ * Footage lands in the project's own `media/` so moving the original breaks nothing. A
+ * path is cloned there, which on APFS costs no time and no disk; bytes are written as
+ * they arrive.
+ */
 async function prepareMedia(projectId: string, input: MediaInput): Promise<MediaSource> {
   // A library video is already in the workspace: reference it, do not copy it again.
   if ("assetId" in input) {
@@ -44,8 +58,9 @@ async function prepareMedia(projectId: string, input: MediaInput): Promise<Media
     if ("file" in input) {
       const source = path.resolve(input.file.replace(/^~(?=\/)/, process.env.HOME ?? "~"));
       if (!(await fs.stat(source)).isFile()) throw new Error("Choose a video file");
-      await fs.copyFile(source, file);
-    } else await fs.writeFile(file, input.bytes);
+      await cloneFile(source, file);
+    } else if ("stream" in input) await saveStream(input.stream, file);
+    else await fs.writeFile(file, input.bytes);
     const metadata = await probe(file);
     return MediaSource.parse({ id, name, file, ...metadata });
   } catch (error) { await fs.rm(file, { force: true }); throw error; }

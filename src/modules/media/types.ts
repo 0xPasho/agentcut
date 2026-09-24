@@ -39,3 +39,8 @@ export type TranscriptionReport = {
 
 /** One of the three kinds of file the library holds. */
 export type LibraryKind = "image" | "audio" | "video";
+
+/** What a browser's `File` says about itself: the name, the size and when it changed. */
+export type FileFingerprint = { name: string; size: number; modifiedAt: number };
+/** A dropped file found on this machine: its path, so it is cloned rather than uploaded. */
+export type ResolvedLocalFile = { file: string; kind: "video" | "image" | "audio"; name: string };

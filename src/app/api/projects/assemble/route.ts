@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
       aspect = String(form.get("aspect") ?? "");
       const asked = form.get("transcribe");
       if (asked !== null) transcribe = asked !== "false" && asked !== "0";
-      inputs = await Promise.all(form.getAll("files").filter((f): f is File => f instanceof File).map(async f => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) })));
+      inputs = await Promise.all(form.getAll("files").filter((f): f is File => f instanceof File).map(async f => ({ name: f.name, stream: f.stream() })));
     } else {
       const body = await req.json();
       name = String(body.name ?? name);

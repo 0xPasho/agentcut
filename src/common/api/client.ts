@@ -5,6 +5,7 @@ import type { Attachment, MessageContext } from "../../modules/agent/server/edit
 import type { Message } from "../../modules/agent/server/conversation";
 import type { JobState } from "../../modules/project/lib/job-state";
 import type { FilesResponse } from "../../modules/media/server/local-assets";
+import type { ResolvedLocalFile } from "../../modules/media/types";
 export type { Attachment, MessageContext, Message };
 export { JOB_ACTIVE, jobState, type JobState } from "../../modules/project/lib/job-state";
 
@@ -69,7 +70,8 @@ export const api = {
   /**
    * A dropped file, sent as the raw request body rather than a multipart form: the server
    * writes it straight to disk, so a long recording is never held in memory whole. Prefer
-   * `createProject` with a path when one is known — that copies nothing at all.
+   * `createProject` with a path when one is known — that clones instead of copying.
+   * `ingest.ts` beside this file is what decides between the two; call that.
    */
   uploadProject: (file: File) =>
     fetch("/api/projects", {
@@ -77,6 +79,30 @@ export const api = {
       headers: { "content-type": file.type || "application/octet-stream", "x-file-name": encodeURIComponent(file.name) },
       body: file,
     }).then(json<{ id: string; name: string }>),
+
+  /**
+   * Where on this machine a file the browser handed over already lives, from the name,
+   * size and modification time a `File` carries. `null` when it is not on this disk.
+   */
+  resolveLocalFile: (file: File, roots: string[] = []) =>
+    fetch("/api/files/resolve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: file.name, size: file.size, modifiedAt: file.lastModified, roots }),
+    }).then(json<{ found: ResolvedLocalFile | null }>).then((r) => r.found),
+
+  /** A video the browser could not name by path, streamed into a project's media. */
+  uploadProjectMedia: (id: string, file: File, expectedRevision: number, transcribe?: boolean) =>
+    fetch(`/api/projects/${id}/media`, {
+      method: "POST",
+      headers: {
+        "content-type": file.type || "application/octet-stream",
+        "x-file-name": encodeURIComponent(file.name),
+        "x-expected-revision": String(expectedRevision),
+        ...(transcribe === undefined ? {} : { "x-transcribe": transcribe ? "true" : "false" }),
+      },
+      body: file,
+    }).then(json<{ edl: Edl }>),
 
   /** This machine's folders, for picking a source file without copying it anywhere. */
   browseFiles: (folder?: string, offset = 0, limit = 100) =>
@@ -178,11 +204,21 @@ export const api = {
       body: JSON.stringify({ hit, projectId }),
     }).then(json<{ asset: AssetSummary }>),
 
-  uploadAsset: (file: File) => {
-    const form = new FormData();
-    form.append("file", file);
-    return fetch("/api/assets", { method: "POST", body: form }).then(json<{ asset: AssetSummary }>);
-  },
+  /** Bytes the browser could not name by path, streamed in. A project's asset, or the library's. */
+  uploadAsset: (file: File, projectId?: string) =>
+    fetch(`/api/assets${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ""}`, {
+      method: "POST",
+      headers: { "content-type": file.type || "application/octet-stream", "x-file-name": encodeURIComponent(file.name) },
+      body: file,
+    }).then(json<{ asset: AssetSummary }>),
+
+  /** A file on this machine, cloned in by path. A project's asset, or the library's. */
+  importLocalAsset: (file: string, projectId?: string) =>
+    fetch(`/api/assets${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ""}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ file }),
+    }).then(json<{ asset: AssetSummary }>),
 
   deleteAsset: (id: string) =>
     fetch(`/api/assets?id=${encodeURIComponent(id)}`, { method: "DELETE" }).then(json<{ ok: true }>),
