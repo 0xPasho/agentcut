@@ -24,11 +24,12 @@ function PopoverContent({
   sideOffset = 6,
   align = "start",
   alignOffset = 0,
+  anchor,
   ...props
 }: PopoverPrimitive.Popup.Props &
   Pick<
     PopoverPrimitive.Positioner.Props,
-    "align" | "alignOffset" | "side" | "sideOffset"
+    "align" | "alignOffset" | "side" | "sideOffset" | "anchor"
   >) {
   return (
     <PopoverPrimitive.Portal>
@@ -37,6 +38,9 @@ function PopoverContent({
         sideOffset={sideOffset}
         align={align}
         alignOffset={alignOffset}
+        // Something other than the trigger to hang off: a popover opened from a menu
+        // belongs beside the thing the menu was about, not beside the menu.
+        anchor={anchor}
         className="isolate z-50"
       >
         <PopoverPrimitive.Popup

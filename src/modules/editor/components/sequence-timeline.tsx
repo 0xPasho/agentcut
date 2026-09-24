@@ -14,6 +14,10 @@ import { activeDrag, classifyFile, dropDuration, hasFileDrag, hasMediaDrag, read
 import { sequenceFrames, transitionJoints } from "@/modules/editor/lib/sequences";
 import { keyframeSummary } from "@/modules/editor/lib/motion";
 import { effectLabel, shotName, standaloneScene } from "@/modules/editor/lib/canvas";
+import { AskAgent } from "@/modules/agent/components/ask-agent";
+import { workingOn } from "@/modules/agent/lib/ask-agent";
+import type { ChatController } from "@/modules/agent/types";
+import { Popover, PopoverContent } from "@/common/ui/popover";
 import { audioOnly, laneLabels, nextLayer, routeLayer, trackLanes, type Lane } from "@/modules/editor/lib/tracks";
 import { DEFAULT_TRANSITION_SEC, TRANSITION_DURATIONS, TRANSITION_KINDS, TRANSITION_LABELS, describeTransition } from "@/modules/editor/lib/transitions";
 import { buildTimeMap, srcToOut } from "@/modules/editor/lib/timeline";
@@ -137,6 +141,12 @@ type Props = {
   /** How fast the preview plays, and the way to change it. Absent hides the control. */
   rate?: number;
   onRateChange?: (rate: number) => void;
+  /**
+   * The project's conversation. With it, "Ask the agent about this" is asked here rather
+   * than in the panel across the screen, and whatever the agent is working on is drawn
+   * around the clip it is working on.
+   */
+  chat?: ChatController;
   onSplit?: (itemId: string) => void;
   onDuplicate?: (itemId: string) => void;
   /** Lift a shot's own sound onto its own track, so it can be moved, trimmed and levelled alone. */
@@ -206,7 +216,7 @@ function Waveform({ src }: { src: string }) {
   return <WaveShape peaks={peaks} className="pointer-events-none absolute inset-x-0 bottom-0 h-7 w-full fill-emerald-300/70 opacity-60" />;
 }
 
-export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, onSelect, onSeek, mediaUrls = {}, assetUrls = {}, media = EMPTY_MEDIA, selectedEdit, onSelectEdit, onDropMedia, onDropAsset, onDropFiles, onDropLocalFile, onDropSearchHit, onReplaceMedia, onReplaceAsset, onSplit, onDuplicate, onDetachAudio, onAskAgent, onNotify, playing = false, onPlayToggle, rate = 1, onRateChange }: Props) {
+export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, onSelect, onSeek, mediaUrls = {}, assetUrls = {}, media = EMPTY_MEDIA, selectedEdit, onSelectEdit, onDropMedia, onDropAsset, onDropFiles, onDropLocalFile, onDropSearchHit, onReplaceMedia, onReplaceAsset, onSplit, onDuplicate, onDetachAudio, onAskAgent, onNotify, playing = false, onPlayToggle, rate = 1, onRateChange, chat }: Props) {
   // Reading the playhead here never re-renders the timeline; the parts that draw it
   // subscribe on their own, so a playing preview repaints a marker, not every clip.
   const playhead = usePlayheadStore();
@@ -218,6 +228,9 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
   const [zoom, setZoom] = useState(1);
   /** Which wide bucket of the scroll the viewport is in, so the ruler can draw only that part. */
   const [scrollBucket, setScrollBucket] = useState(0);
+  /** The clip whose "Ask the agent" panel is open, and the block it hangs off. */
+  const [asking, setAsking] = useState<string | null>(null);
+  const askAnchor = useRef<HTMLElement | null>(null);
   const [extraWidth, setExtraWidth] = useState(0);
   const pointer = useRef<{clientX:number;clientY:number;altKey:boolean;metaKey:boolean;ctrlKey:boolean}|null>(null);
   const hovering = useRef<Hover | null>(null);
@@ -229,7 +242,7 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
   const stopScroll = () => { if(animation.current!==null)cancelAnimationFrame(animation.current);animation.current=null;pointer.current=null; };
   useEffect(()=>()=>{if(animation.current!==null)cancelAnimationFrame(animation.current);if(dragScroll.current!==null)cancelAnimationFrame(dragScroll.current);},[]);
   useEffect(()=>setExtraWidth(0),[sequence,zoom]);
-  useEffect(()=>setExtra([]),[sequence.id]);
+  useEffect(()=>{setExtra([]);setAsking(null);},[sequence.id]);
   const [ghost, setGhostState] = useState<Ghost | null>(null);
   const [externalDrop, setExternalDrop] = useState<ExternalDrop | null>(null);
   const [snapping, setSnapping] = useState(true);
@@ -337,6 +350,9 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
   const effectTypes = [...new Set(selected && !standaloneScene(selected.item) ? selected.item.clip.edits.map(edit => edit.type) : [])];
   const roundFrame = (value: number) => Math.round(value * fps) / fps;
   geometry.current = { scale, fps, maxZoom };
+  // Read from the conversation, so it survives a reload and shows a run somebody started
+  // in another window or from a terminal just the same.
+  const busy = chat ? workingOn(chat.messages, chat.working) : [];
   useLayoutEffect(() => {
     const held = anchor.current, el = viewport.current;
     if (!held || !el) return;
@@ -835,6 +851,9 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
               // belongs to, so more than half of any clip is always somewhere to grab it by.
               const grip = Math.max(8, Math.min(24, clipWidth * .2));
               const moving = ghost?.id === item.id && ghost.kind !== "effect";
+              // The agent is on this one. Drawn around the clip rather than only in the
+              // panel, because "it is being worked on" is a fact about this clip.
+              const worked = busy.includes(item.id);
               return <ContextMenu key={item.id} onOpenChange={open => {
                 if (!open) return;
                 // Right-clicking inside a selection keeps it; right-clicking outside one starts over,
@@ -846,7 +865,10 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
                 // playhead" was greyed out every single time the menu that offers it was opened.
                 onSelect(item.id, null);
               }}>
-                <ContextMenuTrigger render={<div className={`group absolute top-2 h-12 rounded-md border ${primary ? "z-10 border-primary ring-1 ring-primary" : active ? "z-10 border-primary/70 ring-1 ring-primary/40" : "border-white/20"} ${audio ? "bg-emerald-950" : "bg-zinc-800"} ${moving ? "opacity-35" : ""}`} style={{ left: from / fps * scale, width: clipWidth }} />}>
+                <ContextMenuTrigger render={<div
+                  ref={asking === item.id ? (element: HTMLElement | null) => { askAnchor.current = element; } : undefined}
+                  className={`group absolute top-2 h-12 rounded-md border ${primary ? "z-10 border-primary ring-1 ring-primary" : active ? "z-10 border-primary/70 ring-1 ring-primary/40" : "border-white/20"} ${audio ? "bg-emerald-950" : "bg-zinc-800"} ${moving ? "opacity-35" : ""} ${worked ? "z-20 ring-2 ring-primary ring-offset-2 ring-offset-black motion-safe:animate-pulse" : ""}`}
+                  style={{ left: from / fps * scale, width: clipWidth }} />}>
                 <button type="button" draggable={false} aria-label={`Select ${item.clip.title}, ${laneName(layer)} track${item.keyframes?.length ? `, ${item.keyframes.length} motion keyframes` : ""}`} aria-pressed={active} aria-describedby={instructionsId} className="absolute inset-0 cursor-grab touch-none overflow-hidden rounded-md text-left focus-visible:outline-2 focus-visible:outline-ring active:cursor-grabbing" onPointerDown={event => begin(event, item.id, "move")} {...sharedPointer}
                   onClick={event => {
                     if (!suppressClick.current) {
@@ -892,7 +914,9 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
                   <ContextMenuLabel>{shotName(item)}</ContextMenuLabel>
                   {onSplit && <SplitItem from={from / fps} until={(from + duration) / fps} onSplit={() => onSplit(item.id)} />}
                   {onDuplicate && <ContextMenuItem shortcut="D" onClick={() => onDuplicate(item.id)}><Copy />Duplicate</ContextMenuItem>}
-                  {onAskAgent && <ContextMenuItem onClick={() => onAskAgent(item.id)}><MessageSquare />Ask the agent about this</ContextMenuItem>}
+                  {chat
+                    ? <ContextMenuItem onClick={() => { onAskAgent?.(item.id); setAsking(item.id); }}><MessageSquare />Ask the agent about this</ContextMenuItem>
+                    : onAskAgent && <ContextMenuItem onClick={() => onAskAgent(item.id)}><MessageSquare />Ask the agent about this</ContextMenuItem>}
                   <ContextMenuSeparator />
                   <ContextMenuItem onClick={() => commit([{ type: "item.place", sequenceId: sequence.id, itemId: item.id, patch: { muted: !item.muted }, before: { muted: item.muted ?? false } }], item.muted ? "Audio unmuted." : "Audio muted.")}>
                     {item.muted ? <><Volume2 />Unmute audio</> : <><VolumeX />Mute audio</>}
@@ -998,6 +1022,13 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
         {guide && <span aria-hidden className="pointer-events-none absolute bottom-0 top-9 z-40 w-px bg-white shadow-[0_0_6px_rgba(255,255,255,.55)]" style={{ left: LABEL_WIDTH + guide.at * scale }}><span className="absolute -top-px left-1/2 size-1.5 -translate-x-1/2 rotate-45 bg-white" /></span>}
       </div>
     </div>
+    {/* Anchored to the clip it is about rather than to the menu it came from, so the
+        question and its answer stay next to the thing they concern. */}
+    {chat && asking && sequence.items.some(item => item.id === asking) && <Popover open onOpenChange={open => { if (!open) setAsking(null); }}>
+      <PopoverContent anchor={askAnchor} side="top" align="start" className="w-auto">
+        <AskAgent controller={chat} itemId={asking} title={shotName(sequence.items.find(item => item.id === asking)!)} onClose={() => setAsking(null)} />
+      </PopoverContent>
+    </Popover>}
     {marquee && <div aria-hidden className="pointer-events-none fixed z-50 rounded-sm border border-primary bg-primary/15" style={{ left: Math.min(marquee.x0, marquee.x1), top: Math.min(marquee.y0, marquee.y1), width: Math.abs(marquee.x1 - marquee.x0), height: Math.abs(marquee.y1 - marquee.y0) }} />}
     <p className="text-[11px] text-muted-foreground">Drag clips to move them · Drop media on a clip to replace it</p>
     <p className="sr-only" role="status">{notice}</p>

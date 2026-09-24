@@ -31,6 +31,7 @@ import { CaptionControls } from "./components/caption-controls";
 import { OverlayEditor } from "./components/overlay-editor";
 import { EditorStatus } from "./components/editor-status";
 import { EditorProperties } from "./components/editor-properties";
+import { useProjectChat } from "@/modules/agent/hooks/use-chat";
 import { AgentEditor } from "../agent/components/agent-editor";
 import { MediaBrowser } from "../media/components/media-browser";
 import { SequenceTimeline } from "./components/sequence-timeline";
@@ -104,7 +105,6 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
   const [templateOptions, setTemplateOptions] = useState<TemplateOption[]>([]);
   /** Which of the video’s own panels is open. None by default: the frame is the editor. */
   const [panel, setPanel] = useState<null | "plan" | "rules" | "comment" | "settings">(null);
-  const [agentPrefill, setAgentPrefill] = useState<{ text: string; nonce: number } | null>(null);
   useEffect(() => { api.editorTool<TemplateOption[]>(projectId, { tool: "templates.list" }).then(list => setTemplateOptions(list.map(t => ({ id: t.id, name: t.name, brand: t.brand })))).catch(() => {}); }, [projectId]);
   const [fileDrag, setFileDrag] = useState(false);
   const clipboard = useRef<SequenceItem | null>(null);
@@ -129,6 +129,16 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
   const [download, setDownload] = useState(false);
   const [tab, setTab] = useState<"captions" | "overlays" | "edit">("captions");
   const player = useRef<PlayerRef>(null);
+  /**
+   * The project's one conversation. Held here rather than inside the panel because the
+   * timeline needs it as well: what the agent is working on is drawn around the clip it
+   * is working on, and that is read out of the conversation, not out of a flag.
+   */
+  const chat = useProjectChat(projectId, {
+    beforeRun: save,
+    afterUndo: editor.reload,
+    context: () => ({ sequenceId: sequence ? activeSequenceId : undefined, selection: item ? [item.id] : [], playhead: playhead.get() }),
+  });
   const previewArea = useRef<HTMLDivElement>(null);
   const [previewSize,setPreviewSize] = useState({width:0,height:0});
   useEffect(()=>{
@@ -720,7 +730,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
             : <p className="px-2 text-xs text-muted-foreground">Pick a clip on the frame or the timeline to edit it.</p>}
         </div>}
         <Card className="min-h-0 max-h-[45dvh] min-w-0 shrink-0 overflow-hidden py-3"><CardContent className="flex min-h-0 flex-col gap-3 overflow-hidden px-4">
-          {sequence && <SequenceTimeline projectId={projectId} sequence={sequence} selectedId={item?.id} dispatch={dispatch} onSeek={seek} playing={playing} onPlayToggle={()=>{if(playing)player.current?.pause();else player.current?.play();}} rate={rate} onRateChange={setRate} media={edl.media} mediaUrls={mediaUrls} assetUrls={assetUrls} selectedEdit={selected} onSelectEdit={index=>{setSelected(index);setTab("edit");}} onDropMedia={(id,at,layer)=>appendVideo(id,layer>0,{at,layer})} onDropAsset={(id,at,layer)=>void dropAsset(id,at,layer)} onDropFiles={(files,at,layer)=>dropFiles(files,{at,layer})} onDropLocalFile={(file,kind,at,layer)=>dropLocalFile(file,kind,{at,layer})} onDropSearchHit={(hit,at,layer)=>dropSearchHit(hit,{at,layer})} onReplaceMedia={replaceMedia} onReplaceAsset={(itemId,assetId,editIndex)=>void replaceAsset(itemId,assetId,editIndex)} onSplit={splitAtPlayhead} onDuplicate={duplicateSelected} onDetachAudio={detachAudio} onAskAgent={id=>{const target=sequence?.items.find(i=>i.id===id);setActiveItemId(id);setCanvasSelected(true);setAgentPrefill({text:`About "${target?.clip.title??"this clip"}": `,nonce:Date.now()});}} onNotify={notify} onSelect={(id,t)=>{setActiveItemId(id);setCanvasSelected(true);player.current?.pause();if(t!==null)seek(t);resetSelection();}} />}
+          {sequence && <SequenceTimeline projectId={projectId} sequence={sequence} selectedId={item?.id} dispatch={dispatch} onSeek={seek} playing={playing} onPlayToggle={()=>{if(playing)player.current?.pause();else player.current?.play();}} rate={rate} onRateChange={setRate} media={edl.media} mediaUrls={mediaUrls} assetUrls={assetUrls} selectedEdit={selected} onSelectEdit={index=>{setSelected(index);setTab("edit");}} onDropMedia={(id,at,layer)=>appendVideo(id,layer>0,{at,layer})} onDropAsset={(id,at,layer)=>void dropAsset(id,at,layer)} onDropFiles={(files,at,layer)=>dropFiles(files,{at,layer})} onDropLocalFile={(file,kind,at,layer)=>dropLocalFile(file,kind,{at,layer})} onDropSearchHit={(hit,at,layer)=>dropSearchHit(hit,{at,layer})} onReplaceMedia={replaceMedia} onReplaceAsset={(itemId,assetId,editIndex)=>void replaceAsset(itemId,assetId,editIndex)} onSplit={splitAtPlayhead} onDuplicate={duplicateSelected} onDetachAudio={detachAudio} chat={chat} onAskAgent={id=>{setActiveItemId(id);setCanvasSelected(true);}} onNotify={notify} onSelect={(id,t)=>{setActiveItemId(id);setCanvasSelected(true);player.current?.pause();if(t!==null)seek(t);resetSelection();}} />}
           {/* Everything a video can be given, in one row under the timeline it lands on.
               Split and duplicate are not here: they act on the selection, so they live with
               the selection in the bar under the frame. The second group does act on the
@@ -744,7 +754,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
         </CardContent></Card>
       </section>
       <aside aria-label="Editing properties" className="flex w-full min-h-0 shrink-0 flex-col gap-3 lg:w-[340px] lg:overflow-y-auto lg:pr-1">
-        <Card className="shrink-0 p-4"><EditorStatus editor={editor} />{actionError&&<p role="alert" className="text-sm text-destructive">{actionError}</p>}<AgentEditor projectId={projectId} beforeRun={save} afterUndo={editor.reload} prefill={agentPrefill} selection={item?{id:item.id,title:clip.title}:null} context={()=>({ sequenceId: sequence ? activeSequenceId : undefined, selection: item ? [item.id] : [], playhead: playhead.get() })} />
+        <Card className="shrink-0 p-4"><EditorStatus editor={editor} />{actionError&&<p role="alert" className="text-sm text-destructive">{actionError}</p>}<AgentEditor projectId={projectId} controller={chat} selection={item?{id:item.id,title:clip.title}:null} />
           {picked&&<><Button variant="outline" aria-expanded={propertiesOpen} onClick={()=>setPropertiesOpen(!propertiesOpen)}>{propertiesOpen?"Close properties":"All item properties"}</Button>{propertiesOpen&&<EditorProperties key={clip.id} clip={clip} edl={inspectEdl} validationEdl={edl} joint={joint} motion={motion} mapOperations={mapOperations} dispatch={dispatch} onApplied={()=>setPropertiesOpen(false)} />}</>}
         </Card>
         {!picked&&<p className="shrink-0 rounded-2xl border border-dashed border-white/15 p-4 text-xs leading-relaxed text-muted-foreground"><MousePointerClick aria-hidden className="mb-2 size-4" /><br />Nothing picked. A clip&apos;s properties appear here, and its everyday controls in the bar under the frame. The video as a whole — plan, templates, rules, format — is under <strong className="font-medium text-foreground">Video</strong> at the top.</p>}

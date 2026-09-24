@@ -1,24 +1,27 @@
 "use client";
 import { useEffect, useState } from "react";
-import { api, type MessageContext } from "@/common/api/client";
-import { useProjectChat } from "@/modules/agent/hooks/use-chat";
+import { api } from "@/common/api/client";
+import type { ChatController } from "@/modules/agent/types";
 import { Chat } from "./chat";
 import { OnboardingChat } from "../../onboarding/components/onboarding-chat";
 import { QUICK_ACTIONS } from "../data";
 
-export function AgentEditor({ projectId, beforeRun, afterUndo, context, prefill, selection }: {
+/**
+ * The project's conversation, opened once by whoever shows it.
+ *
+ * A project has one conversation and one job at a time. Two controllers over it would be
+ * two pollers, two elapsed clocks and two accounts of what is running, so the screen owns
+ * it — the editor needs it in a second place, to draw what the agent is working on around
+ * the clip it is working on.
+ */
+export function AgentEditor({ projectId, prefill, selection, controller }: {
   projectId: string;
-  beforeRun: () => Promise<boolean>;
-  /** Reload the editor after a message's changes were taken back. */
-  afterUndo?: () => Promise<void>;
-  /** What the editor is showing right now; sent with each message. */
-  context?: () => MessageContext;
   /** Text to start the next message with, e.g. from "Ask the agent about this". A new nonce applies it again. */
   prefill?: { text: string; nonce: number } | null;
   /** The selected clip, for quick actions to name. */
   selection?: { id: string; title: string } | null;
+  controller: ChatController;
 }) {
-  const controller = useProjectChat(projectId, { beforeRun, afterUndo, context });
   const [packActions, setPackActions] = useState<Array<{ label: string; text: string; pack: string }>>([]);
   useEffect(() => { api.editorTool<Array<{ label: string; text: string; pack: string }>>(projectId, { tool: "quickactions.list" }).then(setPackActions).catch(() => setPackActions([])); }, [projectId]);
 

@@ -33,6 +33,7 @@ import { STATUS } from "@/modules/project/data";
 import { VideoPreview } from "@/modules/editor/components/video-preview";
 import { useEditor } from "@/modules/editor/hooks/use-editor";
 import { EditorStatus } from "../editor/components/editor-status";
+import { useProjectChat } from "@/modules/agent/hooks/use-chat";
 import { AgentEditor } from "../agent/components/agent-editor";
 import { Clip } from "@/modules/editor/types";
 import { emptySequencePlan, type SequenceStatus } from "@/modules/plan/types";
@@ -57,6 +58,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
   const [sort, setSort] = useState<VideoSort>("score");
   const [filter, setFilter] = useState<SequenceStatus | "all">("all");
   const editor = useEditor(initial.id, initial.edl ? { edl: initial.edl, revision: initial.revision } : null);
+  const chat = useProjectChat(initial.id, { beforeRun: editor.save, afterUndo: editor.reload });
   const [error, setError] = useState<string | null>(null);
 
   const edl = editor.snapshot?.edl ?? null;
@@ -376,8 +378,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
             </div>
             <AgentEditor
               projectId={initial.id}
-              beforeRun={editor.save}
-              afterUndo={editor.reload}
+              controller={chat}
               selection={selected ? { id: selected.id, title: selected.title } : null}
             />
             </Card>
