@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Film, ImageIcon, Music, Play, Plus, Replace, Trash2, Layers, Maximize2, Check, X, Captions } from "lucide-react";
+import { Film, ImageIcon, Music, Play, Plus, Replace, Trash2, Layers, Maximize2, Check, X, Captions, FileText } from "lucide-react";
 import { Popover } from "@base-ui/react/popover";
 import { Button } from "../../../common/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter, DialogClose } from "../../../common/ui/dialog";
@@ -8,6 +8,7 @@ import { setActiveDrag, writeDrag, type DragPayload } from "@/modules/editor/lib
 import { type ViewerAsset, type TranscriptionState } from "../types";
 import { TRANSCRIPTION_LABEL, TRANSCRIPTION_ICON } from "../data";
 import { transcriptionSentence, tileLabel, durationLabel } from "../lib";
+import { isProvided } from "@/modules/transcription/lib/import";
 function TranscriptionMark({state}:{state:TranscriptionState}) {
   if(state.status==='none')return null;
   const sentence=transcriptionSentence(state);
@@ -38,16 +39,20 @@ function Preview({asset,large=false}:{asset:ViewerAsset;large?:boolean}) {
     {error?<p role="status" className="p-5 text-center text-xs text-muted-foreground">Preview unavailable. Try selecting the asset again.</p>:asset.kind==='video'?<video key={asset.key} src={asset.url} controls playsInline preload="metadata" aria-label={`Preview ${asset.name}`} onError={()=>setError(true)} className={`w-full object-contain ${large?'max-h-[55dvh]':'aspect-video'}`} />:asset.kind==='image'?<img src={asset.url} alt={asset.name} onError={()=>setError(true)} className={`w-full object-contain ${large?'max-h-[55dvh]':'aspect-video'}`} />:<div className="flex w-full flex-col items-center gap-5 p-4"><Music aria-hidden className="size-8 text-primary/70" /><audio key={asset.key} src={asset.url} controls preload="metadata" aria-label={`Preview ${asset.name}`} onError={()=>setError(true)} className="h-9 w-full min-w-0" /></div>}
   </div>;
 }
-export function AssetViewer({assets,selectedKey,onSelect,onPlace,onOverlay,onRemove,onReplace,onTranscribe,replace,disabled,videoAction='Add to timeline',emptyMessage}:{assets:ViewerAsset[];selectedKey:string|null;onSelect:(key:string)=>void;onPlace:(asset:ViewerAsset,mode?:'music'|'sfx')=>void;onOverlay?:(asset:ViewerAsset)=>void;onRemove?:(asset:ViewerAsset)=>void;
+export function AssetViewer({assets,selectedKey,onSelect,onPlace,onOverlay,onRemove,onReplace,onTranscribe,onProvideTranscript,onDiscardTranscript,replace,disabled,videoAction='Add to timeline',emptyMessage}:{assets:ViewerAsset[];selectedKey:string|null;onSelect:(key:string)=>void;onPlace:(asset:ViewerAsset,mode?:'music'|'sfx')=>void;onOverlay?:(asset:ViewerAsset)=>void;onRemove?:(asset:ViewerAsset)=>void;
   /** Swapping what the selected clip plays, for anyone who is not dragging. */
   onReplace?:(asset:ViewerAsset)=>void;replace?:{kind:'video'|'image'|'audio';title:string};
   /** Listen to this source again. `force` is "even though you already decided about it". */
   onTranscribe?:(asset:ViewerAsset,force:boolean)=>void;
+  /** Make a transcript the person already has this video's words, or stop using it. */
+  onProvideTranscript?:(asset:ViewerAsset)=>void;onDiscardTranscript?:(asset:ViewerAsset)=>void;
   disabled:boolean;videoAction?:string;emptyMessage:string}) {
   const selected=assets.find(a=>a.key===selectedKey);
   const [expanded,setExpanded]=useState(false);
   const [previewKey,setPreviewKey]=useState<string|null>(null);
-  const actions=(asset:ViewerAsset)=><div className="flex flex-wrap items-center gap-2"><Button size="sm" disabled={disabled} onClick={()=>onPlace(asset,asset.kind==='audio'?'music':undefined)}><Plus />{asset.kind==='video'?videoAction:asset.kind==='image'?'Add image':'Use as music'}</Button>{asset.kind==='video'&&onOverlay&&<Button size="sm" variant="outline" disabled={disabled} onClick={()=>onOverlay(asset)}><Layers />Overlay at playhead</Button>}{asset.kind==='audio'&&<Button size="sm" variant="outline" disabled={disabled} onClick={()=>onPlace(asset,'sfx')}>Add sound</Button>}{onReplace&&replace?.kind===asset.kind&&<Button size="sm" variant="outline" disabled={disabled} onClick={()=>onReplace(asset)}><Replace />Replace “{replace.title}”</Button>}{asset.transcription&&onTranscribe&&transcribeAction(asset)}{asset.removable&&onRemove&&<Button size="icon-sm" variant="ghost" aria-label={`Remove media ${asset.name}`} disabled={disabled} onClick={()=>onRemove(asset)}><Trash2 /></Button>}</div>;
+  const actions=(asset:ViewerAsset)=><div className="flex flex-wrap items-center gap-2"><Button size="sm" disabled={disabled} onClick={()=>onPlace(asset,asset.kind==='audio'?'music':undefined)}><Plus />{asset.kind==='video'?videoAction:asset.kind==='image'?'Add image':'Use as music'}</Button>{asset.kind==='video'&&onOverlay&&<Button size="sm" variant="outline" disabled={disabled} onClick={()=>onOverlay(asset)}><Layers />Overlay at playhead</Button>}{asset.kind==='audio'&&<Button size="sm" variant="outline" disabled={disabled} onClick={()=>onPlace(asset,'sfx')}>Add sound</Button>}{onReplace&&replace?.kind===asset.kind&&<Button size="sm" variant="outline" disabled={disabled} onClick={()=>onReplace(asset)}><Replace />Replace “{replace.title}”</Button>}{asset.transcription&&onTranscribe&&!provided(asset)&&transcribeAction(asset)}{asset.kind==='video'&&onProvideTranscript&&<Button size="sm" variant="outline" disabled={disabled} onClick={()=>onProvideTranscript(asset)}><FileText />{provided(asset)?'Replace transcript':'Use my transcript'}</Button>}{provided(asset)&&onDiscardTranscript&&<Button size="sm" variant="ghost" disabled={disabled} onClick={()=>onDiscardTranscript(asset)}>Use Whisper instead</Button>}{asset.removable&&onRemove&&<Button size="icon-sm" variant="ghost" aria-label={`Remove media ${asset.name}`} disabled={disabled} onClick={()=>onRemove(asset)}><Trash2 /></Button>}</div>;
+  // Its words are the person's own transcript, which transcribing again would only keep.
+  const provided=(asset:ViewerAsset)=>asset.transcription?.status==='done'&&isProvided(asset.transcription.engine);
   // One button, whose word is the state it is leaving: a source nobody has listened
   // to is transcribed, a failed one is retried, a finished one is done again.
   const transcribeAction=(asset:ViewerAsset)=>{

@@ -1,4 +1,5 @@
 import type { Edit } from "../editor/types";
+import type { SourceTranscriptState } from "../transcription/types";
 
 export type ViewerAsset = { key:string; id:string; name:string; kind:"video"|"image"|"audio"; url:string; duration?:number|null; width?:number|null; height?:number|null; license?:string|null; attribution?:string|null; used?:boolean; removable?:boolean;
   /** A vector — in practice a brand mark. Cropping one to fill a 16:9 tile destroys it, and a dark one vanishes on a dark tile. */
@@ -13,7 +14,9 @@ export type ViewerAsset = { key:string; id:string; name:string; kind:"video"|"im
  * as in a mark, because "this video has no captions" and "this video has not been
  * listened to yet" are different facts and only one of them is worth acting on.
  */
-export type TranscriptionState={status:"none"|"queued"|"running"|"done"|"failed"|"skipped";reason?:string;words?:number};
+export type TranscriptionState={status:"none"|"queued"|"running"|"done"|"failed"|"skipped";reason?:string;words?:number;
+  /** Which recogniser produced the words, or `provided:<format>` for a transcript the person handed over. */
+  engine?:string};
 
 export type SfxEdit = Extract<Edit, { type: "sfx" }>;
 
@@ -33,6 +36,8 @@ export type SortKey = "name" | "size" | "kind" | "date";
  */
 export type TranscriptionReport = {
   media: Array<TranscriptionState & { id: string; name: string }>;
+  /** The project's own source, which is not one of `media`. */
+  source: SourceTranscriptState;
   settings: { effective: { mode: string; scope: string }; workspace: string | null; project: string | null; modes: string[] };
 };
 

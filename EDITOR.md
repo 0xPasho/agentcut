@@ -136,6 +136,11 @@ playhead marks, the ruler's slider value and the lit transcript word follow it.
 - `project.unlock` (stop the running job and release the project; the same escape hatch as
   the panel's **Stop** button — see "Jobs and the project lock")
 - `transcript.resync` (re-recognise the source and refresh every clip's words)
+- `transcript.import` (a transcript the person already has — SRT, VTT, JSON or timestamped
+  lines, as a path or as text — made the words of the source or of one media, and put on
+  everything cut from it; the recogniser never replaces it) and `transcript.discard` (let
+  the recogniser back). `media.transcription` reports it under `source` and on each media's
+  `engine` (`provided:<format>`)
 - `assets.list` (library plus project assets), `assets.capture` (source seconds)
 - `assets.delete` (take one out of the library, the panel's own button). Refused while a
   template's bookend or a rule's slot still names it, saying which: removing one they name

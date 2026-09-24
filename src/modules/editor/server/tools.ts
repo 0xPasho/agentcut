@@ -116,6 +116,12 @@ export const EditorToolCall = z.discriminatedUnion("tool", [
   // imported one recognises itself. Read-only; `media.transcription.set` writes.
   z.object({ tool: z.literal("media.transcription") }),
   z.object({ tool: z.literal("media.transcription.set"), mode: z.enum(["audio", "always", "off"]).nullable(), level: RuleLevel.default("workspace") }),
+  // A transcript the person already has, made the words of the source or of one
+  // imported media: SRT, VTT, JSON or lines with timestamps, from a path on this
+  // machine or as the text itself. It outranks the recogniser until it is discarded.
+  z.object({ tool: z.literal("transcript.import"), file: z.string().min(1).optional(), text: z.string().min(1).optional(), name: z.string().optional(),
+    mediaId: z.string().optional(), by: z.string().optional() }),
+  z.object({ tool: z.literal("transcript.discard"), mediaId: z.string().optional() }),
   z.object({ tool: z.literal("project.batch"), brief: z.string().optional(), force: z.boolean().optional() }),
   // Ask the source for something. Which kind of video comes out is the template's
   // decision, not this tool's: `mode` and the numbers only bend what it asked for. The
@@ -463,6 +469,17 @@ export async function executeEditorTool(projectId: string, raw: unknown, onActiv
       const { saveTranscribeMode, transcribeSettings } = await import("../../transcription/server/settings");
       saveTranscribeMode(call.mode, call.level === "project" ? projectId : undefined);
       return transcribeSettings(projectId);
+    }
+    case "transcript.import": {
+      if (!call.file === !call.text) throw new Error("Give the transcript as a file path or as its text, not both");
+      const file = call.file ? path.resolve(call.file.replace(/^~/, process.env.HOME ?? "~")) : null;
+      const text = call.text ?? await fs.readFile(file!, "utf8");
+      const { importTranscript } = await import("../../transcription/server/provided");
+      return importTranscript(projectId, { text, name: call.name ?? (file ? path.basename(file) : undefined), mediaId: call.mediaId, by: call.by, onLog: (line) => report(line, "tool") });
+    }
+    case "transcript.discard": {
+      const { discardTranscript } = await import("../../transcription/server/provided");
+      return discardTranscript(projectId, { mediaId: call.mediaId });
     }
     case "project.analyze": {
       // A job, not a call: it transcribes, samples frames and runs an agent over hours

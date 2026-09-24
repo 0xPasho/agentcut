@@ -27,6 +27,7 @@ import { Progress } from "@/common/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/common/ui/select";
 import { Textarea } from "@/common/ui/textarea";
 import { AgentPicker } from "@/modules/agent/components/agent-picker";
+import { SourceTranscript } from "@/modules/transcription/components/source-transcript";
 import { Glass, ScrollEdge } from "@/common/ui/glass";
 import { ClipList, StatusDot } from "@/modules/project/components/clip-list";
 import { STATUS } from "@/modules/project/data";
@@ -591,6 +592,7 @@ function AnalyzePanel({
         />
         {section ? <p className="text-[11px] leading-snug text-muted-foreground">Say which part of the recording, if you already know. It is the instruction that wins over everything else.</p> : null}
       </div>
+      <SourceTranscript projectId={projectId} locked={busy} />
       <AgentPicker projectId={projectId} locked={busy} lockedReason="the analysis is running" />
       <div className="flex flex-wrap items-end gap-3">
         {section ? (

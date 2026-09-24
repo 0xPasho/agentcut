@@ -2,6 +2,10 @@
  * End-to-end: video in -> EDL out.
  *   npx tsx scripts/clip.ts <video> [--clips 6] [--min 20] [--max 75] [--brief "..."] [--provider claude|codex]
  *
+ * With a transcript you already have (SRT, VTT, JSON or timestamped lines), clips are
+ * chosen from its words and whisper never runs:
+ *   npx tsx scripts/clip.ts <video> --transcript stream.srt
+ *
  * Or one long video out of a long recording, which is the same run asked a different
  * question — the template decides which:
  *   npx tsx scripts/clip.ts <video> --template stream-to-youtube [--minutes 90]
@@ -18,6 +22,7 @@ import { computeSignals } from "../src/modules/clipping/server/signals";
 import { selectClips } from "../src/modules/clipping/server/select";
 import { resolveSelection } from "../src/modules/clipping/server/selection";
 import { Transcript } from "../src/modules/transcription/lib/transcript";
+import { writeProvidedTranscript } from "../src/modules/transcription/server/provided";
 import { fmt } from "../src/modules/transcription/lib/transcript";
 
 function arg(name: string, fallback?: string) {
@@ -45,8 +50,13 @@ async function main() {
   step("transcribe");
   const transcriptPath = path.join(dir, "transcript.json");
   let transcript: Transcript;
-  const cached = await fs.readFile(transcriptPath, "utf8").catch(() => null);
-  if (cached) {
+  const given = arg("transcript");
+  const cached = given ? null : await fs.readFile(transcriptPath, "utf8").catch(() => null);
+  if (given) {
+    // A transcript the person already has is what was said: no recogniser runs.
+    const file = path.resolve(given);
+    ({ transcript } = await writeProvidedTranscript({ text: await fs.readFile(file, "utf8"), name: path.basename(file), file: videoPath, dir, by: "cli", onLog: (t) => console.log(`  ${t}`) }));
+  } else if (cached) {
     transcript = Transcript.parse(JSON.parse(cached));
     console.log(`  cached: ${transcript.segments.length} segments, ${transcript.words.length} words`);
   } else {

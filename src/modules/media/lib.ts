@@ -1,10 +1,12 @@
 import type { TranscriptionState, ViewerAsset, SortKey, TranscriptionReport } from "./types";
 import { TRANSCRIPTION_LABEL, KINDS } from "./data";
+import { isProvided } from "../transcription/lib/import";
 import type { FolderEntry } from "./server/local-assets";
 
 /** One state, in one sentence, wherever it is read out: a tile, a caption, a live region. */
 export function transcriptionSentence(state:TranscriptionState){
   const label=TRANSCRIPTION_LABEL[state.status];
+  if(state.status==='done'&&isProvided(state.engine))return `From your transcript · ${state.words??0} words`;
   if(state.status==='done')return `${label} · ${state.words??0} words`;
   return state.reason?`${label} — ${state.reason}`:label;
 }
@@ -60,5 +62,13 @@ export function compare(a: FolderEntry, b: FolderEntry, key: SortKey) {
   return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
 }
 
-export const wordsFor = (report: TranscriptionReport | null, mediaId: string): TranscriptionState | undefined =>
-  report?.media.find(m => m.id === mediaId);
+/**
+ * A source's words, as the report tells them. The project's own source is not project
+ * media and has no recogniser run of its own to show, so only a transcript the person
+ * provided for it is said on its tile.
+ */
+export function wordsFor(report: TranscriptionReport | null, mediaId: string): TranscriptionState | undefined {
+  if (mediaId !== "primary_source") return report?.media.find(m => m.id === mediaId);
+  const source = report?.source;
+  return source?.status === "provided" ? { status: "done", engine: source.engine, words: source.words } : undefined;
+}

@@ -16,6 +16,7 @@ import { type ViewerAsset } from "../types";
 import { setActiveDrag, writeDrag, type DragKind } from "@/modules/editor/lib/dnd";
 import { type TranscriptionReport } from "../types";
 import { wordsFor } from "../lib";
+import { TRANSCRIPT_EXTENSIONS } from "@/modules/transcription/data";
 
 export function MediaBrowser({ projectId, edl, beforeImport, afterImport, onBusy, onPlace, onPreview, onVideo, onLibraryVideo, onVideoLayer, onRemoveVideo, onReplace, replace, focus, videoAction = "Add to video", canPlace = true, children }: {
   projectId: string; edl: Edl; beforeImport: () => Promise<boolean>; afterImport: () => Promise<void>;
@@ -38,6 +39,9 @@ export function MediaBrowser({ projectId, edl, beforeImport, afterImport, onBusy
   const heard = useRef(new Map<string, string>());
   const [announcement, setAnnouncement] = useState("");
   const input = useRef<HTMLInputElement>(null);
+  const transcriptInput = useRef<HTMLInputElement>(null);
+  /** Which video the transcript picker was opened for. */
+  const transcriptFor = useRef<ViewerAsset | null>(null);
   const search = useRef<HTMLInputElement>(null);
   // Only when it is asked for: a filter that reset itself on every render would fight the
   // person using it. The nonce is what makes asking twice in a row work.
@@ -84,6 +88,24 @@ export function MediaBrowser({ projectId, edl, beforeImport, afterImport, onBusy
     await api.editorTool(projectId, { tool: "media.transcribe", mediaIds: [mediaId], background: true, force });
     await readWords();
   }, false);
+  /**
+   * A transcript the person already has, as this video's words. The project's own
+   * source is not project media, so it goes without a media id, exactly as the
+   * analysis panel sends it.
+   */
+  const provideTranscript = (asset: ViewerAsset, file: File) => run(async () => {
+    await api.editorTool(projectId, { tool: "transcript.import", text: await file.text(), name: file.name, mediaId: asset.id === "primary_source" ? undefined : asset.id });
+    await readWords();
+    setNotice(`${asset.name} now uses the words in ${file.name}.`);
+  });
+  /** Back to the recogniser: the provided transcript goes, and this video is listened to again. */
+  const discardTranscript = (asset: ViewerAsset) => run(async () => {
+    const mediaId = asset.id === "primary_source" ? undefined : asset.id;
+    await api.editorTool(projectId, { tool: "transcript.discard", mediaId });
+    if (mediaId) await api.editorTool(projectId, { tool: "media.transcribe", mediaIds: [mediaId], background: true });
+    await readWords();
+    setNotice(mediaId ? `Whisper is transcribing ${asset.name}. Its current words stay until it finishes.` : "The next analysis transcribes the source with Whisper.");
+  });
   /**
    * The choice is the workspace's, but a project override outranks it, so saving the
    * workspace alone would store the answer and leave the panel showing the old one.
@@ -151,9 +173,10 @@ export function MediaBrowser({ projectId, edl, beforeImport, afterImport, onBusy
     else {const original=assets.find(a=>a.id===asset.id);if(original)onPlace(original,mode);}
     setNotice("");
   };
-  const viewer=<AssetViewer assets={collection} selectedKey={selectedKey} onSelect={key=>{setSelectedKey(key);onPreview?.();}} onPlace={place} onOverlay={onVideoLayer?a=>{onVideoLayer(a.id);setNotice("");}:undefined} onRemove={onRemoveVideo?a=>onRemoveVideo(a.id):undefined} onReplace={onReplace?a=>{onReplace(a.id,a.kind);setNotice("");}:undefined} onTranscribe={(a,force)=>void transcribe(a.id,force)} replace={replace} disabled={!canPlace||pending} videoAction={videoAction} emptyMessage={filter||kind!=='all'?'No matching assets. Try another filter.':tab==='project'?'Import media or browse your folders to start building your video.':'Reusable images and audio live here. Import files or explore online images.'} />;
+  const viewer=<AssetViewer assets={collection} selectedKey={selectedKey} onSelect={key=>{setSelectedKey(key);onPreview?.();}} onPlace={place} onOverlay={onVideoLayer?a=>{onVideoLayer(a.id);setNotice("");}:undefined} onRemove={onRemoveVideo?a=>onRemoveVideo(a.id):undefined} onReplace={onReplace?a=>{onReplace(a.id,a.kind);setNotice("");}:undefined} onTranscribe={(a,force)=>void transcribe(a.id,force)} onProvideTranscript={a=>{transcriptFor.current=a;transcriptInput.current?.click();}} onDiscardTranscript={a=>void discardTranscript(a)} replace={replace} disabled={!canPlace||pending} videoAction={videoAction} emptyMessage={filter||kind!=='all'?'No matching assets. Try another filter.':tab==='project'?'Import media or browse your folders to start building your video.':'Reusable images and audio live here. Import files or explore online images.'} />;
   return <Card className="min-w-0 gap-4 rounded-3xl border-white/12 bg-card/95 p-3 shadow-[inset_0_1px_0_rgb(255_255_255/0.06)]" aria-busy={pending}>
     <div className="flex items-center justify-between gap-2"><h2 className="text-sm font-semibold">Assets</h2><div className="flex gap-1"><Button variant="ghost" size="icon-sm" aria-label="Refresh assets" disabled={pending} onClick={() => run(refresh, false)}><RefreshCw /></Button><Button variant="outline" size="sm" disabled={pending} onClick={() => input.current?.click()}><Upload />Import</Button></div></div>
+    <input ref={transcriptInput} type="file" accept={TRANSCRIPT_EXTENSIONS.join(",")} className="hidden" onChange={e => { const file = e.target.files?.[0]; const asset = transcriptFor.current; e.target.value = ""; if (file && asset) void provideTranscript(asset, file); }} />
     <input ref={input} type="file" multiple accept="video/*,image/*,audio/*" className="hidden" onChange={e => { const files = Array.from(e.target.files ?? []); e.target.value = ""; if (files.length) void upload(files); }} />
     <Tabs value={tab} onValueChange={v => {setTab(String(v));setKind("all");}}>
       <TabsList className="grid h-auto w-full grid-cols-4"><TabsTrigger value="project" className="px-1 text-xs">Project</TabsTrigger><TabsTrigger value="library" className="px-1 text-xs">Library</TabsTrigger><TabsTrigger value="folders" className="px-1 text-xs">Folders</TabsTrigger><TabsTrigger value="online" className="px-1 text-xs">Online</TabsTrigger></TabsList>

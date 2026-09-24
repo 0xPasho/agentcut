@@ -189,9 +189,22 @@ export function rebaseOntoSource(words: Word[], seg: { start: number; end: numbe
   const base = words[0].t;
   // No VAD, or nothing removed before this segment: the times are already the source's.
   if (Math.abs(seg.start - base) < SAME_TIMELINE) return words;
+  return spreadOverSpeech(words.map((w) => ({ ...w, t: w.t - base })), seg, runs);
+}
 
+/**
+ * Lay words timed from zero across the speech inside a segment.
+ *
+ * The words' own spacing is kept, scaled to the speech the envelope finds between the
+ * segment's bounds, and silence inside the segment is stepped over rather than smeared
+ * across the words. With no speech found they are laid across the segment as they are.
+ * Whisper's VAD rebase and a transcript that is timed per line both place words this
+ * way, so the two cannot disagree about where a word lands.
+ */
+export function spreadOverSpeech(words: Word[], seg: { start: number; end: number }, runs: SpeechRun[]): Word[] {
+  if (!words.length) return words;
   const last = words[words.length - 1];
-  const spoken = Math.max(0, last.t + last.d - base);
+  const spoken = Math.max(0, last.t + last.d);
   const inside = runs
     .filter((r) => r.end > seg.start && r.start < seg.end)
     .map((r) => ({ start: Math.max(r.start, seg.start), end: Math.min(r.end, seg.end) }));
@@ -204,7 +217,7 @@ export function rebaseOntoSource(words: Word[], seg: { start: number; end: numbe
   // starts after the pause — so where a run boundary lands depends on which edge
   // of a word is being placed.
   const at = (t: number, edge: "start" | "end") => {
-    let left = Math.max(0, t - base) * scale;
+    let left = Math.max(0, t) * scale;
     for (const run of inside) {
       const dur = run.end - run.start;
       if (left < dur || (edge === "end" && left <= dur)) return run.start + left;

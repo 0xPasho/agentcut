@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { extractAudio } from "../../media/server/ffmpeg";
 import { Transcript } from "../lib/transcript";
+import { isProvided } from "../lib/import";
 import type { AgentEvent } from "../../agent/server/providers";
 import { available as whisperAvailable, engineId, transcribe } from "./whispercpp";
 import { polishTranscript } from "./polish";
@@ -49,7 +50,7 @@ export function setDefaultRecogniser(recogniser: Recogniser | undefined) {
 }
 
 /**
- * The project's transcript: cached, recognised, proofread.
+ * The project's transcript: the one the person provided, or cached, recognised, proofread.
  *
  * Analysis and a later re-transcribe go through here, so a project's captions come
  * from one recogniser configuration rather than from whenever it was first opened.
@@ -57,15 +58,19 @@ export function setDefaultRecogniser(recogniser: Recogniser | undefined) {
  */
 export async function ensureTranscript(o: TranscribeRunOptions): Promise<{ transcript: Transcript; fresh: boolean }> {
   const transcriptPath = path.join(o.dir, "transcript.json");
-  if (!o.force) {
-    const parsed = await readCached(transcriptPath);
-    if (parsed?.success) {
-      if (parsed.data.engine === engineId()) {
-        o.onLog?.(`reusing transcript (${parsed.data.words.length} words)`);
-        return { transcript: parsed.data, fresh: false };
-      }
-      o.onLog?.("cached transcript came from an older recogniser — re-running");
+  const cached = await readCached(transcriptPath);
+  // A transcript the person handed over is what was said. Neither a stale engine nor
+  // `force` replaces it with the recogniser's guess; only discarding it does.
+  if (cached?.success && isProvided(cached.data.engine)) {
+    o.onLog?.(`using the transcript you provided (${cached.data.words.length} words)`);
+    return { transcript: cached.data, fresh: false };
+  }
+  if (!o.force && cached?.success) {
+    if (cached.data.engine === engineId()) {
+      o.onLog?.(`reusing transcript (${cached.data.words.length} words)`);
+      return { transcript: cached.data, fresh: false };
     }
+    o.onLog?.("cached transcript came from an older recogniser — re-running");
   }
 
   const recognise: Recogniser = o.recognise ?? globalThis.__agentcutRecogniser ?? transcribe;
@@ -95,6 +100,13 @@ export async function ensureTranscript(o: TranscribeRunOptions): Promise<{ trans
   transcript = spelled.transcript;
   if (spelled.changed) o.onLog?.(`glossary corrected ${spelled.changed} words`);
 
+  // A run on a five-hour source takes long enough for the person to hand over their
+  // own transcript meanwhile. Theirs was written while this one listened; it stays.
+  const meanwhile = await readCached(transcriptPath);
+  if (meanwhile?.success && isProvided(meanwhile.data.engine)) {
+    o.onLog?.("a transcript was provided while this one was being recognised — keeping yours");
+    return { transcript: meanwhile.data, fresh: false };
+  }
   await writeTranscript(transcriptPath, transcript);
   return { transcript, fresh: true };
 }
@@ -116,7 +128,7 @@ async function readCached(file: string) {
  * leaves either the previous transcript or none — never half of one that a later
  * read would have to guess about.
  */
-async function writeTranscript(file: string, transcript: Transcript) {
+export async function writeTranscript(file: string, transcript: Transcript) {
   const temp = `${file}.${process.pid}.tmp`;
   await fs.writeFile(temp, JSON.stringify(transcript));
   try { await fs.rename(temp, file); }

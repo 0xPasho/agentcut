@@ -3,12 +3,14 @@ import path from "node:path";
 import { projectDir } from "../../../common/server/config";
 import { q } from "../../../common/server/db";
 import { wordsForClip } from "../lib/transcript";
+import { isProvided } from "../lib/import";
 import { probe, audioLevel, SILENCE_PEAK_DB } from "../../media/server/ffmpeg";
 import type { MediaTranscription } from "../../editor/types";
 import { editProject, readEditor, RevisionConflict } from "../../editor/server/store";
 import type { EditorOperation } from "../../editor/lib/operations";
 import { ensureTranscript, type TranscribeRunOptions } from "./transcribe";
 import { resolveTranscribeMode, type TranscribeMode } from "./settings";
+import { sourceTranscriptState } from "./provided";
 
 /**
  * Imported media get their own transcript, one per file, under
@@ -94,6 +96,16 @@ export function markQueued(projectId: string, mediaIds: string[], by = "import",
   for (const mediaId of mediaIds) record(projectId, mediaId, { status: "queued", reason, engine: "", words: 0, at: Date.now(), by });
 }
 
+/** A provided transcript was discarded: this source has no words anybody stands behind until it is transcribed. */
+export function forgetTranscription(projectId: string, mediaId: string) {
+  for (let attempt = 0; ; attempt++) {
+    const current = readEditor(projectId);
+    if (!current.edl.media.some((m) => m.id === mediaId)) return current;
+    try { return editProject(projectId, { expectedRevision: current.revision, operations: [{ type: "media.transcription", mediaId, transcription: null }] }); }
+    catch (error) { if (!(error instanceof RevisionConflict) || attempt >= 5) throw error; }
+  }
+}
+
 /** Record a decision that needed no recogniser at all — the import-time skips. */
 export function markSkipped(projectId: string, mediaId: string, reason: string, by = "import") {
   record(projectId, mediaId, { status: "skipped", reason, engine: "", words: 0, at: Date.now(), by });
@@ -169,6 +181,8 @@ export function transcriptionState(projectId: string) {
   return {
     revision,
     mode,
+    /** The project's own source: its words are the transcript the person provided, the recogniser's, or none yet. */
+    source: sourceTranscriptState(projectId),
     media: edl.media.map((m) => ({
       id: m.id,
       name: m.name,
@@ -195,6 +209,12 @@ export function transcriptionNote(projectId: string): string {
   const failed = state.media.filter((m) => m.status === "failed");
   const skipped = state.media.filter((m) => m.status === "skipped");
   const lines: string[] = [];
+  const provided = [
+    ...(state.source.status === "provided" ? ["the source"] : []),
+    ...state.media.filter((m) => isProvided(m.engine)).map((m) => m.name),
+  ];
+  // Otherwise a run that doubts a word reaches for the recogniser, which would only keep theirs.
+  if (provided.length) lines.push(`The words of ${provided.join(", ")} are a transcript the person provided. Treat them as what was said; re-transcribing keeps them.`);
   if (waiting.length) lines.push(`Still being transcribed: ${waiting.map((m) => m.name).join(", ")}. Their words are not final — do not conclude these sources have no speech, and do not write words onto them by hand.`);
   if (failed.length) lines.push(`Transcription failed: ${failed.map((m) => `${m.name} (${m.reason})`).join("; ")}. Retry with media.transcribe, or say so.`);
   if (skipped.length) lines.push(`Not transcribed: ${skipped.map((m) => `${m.name} (${m.reason})`).join("; ")}.`);
