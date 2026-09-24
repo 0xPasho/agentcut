@@ -83,7 +83,8 @@ the beats, which template, which rules fired and why. Change a decision, apply i
   read, how often a picture may interrupt. Parametric, extendable, with brand kit and
   aspect variants. See [TEMPLATES.md](TEMPLATES.md).
 - **Packs** bundle templates, rules and assets so they travel. Import from a path or a
-  URL. See [PACKS.md](PACKS.md).
+  URL. A pack also carries what its videos must be true of, so a look can be verified and
+  not only applied. See [PACKS.md](PACKS.md) and [REVIEW.md](REVIEW.md).
 - **Corrections are remembered.** Every time you fix something an agent placed, it is
   appended to an observation bank the agent reads as context.
 
@@ -162,6 +163,7 @@ pnpm build && pnpm start --hostname 127.0.0.1
 - [Editing by hand](docs/EDITING.md)
 - [Harness and model selection](HARNESS.md)
 - [Rules, glossary and preferences](RULES.md) · [Templates](TEMPLATES.md) · [Packs](PACKS.md)
+- [What correct looks like: pack-defined review](REVIEW.md)
 - [Agent-first direction and status](AGENT-FIRST.md)
 - [Sequences, layers, and timeline behavior](SEQUENCES.md)
 - [Product requirements](SPEC.md) · [Design conventions](DESIGN.md) · [Contributor/agent instructions](AGENTS.md)

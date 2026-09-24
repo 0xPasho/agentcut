@@ -157,9 +157,10 @@ playhead marks, the ruler's slider value and the lit transcript word follow it.
 - `style.audit` reads an exported video back out of its own pixels and checks it against
   what its template said: the pane framed where the layout says at the moment the cuts
   say, the hook held across the body and off the end card, a word drawn into the caption
-  band and a gap that is empty, the longest word stopping before the edges of the frame
-  rather than running off them, the end card being the card and playing whole. The panel,
-  the agent and `scripts/style-audit.ts` run the same reading.
+  band and a gap that is empty, the end card being the card and playing whole. The panel,
+  the agent and `scripts/style-audit.ts` run the same reading. Each check is a number with
+  a threshold beside it in `render/server/style-check.ts`; the thresholds are what
+  [REVIEW.md](./REVIEW.md) moves into the pack, leaving the measuring here.
 - `scripts/caption-sync.ts PROJECT_ID` measures whether the captions are on the words: it
   marks what the footage's own sound calls speech, slides the transcript against it, and
   reports the shift that agrees best. A shift inside a frame is nothing; a consistent one

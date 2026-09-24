@@ -13,6 +13,7 @@ streamer-kit/
   assets/a_1234abcd.mp4    # named in pack.json with its kind and the id it had
   STYLE.md                 # the style guide: how videos in this pack are made
   examples/reference.mp4   # reference videos and pictures
+  review.json              # what a finished video in this pack must be true of
 ```
 
 `pack.json`:
@@ -68,6 +69,50 @@ note on what to take from it.
   `packs.style.set`, `packs.examples.add`, `packs.examples.update`,
   `packs.examples.remove`. An installed pack keeps them in `workspace/packs/<id>/`;
   `packs.export` with `stylePack` writes them into the exported folder.
+
+## What correct looks like
+
+A template is what gets applied; it is not what gets verified. `STYLE.md` says what a good
+video is in prose, which an agent reads and has every reason to agree with. `review.json`
+is the third file: the part of that judgement that can be written as a number with a limit,
+or as a question with an answer that has to point somewhere.
+
+```json
+"review": "review.json",
+```
+
+```json
+{
+  "schema": 1,
+  "checks": [
+    { "id": "no-tail", "metric": "video.durationSec", "max": 62, "severity": "critical",
+      "fix": "Cut after the last sentence; the tag runs long." }
+  ],
+  "rubric": [
+    { "id": "chat-opens", "severity": "critical", "evidence": "timestamp",
+      "ask": "Does the clip open on the chat comment being answered?",
+      "fix": "Extend the head to the comment, or pick a clip that stands without one." }
+  ]
+}
+```
+
+- **The pack brings thresholds, not measurements.** `metric` names one entry in a catalogue
+  the host owns — length, cuts per minute, caption rate, whether the captions cross the
+  seam, and the seven things `style.audit` reads back out of an export's pixels. A pack
+  cannot lie about a number it did not take, and cannot ship code to take one.
+- **What cannot be measured is asked.** A rubric item is answered with a timestamp, a
+  frame, an EDL field or a quote; an answer with nothing beside it counts as
+  "cannot tell", and on a critical item that is a finding rather than a pass.
+- **The examples are the evidence.** A rubric item can name one, and the contact sheet the
+  agent already reads is what it compares against.
+- **A pack is linted at import.** A metric the host cannot measure, or a critical check
+  with no `fix` sentence, is shown on the inspect page before anything is copied — the same
+  shape as the rule lint that says when a rule judges but does not act.
+- **Trust.** `ask` and `fix` are text from a stranger that reaches the agent, so they are
+  scanned like `STYLE.md` and a pack that fails is refused whole. Thresholds are numbers.
+
+The full design, the metric catalogue and the review artifact: [REVIEW.md](./REVIEW.md).
+Designed 2026-09-24, not built — today the thresholds live in `render/server/style-check.ts`.
 
 ## Import
 
