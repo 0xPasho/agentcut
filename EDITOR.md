@@ -83,7 +83,7 @@ returns an empty envelope rather than an error.
 Undo and redo are `invertOperations` in `src/modules/editor/lib/history.ts`: the inverse of a batch,
 expressed in these same operations and sent through the same save path. Nothing in the UI
 writes a remembered EDL back over the project. Crop keyframes, layer motion keyframes, split rectangles, caption settings, transcript words, clip
-metadata, and output settings are accessible to both interfaces. The UI's **All clip
+metadata, and output settings are accessible to both interfaces. The UI's **All item
 properties** panel is generated from the same schema exposed to agents; compact controls
 remain shortcuts to that engine. Add/remove clips is available on the project screen.
 
@@ -103,6 +103,12 @@ and save after a short debounce. Save, export, and asking the agent flush pendin
 first. Other writers' saved changes appear through polling, without replacing local drafts. A hidden
 tab has its timers throttled to roughly once a minute, so returning to the window polls at once
 rather than waiting: the agent edits the same project while nobody is looking at it.
+
+Two channels carry two different things, and both are real. The SSE stream
+(`/api/projects/[id]/events`) carries the activity feed and a status tick — revision number,
+project status, the running job — so the panel knows *that* something changed. The EDL
+itself never travels over the stream: `useEditor` polls the revision once a second
+(`src/modules/editor/hooks/use-editor.ts`) and fetches the project whole when it moved.
 
 A revision conflict preserves the draft and blocks saving. The UI offers downloading the
 draft or explicitly discarding it and loading the latest state; it does not silently merge
@@ -127,8 +133,8 @@ playhead marks, the ruler's slider value and the lit transcript word follow it.
 - `project.read`, `project.edit`, `project.render`
 - `project.status` (what the project is doing now: status, the running job with its stage and
   progress, and every activity line since a cursor — read-only and safe to poll)
-- `project.unlock` (release a project whose job is stuck; same escape hatch as the panel's
-  **Stop and unlock**)
+- `project.unlock` (stop the running job and release the project; the same escape hatch as
+  the panel's **Stop** button — see "Jobs and the project lock")
 - `transcript.resync` (re-recognise the source and refresh every clip's words)
 - `assets.list` (library plus project assets), `assets.capture` (source seconds)
 - `assets.delete` (take one out of the library, the panel's own button). Refused while a
@@ -253,6 +259,20 @@ agent can open an image to see it, and is told each asset id so it can place the
 in the timeline. No second upload path, and the turn keeps its attachments, so the thread
 still shows the picture next to what was asked.
 
+A message written while a run is active is not refused and not sent: the composer keeps
+accepting, and the message becomes a queued turn with an X to take it back
+(`useProjectChat` in `use-chat.ts`). The queue drains itself, oldest first, the moment the
+project is free. A send that fails goes back to the front of the queue and holds the rest
+behind it, so one failure never fires every message that was waiting. One job per project
+is a fact about the editor, not a reason to make somebody watch before saying the next thing.
+
+Replies render as Markdown through the in-repo parser (`src/modules/agent/lib/markdown.ts`,
+drawn by `components/markdown.tsx`): the subset harnesses actually write — headings, lists,
+fences, quotes, tables, links, inline marks — parsed into plain values. There is no HTML
+passthrough and no dependency; anything unrecognised stays as the text that was written.
+`safeHref` keeps only `http(s):`, `mailto:`, `#` and `/` links, so a `javascript:` link that
+a transcript smuggled into a reply is dropped, not followed.
+
 ### What the agent can see
 
 A turn's run directory gets `frames/`, `transcript.txt` and `signals.json` for the open
@@ -304,11 +324,14 @@ alone — the transcript belongs to the primary source.
 
 ## Transcription
 
-`src/modules/transcription/server/transcribe/` owns the words every caption, template and clip selection is built
-from. `ensureTranscript` is the single entry point: it reuses `transcript.json` only when
-it came from the current engine, so improving the recogniser re-runs old projects instead
-of silently keeping their worse words. It writes through a temporary file and renames, so
-a process killed mid-write leaves either the previous transcript or none.
+`src/modules/transcription/server/` (flat: `transcribe.ts`, `whispercpp.ts`, `align.ts`,
+`polish.ts`, `auto.ts`, `resync.ts`, `settings.ts`, `media.ts`) owns the words every caption,
+template and clip selection is built from. `ensureTranscript` in `transcribe.ts` is the
+single entry point: it reuses `transcript.json` only when it came from the current engine,
+so improving the recogniser re-runs old projects instead of silently keeping their worse
+words. Any change to what the recogniser produces bumps `ENGINE_VERSION` (`whispercpp-3`
+today) for that reason. It writes through a temporary file and renames, so a process killed
+mid-write leaves either the previous transcript or none.
 
 Importing a source starts its own transcription, off the project lock, into the same
 `<project>/transcripts/<mediaId>/` cache the batch flow uses. Where each source stands is
@@ -321,17 +344,39 @@ overrides the stored setting; a test run is `off` unless it asks otherwise, and
 
 - `whispercpp.ts` runs whisper.cpp with `large-v3-turbo`, Silero VAD, and DTW token
   timestamps (which require flash attention off). It falls back to `small` if the model
-  will not load, and records per-word confidence.
+  will not load, and records per-word confidence. The model is multilingual and the
+  language is `auto`, never an `.en` model: those emit plausible garbage on anything but
+  English. The recogniser's prompt is a vocabulary hint — the glossary's terms, or
+  `AGENTCUT_WHISPER_PROMPT` as the deliberate override — and has to be in the language
+  being spoken. A brief never reaches whisper; it reaches only the proofreader. An English
+  brief over Spanish audio made whisper *translate*.
+- With VAD on, whisper's token times live on the compressed speech-only clock, not the
+  source's. `rebaseOntoSource` (in `align.ts`) re-anchors each segment's words on the
+  segment's own bounds, and only when VAD ran — without it both are already the source's
+  clock and must not be touched. Before this, a 4.4-hour stream drifted 94 minutes, and
+  clips and captions both read the wrong clock.
 - `align.ts` snaps word starts onto the audio's own speech onsets and stops a word when
   its speech run stops. Whisper's word times are estimates on a 20ms grid; the audio is
-  the ground truth for when a word begins.
+  the ground truth for when a word begins. Only the first word of a speech run moves
+  (up to 0.2s back, 0.3s forward): inside continuous speech there is no onset to snap to,
+  and the snap's failure mode has to be "no change", never damage.
 - `polish.ts` sends only the segments whisper doubted to the local agent, which may
   correct wording but never timing: corrected words inherit the times of the words they
   replace, and a rewrite that keeps too little is refused. `AGENTCUT_TRANSCRIPT_POLISH=0`
   turns it off.
 
+Legacy word times are repaired on the way in and on the way out: `repairWordTimes`
+(`src/modules/editor/lib/operations.ts`) runs when the store reads an EDL and again when
+it commits one, while `validateClip` still rejects a bad value arriving through an
+operation. A revision-0 project could never pass today's validator and had six clips
+frozen; repairing on read fixes the data, rejecting on write keeps a regression loud.
+
 A caption's own timing lives in `src/modules/editor/lib/timeline.ts` (`lineAt`, `activeWordIndex`), which
-the preview, the export and the tests all share.
+the preview, the export and the tests all share. The lit word is the last one that has
+started, held until the next begins — highlighting only inside `[start, end]` left dark
+gaps between whisper's words. `remotion/Captions.tsx` samples at frame centre,
+`(frame + 0.5) / fps`, so a word beginning mid-frame lights on that frame, and when two
+lines' windows overlap `lineAt` picks the newer one.
 
 `template.apply` is not a second mutation path. It plans against the transcript, resolves
 each picture to an asset, and then submits ordinary `EditorOperation[]` through
@@ -368,16 +413,26 @@ pnpm exec tsx scripts/edit.ts <projectId> call request.json
 pnpm exec tsx scripts/edit.ts <projectId> ask "Move the title to the bottom"
 ```
 
-The UI's **Edit with agent** action starts an edit job on the existing project. Both
-provider adapters use the same file-based tool transport in `editor-runs/<run-id>/`:
-the agent reads `project.json` and `tools.schema.json`, writes `request-0001.json`, and
-reads `response-0001.json` before the next request. The host executes the shared tools.
-Request numbers cannot be reused. Successful tool responses confirm saved changes;
-writing an EDL or modifying the initial snapshot does not save anything.
+A message sent from the chat panel (or `agentcut edit PROJECT ask`) starts an edit job
+on the existing project. All four harness drivers — `claude.ts`, `codex.ts`, `cursor.ts`
+and `opencode.ts` in `src/modules/agent/server/` — use the same file-based tool transport
+in `editor-runs/<run-id>/`: the agent reads `project.json` and `tools.schema.json`,
+writes `request-0001.json`, and reads `response-0001.json` before the next request. The
+host executes the shared tools. Request numbers cannot be reused. Successful tool
+responses confirm saved changes; writing an EDL or modifying the initial snapshot does
+not save anything.
 
 Initial selection still uses transcript/frame analysis to propose clips. Publishing
-those proposals appends clips through the shared state layer. **Find more clips** and
+those proposals appends clips through the shared state layer. **Find more** and
 recovery/CLI selection preserve existing clips and edits; they do not replace the project.
+
+The selection agent has to be able to reach the whole recording
+(`src/modules/clipping/server/select.ts`). A five-hour transcript is past what one
+`Read` returns, and an agent that saw only the start would not know it: from thirty
+minutes up the transcript is also written as 20-minute timed chunks under `transcript/`
+with an `index.txt`. The frame-sampling interval grows with duration,
+`max(every, duration / 60)`, so the sixty frames spread over the whole video instead of
+covering its first half hour.
 
 ## Rendering
 
@@ -476,18 +531,30 @@ everything else. It waits on nothing and nothing waits on it, which is what stop
 agent that imports media inside its own edit run from deadlocking against the lock it
 already holds. Reaping one closes the row and logs the reason but does **not** hand the
 project back — it never took it, and doing so would clear the status of a job that is
-alive and holding it. "Stop and unlock" cancels it too, since the drain checks
-`ownsJob` between sources. Rejected: taking the lock (locks the person out of the
+alive and holding it. **Stop** cancels it too: `unlockProject` marks background rows
+canceled, and the drain checks `ownsJob` between sources. Rejected: taking the lock (locks the person out of the
 footage they just added), and queueing behind it (still deadlocks the agent, and a long
 render starves the words). See `src/modules/transcription/server/auto.ts` and
 [SEQUENCES.md](./SEQUENCES.md#newly-imported-sources-transcribe-themselves).
 
-`POST /api/projects/:id/unlock`, the panel's **Stop and unlock** button and the
-`project.unlock` tool are the same escape hatch for a job that is alive but stuck,
-e.g. a model call that never returns. It abandons the run rather than cancelling it:
-nothing interrupts the work, and the abandoned run's result is discarded if it ever
-lands. Real cooperative cancellation needs an `AbortSignal` threaded through
-conversation, render and transcribe, and is **not implemented**.
+`POST /api/projects/:id/unlock`, the panel's **Stop** button (`Stop this run`, offered
+from the first second of a run) and the `project.unlock` tool are one escape hatch, and
+it cancels. Until 2026-09-24 Stop only abandoned the run: the lock was released while the
+harness kept spending tokens for somebody who had left, and the button appeared after
+120 s. Now every job carries an `AbortController` (`src/modules/project/server/reaper.ts`):
+its work runs inside `runWithJob`, so anything on that stack can read `currentJobSignal()`;
+`spawnStream` defaults to that signal and kills the child on it, SIGTERM first so the CLI
+can write its last words, SIGKILL after 5 s; and `ownsJob` still turns a late result into
+a no-op for the parts that notice only at their next step (a render mid-frame, an ffmpeg
+pass). The turn ends as "Stopped. Anything it had already saved is still in the project.",
+not as "Failed" — what was saved stays saved (`src/modules/agent/server/conversation.ts`).
+
+A harness is hung when it goes quiet, not when a wall clock runs out. A 15-minute
+wall-clock timer once killed a working run a heartbeat before the 21-minute
+`media.transcribe` it was waiting on answered. Every driver now hands `spawnStream` an
+`idleMs` of 10 min — any line on stdout or stderr resets it, and the clock stops while the
+host is running a tool the agent asked for (`busy`) — and a `maxMs` ceiling of 2 h so a
+loud loop still ends. Both end the child the same way as Stop.
 
 ## Verification and maintenance
 

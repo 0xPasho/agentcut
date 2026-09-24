@@ -37,7 +37,7 @@ Then talk to your agent:
 > Make a 40-second vertical short out of `~/recordings/stream.mp4` about the pricing
 > part. Captions in my usual style, add the outro, and render it.
 
-It gets around sixty tools — `agentcut_project_edit`, `agentcut_template_apply`,
+It gets more than ninety tools — `agentcut_project_edit`, `agentcut_template_apply`,
 `agentcut_assets_search`, `agentcut_plan_generate`, `agentcut_project_render` and the
 rest — the same operations the UI buttons call, with the same validation and the same
 saved state. `agentcut_projects_list` finds a project id.
@@ -169,4 +169,6 @@ pnpm build && pnpm start --hostname 127.0.0.1
 - [Product requirements](SPEC.md) · [Design conventions](DESIGN.md) · [Contributor/agent instructions](AGENTS.md)
 
 Rendering uses Remotion. Review its [licensing terms](https://www.remotion.dev/license)
-for your intended use; dependency licenses are independent of this application's code.
+for your intended use: it is free for individuals and for companies of up to three
+people, and larger companies need a licence. The EDL is renderer-agnostic, so the
+renderer stays swappable. Dependency licenses are independent of this application's code.

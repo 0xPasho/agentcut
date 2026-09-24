@@ -50,6 +50,7 @@ remotion/                 the render bundle's own entry — compositions only
 | `agent` | Harness drivers, selection, the chat and editing agents, MCP |
 | `onboarding` | The setup interview |
 | `render` | Rendering, output frames, the style audit |
+| `review` | The standard a pack holds its videos to: criteria, the gate, waivers |
 | `stream-comments` | The stream chat and the comment a clip opens on |
 | `settings` | The workspace settings pages |
 
@@ -74,6 +75,36 @@ remotion/                 the render bundle's own entry — compositions only
 
 `src/modules/__tests__/architecture.test.ts` enforces rules 1, 5 and 7 (and that nothing
 is left in `src/lib` or `src/components`), as part of `pnpm test`.
+
+## Working in this repo
+
+- Work on `main`; never create a branch, even with several agents on the same checkout.
+  One tree, one history, nothing to merge.
+- Commit by paths, never `git add -A`: another session may be editing the same tree, and
+  a blind add commits its half-written files.
+- Parallel agents get disjoint file scopes. Each feature runs `pnpm test`,
+  `pnpm test:render` and `pnpm exec tsc --noEmit` green and commits before the next
+  starts; a red tree blocks everyone sharing it. `package.json` pins `pnpm@11.9.0`
+  (`packageManager`) and has no separate typecheck script; those three are the commands.
+- Features land whole, not in phases. A half-shipped feature is a parity gap with a name.
+- In autonomous loops the grill-me skill's answers are the source of truth; the owner is
+  not asked again.
+- Docs and ADRs are written in English, whatever language the conversation is in. ADRs
+  are the numbered Decided tables: [AGENT-FIRST.md](./AGENT-FIRST.md) (1–…),
+  [SPEC.md](./SPEC.md) (S1–S10, the founding stack) and [HARNESS.md](./HARNESS.md)
+  (H1–H10). There is no `docs/adr/`. A design decision updates the docs and the table in
+  the same commit; a shipped feature amends the row that promised it.
+
+Two engineering rules from the same loops:
+
+- Never a second implementation of a rule. Anything that predicts what a function will do
+  calls that function (`templates.suggest` runs `planTemplate`; the panel sends overrides
+  and the server merges). Two models of one rule drift silently.
+- A change to what renders is verified by reading exported frames, not only by numeric
+  tests. Composition faults show in pixels while every number passes.
+
+And the bar for done: a capability is not done until it is reachable in the editor where
+the work happens. A quick-view-only control does not count.
 
 ## Shared-editor requirement
 

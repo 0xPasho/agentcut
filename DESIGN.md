@@ -9,6 +9,11 @@ agentcut follows Apple's Liquid Glass, in the dark palette we settled on. Everyt
 built from the shadcn primitives in `src/common/ui/`, so a new screen is on-style by
 using `<Glass>`, `<Button>`, `<Card>`.
 
+**Rejected, and why.** Neo-brutalism — decided, built and reversed the same night
+(2026-09-16) once the built result was on screen. Reading Artlist as "just the palette" —
+it is the material: Artlist's dark palette rendered as Apple's Liquid Glass. A light theme —
+dark only; `globals.css` carries one `:root` token block and no light variant.
+
 **No hand-written CSS.** Tailwind utility classes only. The exceptions are the theme token
 block and the `@custom-variant` declarations in `src/app/globals.css` — shadcn's and
 Tailwind's own configuration mechanisms.
@@ -20,7 +25,8 @@ The mark itself — the scissors that are also a face — lives in [BRAND.md](./
 Tokens are taken from the reference build we're matching: `#101010` ground,
 `#171717` surfaces, `#1f1f1f` popovers, `#262626` raised fills, `#333` hairlines,
 `#ffda2a` accent with `#ffff5e` at the top of the button gradient, `#ed8445` as the
-secondary hue. Card radius is 24px; everything interactive is a pill.
+secondary hue. Cards and popovers are 24px (`rounded-3xl`); dialogs are 20px, deliberately
+tighter for a surface that is read rather than scanned; everything interactive is a pill.
 
 Two deliberate departures: their muted grey is `#666`, which fails contrast for body
 text, so ours is lighter; and their borders are solid grey hairlines rather than white
@@ -114,6 +120,24 @@ Rendered video (`remotion/`) follows the caption style in the EDL — those fram
 watched on TikTok, not inside the app.
 
 
+## Behaviour
+
+- Nothing looks interactive without being so. The accent means "you can click this"; a
+  score, a badge or a status never wears it.
+- Every state has a way back from the UI. Wherever the agent can put a project, a person can
+  bring it back without a terminal.
+- A capability is not done until it is reachable in the editor. A tool the agent has and the
+  UI does not is a parity bug, not a phase.
+- New things land at the playhead: an image, a sound, a title or an overlay is placed where
+  the playhead is. Appending footage to Main is the explicit exception.
+- Destructive actions never ask. They act and offer Undo in the toast; the engine refuses
+  when the action is unsafe — an asset a template bookend or a rule slot still names stays,
+  and the refusal says which. Three `confirm()` calls still stand (`project-view.tsx`,
+  `sequence-settings.tsx`, `editor-status.tsx`); bugs, not precedent.
+- An edit that cannot happen says why instead of doing nothing: no footage that way, the
+  first shot on its track, the clip's own edge. A greyed-out item with no reason is a silent
+  no-op in costume. The context menu never moves the playhead.
+
 ## Shared controls
 
 - Buttons are capsules at every size. Primary actions use a yellow tint; secondary actions use neutral fills with a subtle top highlight. `static` disables press scaling for frequent or precision interactions.
@@ -122,12 +146,23 @@ watched on TikTok, not inside the app.
 - Sliders forward accessible names and value text to their thumbs. Keyboard focus is visible on the thumb, and the track has a generous interaction area.
 - Motion is optional: press scaling and loading animation run only with no motion preference. Reduced-motion states retain their labels and icons.
 - Ready badges stay neutral with a check icon so status does not compete with the primary action.
+- No raw browser controls. `<select>`, `<input type="color">`, `<details>`/`<summary>` and
+  native checkboxes exist only inside the primitives in `src/common/ui/` (`select.tsx`,
+  `color-field.tsx`, `disclosure.tsx`, `checkbox.tsx`). Twelve panels once looked broken for
+  four shared causes, not twelve: fix the primitive, never the panel. `PopoverContent` is a
+  panel — 12px inside a 24px corner — and the menu popovers opt into menu padding
+  (`rounded-2xl p-1.5`) so a row runs the full width of the surface. Two raw `<details>` in
+  `review/components/review-panel.tsx` and the settings `Toggle` wrapping its own checkbox
+  are bugs to close, not precedent.
+- A link that looks like a button is `<a href>` wearing `buttonVariants` (exported from
+  `button.tsx`). The shared `Button` is never patched to accept link semantics: that stamped
+  `role="button"` onto real navigation.
 
 ## Video project workspace
 
-The home screen exposes two starting points, as tabs: **Make something** — one composer,
+The home screen exposes two starting points, as tabs: **Create a video** — one composer,
 with the shape, the template and the agent chosen beside it — and **Clip a long video**.
-Both open the same editor: clipping starts with footage; making something starts from a
+Both open the same editor: clipping starts with footage; creating a video starts from a
 sentence, a dropped video, or an empty canvas of the chosen shape. The composer is the
 entry point, not a form: everything optional sits on its own row, and the gallery of
 shapes under it collapses. Keep the existing caption, overlay,
@@ -138,8 +173,12 @@ Desktop groups media on the left, preview/timeline in the center, and selected-s
 properties on the right. The right column is about the selection and nothing else: with
 nothing selected it says so, and everything about the video as a whole — plan, templates,
 rules, format — opens from one **Video** menu in the header. The controls a person reaches
-for constantly (hook, colours, mute, split) sit on the frame itself, on the glass layer,
-and disappear with the selection. Smaller widths stack these regions without page overflow;
+for constantly (hook, colours, mute, split) sit in a bar under the frame — never over the
+picture; they came off it 2026-09-21 — and disappear with the selection. The chat sits in
+the same column as the selection, as the main way to work. For a clipping project the list
+of candidates is rows, not posters: the score as a large neutral number with a meter, a
+row-high thumbnail, filter chips, and a panel that scrolls on its own rather than the page.
+Smaller widths stack these regions without page overflow;
 the timeline has its own horizontal scroll. Reorder buttons provide a keyboard path.
 Every visual operation uses the same sequence and item operations as the agent.
 
@@ -177,8 +216,10 @@ timeline. Keep output creation/switching on the project information screen, and
 show numeric placement/trim fields on demand rather than as an always-open wall of forms.
 
 Canvas drag feedback must move the content together with its selection border.
-Fit standalone title selections to visible text, keep resize handles reachable,
-and reserve playback controls from gesture hit areas. Timeline tracks share one
+Fit standalone title selections to visible text and keep resize handles reachable.
+The player draws no native controls (removed 2026-09-18) and the 44px hit-area
+reservation for them went too (2026-09-21): every pixel of the frame responds to a
+gesture, and transport lives in the timeline bar. Timeline tracks share one
 scroll viewport; avoid nesting another vertical scrollbar on the timeline card.
 Use thin, low-contrast dark scrollbar thumbs while retaining native scrolling.
 

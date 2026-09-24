@@ -1,8 +1,11 @@
 # Rules, glossary and preferences
 
 Three files that make the agent edit the way its owner would, without the owner saying
-so every time. All three live at two levels: `<workspace>/` applies to every project;
-`<workspace>/projects/<id>/` adds to it for one project and wins on a conflict. The
+so every time. All three live at two levels (`RuleLevel` is `workspace | project`):
+`<workspace>/` applies to every project; `<workspace>/projects/<id>/` adds to it for one
+project and wins on a conflict. A pack is a third source, not a third level: its
+`STYLE.md` and examples are read before the owner's preferences, which win where they
+disagree (see [PACKS.md](./PACKS.md)). The
 panel (**Video → Rules and preferences** in the editor, for a project and a video), the
 **/settings** pages (for the workspace level), the agent tools and the `agentcut rules`
 command read and write the same files.
@@ -43,8 +46,9 @@ command read and write the same files.
   ordinary template application with the rules that chose it in its `by` marker:
   `template:talking-head/rule:gameplay-clean,stream-outro`. Re-applying a template or
   the rules replaces that work and leaves hand edits alone, exactly as before.
-- **What a rule may not be.** A rule that applies a template at the `select` stage is
-  refused: a template is applied to clips, and at selection there are none yet — written
+- **What a rule may not be.** A rule that acts — names a template, an override or a
+  slot — at the `select` stage is refused: those are applied to clips, and at selection
+  there are none yet (a `select` rule may still carry a prompt) — written
   that way it saved happily and did nothing for ever after. So is a rule whose
   `promptFile` is not in the rules folder, which used to be worse than useless: the file
   was written, dropped from the list on the next read with a line on the console, and the
@@ -144,9 +148,13 @@ told to use these spellings in titles, captions and hooks.
 
 ## Preferences
 
-Plain markdown. The workspace file goes into every prompt under "The owner's preferences";
-a project's file is added under "For this project". It is the owner's own text, so it is
-not wrapped as untrusted the way transcripts are.
+Plain markdown. The workspace file goes into every prompt under "The owner's preferences"
+("In general"); a project's file is added under "For this project". A pack's `STYLE.md`
+and its examples come before that block, and the block says the owner's preferences win
+where they disagree. So a prompt reads, weakest first: pack `STYLE.md` < workspace
+`preferences.md` < project preferences < the matched rules' own instructions, which are
+standing instructions for the one video being edited. It is the owner's own text, so it
+is not wrapped as untrusted the way transcripts are.
 
 ## Observations
 
@@ -156,6 +164,12 @@ template framed — the one a re-apply writes over, so noticing it matters more 
 goes into the observation bank (`observations` table, across every project). Only the web editor's
 own edits count: an agent's edits are not corrections, and work created from scratch is
 not either. Every agent run receives the recent lines as soft context.
+
+The framing line is the named case. Moving the seam of a split layout a template framed
+is written as `Reframed "<clip>": the seam moved from 68% to 74%`, because the next
+re-apply puts the seam back where the template says: the correction cannot survive on
+the clip, so one repeated across clips points at the template, and the review proposes
+changing that rather than a rule per video.
 
 **Review my preferences** (Preferences tab) hands the bank to an agent, which proposes
 rules, glossary entries and preference lines. Each proposal is saved only when accepted.
@@ -193,8 +207,10 @@ on the home page and from the library. Six sections, one subject each:
 | Agents and models | Which harnesses this machine has, the default harness and model, the model per kind of work (decision 50), and the keys for the optional picture providers. |
 | Packs | Import by path or URL and export, moved here unchanged. |
 
-Rules at project and sequence level stay in the editor, under **Video → Rules and
-preferences**, beside the video they are about. Every control on /settings calls the
+Rules at project level stay in the editor, under **Video → Rules and preferences**,
+beside the video they are about; the panel evaluates and applies them per video, but a
+rule is stored at one of the two levels only. A sequence level is planned, not built.
+Every control on /settings calls the
 same tool an agent calls — `rules.save`, `rules.delete`, `glossary.save`,
 `preferences.set`, `onboarding.*`, `agents.select`, `providerkeys.set`, `packs.*` — so
 there is no settings-only way to write any of these files.
@@ -202,7 +218,10 @@ there is no settings-only way to write any of these files.
 A provider key is the one thing neither interface can read. `providerkeys.list` answers
 whether a key is set and whether the value came from settings or from the environment;
 nothing returns the key itself, to the page or to an agent, and nothing puts one in
-`process.env`, which every spawned harness inherits.
+`process.env`, which every spawned harness inherits. Keys are write-only: the Agents and
+models page shows set or unset and the origin (settings or the environment), a field
+that replaces the value, and **Clear** for a key saved in settings; there is no reveal
+and no masked tail, and a key answered by an environment variable is not clearable there.
 
 ## Not yet
 

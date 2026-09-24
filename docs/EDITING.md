@@ -34,8 +34,8 @@ rather than creating a separate editor.
 
 Open **Video → Plan and templates** in the editor header, choose one, and press
 **Preview plan**: it lists every sentence and marks the ones that would get a picture,
-without changing anything. **Apply** commits it. Adjust the sliders and press **Apply**
-again — re-applying replaces the template's own work and leaves anything you placed by
+without changing anything. **Apply to this video** commits it. Adjust the sliders and
+press it again — re-applying replaces the template's own work and leaves anything you placed by
 hand alone. **Save these settings as…** writes your own template into
 `workspace/templates/`, alongside the built-in ones.
 

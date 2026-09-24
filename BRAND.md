@@ -11,6 +11,12 @@ That double reading is load-bearing and fragile. Two things hold it up:
 - **The pivot dot stays.** Without it the blades don't read as crossing, and the
   cat comes back. It is the smallest element and the least removable.
 
+## The name
+
+The product is `agentcut`. "OpenOpusClip" is the folder the repo lives in, not a name:
+"Opus Clip" is a live trademark, and "Open<Brand>" is exactly the pattern that gets a
+takedown. A tagline says how; a name says what — an agent that cuts.
+
 ## Three components
 
 | | |
@@ -49,6 +55,20 @@ tile. The eyes are real holes, so the bevel runs around them too.
 Don't recolour the tile per surface. It is one object; a different colour reads as
 a different app.
 
+## Rejected, and why
+
+- **The cut-corner pill family** — a pill inside the OS squircle. A shape inside a shape,
+  and neither of them was the product.
+- **Organic, variable-stroke marks** — read as a plant or a coffee app.
+- **Flat Liquid Glass versions of the character** — with the material gone the eyes become
+  holes, and the character goes with them.
+- **The amber flat glyph in the header** — read as one more control beside the real ones.
+  The header carries the icon at 28px instead.
+- **The earlier brief that the logo must show "code/agents"** — let go for the character.
+
+Why the winner: the double reading — tool and face — is the brand, and the frosted icon
+is the product presenting itself.
+
 ## The assets
 
 Everything below is generated. Run `node scripts/brand-assets.mjs` after changing
@@ -66,8 +86,9 @@ the geometry in that file, and commit what it writes.
 | `src/app/apple-icon.png` | Touch icon, 180px. Same. |
 
 Not to be confused with `src/common/components/brand-marks.tsx`, which holds the *harness*
-marks — Claude, Codex, Cursor — one monochrome path each. This file is the product's
-own mark; that one is other people's.
+marks — Claude, Codex (the OpenAI mark), Cursor, opencode and Gemini — one monochrome path
+each, mapped by harness id in `HARNESS_MARKS`; an unknown id gets the terminal glyph, not a
+blank. This file is the product's own mark; that one is other people's.
 
 ## The lockup
 

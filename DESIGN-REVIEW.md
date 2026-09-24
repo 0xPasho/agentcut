@@ -68,4 +68,6 @@ Recommended implementation order: repair control semantics and destructive state
 
 ## Verdict
 
+*Historical. The verdict below and the line references throughout predate the findings shipping (see the implementation update at the top) and the 2026-09-22 move to `src/modules`, so the cited paths no longer resolve. Kept as history, not as a current gate.*
+
 Block — the confirmed accessible-name, motion-preference, and destructive-action findings remain. This verdict concerns the reviewed interface's readiness, not whether the Liquid Glass direction is appropriate.

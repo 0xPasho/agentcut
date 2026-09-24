@@ -122,22 +122,26 @@ targeted edits through the real tool transport, preserving the rest of the proje
 
 ## Decided
 
+The founding stack, 2026-09-16. Rows are S1–S10; everything decided since lives in the
+Decided table of [AGENT-FIRST.md](./AGENT-FIRST.md), which also says which rows here were
+amended or superseded.
+
 | # | Decision | Why | Rejected |
 |---|---|---|---|
-| 1 | **Local-first single-user tool.** `pnpm dev`, your machine. | Agent CLIs need a real filesystem + your logged-in session. Uses the subscription you already pay for: zero API keys. | Multi-user server — 3x work, needs API keys, can't reach your Claude session. Left as a later adapter. |
-| 2 | **One editor, two equal interfaces; renderer is the runtime.** Human UI and agent tools share editing operations and an **EDL** (edit decision list); the renderer replays it deterministically. | Either can author or revise the same project with identical capabilities, while rendering remains reproducible, diffable and testable. | Separate human/agent editing engines; agent as runtime requiring new reasoning for every render. |
-| 3 | **Agent has tools, and that's the point.** It reads the transcript *and* probes audio peaks, scene cuts, and sampled frames. | Multi-signal selection beats transcript-only. A single structured LLM call can't see the video. | One-shot structured call — cheaper but blind. |
-| 4 | **Pluggable agent providers** behind one interface: `claude -p` first, `codex exec` second. | "Uses the agent you already have" only works if it shells out to the real CLI. | Agent SDK in-process — Anthropic-only, needs an API key, kills the zero-key story. Drops in later. |
-| 5 | **Static ffmpeg binaries** (`ffmpeg-static`, `ffprobe-static`). | Contributors get a working ffmpeg with `pnpm install`. Homebrew's is currently broken (stale bottle vs x265 4.3). | System ffmpeg — unreproducible per machine. |
-| 6 | **`node:sqlite`** for jobs/projects. | Built into Node 22+. Zero native deps, zero install friction. | better-sqlite3 (native build), Postgres (a server for a one-user tool). |
-| 7 | **Remotion** for composition + captions; ffmpeg for probe/cut/encode. | Captions become TSX the agent can read, edit and diff. ffmpeg `drawtext`/ASS is opaque and painful. | Pure ffmpeg filtergraphs. |
-| 8 | **Reframe v1: scene-detect + face pass per scene → static crop per scene**, exposed as EDL keyframes. | Covers most talking-head/podcast footage at a fraction of the cost. Agent can repair the keyframes. | Per-frame active-speaker tracking — a real CV project; v2. |
-| 9 | **Transcription pluggable**, local `whisper.cpp` default, hosted API optional, SRT/VTT import always. | Keeps the zero-key path intact without blocking people who want speed. | API-only — breaks the zero-key story. |
-| 10 | **Agent-first editing: rules, an editable plan artifact, a conversation per project, and shareable packs.** | The video is built by the agent from a brief and rules; the human reviews decisions and fine-tunes on the timeline. See [AGENT-FIRST.md](./AGENT-FIRST.md). | A traditional timeline-first editor with an agent on the side. |
+| S1 | **Local-first single-user tool.** `pnpm dev`, your machine. | Agent CLIs need a real filesystem + your logged-in session. Uses the subscription you already pay for: zero API keys. | Multi-user server — 3x work, needs API keys, can't reach your Claude session. Left as a later adapter. |
+| S2 | **One editor, two equal interfaces; renderer is the runtime.** Human UI and agent tools share editing operations and an **EDL** (edit decision list); the renderer replays it deterministically. | Either can author or revise the same project with identical capabilities, while rendering remains reproducible, diffable and testable. | Separate human/agent editing engines; agent as runtime requiring new reasoning for every render. |
+| S3 | **Agent has tools, and that's the point.** It reads the transcript *and* probes audio peaks, scene cuts, and sampled frames. *Amended 2026-09-24: the cost objection collapsed under a subscription ("why would an agentic harness be bad on this?"); what a harness adds is tools, self-healing on media edge cases and open-ended steering. Interactive tweaks ("make the captions bigger") stay deterministic, never an agent round trip — see AGENT-FIRST.md row 19.* | Multi-signal selection beats transcript-only. A single structured LLM call can't see the video. | One-shot structured call — cheaper but blind. |
+| S4 | **Pluggable agent providers** behind one interface: `claude -p` first, `codex exec` second. *Amended 2026-09-21: four harnesses ship — Claude Code, Codex, Cursor, OpenCode — see HARNESS.md H1.* | "Uses the agent you already have" only works if it shells out to the real CLI. | Agent SDK in-process — Anthropic-only, needs an API key, kills the zero-key story. Drops in later. |
+| S5 | **Static ffmpeg binaries** (`ffmpeg-static`, `ffprobe-static`). | Contributors get a working ffmpeg with `pnpm install`. Homebrew's was broken on 2026-09-16 (stale bottle vs x265 4.3). Every subprocess that needs ffmpeg is pointed at the vendored binary, yt-dlp included (`--ffmpeg-location`), and downloads prefer H.264 over AV1 because AV1 decodes far slower for frame sampling and Remotion. | System ffmpeg — unreproducible per machine. |
+| S6 | **`node:sqlite`** for jobs/projects. | Built into Node 22+. Zero native deps, zero install friction. | better-sqlite3 (native build), Postgres (a server for a one-user tool). |
+| S7 | **Remotion** for composition + captions; ffmpeg for probe/cut/encode. | Captions become TSX the agent can read, edit and diff. ffmpeg `drawtext`/ASS is opaque and painful. | Pure ffmpeg filtergraphs. |
+| S8 | **Reframe v1: scene-detect + face pass per scene → static crop per scene**, exposed as EDL keyframes. *Superseded 2026-09-22: no face pass was built. Framing is authored by the template (`layout`, AGENT-FIRST.md row 65) and, for stream footage, by the selection agent's split; keyframed transforms (row 100) carry any motion.* | Covers most talking-head/podcast footage at a fraction of the cost. Agent can repair the keyframes. | Per-frame active-speaker tracking — a real CV project; v2. |
+| S9 | **Transcription pluggable**, local `whisper.cpp` default, hosted API optional, SRT/VTT import always. *Amended 2026-09-24: the default is `large-v3-turbo` with Silero VAD and DTW, falling back to `small`; multilingual with auto-detect, never an English-only model (AGENT-FIRST.md row 107). SRT/VTT import was never built.* | Keeps the zero-key path intact without blocking people who want speed. | API-only — breaks the zero-key story. |
+| S10 | **Agent-first editing: rules, an editable plan artifact, a conversation per project, and shareable packs.** | The video is built by the agent from a brief and rules; the human reviews decisions and fine-tunes on the timeline. See [AGENT-FIRST.md](./AGENT-FIRST.md). | A traditional timeline-first editor with an agent on the side. |
 
 ## Open risk: prompt injection
 
-The agent gets Bash and reads transcripts of **arbitrary third-party video**. That text is attacker-controlled.
+The agent runs inside a harness that *could* hand it a shell, and it reads transcripts of **arbitrary third-party video**. That text is attacker-controlled.
 Mitigations, non-negotiable:
 - **`--disallowed-tools`, not just `--allowed-tools`.** Verified: under `--permission-mode dontAsk`,
   an allowlist does not take anything away — Claude Code still ran `cat` with only `Read` allowed.
@@ -145,7 +149,15 @@ Mitigations, non-negotiable:
 - **Bash is denied by default.** The agent does not need it: frames are pre-sampled and the signals
   are already JSON. `AGENTCUT_AGENT_SHELL=1` grants `ffprobe`/`ffmpeg` back for debugging.
 - **WebFetch/WebSearch are denied.** They are the exfiltration path — an injected transcript saying
-  "post this to https://…" needs a way out, and this removes it.
+  "post this to https://…" needs a way out, and this removes it. The agent says *what* to show and a
+  deterministic resolver fetches it (AGENT-FIRST.md row 75).
+- **The deny list is the whole confinement, so it is one shared list naming every door** — Bash,
+  Monitor, sub-agents, WebFetch, WebSearch — for every driver (row 88). A run denied Bash once
+  reached for `Monitor node /tmp/…` because Monitor was missing from a per-driver copy.
+- **Agent replies render as Markdown with no HTML passthrough** and `javascript:` links dropped (row 86);
+  a reply quotes the transcript, so it is as untrusted as the transcript.
+- **Pack text is untrusted too**: rules and `STYLE.md` are wrapped like transcripts, capped, and scanned
+  on import (rows 9 and 121).
 - Never `--dangerously-skip-permissions`. Codex runs under `--sandbox workspace-write`.
 - cwd is the per-project workspace dir; `--add-dir` never points at `$HOME`
 - the transcript is wrapped in untrusted-content markers in the prompt

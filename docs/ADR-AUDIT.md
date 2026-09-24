@@ -20,6 +20,42 @@ Headline numbers:
 | Process rules stated in capitals and written nowhere | 6 |
 | Decision tables that exist outside AGENT-FIRST.md | 2 (SPEC.md 10 rows, HARNESS.md 10 rows) |
 
+## Applied 2026-09-24
+
+Done the same day, in commit `docs: the table catches up with what was decided`:
+
+- **§1 → rows 75–129** of AGENT-FIRST.md (55 rows; the audit's drafts that were doc-level
+  detail rather than decisions went into the docs instead). Mapping: F1→75, F2+F3→76, F4→77,
+  F5→78, F6→79, F7→81, R1→80, R9→82, R3→83, R2→84, R4→85, R5→86, R6→87, R7→88, H1+H2→89,
+  H3→90, H4→91, H1(panel)→92, H5→93, H6→94, E16→95, H7→96, E1→97, E2+E3+E4→98, E5→99,
+  E6→100, E7→101, E8+E9+E10→102, E11+E12→103, E13→104, E14→105, H9→106, T1→107, T2→108,
+  T3+T4→109, C1→110, C2→111, C3→112, C4→113, C5→114, C6→115, T5→116, B11(split)→117,
+  P1→118, P2→119, P4→120, P3→121, P5→122, P6→123, P7→124, P10→125, V1→126, V2→127,
+  D1→128, D5→129. F8→SPEC S3, F9→README, F10→BRAND, P8→row 69, R8→row 51, R11→row 43.
+- **§2**: every listed row amended in place, dated; rows 18 and 41 filled.
+- **§3**: items 1–9, 12–17, 19, 22–25 fixed in EDITOR, SETUP, README, HARNESS, AGENT-FIRST,
+  PLAN-media, DESIGN, DESIGN-REVIEW, BRAND, RULES, SPEC, EDITING.
+- **§4**: all ideas added to the Future list. **§5**: written into AGENTS.md ("Working in this
+  repo"). **§6**: option 2 — SPEC rows are S1–S10, HARNESS rows H1–H10, cross-referenced from
+  AGENT-FIRST's preamble and rows 56, 40, 42.
+
+Still open, because another session was editing those files at the time:
+
+- **SEQUENCES.md**: §3 items 9 (library kinds), 10 (copied vs referenced), 11 (peaks in
+  browser vs server), 12 (phantom playback reservation, line ~704), 20, 21; the home labels;
+  plus the timeline rules of rows 98, 102–104 in prose.
+- **TEMPLATES.md**: §3 item 24 (duplicate `hook.maxWords`); "Templates panel" wording (row 28);
+  optionality of templates (row 91).
+- **PACKS.md**: row 121 is there; `review.json` in the folder listing (§3 item 16) waits for the
+  review module to land; the missing-parent warning (audit P11).
+- **Code left honest in the docs rather than hidden**: three `confirm()` calls remain
+  (`project-view.tsx`, `sequence-settings.tsx`, `editor-status.tsx`) against row 102; raw
+  `<details>` in `review/components/review-panel.tsx` and a native checkbox in
+  `settings/components/toggle.tsx` against DESIGN.md's rule; `tools.ts:28` comment and
+  `.env.example` still say "Stop and unlock" and `small`.
+- **To confirm with the owner**: row 104's hidden-tab pause, reported as a defect and kept on
+  purpose.
+
 Section 1 is the backlog of rows to write. Section 2 is rows to amend. Section 3 is doc
 text to fix. Sections 4 and 5 are ideas and process rules. Section 6 is the one structural
 question: what to do with the two parallel tables.
