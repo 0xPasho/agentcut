@@ -75,9 +75,19 @@ const APPEAR_SEC = 0.25;
 
 const TITLE_PX = 64;
 const CARD_PADDING_PX = 80;
-const titleFit = (text: string, width: number, carded: boolean) => {
+/**
+ * How big a title is drawn: the size it asked for, shrunk until its longest word fits
+ * across the frame.
+ *
+ * `fontScale` is a multiple of `TITLE_PX` rather than a share of the height on purpose —
+ * see the field — and the fit is measured against the size actually asked for, so it
+ * stays a ceiling over it rather than a replacement for it. A title nobody has resized
+ * has a scale of 1 and comes out at exactly the pixels it always did.
+ */
+const titlePx = (text: string, width: number, carded: boolean, fontScale: number) => {
+  const asked = TITLE_PX * fontScale;
   const longest = text.split(/\s+/).reduce((a, b) => (emWidth(b) > emWidth(a) ? b : a), "");
-  return fitScale(longest, (width * 0.86 - (carded ? CARD_PADDING_PX : 0)) / TITLE_PX);
+  return asked * fitScale(longest, (width * 0.86 - (carded ? CARD_PADDING_PX : 0)) / asked);
 };
 
 export const ClipComposition: React.FC<ClipProps> = ({
@@ -334,11 +344,17 @@ export const ClipComposition: React.FC<ClipProps> = ({
         if (end <= start || t < start || t > end) return null;
         const place =
           tx.position === "top" ? "top-[9%]" : tx.position === "center" ? "top-[45%]" : "bottom-[18%]";
-        // The white card reads on any footage; plain text needs the stroke to survive.
-        const card =
-          tx.style === "card"
-            ? "rounded-[40px] bg-white px-10 py-6 text-black shadow-[0_20px_50px_-12px_rgba(0,0,0,0.6)]"
-            : "text-white [text-shadow:0_4px_18px_rgba(0,0,0,0.75)]";
+        // The card reads on any footage; plain text needs the shadow to survive. What is
+        // left in the class is the shape; the colours are values, because they are the
+        // ones an author or a template can change.
+        const carded = tx.style === "card";
+        const card = carded
+          ? "rounded-[40px] px-10 py-6 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.6)]"
+          : "[text-shadow:0_4px_18px_rgba(0,0,0,0.75)]";
+        // An unset colour is whatever the style reads best as, which is what every title
+        // written before these fields existed rendered as.
+        const ink = tx.color || (carded ? "#000000" : "#ffffff");
+        const plate = carded ? tx.background || "#ffffff" : "";
         // A dragged title carries its own centre. The row keeps the preset's 86% width so the
         // text wraps exactly as it did before it was moved; only where it sits changes.
         const free = tx.y !== null;
@@ -351,7 +367,7 @@ export const ClipComposition: React.FC<ClipProps> = ({
           <div key={`tx-${i}`} className={`absolute ${free ? (tx.x !== null ? "" : "inset-x-0") : `inset-x-0 ${place}`} flex justify-center ${free && tx.x !== null ? "" : "px-[7%]"}`} style={freeStyle}>
             <span data-canvas-title data-canvas-edit={clip.edits.indexOf(tx)}
               className={`text-center font-black leading-[1.12] tracking-tight [overflow-wrap:anywhere] ${card}`}
-              style={{ fontSize: TITLE_PX * titleFit(tx.text, width, tx.style === "card") }}>
+              style={{ fontSize: titlePx(tx.text, width, carded, tx.fontScale), color: ink, ...(plate ? { backgroundColor: plate } : {}) }}>
               {tx.text}
             </span>
           </div>

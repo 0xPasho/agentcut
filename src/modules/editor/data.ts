@@ -12,7 +12,7 @@ export const NEW_EDIT: Record<string, (t: number) => Edit> = {
   silence: t => ({ type: "silence", t, d: 0.4, by: "" }),
   punch: t => ({ type: "punch", t, d: 1.2, scale: 1.12, by: "" }),
   emphasis: t => ({ type: "emphasis", t, d: 1, words: [], color: "#ffe600", by: "" }),
-  text: t => ({ type: "text", t, d: 3, text: "New title", position: "top", x: null, y: null, style: "card", by: "" }),
+  text: t => ({ type: "text", t, d: 3, text: "New title", position: "top", x: null, y: null, style: "card", color: "", background: "", fontScale: 1, by: "" }),
 };
 
 export const SNAP_PX = 8;

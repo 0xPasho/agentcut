@@ -144,6 +144,32 @@ export const TextEdit = z.object({
   y: z.number().min(0).max(1).nullable().default(null),
   /** "card" is the white rounded hook that reads on any footage; "plain" is bare text. */
   style: z.enum(["card", "plain"]).default("card"),
+  /**
+   * The colour of the letters. Empty is whatever the style reads best as — black on a
+   * card, white on bare text — which is what every title written before this had and
+   * still renders as. Named rather than defaulted to a colour so a template that only
+   * changes the plate does not have to restate the letters, and so switching between
+   * the two styles keeps working for a title nobody has coloured.
+   */
+  color: z.string().default(""),
+  /**
+   * The colour of the plate behind a `card`. Empty is the white one. `plain` has no
+   * plate to colour, so this does nothing there — bare text on a bare plate is a card,
+   * and there is already a way to ask for one.
+   */
+  background: z.string().default(""),
+  /**
+   * How much bigger or smaller than the size the renderer would choose on its own.
+   * 1 is that size, which is what every title written before this is.
+   *
+   * A multiple rather than a share of the frame, because the automatic size is not one:
+   * it is a fixed 64px of a 1080x1920 frame, deliberately, so a square or wide derive of
+   * the same project keeps the lettering it was designed with. Asking for "twice as big"
+   * survives that; asking for "6% of the height" would mean something different in every
+   * output the project has. Whatever this asks for, a line still shrinks rather than
+   * leave the frame — the fit is a ceiling over this, not a replacement for it.
+   */
+  fontScale: z.number().min(0.25).max(4).default(1),
   by: EditAuthor,
 });
 export type TextEdit = z.infer<typeof TextEdit>;

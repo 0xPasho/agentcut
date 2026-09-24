@@ -64,6 +64,11 @@ export function ClipToolbar({
     onChange({ ...clip, edits: clip.edits.map((edit, at) => at === index ? { ...edit, ...patch } as TextEdit : edit) });
   const removeText = (index: number) =>
     onChange({ ...clip, edits: clip.edits.filter((_, at) => at !== index) });
+  /** The quick colours are the clip's, not one line's: per-line control lives in the panel. */
+  const setEveryText = (patch: Partial<TextEdit>) =>
+    onChange({ ...clip, edits: clip.edits.map(edit => edit.type === "text" ? { ...edit, ...patch } as TextEdit : edit) });
+  const first = texts[0]?.edit;
+  const carded = texts.some(({ edit }) => edit.style === "card");
 
   const swatches = (label: string, current: string, apply: (color: string) => void) => (
     <div className="flex flex-col gap-1.5">
@@ -148,6 +153,8 @@ export function ClipToolbar({
         <PopoverContent className="w-72 space-y-3">
           {swatches("Highlight", clip.captions.highlight, highlight => onChange({ ...clip, captions: { ...clip.captions, highlight } }))}
           {swatches("Caption text", clip.captions.color, color => onChange({ ...clip, captions: { ...clip.captions, color } }))}
+          {first ? swatches(texts.length > 1 ? "Every text on this clip" : "Text", first.color || (first.style === "card" ? "#000000" : "#ffffff"), color => setEveryText({ color })) : null}
+          {first && carded ? swatches("Text background", first.background || "#ffffff", background => setEveryText({ background })) : null}
         </PopoverContent>
       </Popover>
 

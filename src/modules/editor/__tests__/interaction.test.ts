@@ -131,7 +131,7 @@ test("every timeline operation can be undone through the same shared engine", ()
   roundTrip(edl, [{ type: "item.reorder", sequenceId: "main", itemId: "b", layer: 0, index: 0 }], "reorder");
   roundTrip(edl, [{ type: "item.remove", sequenceId: "main", itemId: "a" }], "removal");
   roundTrip(edl, [{ type: "item.source", sequenceId: "main", itemId: "a", mediaId: "short" }], "source replacement");
-  roundTrip(edl, [{ type: "item.edit.add", sequenceId: "main", itemId: "b", edit: { type: "text", t: 0, d: 1, text: "Hi", position: "top", x: null, y: null, style: "card", by: "" } }], "added overlay");
+  roundTrip(edl, [{ type: "item.edit.add", sequenceId: "main", itemId: "b", edit: { type: "text", t: 0, d: 1, text: "Hi", position: "top", x: null, y: null, style: "card", color: "", background: "", fontScale: 1, by: "" } }], "added overlay");
   roundTrip(edl, [{ type: "media.add", media: { id: "extra", name: "Extra", file: "/tmp/extra.mp4", width: 640, height: 360, fps: 10, durationSec: 5 } }], "media");
   roundTrip(edl, [{ type: "sequence.add", sequence: { id: "s2", title: "Second", output: { width: 640, height: 360, fps: 10 }, items: [], plan: emptySequencePlan() } }], "new sequence");
   roundTrip(edl, [{ type: "sequence.remove", sequenceId: "main" }], "deleted sequence");

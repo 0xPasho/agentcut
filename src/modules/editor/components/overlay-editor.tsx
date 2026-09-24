@@ -6,6 +6,7 @@ import { Button } from "@/common/ui/button";
 import { Input } from "@/common/ui/input";
 import { Label } from "@/common/ui/label";
 import { Slider } from "@/common/ui/slider";
+import { ColorField } from "@/common/ui/color-field";
 import { Textarea } from "@/common/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/common/ui/select";
 import { api, assetUrl } from "@/common/api/client";
@@ -141,6 +142,18 @@ export function OverlayEditor({
                 </SelectContent>
               </Select>
             </div>
+            <div className="flex items-center gap-2">
+              <ColorField label={`Text ${position + 1} colour`} value={edit.color || (edit.style === "card" ? "#000000" : "#ffffff")} onChange={(color) => setText(index, { color })} />
+              {/* Bare text has no plate to colour: a plate behind bare text is a card, and
+                  the style above is already how you ask for one. */}
+              {edit.style === "card"
+                ? <ColorField label={`Text ${position + 1} background`} value={edit.background || "#ffffff"} onChange={(background) => setText(index, { background })} />
+                : null}
+              <Label className="ms-auto flex gap-2 text-xs text-muted-foreground">
+                Size <span className="font-mono">{edit.fontScale.toFixed(2)}×</span>
+              </Label>
+            </div>
+            <Slider aria-label={`Text ${position + 1} size`} min={0.5} max={2.5} step={0.05} value={[edit.fontScale]} onValueChange={(v) => setText(index, { fontScale: num(v) })} />
             <Label className="flex justify-between text-xs text-muted-foreground">
               Shows for <span className="font-mono">{edit.d.toFixed(1)}s</span>
             </Label>

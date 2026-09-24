@@ -596,3 +596,55 @@ test("a sound cued on a moment the cuts removed does not play at the joint", { t
   const joint = await loudness(outputs[0].file, { start: 2.0, duration: 0.6 });
   assert.ok(joint === null || joint < -45, `nothing plays at the joint: ${joint} LUFS against ${heard} for the real one`);
 });
+
+/** How many pixels of one frame satisfy `hit`. Counting beats sampling a point: it does not
+    depend on guessing where a card's rounded corner or a letter's stem happens to land. */
+function countPixels(file: string, sec: number, width: number, height: number, hit: (r: number, g: number, b: number) => boolean) {
+  const frame = ffmpeg(["-ss", String(sec), "-i", file, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
+  assert.equal(frame.length, width * height * 3, "one whole frame");
+  let found = 0;
+  for (let i = 0; i < frame.length; i += 3) if (hit(frame[i], frame[i + 1], frame[i + 2])) found += 1;
+  return found;
+}
+
+test("a title's colours and size are in the exported pixels, and an uncoloured one is unchanged", { timeout: 180_000 }, async () => {
+  const { createVideoProject } = await import("../../media/server/media-import");
+  const { readEditor, editProject } = await import("../../editor/server/store");
+  const { renderProject } = await import("../server/render-project");
+  const { id } = await createVideoProject("Title colours");
+  const initial = readEditor(id);
+  const output = { width: 640, height: 360, fps: 10 };
+  const scene = (sequenceId: string, patch: Record<string, unknown>) => ({
+    type: "sequence.add" as const,
+    sequence: {
+      id: sequenceId, title: sequenceId, output, plan: { beats: [], rules: [], tags: [] },
+      items: [{ id: "title", mediaId: null, at: 0, layer: 0, clip: {
+        id: "title", title: "Title", start: 0, end: 1, captions: { preset: "none" },
+        edits: [{ type: "text", t: 0, d: 1, text: "AAAA", position: "center", style: "card", ...patch }],
+      } }],
+    },
+  });
+  const state = editProject(id, { expectedRevision: initial.revision, operations: [
+    scene("plain", {}),
+    scene("painted", { color: "#0000ff", background: "#ff0000" }),
+    scene("big", { color: "#0000ff", background: "#ff0000", fontScale: 2 }),
+  ] });
+  const result = await renderProject(id, { only: ["plain", "painted", "big"], expectedRevision: state.revision });
+  const fileFor = (sequenceId: string) => result.outputs.find(out => out.clip.id === sequenceId)!.file;
+  const red = (r: number, g: number, b: number) => r > 190 && g < 80 && b < 80;
+  const blue = (r: number, g: number, b: number) => b > 190 && r < 80 && g < 80;
+  const white = (r: number, g: number, b: number) => r > 200 && g > 200 && b > 200;
+
+  // A title nobody has coloured still comes out as the white card with black letters.
+  assert.ok(countPixels(fileFor("plain"), 0.5, 640, 360, white) > 1000, "an untouched card is still white");
+  assert.equal(countPixels(fileFor("plain"), 0.5, 640, 360, red), 0);
+
+  const paintedPlate = countPixels(fileFor("painted"), 0.5, 640, 360, red);
+  assert.ok(paintedPlate > 1000, `the plate is the colour it was given: ${paintedPlate}`);
+  assert.ok(countPixels(fileFor("painted"), 0.5, 640, 360, blue) > 200, "and the letters are theirs");
+  assert.ok(countPixels(fileFor("painted"), 0.5, 640, 360, white) < 100, "nothing of the old white is left");
+
+  // Twice the size is more than twice the plate, because a card grows on both axes.
+  const bigPlate = countPixels(fileFor("big"), 0.5, 640, 360, red);
+  assert.ok(bigPlate > paintedPlate * 2, `doubling the size doubles the card: ${paintedPlate} -> ${bigPlate}`);
+});
