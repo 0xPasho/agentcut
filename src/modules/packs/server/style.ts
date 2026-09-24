@@ -4,6 +4,7 @@ import { db } from "../../../common/server/db";
 import { kindFor } from "../../media/server/assets";
 import { contactSheet } from "../../media/server/ffmpeg";
 import { readEditor } from "../../editor/server/store";
+import { PACK_REVIEW_FILE } from "../../review/data";
 import { scanStyle, styleBlock, styleRefusal } from "../lib/style";
 import { InstalledPack, type PackExample } from "../types";
 import { listPacks, packFolder, packsDir } from "./packs";
@@ -143,7 +144,13 @@ export async function activeStyle(projectId: string, sequenceId?: string): Promi
   const choice = styleChoice(projectId);
   const none = (reason: string): ActiveStyle => ({ pack: null, name: "", text: "", examples: [], reason, choice });
   const packs = await listPacks();
-  const withGuide = async (pack: InstalledPack) => (await fs.stat(styleFile(pack.id)).catch(() => null)) !== null || pack.examples.length > 0;
+  // A pack that only says what correct looks like is still the pack this video answers
+  // to: the standard and the guide are two halves of one voice, and `activeCriteria`
+  // asks this same question rather than picking a pack of its own.
+  const withGuide = async (pack: InstalledPack) =>
+    (await fs.stat(styleFile(pack.id)).catch(() => null)) !== null
+    || (await fs.stat(path.join(packFolder(pack.id), PACK_REVIEW_FILE)).catch(() => null)) !== null
+    || pack.examples.length > 0;
   const use = async (id: string, reason: string): Promise<ActiveStyle> => ({ ...(await readStyle(id)), pack: id, reason, choice });
 
   if (choice === "none") return none("This project is set to use no style guide.");

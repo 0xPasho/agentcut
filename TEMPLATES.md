@@ -668,10 +668,10 @@ pane that was exported; then it checks the hook card is on screen across the bod
 the end card, that a word being spoken lights the caption band while a gap does not, and
 that the end card is the card itself and plays whole.
 
-What it does not read is a standard: each check carries its own threshold, written where
-the check is, so it answers "is this the look the template asked for" and not "is this a
-video this channel would publish". The second question belongs to whoever owns the look,
-which is the pack — [REVIEW.md](./REVIEW.md) is where those thresholds are headed.
+What it does not answer is whether this is a video the channel would publish: it answers
+whether the look came out the way the template asked for. The second question belongs to
+whoever owns the look, which is the pack, and the numbers this produces are what a pack
+sets its own limits on — [REVIEW.md](./REVIEW.md).
 
 On two shorts cut from a three-hour stream it reads:
 

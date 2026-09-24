@@ -7,6 +7,7 @@ import { readEditor } from "../../editor/server/store";
 import { sequenceFrames } from "../../editor/lib/sequences";
 import { buildTimeMap, lineAt, mapWords, toLines, type TimeMap } from "../../editor/lib/timeline";
 import { regionFilter } from "../../project/server/thumbs";
+import type { MetricBag } from "../../review/types";
 import type { Word } from "../../transcription/lib/transcript";
 
 /**
@@ -24,6 +25,13 @@ export type StyleCheck = { name: string; ok: boolean; detail: string };
 export type StyleAudit = {
   sequenceId: string;
   title: string;
+  /**
+   * Every number the reading produced, by the name the metric catalogue gives it. The
+   * checks below are these values against thresholds written here; a pack that says what
+   * its own videos must be true of holds them to the same numbers with its own limits
+   * (`modules/review`), which is why they come out rather than staying local.
+   */
+  metrics: MetricBag;
   /** Empty when the video has been rendered; otherwise why nothing could be checked. */
   skipped?: string;
   /** Set when the project moved on after the export: a reason to render before believing it. */
@@ -90,14 +98,16 @@ export async function auditStyle(projectId: string, only?: string): Promise<Styl
     if (only && sequence.id !== only) continue;
     const entry = manifest[sequence.id];
     const checks: StyleCheck[] = [];
+    const metrics: MetricBag = {};
     const check = (name: string, ok: boolean, detail: string) => checks.push({ name, ok, detail });
-    if (!entry) { audits.push({ sequenceId: sequence.id, title: sequence.title, skipped: "not rendered yet", checks }); continue; }
+    const record = (name: string, value: number | boolean) => { metrics[name] = typeof value === "number" ? Math.round(value * 1000) / 1000 : value; };
+    if (!entry) { audits.push({ sequenceId: sequence.id, title: sequence.title, skipped: "not rendered yet", checks, metrics }); continue; }
     const file = path.join(projectDir(projectId), "clips", entry.file);
     const { width, height, fps } = sequence.output;
     const resolved = sequenceFrames(sequence);
     const named = (title: string) => resolved.items.find((e) => e.item.clip.title === title);
     const body = resolved.items.find((e) => e.item.mediaId && e.item.clip.title !== "Outro" && e.item.clip.title !== "Intro");
-    if (!body) { audits.push({ sequenceId: sequence.id, title: sequence.title, skipped: "no footage to audit", checks }); continue; }
+    if (!body) { audits.push({ sequenceId: sequence.id, title: sequence.title, skipped: "no footage to audit", checks, metrics }); continue; }
     const outro = named("Outro");
     const hook = named("Hook");
     const item = body.item;
@@ -152,6 +162,7 @@ export async function auditStyle(projectId: string, only?: string): Promise<Styl
         frame(file, at, box(0, pane.top, width, pane.height), 160, 90),
         frame(media.file, sourceAt(map, at, item.clip.start), regionFilter(region, { width, height: pane.height }), 160, 90),
       ));
+      if (diffs.length) record("framing.worstDrift", Math.max(...diffs));
       check("framing", diffs.length > 0 && Math.max(...diffs) < 18,
         `the ${onTop ? "top" : "bottom"} pane is the footage framed as the layout says: worst ${diffs.length ? Math.max(...diffs).toFixed(1) : "—"}/255 over ${diffs.length} moments`);
     }
@@ -168,15 +179,30 @@ export async function auditStyle(projectId: string, only?: string): Promise<Styl
       const sticky = hookTo - hookFrom > (to - from) * 0.9;
       if (sticky) {
         const seen = [from + 0.2, (from + to) / 2, to - 0.3].map((at) => ({ at, over: band(at) }));
+        const overs = seen.map((s) => s.over).filter((o): o is number => o !== null);
+        if (overs.length === seen.length) record("hook.minOverFootage", Math.min(...overs));
+        else record("hook.whiteShare", Math.min(...seen.filter((s) => s.over === null).map((s) => share(s.at))));
         check("hook", seen.every((s) => (s.over === null ? share(s.at) > 0.4 : s.over > 20)),
           `the hook holds across the body: ${seen.map((s) => (s.over === null ? "white" : `${s.over.toFixed(0)}/255 over the footage`)).join(", ")}`);
       } else {
         const middle = (hookFrom + hookTo) / 2;
         const after = Math.min(to - 0.3, hookTo + 1.5);
-        check("hook", present(middle), `the opening hook is on screen at ${middle.toFixed(1)}s, for the ${(hookTo - hookFrom).toFixed(1)}s the template gives it`);
-        if (after > hookTo + 0.5) check("hook ends", !present(after), `and is gone by ${after.toFixed(1)}s`);
+        const overMiddle = band(middle);
+        const middleShare = overMiddle === null ? share(middle) : null;
+        if (middleShare === null) record("hook.minOverFootage", overMiddle!);
+        else record("hook.whiteShare", middleShare);
+        check("hook", middleShare === null ? overMiddle! > 20 : middleShare > 0.4, `the opening hook is on screen at ${middle.toFixed(1)}s, for the ${(hookTo - hookFrom).toFixed(1)}s the template gives it`);
+        if (after > hookTo + 0.5) {
+          const gone = !present(after);
+          record("hook.goneAfter", gone);
+          check("hook ends", gone, `and is gone by ${after.toFixed(1)}s`);
+        }
       }
-      if (outro) check("hook off the card", share(outro.from / fps + 1) < 0.2, "the hook is off the end card");
+      if (outro) {
+        const offCard = share(outro.from / fps + 1);
+        record("hook.offCardShare", offCard);
+        check("hook off the card", offCard < 0.2, "the hook is off the end card");
+      }
     }
 
     const words: Word[] = item.clip.words;
@@ -196,11 +222,13 @@ export async function auditStyle(projectId: string, only?: string): Promise<Styl
         const litOver = drawnOver(outAt(map, spoken.t) + 0.08, top, bandHeight);
         const darkOver = drawnOver(quiet, top, bandHeight);
         if (litOver !== null && darkOver !== null) {
+          record("captions.litMinusDark", litOver - darkOver);
           check("captions", litOver > darkOver + 5 && litOver > 8,
             `a word is drawn into the caption band: ${litOver.toFixed(0)}/255 over the footage on "${spoken.w}" against ${darkOver.toFixed(0)} in a gap`);
         } else {
           const lit = band(outAt(map, spoken.t) + 0.08);
           const dark = band(quiet);
+          record("captions.bandLitMinusDark", lit - dark);
           check("captions", lit > dark + 4, `a word lights the caption band: ${lit.toFixed(0)} on "${spoken.w}" against ${dark.toFixed(0)} in a gap`);
         }
         // Whether the longest word stops before the edges of the frame was checked here
@@ -224,12 +252,14 @@ export async function auditStyle(projectId: string, only?: string): Promise<Styl
           frame(file, at, box(0, 0, width, height), 120, 200),
           frame(card.file, at - outro.from / fps, regionFilter({ x: 0, y: 0, w: card.width, h: card.height }, { width, height }), 120, 200),
         );
+        record("endCard.diff", diff);
+        record("endCard.playedDeltaSec", Math.abs(outro.duration / fps - card.durationSec));
         check("end card", diff < 12, `the end card is the card itself: ${diff.toFixed(1)}/255`);
         check("end card length", Math.abs(outro.duration / fps - card.durationSec) < 0.2,
           `it plays whole: ${(outro.duration / fps).toFixed(2)}s of ${card.durationSec.toFixed(2)}s`);
       }
     }
-    audits.push({ sequenceId: sequence.id, title: sequence.title, ...(stale ? { stale } : {}), checks });
+    audits.push({ sequenceId: sequence.id, title: sequence.title, ...(stale ? { stale } : {}), checks, metrics });
   }
   return audits;
 }

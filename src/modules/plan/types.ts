@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PlanReview } from "../review/types";
 
 /**
  * The plan is what the agent decided and why, kept next to the timeline it
@@ -51,6 +52,8 @@ export const SequencePlan = z.object({
   status: SequenceStatus.default("pending"),
   /** Why each decision was made, keyed by field: template, rules, status… */
   reasons: z.record(z.string(), z.string()).default({}),
+  /** What this video says about the standard its pack holds it to: severities and waivers. */
+  review: PlanReview.prefault({}),
   /** When the plan was last written by an agent, epoch ms. 0 = never. */
   generatedAt: z.number().nonnegative().default(0),
 }).strict();
@@ -89,6 +92,8 @@ export const ProjectPlan = z.object({
   /** A glossary subject this project is about, if any. */
   subject: z.string().default(""),
   series: Series.prefault({}),
+  /** The same, for every video in the project. A video's own says the rest. */
+  review: PlanReview.prefault({}),
   reasons: z.record(z.string(), z.string()).default({}),
   generatedAt: z.number().nonnegative().default(0),
 }).strict();

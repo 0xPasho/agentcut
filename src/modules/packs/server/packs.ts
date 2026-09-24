@@ -11,6 +11,9 @@ import { Rule } from "../../rules/types";
 import { readGlossaryLevel, saveGlossary } from "../../rules/server/glossary";
 import { InstalledPack, PackManifest, type PackExample, type QuickAction } from "../types";
 import { scanStyle, styleRefusal, type StyleProblem } from "../lib/style";
+import { PACK_REVIEW_FILE } from "../../review/data";
+import { lintReview } from "../../review/lib/lint";
+import { PackReview } from "../../review/types";
 import { contactSheet } from "../../media/server/ffmpeg";
 
 /**
@@ -57,6 +60,12 @@ export type PackPreview = {
   quickActions: QuickAction[];
   /** The style guide in full, because it is text the agents will read, and what is wrong with it. */
   style: { text: string; problems: StyleProblem[] };
+  /**
+   * What this pack holds its videos to, and what is wrong with it. A check nobody here can
+   * take is said before anything is installed: a standard that silently never runs is a
+   * defect of the pack, not of the machine.
+   */
+  review: { review: PackReview; warnings: string[]; problems: StyleProblem[] };
   examples: PackExample[];
   /** Always true for anything that did not come from this workspace. */
   untrusted: true;
@@ -89,9 +98,15 @@ export async function inspectPack(sourceText: string): Promise<PackPreview> {
   }
   const styleText = manifest.style ? (await readEntry(source, manifest.style)).toString("utf8") : "";
   const exampleText = manifest.examples.map((e) => `${e.title}\n${e.note}`).join("\n");
+  const review = manifest.review ? PackReview.parse(JSON.parse((await readEntry(source, manifest.review)).toString("utf8"))) : PackReview.parse({});
+  // A question and a fix sentence reach the agent exactly as the guide does, so they are
+  // scanned exactly as the guide is.
+  const reviewText = [...review.checks.map((c) => c.fix), ...review.rubric.map((r) => `${r.ask}\n${r.fix}`)].join("\n");
   return {
     manifest, source: sourceText, hash, templates, rules, assets: manifest.assets.map((a) => ({ file: a.file, kind: a.kind, name: a.name })), quickActions: manifest.quickActions,
-    style: { text: styleText, problems: scanStyle(`${styleText}\n${exampleText}`) }, examples: manifest.examples, untrusted: true,
+    style: { text: styleText, problems: scanStyle(`${styleText}\n${exampleText}`) },
+    review: { review, warnings: lintReview(review), problems: scanStyle(reviewText) },
+    examples: manifest.examples, untrusted: true,
   };
 }
 
@@ -102,6 +117,7 @@ export async function importPack(sourceText: string, options: { replace?: boolea
   const { manifest } = preview;
   // Refused before anything is copied: a pack whose guide talks to the agent is not installed at all.
   if (preview.style.problems.length) throw new Error(styleRefusal(preview.style.problems));
+  if (preview.review.problems.length) throw new Error(styleRefusal(preview.review.problems));
   await ensureLibrary();
   // Assets first, so a template or rule that names one finds it under its new id.
   const assetIds: Record<string, string> = {};
@@ -148,6 +164,8 @@ export async function importPack(sourceText: string, options: { replace?: boolea
   await fs.rm(folder, { recursive: true, force: true });
   await fs.mkdir(path.join(folder, "examples"), { recursive: true });
   if (preview.style.text.trim()) await fs.writeFile(path.join(folder, "STYLE.md"), preview.style.text.trim() + "\n");
+  if (preview.review.review.checks.length || preview.review.review.rubric.length)
+    await fs.writeFile(path.join(folder, PACK_REVIEW_FILE), JSON.stringify(preview.review.review, null, 2) + "\n");
   const examples: PackExample[] = [];
   for (const example of manifest.examples) {
     const file = `examples/${path.basename(example.file)}`;
@@ -236,12 +254,15 @@ export async function exportPack(request: ExportRequest): Promise<{ dir: string;
     assets.push({ file, kind: asset.kind, name: asset.name, tags: asset.tags, license: asset.license ?? "", attribution: asset.attribution ?? "", id: asset.id });
   }
   let style = "";
+  let review = "";
   let examples: PackExample[] = [];
   if (request.stylePack) {
     const pack = (await listPacks()).find((p) => p.id === request.stylePack);
     if (!pack) throw new Error(`No installed pack named ${request.stylePack}`);
     const text = await fs.readFile(path.join(packFolder(pack.id), "STYLE.md"), "utf8").catch(() => "");
     if (text.trim()) { await fs.writeFile(path.join(dir, "STYLE.md"), text); style = "STYLE.md"; }
+    const standard = await fs.readFile(path.join(packFolder(pack.id), PACK_REVIEW_FILE), "utf8").catch(() => "");
+    if (standard.trim()) { await fs.writeFile(path.join(dir, PACK_REVIEW_FILE), standard); review = PACK_REVIEW_FILE; }
     await fs.mkdir(path.join(dir, "examples"), { recursive: true });
     for (const example of pack.examples) await fs.copyFile(path.join(packFolder(pack.id), example.file), path.join(dir, example.file));
     examples = pack.examples;
@@ -249,7 +270,7 @@ export async function exportPack(request: ExportRequest): Promise<{ dir: string;
   const manifest = PackManifest.parse({
     id: request.id, name: request.name, version: request.version, description: request.description, author: request.author,
     templates: chosenTemplates, rules: chosenRules, glossary: request.glossary ? (await readGlossaryLevel("workspace")).terms : [], assets, quickActions: request.quickActions ?? [],
-    style, examples,
+    style, review, examples,
   });
   await fs.writeFile(path.join(dir, "pack.json"), JSON.stringify(manifest, null, 2));
   return { dir, manifest };

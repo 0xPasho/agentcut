@@ -61,6 +61,13 @@ export const PackManifest = z.object({
    * cannot hold. A Markdown file in the pack, usually `STYLE.md`. Empty is none.
    */
   style: z.string().default(""),
+  /**
+   * What a finished video in this pack must be true of: measured checks over the host's
+   * metric catalogue and questions an agent answers with evidence. A JSON file in the
+   * pack, usually `review.json`. Empty is none, and none is not a failing grade — it is a
+   * pack that says how its videos are made and not how they are checked.
+   */
+  review: z.string().default(""),
   examples: z.array(PackExample).default([]),
 }).strict();
 export type PackManifest = z.infer<typeof PackManifest>;

@@ -30,6 +30,22 @@ export const EditorToolCall = z.discriminatedUnion("tool", [
   // Did it come out the way the template said? Reads the exported pixels, not the
   // project: everything a template promises is visible there and nowhere else.
   z.object({ tool: z.literal("style.audit"), sequenceId: z.string().optional() }),
+  // Did it come out the way the PACK said? The audit reads the pixels; this holds every
+  // reading — and what the project itself says — to the standard the pack sets, and
+  // writes down what came of it. `rubric` also asks the pack's own questions, which costs
+  // an agent run. See modules/review and REVIEW.md.
+  z.object({ tool: z.literal("review.run"), sequenceId: z.string().optional(), rubric: z.boolean().default(false) }),
+  z.object({ tool: z.literal("review.read"), sequenceId: z.string().optional() }),
+  z.object({ tool: z.literal("review.criteria"), sequenceId: z.string().optional() }),
+  // Every metric a pack may hold a video to, which is the vocabulary a review.json is
+  // written in. A pack cannot add to it: a check nobody can take is refused at import.
+  z.object({ tool: z.literal("review.catalogue") }),
+  // Let one finding stand, with the reason beside it. Goes through the same plan
+  // operations the panel uses, so it is undoable and visible like any other edit.
+  z.object({ tool: z.literal("review.waive"), id: z.string().min(1), reason: z.string().min(1), sequenceId: z.string().optional(), expectedRevision: z.number().int().nonnegative().optional() }),
+  z.object({ tool: z.literal("review.unwaive"), id: z.string().min(1), sequenceId: z.string().optional(), expectedRevision: z.number().int().nonnegative().optional() }),
+  // Raise what a finding is worth, or lower it with a reason.
+  z.object({ tool: z.literal("review.severity"), id: z.string().min(1), severity: z.enum(["critical", "suggestion", "nitpick"]).nullable(), reason: z.string().default(""), sequenceId: z.string().optional(), expectedRevision: z.number().int().nonnegative().optional() }),
   z.object({ tool: z.literal("media.import"), file: z.string().min(1), expectedRevision: z.number().int().nonnegative(),
     /** Also place the imported video as a shot: on this sequence, at output seconds (null appends), on a layer. */
     place: z.object({ sequenceId: z.string(), at: z.number().nonnegative().nullable().optional(), layer: z.number().int().nonnegative().optional() }).optional(),
@@ -112,6 +128,8 @@ export const EditorToolCall = z.discriminatedUnion("tool", [
     quickActions: z.array(z.object({ label: z.string(), text: z.string() })).optional(), dir: z.string().optional(), stylePack: z.string().optional() }),
   // A pack's style guide and reference videos, and which guide this project's videos are
   // made to. The Settings → Packs editor and the project panel call these same tools.
+  z.object({ tool: z.literal("packs.review.get"), id: z.string().min(1) }),
+  z.object({ tool: z.literal("packs.review.set"), id: z.string().min(1), review: z.unknown() }),
   z.object({ tool: z.literal("packs.style.get"), id: z.string().min(1) }),
   z.object({ tool: z.literal("packs.style.set"), id: z.string().min(1), text: z.string() }),
   z.object({ tool: z.literal("packs.examples.add"), id: z.string().min(1), file: z.string().min(1), title: z.string().optional(), note: z.string().optional() }),
@@ -213,6 +231,52 @@ export async function executeEditorTool(projectId: string, raw: unknown, onActiv
       const failed = audits.flatMap((a) => a.checks.filter((c) => !c.ok));
       report(`read ${audits.length} video${audits.length === 1 ? "" : "s"} back out of the export: ${failed.length ? `${failed.length} check${failed.length === 1 ? "" : "s"} failed` : "everything matches the template"}`, "tool");
       return audits;
+    }
+    case "review.run": {
+      const { runReview } = await import("../../review/server/review");
+      const reviews = await runReview(projectId, { sequenceId: call.sequenceId, rubric: call.rubric });
+      const findings = reviews.flatMap((r) => [...r.checks, ...r.rubric].filter((f) => !f.ok && !f.waived));
+      report(`held ${reviews.length} video${reviews.length === 1 ? "" : "s"} to ${reviews[0]?.pack ?? "the built-in"} standard: ${findings.length ? `${findings.length} finding${findings.length === 1 ? "" : "s"}` : "nothing to answer for"}`, "tool");
+      return reviews;
+    }
+    case "review.read": {
+      const { listReviews, readReview } = await import("../../review/server/review");
+      if (call.sequenceId) return readReview(projectId, call.sequenceId);
+      return listReviews(projectId);
+    }
+    case "review.criteria": {
+      const { activeCriteria } = await import("../../review/server/criteria");
+      return activeCriteria(projectId, call.sequenceId);
+    }
+    case "review.catalogue": {
+      const { METRICS } = await import("../../review/data");
+      return METRICS;
+    }
+    case "review.waive": {
+      const { waiveFinding } = await import("../../review/server/waivers");
+      report(`let ${call.id} stand: ${call.reason}`, "tool");
+      return waiveFinding(projectId, call);
+    }
+    case "review.unwaive": {
+      const { unwaiveFinding } = await import("../../review/server/waivers");
+      return unwaiveFinding(projectId, call);
+    }
+    case "review.severity": {
+      const { setSeverity } = await import("../../review/server/waivers");
+      return setSeverity(projectId, call);
+    }
+    case "packs.review.get": {
+      const { readPackReview } = await import("../../review/server/criteria");
+      const { lintReview } = await import("../../review/lib/lint");
+      const review = await readPackReview(call.id);
+      return { review, warnings: lintReview(review) };
+    }
+    case "packs.review.set": {
+      const { savePackReview } = await import("../../review/server/criteria");
+      const { PackReview } = await import("../../review/types");
+      const saved = await savePackReview(call.id, PackReview.parse(call.review));
+      for (const warning of saved.warnings) report(warning, "tool");
+      return saved;
     }
     case "media.import": case "media.upload": {
       const { importProjectMedia } = await import("../../media/server/media-import");

@@ -165,8 +165,15 @@ playhead marks, the ruler's slider value and the lit transcript word follow it.
   say, the hook held across the body and off the end card, a word drawn into the caption
   band and a gap that is empty, the end card being the card and playing whole. The panel,
   the agent and `scripts/style-audit.ts` run the same reading. Each check is a number with
-  a threshold beside it in `render/server/style-check.ts`; the thresholds are what
-  [REVIEW.md](./REVIEW.md) moves into the pack, leaving the measuring here.
+  a threshold beside it; the numbers now come out with the audit, and a pack sets its own
+  limits on them through `review.run` — see [REVIEW.md](./REVIEW.md).
+- `review.run` holds a video to the standard its pack sets: the measured checks against the
+  project and, once it is exported, against its pixels, plus — with `rubric: true` — the
+  pack's own questions, which an agent must answer with a timestamp, a frame, a field or a
+  quote. `review.criteria` says what this video answers to and why; `review.waive` lets one
+  finding stand with the reason kept beside it; `review.catalogue` is every measurement a
+  pack may name. An export is refused while a critical check the project already fails is
+  unanswered.
 - `scripts/caption-sync.ts PROJECT_ID` measures whether the captions are on the words: it
   marks what the footage's own sound calls speech, slides the transcript against it, and
   reports the shift that agrees best. A shift inside a frame is nothing; a consistent one

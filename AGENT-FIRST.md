@@ -403,15 +403,21 @@ Registry adapter for packs; caption translation; publish flows for videos; image
   stayed in the editor. Not done: a subject has no assets of its own, and the
   workspace-level rules/glossary/preferences tools are still bound to a project id, so a
   terminal agent on a machine with no project cannot yet write a workspace rule.
-- **A pack that carries its own standard: designed 2026-09-24, not built.** Decisions
-  71–74 and [REVIEW.md](./REVIEW.md) settle the shape — `review.json` in the pack,
-  measured checks over a closed metric catalogue, judged questions answered with
-  evidence, severities that stack and waivers with a reason. What is written today is the
-  instrument and not the standard: `style.audit` measures seven things about an export and
-  decides each one against a threshold typed into `render/server/style-check.ts`, and the
-  planner's warnings block nothing. The first slice is the smallest honest one — pull those
-  seven thresholds out into the pack, keep the measuring where it is, and add the import
-  lint so a pack cannot promise a check the host cannot take.
+- **A pack that carries its own standard: built 2026-09-24.** Decisions 71–74 and
+  [REVIEW.md](./REVIEW.md) are implemented as `src/modules/review`. A pack names a
+  `review.json` the way it names `STYLE.md`; its checks pick from a catalogue of 26
+  measurements the host takes — seventeen off the project and nine out of an export's own
+  pixels — and set the limit, and the eight thresholds that used to be typed into
+  `render/server/style-check.ts` are now the built-in standard a pack overrides one metric
+  at a time. What no number catches is a question an agent answers with a timestamp, a
+  frame, a field or a quote, and an answer with nothing beside it is recorded as
+  "cannot-tell" rather than as a pass. `review.run`, `review.criteria`, `review.waive` and
+  the rest are the panel's buttons and the agent's tools; a critical the project already
+  fails refuses the export, and a waiver written on the plan — revisioned and undoable —
+  is the way through, with the reason kept beside the finding. A pack is linted at import,
+  so a standard this machine cannot take is said on the inspect page. Not done: nothing
+  that ships carries a standard yet, and the questions are asked only when someone asks
+  for them.
 - **One marketplace, for packs, as a client of a static index. Still open, deliberately
   untouched by the settings home** — parked because the owner has not digested it yet ("es complicado y no lo tengo digerido"), not because it is wrong.** Decisions 6 and 8 already
   shape it: any static host serves a pack, so v1 is an `index.json` (name, author,

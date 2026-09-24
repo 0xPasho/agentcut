@@ -111,8 +111,13 @@ or as a question with an answer that has to point somewhere.
 - **Trust.** `ask` and `fix` are text from a stranger that reaches the agent, so they are
   scanned like `STYLE.md` and a pack that fails is refused whole. Thresholds are numbers.
 
-The full design, the metric catalogue and the review artifact: [REVIEW.md](./REVIEW.md).
-Designed 2026-09-24, not built — today the thresholds live in `render/server/style-check.ts`.
+- **Where it is read.** **Video → What correct looks like** in the editor, or `review.run`,
+  `review.criteria` and `review.waive` from an agent. A critical finding the project
+  already fails refuses an export until it is fixed or waived with a reason.
+- **Editing.** **Settings → Packs → What correct looks like**, or `packs.review.get` /
+  `packs.review.set`. `packs.export` carries the file out again.
+
+The metric catalogue, the artifact and the reasoning: [REVIEW.md](./REVIEW.md).
 
 ## Import
 

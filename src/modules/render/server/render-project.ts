@@ -40,6 +40,12 @@ export async function renderProject(projectId: string, options: { only?: string[
     const snapshot = readEditor(projectId);
     if (options.expectedRevision !== undefined && snapshot.revision !== options.expectedRevision) throw new RevisionConflict(snapshot);
     if (options.only?.some(id => ![...snapshot.edl.clips, ...snapshot.edl.sequences].some(clip => clip.id === id))) throw new Error("A requested clip no longer exists");
+    // What the pack says is wrong and the project already knows: refused here rather than
+    // exported and found afterwards. Only a critical finding stops it, and a waiver on the
+    // plan is the way through — see modules/review.
+    const { reviewBeforeRender, refusal } = await import("../../review/server/gate");
+    const blocks = await reviewBeforeRender(projectId, options.only);
+    if (blocks.length) throw new Error(refusal(blocks));
     const { renderClips } = await import("./render");
     const outputs = await renderClips(snapshot.edl, dir, options);
     const file = path.join(dir, "rendered.json");

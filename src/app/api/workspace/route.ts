@@ -5,6 +5,10 @@ import { reviewObservations } from "@/modules/rules/server/observations";
 import { onboardingState, runOnboarding, skipOnboarding, saveOnboardingAnswers, reopenOnboarding, dismissOnboardingReminder, ONBOARDING_QUESTIONS } from "@/modules/onboarding/server/onboarding";
 import { readStyle, saveStyle, addExample, updateExample, removeExample } from "@/modules/packs/server/style";
 import { inspectPack, importPack, removePack, exportPack } from "@/modules/packs/server/packs";
+import { readPackReview, savePackReview } from "@/modules/review/server/criteria";
+import { lintReview } from "@/modules/review/lib/lint";
+import { PackReview } from "@/modules/review/types";
+import { METRICS } from "@/modules/review/data";
 import { effectiveSelection, applySelection, selectionOverview } from "@/modules/agent/server/selection";
 import { setProviderKey } from "@/common/server/secrets";
 import { workspaceOverview } from "@/modules/settings/server/workspace";
@@ -16,7 +20,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const body = (await req.json().catch(() => ({}))) as { action?: string; rule?: unknown; id?: string; glossary?: unknown; text?: string; answers?: unknown; source?: string; replace?: boolean; pack?: Parameters<typeof exportPack>[0]; scope?: string; task?: string; provider?: string; model?: string; value?: string; file?: string; title?: string; note?: string };
+  const body = (await req.json().catch(() => ({}))) as { action?: string; rule?: unknown; review?: unknown; id?: string; glossary?: unknown; text?: string; answers?: unknown; source?: string; replace?: boolean; pack?: Parameters<typeof exportPack>[0]; scope?: string; task?: string; provider?: string; model?: string; value?: string; file?: string; title?: string; note?: string };
   try {
     switch (body.action) {
       case "rules.save": return Response.json(await saveRule(body.rule, "workspace"));
@@ -35,6 +39,9 @@ export async function POST(req: Request) {
       case "packs.import": return Response.json(await importPack(String(body.source ?? ""), { replace: !!body.replace }));
       case "packs.remove": return Response.json(await removePack(String(body.id ?? "")));
       case "packs.export": return Response.json(await exportPack(body.pack as Parameters<typeof exportPack>[0]));
+      case "review.catalogue": return Response.json(METRICS);
+      case "packs.review.get": { const review = await readPackReview(String(body.id ?? "")); return Response.json({ review, warnings: lintReview(review) }); }
+      case "packs.review.set": return Response.json(await savePackReview(String(body.id ?? ""), PackReview.parse(body.review)));
       case "packs.style.get": return Response.json(await readStyle(String(body.id ?? "")));
       case "packs.style.set": return Response.json(await saveStyle(String(body.id ?? ""), String(body.text ?? "")));
       case "packs.examples.add": return Response.json(await addExample(String(body.id ?? ""), String(body.file ?? ""), { title: body.title, note: body.note }));
