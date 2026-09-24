@@ -1,19 +1,20 @@
 "use client";
 import { useId, useState } from "react";
-import { ArrowLeft, ChevronDown, ChevronUp, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, ChevronDown, ChevronUp, Loader2, Package, Pencil, Plus, Trash2 } from "lucide-react";
 import { api } from "@/common/api/client";
-import type { Rule, RuleRecord } from "@/modules/rules/types";
+import type { Rule } from "@/modules/rules/types";
 import { Badge } from "@/common/ui/badge";
 import { Button } from "@/common/ui/button";
 import { Input } from "@/common/ui/input";
 import { Label } from "@/common/ui/label";
 import { Textarea } from "@/common/ui/textarea";
+import { Switch } from "@/common/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/common/ui/select";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/common/ui/dialog";
-import { Empty, SectionHeader } from "./components/section-header";
-import { Toggle } from "./components/toggle";
+import { Empty, ErrorLine, Loading, Panel, SectionHeader } from "./components/section-header";
 import { useWorkspaceSettings } from "./hooks";
-import { type AssetOption, type TemplateOption } from "./types";
+import { type AssetOption, type RuleOption, type TemplateOption } from "./types";
 import { RuleSlots } from "@/modules/rules/components/rule-slots";
 import { EMPTY_RULE, STAGE_LABELS, STAGE_HELP } from "./data";
 import { strip, describe, slug } from "./lib";
@@ -25,6 +26,7 @@ export function RulesSettings() {
   const rules = (data?.rules ?? []).filter((r) => r.level === "workspace");
   const templates = data?.templates ?? [];
   const terms = data?.glossary.terms ?? [];
+  const packs = data?.packs ?? [];
 
   const save = (rule: Rule) =>
     run(`save:${rule.id}`, async () => {
@@ -68,60 +70,35 @@ export function RulesSettings() {
     );
   }
 
+  const newRule = <Button size="sm" onClick={() => setEditing({ rule: EMPTY_RULE, isNew: true })}><Plus />New rule</Button>;
+
   return (
     <section className="flex flex-col gap-5">
-      <SectionHeader
-        title="Rules"
-        action={<Button size="sm" onClick={() => setEditing({ rule: EMPTY_RULE, isNew: true })}><Plus />New rule</Button>}
-      >
+      <SectionHeader title="Rules" action={newRule}>
         A rule is a sentence the agent judges against your material, and something it does when the
         sentence holds. These apply to every project; rules for one project or one video live in the
         editor, next to what they are about.
       </SectionHeader>
 
-      {!data ? (
-        <p className="text-sm text-muted-foreground">Loading your rules…</p>
-      ) : rules.length ? (
+      {!data && <Loading label="Loading your rules" />}
+      {data && !rules.length && (
+        <Empty title="No rules yet" action={newRule}>
+          A rule is how you stop repeating yourself: “when the clip is gameplay, never cover the game
+          with pictures.” The agent judges the sentence; the app does the rest.
+        </Empty>
+      )}
+      {data && rules.length > 0 && (
         <>
           <ol className="flex flex-col gap-2">
             {rules.map((rule, index) => (
-              <li key={rule.id} className="flex flex-col gap-3 rounded-2xl bg-card px-4 py-3.5 ring-1 ring-foreground/10">
-                <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-medium">{rule.name}</span>
-                      <Badge variant="secondary" className="text-[10px]">{STAGE_LABELS[rule.stage]}</Badge>
-                    </p>
-                    <p className="mt-1 text-sm text-muted-foreground">When {rule.when}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">{describe(rule, templates)}</p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <Button
-                      size="icon-sm" variant="ghost" aria-label={`Move ${rule.name} earlier`}
-                      disabled={index === 0 || !!pending} onClick={() => move(index, -1)}
-                    ><ChevronUp /></Button>
-                    <Button
-                      size="icon-sm" variant="ghost" aria-label={`Move ${rule.name} later`}
-                      disabled={index === rules.length - 1 || !!pending} onClick={() => move(index, 1)}
-                    ><ChevronDown /></Button>
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <Toggle
-                    checked={rule.enabled}
-                    about={rule.name}
-                    disabled={pending === `save:${rule.id}`}
-                    label={rule.enabled ? "On" : "Off"}
-                    onChange={(enabled) => save(strip({ ...rule, enabled }))}
-                  />
-                  <span className="flex-1" />
-                  <Button size="xs" variant="outline" onClick={() => setEditing({ rule: strip(rule), isNew: false })}>
-                    <Pencil />Edit
-                  </Button>
-                  <DeleteRule rule={rule} pending={pending === `delete:${rule.id}`}
-                    onDelete={() => run(`delete:${rule.id}`, () => api.workspace({ action: "rules.delete", id: rule.id }))} />
-                </div>
-              </li>
+              <RuleRow
+                key={rule.id} rule={rule} index={index} last={index === rules.length - 1} templates={templates} pending={pending}
+                packName={rule.pack ? (packs.find((p) => p.id === rule.pack)?.name ?? rule.pack) : null}
+                onMove={(by) => move(index, by)}
+                onToggle={(enabled) => save(strip({ ...rule, enabled }))}
+                onEdit={() => setEditing({ rule: strip(rule), isNew: false })}
+                onDelete={() => run(`delete:${rule.id}`, () => api.workspace({ action: "rules.delete", id: rule.id }))}
+              />
             ))}
           </ol>
           <p className="text-xs text-muted-foreground">
@@ -129,18 +106,50 @@ export function RulesSettings() {
             else each matched rule asks for is added on top, in this order.
           </p>
         </>
-      ) : (
-        <Empty title="No rules yet" action={<Button size="sm" className="mt-2" onClick={() => setEditing({ rule: EMPTY_RULE, isNew: true })}><Plus />New rule</Button>}>
-          A rule is how you stop repeating yourself: “when the clip is gameplay, never cover the game
-          with pictures.” The agent judges the sentence; the app does the rest.
-        </Empty>
       )}
-      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      <ErrorLine>{error}</ErrorLine>
     </section>
   );
 }
 
-function DeleteRule({ rule, pending, onDelete }: { rule: RuleRecord; pending: boolean; onDelete: () => void }) {
+function RuleRow({ rule, index, last, templates, pending, packName, onMove, onToggle, onEdit, onDelete }: {
+  rule: RuleOption; index: number; last: boolean; templates: TemplateOption[]; pending: string; packName: string | null;
+  onMove: (by: -1 | 1) => void; onToggle: (enabled: boolean) => void; onEdit: () => void; onDelete: () => void;
+}) {
+  return (
+    <Panel as="li" className="flex flex-col gap-3 py-3.5">
+      <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
+        <span aria-hidden className="mt-0.5 w-5 shrink-0 text-right font-mono text-xs tabular-nums text-muted-foreground">{index + 1}</span>
+        <div className="min-w-0 flex-1">
+          <p className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-medium">{rule.name}</span>
+            <Badge variant="secondary" className="text-[10px]">{STAGE_LABELS[rule.stage]}</Badge>
+            {rule.subject && <Badge variant="outline" className="text-[10px] font-normal">About {rule.subject}</Badge>}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">When {rule.when}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{describe(rule, templates)}</p>
+          {packName && (
+            <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+              <Package aria-hidden className="size-3" />From the <Link href={`/settings/packs/${encodeURIComponent(rule.pack!)}`} className="underline underline-offset-2">{packName}</Link> pack
+            </p>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <Button size="icon-sm" variant="ghost" aria-label={`Move ${rule.name} earlier`} disabled={index === 0 || !!pending} onClick={() => onMove(-1)}><ChevronUp /></Button>
+          <Button size="icon-sm" variant="ghost" aria-label={`Move ${rule.name} later`} disabled={last || !!pending} onClick={() => onMove(1)}><ChevronDown /></Button>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 ps-8">
+        <Switch checked={rule.enabled} about={rule.name} disabled={pending === `save:${rule.id}`} label={rule.enabled ? "On" : "Off"} onCheckedChange={onToggle} />
+        <span className="flex-1" />
+        <Button size="xs" variant="outline" onClick={onEdit}><Pencil />Edit</Button>
+        <DeleteRule rule={rule} pending={pending === `delete:${rule.id}`} onDelete={onDelete} />
+      </div>
+    </Panel>
+  );
+}
+
+function DeleteRule({ rule, pending, onDelete }: { rule: RuleOption; pending: boolean; onDelete: () => void }) {
   const [open, setOpen] = useState(false);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -152,6 +161,7 @@ function DeleteRule({ rule, pending, onDelete }: { rule: RuleRecord; pending: bo
           <DialogTitle>Delete this rule?</DialogTitle>
           <DialogDescription className="break-words">
             “{rule.name}” stops applying to every project. Videos it already changed keep those changes.
+            {rule.pack ? " The pack it came from stays installed; reinstalling the pack brings it back." : ""}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -173,6 +183,8 @@ function RuleForm({ initial, isNew, templates, assets, terms, pending, error, on
   const [rule, setRule] = useState<Rule>(initial);
   const [overrides, setOverrides] = useState(initial.then.overrides ? JSON.stringify(initial.then.overrides, null, 2) : "");
   const [jsonError, setJsonError] = useState("");
+  // The id follows the name until it is typed by hand.
+  const [idTouched, setIdTouched] = useState(!isNew);
   const set = (patch: Partial<Rule>) => setRule((current) => ({ ...current, ...patch }));
   const setThen = (patch: Partial<Rule["then"]>) => setRule((current) => ({ ...current, then: { ...current.then, ...patch } }));
 
@@ -201,23 +213,23 @@ function RuleForm({ initial, isNew, templates, assets, terms, pending, error, on
         });
       }}
     >
-      <div className="flex items-center gap-2">
-        <Button type="button" size="icon-sm" variant="ghost" aria-label="Back to rules" onClick={onCancel}><ArrowLeft /></Button>
-        <h2 className="font-heading text-xl tracking-[-0.02em]">{isNew ? "New rule" : rule.name || "Edit rule"}</h2>
-      </div>
+      <SectionHeader
+        title={isNew ? "New rule" : rule.name || "Edit rule"}
+        eyebrow={<Button type="button" size="xs" variant="ghost" className="-ms-2" onClick={onCancel}><ArrowLeft />Rules</Button>}
+      />
 
-      <fieldset className="flex flex-col gap-4 rounded-2xl bg-card px-4 py-4 ring-1 ring-foreground/10">
+      <Panel as="fieldset" className="flex flex-col gap-4">
         <legend className="sr-only">What the rule is</legend>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label htmlFor={`${id}-name`}>Name</Label>
             <Input id={`${id}-name`} required value={rule.name} placeholder="Gameplay stays clean"
-              onChange={(e) => set({ name: e.target.value, ...(isNew ? { id: slug(e.target.value) } : {}) })} />
+              onChange={(e) => set({ name: e.target.value, ...(idTouched ? {} : { id: slug(e.target.value) }) })} />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor={`${id}-id`}>Id</Label>
             <Input id={`${id}-id`} required pattern="[a-z0-9][a-z0-9\-]*" value={rule.id} disabled={!isNew}
-              aria-describedby={`${id}-id-help`} onChange={(e) => set({ id: e.target.value })} />
+              aria-describedby={`${id}-id-help`} onChange={(e) => { setIdTouched(true); set({ id: e.target.value }); }} />
             <p id={`${id}-id-help`} className="text-xs text-muted-foreground">
               {isNew ? "Lowercase letters, digits and dashes. It is how packs and edits refer to this rule." : "Fixed once a rule exists, because edits it made point at it."}
             </p>
@@ -263,12 +275,12 @@ function RuleForm({ initial, isNew, templates, assets, terms, pending, error, on
           </div>
         </div>
         <div className="space-y-1">
-          <Toggle checked={rule.enabled} about={rule.name || "this rule"} label={rule.enabled ? "On" : "Off"} describedBy={`${id}-enabled-help`} onChange={(enabled) => set({ enabled })} />
+          <Switch checked={rule.enabled} about={rule.name || "this rule"} label={rule.enabled ? "On" : "Off"} describedBy={`${id}-enabled-help`} onCheckedChange={(enabled) => set({ enabled })} />
           <p id={`${id}-enabled-help`} className="text-xs text-muted-foreground">Off keeps the rule and stops it applying.</p>
         </div>
-      </fieldset>
+      </Panel>
 
-      <fieldset className="flex flex-col gap-4 rounded-2xl bg-card px-4 py-4 ring-1 ring-foreground/10">
+      <Panel as="fieldset" className="flex flex-col gap-4">
         <legend className="sr-only">What it does</legend>
         <p className="text-sm font-medium">Then</p>
         <div className="space-y-1.5">
@@ -304,9 +316,9 @@ function RuleForm({ initial, isNew, templates, assets, terms, pending, error, on
             aria-describedby={`${id}-prompt-help`} onChange={(e) => setThen({ prompt: e.target.value })} />
           <p id={`${id}-prompt-help`} className="text-xs text-muted-foreground">Handed to the agent as a standing instruction whenever this rule holds.</p>
         </div>
-      </fieldset>
+      </Panel>
 
-      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      <ErrorLine>{error}</ErrorLine>
       <div className="flex flex-wrap gap-2">
         <Button type="submit" disabled={pending}>{pending && <Loader2 aria-hidden className="motion-safe:animate-spin" />}Save rule</Button>
         <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>

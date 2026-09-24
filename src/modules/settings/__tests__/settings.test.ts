@@ -304,7 +304,66 @@ test("every control on the settings page has a tool behind it", () => {
     "agents.status", "agents.select",
     "providerkeys.list", "providerkeys.set",
     "packs.list", "packs.inspect", "packs.import", "packs.remove", "packs.export",
+    "packs.style.get", "packs.style.set", "packs.examples.add", "packs.examples.update", "packs.examples.remove",
+    "packs.review.get", "packs.review.set",
+    "templates.list", "templates.delete",
+    "media.transcription.set", "chat.setSource",
+    "assets.list", "assets.delete",
   ]) assert.equal(tool(name), true, `${name} is on the page but not reachable by an agent`);
+});
+
+test("every section of the rail is a page, and the old addresses still land somewhere", async () => {
+  // Decision 130: one shell. A rail entry that points nowhere is a dead link on every page.
+  const { WORKSPACE_SECTIONS } = await import("../data");
+  const app = path.resolve(__dirname, "../../../app/(workspace)");
+  for (const section of WORKSPACE_SECTIONS) {
+    const page = path.join(app, section.href.replace(/^\//, ""), "page.tsx");
+    await assert.doesNotReject(() => fs.access(page), `${section.label} points at ${section.href}, which has no page`);
+  }
+  for (const old of ["settings/preferences", "settings/subjects"]) {
+    const text = await fs.readFile(path.join(app, old, "page.tsx"), "utf8");
+    assert.match(text, /permanentRedirect\("\/settings/, `${old} should redirect into the shell`);
+  }
+  // The pages are thin, and every one of them renders a view from the settings module.
+  const ids = WORKSPACE_SECTIONS.map((s) => s.id);
+  assert.deepEqual(ids, ["library", "profile", "rules", "glossary", "packs", "templates", "agents", "machine"]);
+});
+
+test("the export form sends everything the export tool accepts", async () => {
+  // Decision 133: a pack exported from the page used to arrive without its assets, its
+  // guide or its criteria, because the form sent five of the twelve fields.
+  const { toExportRequest } = await import("../lib");
+  const { EMPTY_EXPORT } = await import("../data");
+  const packs = [{ id: "kit", name: "Kit", quickActions: [{ label: "Tighten", text: "Tighten {selection}" }, { label: "Other", text: "x" }] }] as unknown as Parameters<typeof toExportRequest>[1];
+  const request = toExportRequest({
+    ...EMPTY_EXPORT, id: "mine", name: "Mine", version: "2.0.0", description: "d", author: "a",
+    templates: new Set(["t1"]), rules: new Set(["r1"]), glossary: false, assets: new Set(["a_1"]),
+    quickActions: new Set(["kit:Tighten"]), stylePack: "kit",
+  }, packs);
+  assert.deepEqual(request, {
+    id: "mine", name: "Mine", version: "2.0.0", description: "d", author: "a",
+    templates: ["t1"], rules: ["r1"], glossary: false, assetIds: ["a_1"],
+    quickActions: [{ label: "Tighten", text: "Tighten {selection}" }], stylePack: "kit",
+  });
+  // Every key the server reads is one the form can set.
+  const accepted = ["id", "name", "version", "description", "author", "templates", "rules", "glossary", "assetIds", "quickActions", "stylePack"];
+  assert.deepEqual(Object.keys(request).sort(), accepted.sort());
+});
+
+test("the workspace-level machine settings write through the same functions the tools call", async () => {
+  const transcription = await import("../../transcription/server/settings");
+  transcription.saveTranscribeMode("off");
+  assert.equal(transcription.resolveTranscribeMode().scope, "env"); // the test harness pins it
+  assert.equal(transcription.storedTranscribeMode(), "off");
+  transcription.saveTranscribeMode(null);
+  assert.equal(transcription.storedTranscribeMode(), null);
+  // The page reads the same answer the overview returns.
+  const { workspaceOverview } = await import("../server/workspace");
+  const overview = await workspaceOverview();
+  assert.equal(overview.machine.workspace, workspace);
+  assert.equal(overview.machine.transcribe.stored, null);
+  assert.ok(overview.templates.every((t) => "pack" in t && "makes" in t), "templates carry their origin");
+  assert.ok(overview.rules.every((r) => "pack" in r), "rules carry their origin");
 });
 
 test("configuring the machine works before any project exists", async () => {

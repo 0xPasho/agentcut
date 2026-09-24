@@ -35,3 +35,7 @@ export type TranscriptionReport = {
   media: Array<TranscriptionState & { id: string; name: string }>;
   settings: { effective: { mode: string; scope: string }; workspace: string | null; project: string | null; modes: string[] };
 };
+
+
+/** One of the three kinds of file the library holds. */
+export type LibraryKind = "image" | "audio" | "video";

@@ -1,10 +1,17 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "../../common/api/client";
 
 import { type WorkspaceSettings, type Workspace } from "./types";
 
-export function useWorkspaceSettings(): Workspace {
+const WorkspaceContext = createContext<Workspace | null>(null);
+
+/**
+ * One read of `GET /api/workspace` for the whole shell: the rail's counts and the
+ * page's content come from the same answer, so a save on the page moves the count
+ * beside its name without a second request or a stale number.
+ */
+export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<WorkspaceSettings | null>(null);
   const [error, setError] = useState("");
   const [pending, setPending] = useState("");
@@ -24,13 +31,23 @@ export function useWorkspaceSettings(): Workspace {
     setError("");
     try {
       await call();
-      await reload();
     } catch (e) {
       setError((e as Error).message);
     } finally {
+      // Reload whether or not the write went through: a call that wrote three rules
+      // and failed on the fourth has changed the disk, and the page must say so.
+      await reload();
       setPending("");
     }
   }, [reload]);
 
-  return { data, error, pending, reload, run, setError };
+  const value = useMemo(() => ({ data, error, pending, reload, run, setError }), [data, error, pending, reload, run]);
+  return createElement(WorkspaceContext.Provider, { value }, children);
+}
+
+/** The shell's workspace. Every page under the rail reads the same answer. */
+export function useWorkspaceSettings(): Workspace {
+  const shared = useContext(WorkspaceContext);
+  if (!shared) throw new Error("useWorkspaceSettings needs the workspace shell around it.");
+  return shared;
 }

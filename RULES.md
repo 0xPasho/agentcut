@@ -195,31 +195,39 @@ agentcut rules preferences
 
 ## Where they live on screen
 
-Everything at workspace level has its own home at **/settings**, reached from the header
-on the home page and from the library. Six sections, one subject each:
+Everything that belongs to the person rather than to a project lives in one shell
+(decision 130): a glass header and a rail, reached from the home header's **Library** and
+**Settings**. What each section holds is written under its name in the rail, so "where
+did I put that" is answered before anything is opened. Eight sections, one subject each:
 
-| Section | What you do there |
-| --- | --- |
-| Rules | The list for every project: create, edit, reorder, switch one off without deleting it, delete. |
-| Glossary | The table of names, their mishearings and one line of what each is. |
-| Subjects | The glossary terms you have given a look to: colours, fonts and a logo (decision 48). |
-| Preferences | `preferences.md` by hand, with the interview's marked section shown and removable apart from it, the interview's state, and the observation bank with **Review my preferences**. |
-| Agents and models | Which harnesses this machine has, the default harness and model, the model per kind of work (decision 50), and the keys for the optional picture providers. |
-| Packs | Import by path or URL and export, moved here unchanged. |
+| Section | Address | What you do there |
+| --- | --- | --- |
+| Library | `/library` | Images, sounds and reusable video for every project; where each file came from; deleting one deletes its file (decision 136). |
+| You | `/settings` | The profile (decision 131): the interview's answers editable in place with **Rewrite my preferences**, `preferences.md` in your words, the section the interview wrote (removable apart from your lines), and the observation bank with **Review my preferences**. |
+| Rules | `/settings/rules` | The list for every project: create, edit, reorder, switch one off without deleting it, delete; which pack brought a rule. |
+| Glossary | `/settings/glossary` | Every name, its mishearings and one line of what it is; a name given a look is a subject (decisions 48, 132), filterable on its own. |
+| Packs | `/settings/packs` | What is installed and where from; import and export as full flows; each pack has its own page with what it brought, its style guide, its references and what correct looks like (decision 133). |
+| Templates | `/settings/templates` | Every layout on this machine — built in, yours, a pack's — with its schematic, what it asks to be chosen, and delete for yours (decision 134). |
+| Agents | `/settings/agents` | Which harnesses this machine has, the default harness and model, and the model per kind of work (decision 50). |
+| This machine | `/settings/machine` | Where the workspace is on disk, transcription on import, the stream chat database, and the keys for the optional picture providers (decision 135). |
+
+`/settings/preferences` and `/settings/subjects` still work: they land on You and on the
+glossary's subjects.
 
 Rules at project level stay in the editor, under **Video → Rules and preferences**,
 beside the video they are about; the panel evaluates and applies them per video, but a
 rule is stored at one of the two levels only. A sequence level is planned, not built.
-Every control on /settings calls the
-same tool an agent calls — `rules.save`, `rules.delete`, `glossary.save`,
-`preferences.set`, `onboarding.*`, `agents.select`, `providerkeys.set`, `packs.*` — so
-there is no settings-only way to write any of these files.
+Every control in the shell calls the same tool an agent calls — `rules.save`,
+`rules.delete`, `glossary.save`, `preferences.set`, `onboarding.*`, `agents.select`,
+`providerkeys.set`, `packs.*`, `templates.delete`, `media.transcription.set`,
+`chat.setSource`, `assets.delete` — so there is no settings-only way to write any of
+these files.
 
 A provider key is the one thing neither interface can read. `providerkeys.list` answers
 whether a key is set and whether the value came from settings or from the environment;
 nothing returns the key itself, to the page or to an agent, and nothing puts one in
-`process.env`, which every spawned harness inherits. Keys are write-only: the Agents and
-models page shows set or unset and the origin (settings or the environment), a field
+`process.env`, which every spawned harness inherits. Keys are write-only: This machine
+shows set or unset and the origin (settings or the environment), a field
 that replaces the value, and **Clear** for a key saved in settings; there is no reveal
 and no masked tail, and a key answered by an environment variable is not clearable there.
 
@@ -230,7 +238,7 @@ Project-level tags set by hand are still the next milestone in
 a rule — an outro, a sting — is done: it is a template bookend, and the rule either
 overrides `outro` directly or fills the `video` slot the template declares.
 
-Two gaps the settings home did not close. A subject has no assets of its own: a library
+Two gaps the workspace shell did not close. A subject has no assets of its own: a library
 image named after it is still found by name, which is how the picture search has always
 worked. And the workspace-level tools are still bound to a project id the way every other
 editor tool is, so a terminal agent on a machine with no project yet can set a key, run

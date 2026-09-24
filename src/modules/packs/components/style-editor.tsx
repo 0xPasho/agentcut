@@ -54,7 +54,7 @@ export function StyleEditor({ packId }: { packId: string }) {
         <p className="text-xs text-muted-foreground">
           Who these videos are for, what a good one is, how the hooks sound and what they never do. The agents read it before choosing and editing; your own preferences win where the two disagree.
         </p>
-        <Textarea id={`${id}-style`} rows={10} value={text} onChange={(event) => setText(event.target.value)} className="font-mono text-xs" />
+        <Textarea id={`${id}-style`} rows={10} value={text} onChange={(event) => setText(event.target.value)} className="max-h-[28rem] font-mono text-xs" />
         <div className="flex items-center justify-between gap-2">
           <span className={`text-xs tabular-nums ${text.length > MAX_STYLE_CHARS ? "text-destructive" : "text-muted-foreground"}`}>{text.length} / {MAX_STYLE_CHARS}</span>
           <Button size="sm" variant="outline" disabled={!!busy || text === style?.text} onClick={() => void run("style", { action: "packs.style.set", text })}>

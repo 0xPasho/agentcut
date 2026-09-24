@@ -32,3 +32,11 @@ export const COLUMNS: Array<{ key: SortKey; label: string; className: string }> 
 export const ROW = "cursor-pointer select-none rounded-xl transition-[background-color,box-shadow,scale] duration-150 ease-out motion-reduce:transition-none motion-safe:active:scale-[0.995]";
 
 export const ROW_SELECTED = "bg-linear-to-b from-primary/25 to-primary/12 text-foreground shadow-(--control-highlight) ring-1 ring-inset ring-primary/30";
+
+
+/** The library's tabs, in the order they are shown. */
+export const LIBRARY_KINDS: ReadonlyArray<{ kind: "image" | "audio" | "video"; label: string; plural: string }> = [
+  { kind: "image", label: "Images", plural: "images" },
+  { kind: "audio", label: "Sounds", plural: "sounds" },
+  { kind: "video", label: "Video", plural: "videos" },
+];

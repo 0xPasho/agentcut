@@ -242,6 +242,10 @@ export type AssetSummary = {
   width: number | null;
   height: number | null;
   duration_sec: number | null;
+  /** How it got here: upload, drop-in, starter, search, chat, or `pack:<id>`. */
+  source?: string | null;
+  tags?: string | null;
+  created_at?: number;
 };
 
 export const sourceUrl = (id: string) => `/api/projects/${id}/source`;

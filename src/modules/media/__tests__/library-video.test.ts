@@ -51,6 +51,22 @@ test("the library holds video: uploaded, scanned from the folder, listed by kind
   assert.equal(assets.kindFor("x.txt"), null);
 });
 
+test("deleting a library asset deletes its file, so the next scan cannot bring it back", async () => {
+  // Decision 136. The row went and the file stayed, and the scan registered it again.
+  // Its own bytes: the library dedupes by content hash, so a copy of a file already
+  // registered would only point at the existing row.
+  const gone = path.join(workspace, "library", "video", "gone.mp4");
+  const made = spawnSync(FFMPEG, ["-y", "-f", "lavfi", "-i", "color=purple:size=320x180:rate=15:duration=1", "-pix_fmt", "yuv420p", gone], { encoding: "utf8" });
+  assert.equal(made.status, 0, made.stderr);
+  await assets.scanLibrary();
+  const row = database.q.listAssets("video").find((a) => a.name === "gone.mp4")!;
+  assert.ok(row, "scanned in");
+  await assets.removeLibraryAsset(row.id);
+  await assert.rejects(() => fs.access(path.join(workspace, "library", "video", "gone.mp4")), "the file is gone");
+  assert.equal(await assets.scanLibrary(), 0);
+  assert.equal(database.q.listAssets("video").some((a) => a.name === "gone.mp4"), false);
+});
+
 test("media.import takes a library video by asset id and can place it as a shot in the same revision, without duplicating media", async () => {
   const { id } = await mediaService.createVideoProject("Uses library", [{ file: source }]);
   const start = store.readEditor(id);

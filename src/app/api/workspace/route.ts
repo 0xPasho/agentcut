@@ -12,6 +12,9 @@ import { METRICS } from "@/modules/review/data";
 import { effectiveSelection, applySelection, selectionOverview } from "@/modules/agent/server/selection";
 import { setProviderKey } from "@/common/server/secrets";
 import { workspaceOverview } from "@/modules/settings/server/workspace";
+import { deleteTemplate } from "@/modules/templates/server/registry";
+import { saveTranscribeMode, resolveTranscribeMode, type TranscribeMode } from "@/modules/transcription/server/settings";
+import { saveChatSource } from "@/modules/stream-comments/server/comments";
 export const runtime = "nodejs";
 
 /** Everything the settings pages read, in one answer. */
@@ -20,7 +23,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const body = (await req.json().catch(() => ({}))) as { action?: string; rule?: unknown; review?: unknown; id?: string; glossary?: unknown; text?: string; answers?: unknown; source?: string; replace?: boolean; pack?: Parameters<typeof exportPack>[0]; scope?: string; task?: string; provider?: string; model?: string; value?: string; file?: string; title?: string; note?: string };
+  const body = (await req.json().catch(() => ({}))) as { action?: string; rule?: unknown; review?: unknown; id?: string; glossary?: unknown; text?: string; answers?: unknown; source?: string; replace?: boolean; pack?: Parameters<typeof exportPack>[0]; scope?: string; task?: string; provider?: string; model?: string; value?: string; file?: string; title?: string; note?: string; mode?: string | null; path?: string };
   try {
     switch (body.action) {
       case "rules.save": return Response.json(await saveRule(body.rule, "workspace"));
@@ -49,6 +52,11 @@ export async function POST(req: Request) {
       case "packs.examples.remove": return Response.json(await removeExample(String(body.id ?? ""), String(body.file ?? "")));
       // The same functions the agent tools call, with the level fixed at workspace.
       case "agents.select": { applySelection({ scope: body.scope ?? "workspace", task: body.task, provider: body.provider ?? "", model: body.model ?? "" }); return Response.json(selectionOverview()); }
+      // Workspace-level settings that only had a project-bound tool: the same functions,
+      // with the level fixed (decision 135). A template is deleted with the tool's function.
+      case "templates.delete": return Response.json(await deleteTemplate(String(body.id ?? "")));
+      case "transcription.set": { saveTranscribeMode((body.mode ?? null) as TranscribeMode | null); return Response.json(resolveTranscribeMode()); }
+      case "chat.source.set": return Response.json(saveChatSource(String(body.path ?? "")));
       case "providerkeys.set": return Response.json(setProviderKey(String(body.id ?? ""), String(body.value ?? "")));
       default: return Response.json({ error: "Unknown action" }, { status: 400 });
     }

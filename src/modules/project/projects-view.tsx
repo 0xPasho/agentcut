@@ -21,7 +21,7 @@ export function ProjectsView({ projects, showReminder }: { projects: ProjectSumm
           <Button variant="ghost" className="ml-auto" nativeButton={false} render={<Link href="/library" />}>
             <Library aria-hidden className="size-4" />Library
           </Button>
-          <Button variant="ghost" size="icon" aria-label="Settings" nativeButton={false} render={<Link href="/settings" />}><Settings aria-hidden className="size-4" /></Button>
+          <Button variant="ghost" nativeButton={false} render={<Link href="/settings" />}><Settings aria-hidden className="size-4" />Settings</Button>
         </nav>
         </Glass>
       </header>

@@ -2,13 +2,17 @@
 import { cn } from "cn";
 
 /**
- * On or off, with the word beside it: colour alone never carries a state. The input
- * is the real control — hidden visually, not from the keyboard or a screen reader —
- * so the label, the focus ring and Space all work without a line of custom JS.
+ * On or off, with the word beside it: colour alone never carries a state.
+ *
+ * The real `<input type="checkbox" role="switch">` is still the control — visually
+ * hidden, not hidden from the keyboard or a screen reader — so the label, the focus
+ * ring and Space all work without a line of custom JS. Built the same way as
+ * `<Checkbox>`, for the same reason: the platform switch is a light-mode control no
+ * dark surface can absorb.
  */
-export function Toggle({ checked, onChange, label, about, disabled, describedBy }: {
+export function Switch({ checked, onCheckedChange, label, about, disabled, describedBy, className }: {
   checked: boolean;
-  onChange: (next: boolean) => void;
+  onCheckedChange: (next: boolean) => void;
   /** The visible word, which is the state: "On" or "Off". */
   label: string;
   /**
@@ -19,9 +23,10 @@ export function Toggle({ checked, onChange, label, about, disabled, describedBy 
   about?: string;
   disabled?: boolean;
   describedBy?: string;
+  className?: string;
 }) {
   return (
-    <label className={cn("inline-flex cursor-pointer items-center gap-2 py-1.5 text-xs", disabled && "cursor-not-allowed opacity-60")}>
+    <label className={cn("inline-flex cursor-pointer items-center gap-2 py-1.5 text-xs", disabled && "cursor-not-allowed opacity-60", className)}>
       <input
         type="checkbox"
         role="switch"
@@ -30,7 +35,7 @@ export function Toggle({ checked, onChange, label, about, disabled, describedBy 
         disabled={disabled}
         aria-label={about ? `${label} for ${about}` : undefined}
         aria-describedby={describedBy}
-        onChange={(e) => onChange(e.target.checked)}
+        onChange={(e) => onCheckedChange(e.target.checked)}
       />
       <span
         aria-hidden

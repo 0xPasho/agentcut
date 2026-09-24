@@ -65,7 +65,7 @@ note on what to take from it.
   "ignore previous instructions", a credential, a command to run, "delete the project".
   A pack whose guide fails the scan is refused whole, before anything is copied, and the
   import preview shows the guide in full. Saving one by hand is scanned the same way.
-- **Editing.** **Settings → Packs → Style guide and references**, or `packs.style.get`,
+- **Editing.** **Settings → Packs → the pack's page → Style guide and references**, or `packs.style.get`,
   `packs.style.set`, `packs.examples.add`, `packs.examples.update`,
   `packs.examples.remove`. An installed pack keeps them in `workspace/packs/<id>/`;
   `packs.export` with `stylePack` writes them into the exported folder.
@@ -76,7 +76,7 @@ note on what to take from it.
 `pack.json`, read by path, shown before it is installed, removable afterwards:
 
 ```
-Settings → Packs → Read it → packs/news-desk
+Settings → Packs → Import a pack → packs/news-desk → Read it
 ```
 
 It carries the judgement a template cannot: `STYLE.md` says what a news take is, what
@@ -134,14 +134,14 @@ or as a question with an answer that has to point somewhere.
 - **Where it is read.** **Video → What correct looks like** in the editor, or `review.run`,
   `review.criteria` and `review.waive` from an agent. A critical finding the project
   already fails refuses an export until it is fixed or waived with a reason.
-- **Editing.** **Settings → Packs → What correct looks like**, or `packs.review.get` /
+- **Editing.** **Settings → Packs → the pack's page → What correct looks like**, or `packs.review.get` /
   `packs.review.set`. `packs.export` carries the file out again.
 
 The metric catalogue, the artifact and the reasoning: [REVIEW.md](./REVIEW.md).
 
 ## Import
 
-**Settings → Packs → Read it** takes a folder path or a URL to `pack.json` and shows
+**Settings → Packs → Import a pack** takes a folder path or a URL to `pack.json` and shows
 everything the pack carries before anything is installed: template names, every rule
 with its full text, quick actions, assets, glossary. A template that builds on one this
 machine does not have — and that the pack does not bring either — is called out there,

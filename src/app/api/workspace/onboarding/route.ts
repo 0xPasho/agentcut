@@ -26,7 +26,9 @@ export async function POST(req: Request) {
       };
       try {
         const result = await runOnboarding(body.answers ?? {}, {
-          ...effectiveSelection(undefined),
+          // The same kind of work as `onboarding.run` on /api/workspace: reading what the
+          // owner said and writing preferences is the observations task's model.
+          ...effectiveSelection(undefined, {}, "observations"),
           onEvent: (e) => { if (e.kind !== "error") send({ kind: e.kind, name: e.name, text: e.text.slice(0, 400) }); },
         });
         send({ done: result });

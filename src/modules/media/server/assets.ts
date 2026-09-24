@@ -232,5 +232,9 @@ export async function removeLibraryAsset(id: string): Promise<{ deleted: boolean
   if (named.length)
     throw new Error(`“${asset.name}” is still used by ${named.join(", ")}. Change ${named.length > 1 ? "those" : "that"} first, or they will ask for an asset that is not there.`);
   q.deleteAsset(id);
+  // The file goes too (decision 136): a row deleted with its file left behind is
+  // registered again by the next scan, under a new id, and the delete did nothing
+  // anyone could see. A file that is already gone is not an error.
+  if (asset.scope === "library") await fs.unlink(path.join(WORKSPACE, asset.path)).catch(() => undefined);
   return { deleted: true };
 }
