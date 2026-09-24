@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Send, Sparkles, Undo2 } from "lucide-react";
+import { ListPlus, Loader2, Send, Sparkles, Square, Undo2 } from "lucide-react";
 import { Button } from "@/common/ui/button";
 import { Textarea } from "@/common/ui/textarea";
 import { askState } from "@/modules/agent/lib/ask-agent";
 import type { ChatController } from "@/modules/agent/types";
+import { Markdown } from "./markdown";
 import { QUICK_ACTIONS } from "../data";
 
 /**
@@ -30,7 +31,8 @@ export function AskAgent({ controller, itemId, title, onClose }: {
 }) {
   const [draft, setDraft] = useState("");
   const field = useRef<HTMLTextAreaElement>(null);
-  const state = askState(controller.messages, itemId, controller);
+  const state = askState(controller.messages, itemId, { ...controller, canQueue: !!controller.queued });
+  const queueing = state.kind === "blocked";
   // The state to return to once a turn lands: a popover that keeps saying "working" after
   // the answer has arrived is the same lie as one that never said anything.
   useEffect(() => { if (state.kind === "idle") field.current?.focus(); }, [state.kind]);
@@ -58,18 +60,21 @@ export function AskAgent({ controller, itemId, title, onClose }: {
             </p>
             <p className="text-[11px] text-muted-foreground">It is marked on the timeline while it runs. You can close this and keep editing elsewhere.</p>
             {controller.canStop && controller.stop
-              ? <Button size="xs" variant="outline" onClick={controller.stop}>Stop</Button>
+              ? <Button size="xs" variant="outline" onClick={controller.stop}><Square />Stop</Button>
               : null}
           </div>
         ) : null}
 
         {state.kind === "blocked" ? (
-          <p className="text-sm text-muted-foreground">Nothing can be asked yet — {state.reason}. This project runs one thing at a time.</p>
+          <p className="text-sm text-muted-foreground">
+            {state.reason} — this project runs one thing at a time.
+            {state.queueable ? " Ask anyway and it goes as soon as that ends." : ""}
+          </p>
         ) : null}
 
         {state.kind === "answered" ? (
           <div className="flex flex-col gap-2">
-            <p className="max-h-40 overflow-y-auto whitespace-pre-wrap text-sm">{state.text}</p>
+            <Markdown text={state.text} className="max-h-40 overflow-y-auto text-sm" />
             {state.operations > 0 ? (
               <p className="flex items-center gap-2 text-[11px] text-muted-foreground">
                 <span>{state.operations} change{state.operations === 1 ? "" : "s"} saved{state.undone ? ", undone" : ""}</span>
@@ -82,13 +87,14 @@ export function AskAgent({ controller, itemId, title, onClose }: {
         ) : null}
       </div>
 
-      {state.kind === "idle" || state.kind === "answered" ? (
+      {state.kind === "idle" || state.kind === "answered" || (state.kind === "blocked" && state.queueable) ? (
         <>
           <Textarea
             ref={field}
             rows={3}
             aria-label={`Ask the agent about ${title}`}
             placeholder={state.kind === "answered" ? "Ask for something else…" : `What should change about “${title}”?`}
+            aria-describedby={queueing ? "ask-queue-hint" : undefined}
             value={draft}
             onChange={event => setDraft(event.target.value)}
             // Enter sends, because this is one question rather than a document; a line
@@ -105,7 +111,14 @@ export function AskAgent({ controller, itemId, title, onClose }: {
               </Button>
             ))}
           </div>
-          <Button size="sm" disabled={!draft.trim()} onClick={() => ask(draft)}><Send />Ask</Button>
+          <Button size="sm" disabled={!draft.trim()} onClick={() => ask(draft)}>
+            {queueing ? <><ListPlus />Queue it</> : <><Send />Ask</>}
+          </Button>
+          {queueing && controller.queued?.length ? (
+            <p id="ask-queue-hint" className="text-[11px] text-muted-foreground">
+              {controller.queued.length} message{controller.queued.length === 1 ? "" : "s"} already waiting, in the panel.
+            </p>
+          ) : null}
         </>
       ) : null}
 

@@ -3,6 +3,7 @@ import type { AgentEvent, AgentProvider } from "./providers";
 import { runEditorAgent, type ConversationTurn, type MessageContext } from "./editor-agent";
 import { editProject, readEditor, RevisionConflict } from "../../editor/server/store";
 import { invertOperations } from "../../editor/lib/history";
+import { jobStopped } from "../../project/server/reaper";
 import type { EditorOperation } from "../../editor/lib/operations";
 
 /**
@@ -97,7 +98,13 @@ export async function sendMessage(projectId: string, text: string, o: SendOption
     }
     return { sent, reply, result };
   } catch (error) {
-    recordMessage(projectId, { role: "agent", source: "agent", text: `Failed: ${(error as Error).message}`, sequenceId: o.sequenceId, jobId: o.jobId });
+    // A stopped run is not a failure, and saying "Failed: claude was stopped" to the
+    // person who pressed Stop is both wrong and alarming. What it had already saved
+    // stays saved, so the turn says so rather than pretending nothing happened.
+    const text = jobStopped()
+      ? "Stopped. Anything it had already saved is still in the project."
+      : `Failed: ${(error as Error).message}`;
+    recordMessage(projectId, { role: "agent", source: "agent", text, sequenceId: o.sequenceId, jobId: o.jobId });
     throw error;
   }
 }

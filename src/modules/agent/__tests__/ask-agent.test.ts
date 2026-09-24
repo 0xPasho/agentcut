@@ -35,9 +35,12 @@ test("the panel beside a clip says which of the four things is true", () => {
   const asked = about("tighten this", "shot-a");
   assert.deepEqual(askState([], "shot-a", { working: false }), { kind: "idle" });
   assert.deepEqual(askState([asked], "shot-a", { working: true }), { kind: "working", since: asked.at });
-  // The project runs one job at a time, so a second clip waits rather than being refused.
+  // The project runs one job at a time, so a second clip waits rather than being refused —
+  // and where the conversation holds a queue, the question can be left in it.
   assert.deepEqual(askState([asked], "shot-b", { working: true, lockedReason: "Editing is running" }),
-    { kind: "blocked", reason: "Editing is running" });
+    { kind: "blocked", reason: "Editing is running", queueable: false });
+  assert.deepEqual(askState([asked], "shot-b", { working: true, lockedReason: "Editing is running", canQueue: true }),
+    { kind: "blocked", reason: "Editing is running", queueable: true });
   const answer = message("agent", "tightened it", { changes: { revisionBefore: 1, revisionAfter: 2, operations: 3, undone: false } });
   assert.deepEqual(askState([asked, answer], "shot-a", { working: false }),
     { kind: "answered", messageId: answer.id, text: "tightened it", operations: 3, undone: false });

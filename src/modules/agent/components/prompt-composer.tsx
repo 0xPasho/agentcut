@@ -1,6 +1,6 @@
 "use client";
 import { forwardRef, useImperativeHandle, useRef, useState, type ReactNode } from "react";
-import { ArrowUp, Loader2, Plus, X } from "lucide-react";
+import { ArrowUp, ListPlus, Loader2, Plus, Square, X } from "lucide-react";
 import { cn } from "cn";
 import { assetFileUrl, type Attachment } from "@/common/api/client";
 import { AgentPicker } from "./agent-picker";
@@ -23,6 +23,14 @@ export const PromptComposer = forwardRef<PromptComposerHandle, {
   /** A run is live: the harness is argv-frozen until it ends. */
   locked?: boolean;
   lockedReason?: string;
+  /**
+   * Sending while a run is going adds the message to the queue instead of being
+   * refused. Waiting with a finished sentence in the box and a dead button is the
+   * thing people complain about, and the editor can honour the order perfectly well.
+   */
+  canQueue?: boolean;
+  /** Stop whatever is running. Shown beside send while it is.  */
+  onStop?: () => void;
   /** Quick actions, template chips — anything that fills the box. */
   actions?: ReactNode;
   /** Controls that belong on the same row as attach and send — a template picker, a shape. */
@@ -53,6 +61,8 @@ export const PromptComposer = forwardRef<PromptComposerHandle, {
   sendLabel = "Send",
   locked,
   lockedReason,
+  canQueue = false,
+  onStop,
   actions,
   tools,
   footer,
@@ -85,6 +95,7 @@ export const PromptComposer = forwardRef<PromptComposerHandle, {
       // something; it should not need a trip through the file system.
       onPaste={(e) => { const files = Array.from(e.clipboardData.files); if (files.length) { e.preventDefault(); take(files); } }}
       onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void onSend(); } }}
+      aria-describedby={busy && canQueue ? "composer-queue-hint" : undefined}
     />
   );
 
@@ -138,16 +149,23 @@ export const PromptComposer = forwardRef<PromptComposerHandle, {
           <input ref={picker} type="file" accept={accept} multiple className="hidden" onChange={(e) => { take(e.target.files); e.target.value = ""; }} />
         </> : null}
         {tools}
-        <span className="hidden text-xs text-muted-foreground sm:inline">⌘↩ to send</span>
+        <span id="composer-queue-hint" className="hidden text-xs text-muted-foreground sm:inline">
+          {busy && canQueue ? "⌘↩ to queue it for when this run ends" : "⌘↩ to send"}
+        </span>
         <AgentPicker
           projectId={projectId}
           locked={locked ?? busy}
           {...(lockedReason ? { lockedReason } : {})}
           className="ml-auto"
         />
-        <Button type="submit" disabled={busy} aria-label={busy ? busyLabel : sendLabel}>
-          {busy ? <Loader2 className="motion-safe:animate-spin" /> : <ArrowUp />}
-          <span className="sr-only sm:not-sr-only">{busy ? busyLabel : sendLabel}</span>
+        {busy && onStop ? (
+          <Button type="button" variant="outline" onClick={onStop} aria-label="Stop this run" title="Stop this run">
+            <Square /><span className="sr-only sm:not-sr-only">Stop</span>
+          </Button>
+        ) : null}
+        <Button type="submit" disabled={busy && !canQueue} aria-label={busy && canQueue ? "Queue this message" : busy ? busyLabel : sendLabel}>
+          {busy && canQueue ? <ListPlus /> : busy ? <Loader2 className="motion-safe:animate-spin" /> : <ArrowUp />}
+          <span className="sr-only sm:not-sr-only">{busy && canQueue ? "Queue" : busy ? busyLabel : sendLabel}</span>
         </Button>
       </div>
 

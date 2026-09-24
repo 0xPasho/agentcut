@@ -122,6 +122,25 @@ test("unlocking gives the project back and makes the abandoned run's ending a no
   assert.equal(reaper.ownsJob(job.id), false);
 });
 
+test("stopping a run kills the work, not just the lock", async () => {
+  const id = project("agent");
+  const job = insertJob(id, { pid: process.pid, boot_id: reaper.BOOT_ID });
+  reaper.claim(job.id, id);
+
+  // Whatever the run spawns asks the context it is running under whether it is wanted.
+  const seen = await reaper.runWithJob(job.id, async () => {
+    const before = reaper.jobStopped();
+    reaper.unlockProject(id);
+    return { before, after: reaper.jobStopped(), signal: reaper.currentJobSignal()?.aborted };
+  });
+
+  assert.equal(seen.before, false);
+  assert.equal(seen.after, true, "the work under a stopped job sees the signal");
+  assert.equal(seen.signal, true);
+  // And it is still just a signal: work outside the job is untouched.
+  assert.equal(reaper.jobStopped(), false);
+});
+
 test("the agent has the same escape hatch as the panel", async () => {
   const id = project("agent");
   const job = insertJob(id, { pid: process.pid, boot_id: reaper.BOOT_ID });

@@ -165,6 +165,13 @@ export type ChatController = {
   attaching: boolean;
   attach: (files: File[]) => void;
   removeAttachment: (id: string) => void;
+  /**
+   * Messages written while a run was going, waiting their turn. Present only where
+   * queueing means something: the window that starts a project hands the conversation
+   * over to the editor, so there is nothing there for a second message to wait for.
+   */
+  queued?: QueuedMessage[];
+  cancelQueued?: (id: number) => void;
   send: (text: string) => Promise<void>;
   stop?: () => void;
   undo?: (messageId: number) => void;
@@ -184,3 +191,34 @@ export type ChatController = {
  */
 /** What the home screen decided before a word was typed: the shape, and the look. */
 export type StartOptions = { aspect?: string; templateIds?: string[] };
+/**
+ * What an agent's reply is made of.
+ *
+ * The reply is Markdown — every harness writes it, because every harness is a coding
+ * agent — and a chat that prints the asterisks is showing its user the raw material
+ * instead of the answer. Parsing it here rather than pulling in a renderer keeps the
+ * bundle the same size and keeps the result a plain value the tests can read.
+ */
+export type MarkdownInline =
+  | { kind: "text"; text: string }
+  | { kind: "code"; text: string }
+  | { kind: "strong"; children: MarkdownInline[] }
+  | { kind: "em"; children: MarkdownInline[] }
+  | { kind: "strike"; children: MarkdownInline[] }
+  | { kind: "link"; href: string; children: MarkdownInline[] };
+
+/** One bullet: what it says, and whatever is nested under it. */
+export type MarkdownItem = { content: MarkdownInline[]; blocks: MarkdownBlock[] };
+
+export type MarkdownBlock =
+  | { kind: "paragraph"; content: MarkdownInline[] }
+  | { kind: "heading"; level: number; content: MarkdownInline[] }
+  | { kind: "code"; language: string | null; text: string }
+  | { kind: "list"; ordered: boolean; start: number; items: MarkdownItem[] }
+  | { kind: "quote"; blocks: MarkdownBlock[] }
+  | { kind: "rule" }
+  | { kind: "table"; header: MarkdownInline[][]; rows: MarkdownInline[][][]; align: Array<"left" | "center" | "right" | null> };
+
+
+/** A message typed while a run was going, waiting its turn. */
+export type QueuedMessage = { id: number; text: string; attachments: Attachment[] };

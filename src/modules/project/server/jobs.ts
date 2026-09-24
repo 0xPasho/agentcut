@@ -7,7 +7,7 @@ import { computeSignals } from "../../clipping/server/signals";
 import { selectClips, readRuleMatches } from "../../clipping/server/select";
 import { readEditor, publishClips, RevisionConflict } from "../../editor/server/store";
 import { downloadUrl, isUrl } from "./ingest";
-import { BOOT_ID, claim, ownsJob, reapDeadJobs, release } from "./reaper";
+import { BOOT_ID, claim, ownsJob, reapDeadJobs, release, runWithJob } from "./reaper";
 import { effectiveSelection, taskForJobKind } from "../../agent/server/selection";
 
 export type JobKind = "analyze" | "render" | "edit" | "transcribe" | "batch";
@@ -70,8 +70,9 @@ export function startJob(projectId: string, kind: JobKind, options: AnalyzeOptio
   q.insertJob(job);
   claim(job.id, projectId);
 
-  // Fire and forget: the SSE stream and the jobs table are the progress channel.
-  void execute(job, options)
+  // Fire and forget: the SSE stream and the jobs table are the progress channel. The
+  // work runs with the job in context, so Stop reaches whatever it spawned.
+  void runWithJob(job.id, () => execute(job, options))
     .then(() => {
       // An unlock or a reap already gave the project back; this run's ending is stale.
       if (ownsJob(job.id)) q.setJob(job.id, { status: "done", progress: 1, stage: "done" });

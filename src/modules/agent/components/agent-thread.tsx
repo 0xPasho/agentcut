@@ -1,15 +1,17 @@
 "use client";
 import { useMemo, useState } from "react";
-import { ArrowDown, ChevronRight, Loader2 } from "lucide-react";
+import { ArrowDown, ChevronRight, Clock, Loader2, Square, X } from "lucide-react";
 import { useStickToBottom } from "@/common/hooks/use-stick-to-bottom";
 import { assetFileUrl, type LogEvent, type Message } from "@/common/api/client";
 import { buildThread } from "@/modules/agent/lib/thread";
 import { AgentLog, ActivityTail } from "./agent-log";
+import { Markdown } from "./markdown";
 import { isActivity } from "../lib/agent-log";
 import { Button } from "../../../common/ui/button";
 import { Progress } from "../../../common/ui/progress";
 import { SOURCE_LABELS } from "../data";
 import { formatElapsed, took } from "../lib/agent-thread";
+import type { QueuedMessage } from "../types";
 
 function UserMessage({ message }: { message: Message }) {
   const label = SOURCE_LABELS[message.source];
@@ -45,13 +47,28 @@ function UserMessage({ message }: { message: Message }) {
   );
 }
 
+/** A turn that has been written but not sent yet, and can still be taken back. */
+function QueuedTurn({ message, onCancel }: { message: QueuedMessage; onCancel?: (id: number) => void }) {
+  return (
+    <li className="flex flex-col items-end gap-1">
+      <div className="flex max-w-[85%] items-start gap-1.5 rounded-2xl rounded-br-md border border-dashed border-border bg-muted/40 py-1.5 pr-1.5 pl-3 text-sm text-muted-foreground">
+        <Clock aria-hidden className="mt-1 size-3 shrink-0" />
+        <span className="min-w-0 break-words whitespace-pre-wrap">{message.text}</span>
+        {onCancel ? (
+          <Button type="button" size="icon-sm" variant="ghost" aria-label="Remove this queued message" onClick={() => onCancel(message.id)}><X /></Button>
+        ) : null}
+      </div>
+      <span className="text-[10px] tracking-wide text-muted-foreground uppercase">Queued</span>
+    </li>
+  );
+}
+
 function AgentMessage({ message, onUndo, busy }: { message: Message; onUndo?: (id: number) => void; busy?: boolean }) {
   const changes = message.changes;
   return (
     <li className="flex flex-col gap-1">
-      <div className="max-w-[92%] rounded-2xl rounded-bl-md border border-border bg-card/60 px-3 py-2 text-sm break-words whitespace-pre-wrap">
-        {message.text}
-      </div>
+      {/* The reply is Markdown, because every harness writes Markdown. */}
+      <Markdown text={message.text} className="max-w-[92%] rounded-2xl rounded-bl-md border border-border bg-card/60 px-3 py-2 text-sm" />
       {changes && changes.operations > 0 ? (
         <p className="flex items-center gap-2 text-[11px] text-muted-foreground">
           <span>{changes.operations} change{changes.operations === 1 ? "" : "s"} saved{changes.undone ? ", undone" : ""}</span>
@@ -111,7 +128,7 @@ function Working({ events, label, stage, elapsed, progress, onStop, canStop }: {
         <span className="font-medium text-foreground">{label}</span>
         {stage ? <span>· {stage}</span> : null}
         <span className="tabular-nums">· {formatElapsed(elapsed)}</span>
-        {canStop && onStop ? <Button type="button" size="xs" variant="ghost" className="ml-auto" onClick={onStop}>Stop and unlock</Button> : null}
+        {canStop && onStop ? <Button type="button" size="xs" variant="ghost" className="ml-auto" onClick={onStop}><Square />Stop</Button> : null}
       </div>
       {progress ? <Progress value={Math.round(progress * 100)} className="gap-0" /> : null}
       {events.length ? <ActivityTail events={events} lines={5} /> : <p className="text-[11px] text-muted-foreground">Reading the project…</p>}
@@ -119,7 +136,7 @@ function Working({ events, label, stage, elapsed, progress, onStop, canStop }: {
   );
 }
 
-export function AgentThread({ messages, events, working, workingLabel, stage, elapsed, progress, onStop, canStop, onUndo, busy, interrupted, header, className = "h-[22rem]" }: {
+export function AgentThread({ messages, events, working, workingLabel, stage, elapsed, progress, onStop, canStop, onUndo, busy, interrupted, queued = [], onCancelQueued, header, className = "h-[22rem]" }: {
   messages: Message[];
   events: LogEvent[];
   working: boolean;
@@ -133,6 +150,9 @@ export function AgentThread({ messages, events, working, workingLabel, stage, el
   busy?: boolean;
   /** The last turn was never answered and nothing is running: say so instead of spinning. */
   interrupted?: boolean;
+  /** Written while this run was going; they go in order as soon as it ends. */
+  queued?: QueuedMessage[];
+  onCancelQueued?: (id: number) => void;
   /** Anything that belongs above the first turn, e.g. the setup interview. */
   header?: React.ReactNode;
   className?: string;
@@ -144,7 +164,7 @@ export function AgentThread({ messages, events, working, workingLabel, stage, el
   const liveEvents = working && tail?.kind === "steps" ? tail.events : [];
   const shown = liveEvents.length ? items.slice(0, -1) : items;
   const { ref, onScroll, atBottom, toBottom } = useStickToBottom<HTMLDivElement>(
-    `${items.length}:${events.length}:${messages.length}:${working}`,
+    `${items.length}:${events.length}:${messages.length}:${working}:${queued.length}`,
   );
 
   return (
@@ -171,6 +191,7 @@ export function AgentThread({ messages, events, working, workingLabel, stage, el
           {working ? (
             <Working events={liveEvents} label={workingLabel} stage={stage} elapsed={elapsed} progress={progress} onStop={onStop} canStop={canStop} />
           ) : null}
+          {queued.map((message) => <QueuedTurn key={`q${message.id}`} message={message} onCancel={onCancelQueued} />)}
           {interrupted && !working ? (
             <li className="text-[11px] text-muted-foreground">That run ended without a reply — the app closed or the process was stopped. Send it again to pick it up.</li>
           ) : null}

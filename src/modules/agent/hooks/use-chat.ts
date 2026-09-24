@@ -4,11 +4,9 @@ import { useRouter } from "next/navigation";
 import { api, JOB_ACTIVE, type Attachment, type Message, type MessageContext } from "../../../common/api/client";
 import { useProjectStream } from "../../../common/hooks/use-project-stream";
 import { isUrl } from "../../../common/lib/urls";
-import { type ChatController, type StartOptions } from "../types";
+import { type ChatController, type QueuedMessage, type StartOptions } from "../types";
 
 const JOB_LABELS: Record<string, string> = { edit: "Editing", analyze: "Analysing", render: "Rendering", transcribe: "Re-syncing the transcript", batch: "Running the batch" };
-/** A run this long has either hung or is a big render; either way the owner deserves a way out. */
-const STUCK_AFTER_SEC = 120;
 
 /**
  * Dropped files become ordinary library assets, through the same upload the asset
@@ -64,6 +62,15 @@ export function useProjectChat(projectId: string, o: {
   /** When this panel sent the open turn. Null after the reply lands, and on a reload. */
   const [sentAt, setSentAt] = useState<number | null>(null);
   const [error, setError] = useState("");
+  /**
+   * What was typed while the run was going. A project takes one job at a time, which
+   * is a fact about the editor and not a reason to make somebody sit and watch before
+   * they are allowed to say the next thing. They go in order, each one still removable
+   * until it is its turn.
+   */
+  const [queued, setQueued] = useState<QueuedMessage[]>([]);
+  /** A queued send that failed holds the rest back: one wall is enough. */
+  const held = useRef(false);
   const { attachments, attaching, attach, removeAttachment, clear, attachError } = useAttachments();
 
   const load = useCallback(async () => {
@@ -102,18 +109,46 @@ export function useProjectChat(projectId: string, o: {
     wasWorking.current = !!job;
   }, [job, load]);
 
-  const send = useCallback(async (text: string) => {
+  /** Actually start a turn. Everything else decides when this is allowed to happen. */
+  const dispatch = useCallback(async (text: string, files: Attachment[]) => {
     setPending(true); setError("");
     try {
-      if (o.beforeRun && !(await o.beforeRun())) return;
+      if (o.beforeRun && !(await o.beforeRun())) return false;
       const current = await api.getProject(projectId);
-      await api.agentEdit(projectId, text, current.revision, { ...(o.context?.() ?? {}), ...(attachments.length ? { attachments } : {}) });
-      clear();
+      await api.agentEdit(projectId, text, current.revision, { ...(o.context?.() ?? {}), ...(files.length ? { attachments: files } : {}) });
       setSentAt(Date.now());
       await load();
-    } catch (e) { setError((e as Error).message); }
+      return true;
+    } catch (e) { setError((e as Error).message); return false; }
     finally { setPending(false); }
-  }, [projectId, attachments, clear, load, o]);
+  }, [projectId, load, o]);
+
+  const send = useCallback(async (text: string) => {
+    held.current = false;
+    // Whatever is on the composer goes with this message, queued or not; the box is
+    // emptied here rather than in `dispatch`, because a queued turn going out must not
+    // take away the file somebody has just attached for the next one.
+    const files = attachments;
+    if (working) {
+      setQueued((prev) => [...prev, { id: Date.now() + prev.length, text, attachments: files }]);
+      clear();
+      return;
+    }
+    if (await dispatch(text, files)) clear();
+  }, [working, attachments, clear, dispatch]);
+
+  // The queue drains itself the moment the project is free again, oldest first.
+  useEffect(() => {
+    if (working || pending || held.current || !queued.length) return;
+    const [next, ...rest] = queued;
+    setQueued(rest);
+    void (async () => {
+      const sent = await dispatch(next.text, next.attachments);
+      // Put it back rather than losing what somebody wrote, and stop the queue there:
+      // whatever refused this one will refuse the rest a second later.
+      if (!sent) { held.current = true; setQueued((prev) => [next, ...prev]); }
+    })();
+  }, [working, pending, queued, dispatch]);
 
   return {
     projectId,
@@ -125,12 +160,17 @@ export function useProjectChat(projectId: string, o: {
     elapsed,
     progress: job?.progress,
     interrupted: unanswered && !working,
-    canStop: elapsed >= STUCK_AFTER_SEC,
+    // Stopping is a real cancellation now — the job's signal kills the harness — so it
+    // is offered from the first second rather than after a two-minute wait.
+    canStop: working,
     error: error || attachError,
     attachments, attaching, attach, removeAttachment,
+    queued,
+    cancelQueued: (id: number) => { held.current = false; setQueued((prev) => prev.filter((m) => m.id !== id)); },
     send,
     stop: () => {
       setError("");
+      setSentAt(null);
       api.unlockProject(projectId).then(load).catch((e) => setError((e as Error).message));
     },
     undo: (messageId: number) => {

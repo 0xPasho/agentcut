@@ -41,23 +41,24 @@ export function workingOn(messages: Message[], working: boolean): string[] {
  *
  * `blocked` is deliberately its own state and not a disabled button: the project runs one
  * job at a time, so asking about a second shot while the first is being worked on is not
- * a mistake to be greyed out, it is a wait to be explained.
+ * a mistake to be greyed out, it is a wait to be explained — and, where the conversation
+ * can hold a queue, a wait somebody can leave their question in rather than sit through.
  */
 export type AskState =
   | { kind: "idle" }
   | { kind: "working"; since: number }
   | { kind: "answered"; messageId: number; text: string; operations: number; undone: boolean }
-  | { kind: "blocked"; reason: string };
+  | { kind: "blocked"; reason: string; queueable: boolean };
 
 export function askState(
   messages: Message[],
   itemId: string,
-  chat: { working: boolean; lockedReason?: string },
+  chat: { working: boolean; lockedReason?: string; canQueue?: boolean },
 ): AskState {
   const turn = turnAbout(messages, itemId);
   const mine = workingOn(messages, chat.working).includes(itemId);
   if (mine && turn) return { kind: "working", since: turn.asked.at };
-  if (chat.working) return { kind: "blocked", reason: chat.lockedReason ?? "a run is in progress" };
+  if (chat.working) return { kind: "blocked", reason: chat.lockedReason ?? "a run is in progress", queueable: chat.canQueue ?? false };
   if (turn?.answer) {
     const changes = turn.answer.changes;
     return {

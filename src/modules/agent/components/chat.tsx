@@ -51,6 +51,9 @@ export function Chat({ controller, prefill, header, suggestions, tools, below, t
   };
 
   const busy = controller.working;
+  // Where a conversation continues, a message written mid-run waits its turn instead
+  // of being refused; the controller says whether it has somewhere to wait.
+  const canQueue = !!controller.queued;
   return (
     <div className="flex min-h-0 flex-col gap-2">
       {threadHidden ? null : <AgentThread
@@ -66,6 +69,8 @@ export function Chat({ controller, prefill, header, suggestions, tools, below, t
         onUndo={controller.undo}
         busy={busy}
         interrupted={controller.interrupted}
+        queued={controller.queued ?? []}
+        {...(controller.cancelQueued ? { onCancelQueued: controller.cancelQueued } : {})}
         header={header}
         {...(threadClassName ? { className: threadClassName } : {})}
       />}
@@ -76,6 +81,8 @@ export function Chat({ controller, prefill, header, suggestions, tools, below, t
         onChange={setInstruction}
         onSend={send}
         busy={busy}
+        canQueue={canQueue}
+        {...(controller.stop && controller.canStop ? { onStop: controller.stop } : {})}
         label={composerLabel}
         placeholder={controller.placeholder}
         lockedReason={controller.lockedReason}

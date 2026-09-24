@@ -51,3 +51,32 @@ test("a busy host does not keep a harness alive past the ceiling", async () => {
     /ran past its/,
   );
 });
+
+/**
+ * And when it counts as unwanted. Stopping used to mean "let go of the lock": the row
+ * said canceled, the panel unlocked, and the harness carried on talking to a model on
+ * behalf of somebody who had already walked away.
+ */
+test("stopping the job kills the harness it spawned, not just the lock", async () => {
+  const { cancelJob, claim, release, runWithJob } = await import("../../project/server/reaper");
+  const jobId = "test-stop";
+  claim(jobId, "test-project");
+  const started = Date.now();
+  await runWithJob(jobId, async () => {
+    const run = node("setInterval(() => {}, 1000)", { cwd: process.cwd(), idleMs: 60_000 });
+    // What "Stop" does, minus the database: fire the job's signal.
+    setTimeout(() => cancelJob(jobId, "stopped by the owner"), 150);
+    await assert.rejects(run, /was stopped/);
+  });
+  release(jobId);
+  assert.ok(Date.now() - started < 5_000, "it ended when it was told to, not at a timeout");
+});
+
+test("a harness is never started for a job that has already been stopped", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(
+    node("console.log('should not run')", { cwd: process.cwd(), signal: controller.signal }),
+    /was stopped before it started/,
+  );
+});

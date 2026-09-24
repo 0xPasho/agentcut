@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { q, type JobRow } from "../../../common/server/db";
 
@@ -28,6 +29,8 @@ declare global {
   var __agentcutBootId: string | undefined;
   var __agentcutLiveJobs: Map<string, string> | undefined;
   var __agentcutHeartbeat: NodeJS.Timeout | undefined;
+  var __agentcutJobAborts: Map<string, AbortController> | undefined;
+  var __agentcutJobContext: AsyncLocalStorage<{ jobId: string; abort: AbortController }> | undefined;
 }
 
 /** Identifies this run of this process. Survives Next's dev module reloads. */
@@ -35,6 +38,52 @@ export const BOOT_ID = (globalThis.__agentcutBootId ??= randomUUID().slice(0, 8)
 
 /** jobId → projectId for the jobs this process is executing right now. */
 const live = (globalThis.__agentcutLiveJobs ??= new Map<string, string>());
+
+/**
+ * jobId → the switch that stops it. Stopping used to mean abandoning: the row was
+ * marked canceled, the project was handed back, and the harness the run had spawned
+ * kept going — still burning tokens, still holding the model call, still able to
+ * write its answer into a project whose owner had walked away. A job now carries a
+ * signal, `spawnStream` kills its child the moment it fires, and the run ends where
+ * it was told to end.
+ */
+const aborts = (globalThis.__agentcutJobAborts ??= new Map<string, AbortController>());
+
+/**
+ * Which job the work on this stack belongs to. A signal threaded by hand through
+ * conversation, selection, transcription and render would be five signatures deep and
+ * would miss the sixth caller; the context travels with the work instead, so anything
+ * that spawns a harness under a job can ask whether that job is still wanted.
+ */
+const context = (globalThis.__agentcutJobContext ??= new AsyncLocalStorage<{ jobId: string; abort: AbortController }>());
+
+/**
+ * Run a job's work with the job in context, so everything under it can be stopped.
+ * The context carries the controller itself rather than looking it up by id: a
+ * stopped run is released from the registry immediately, and the work still on the
+ * stack must keep seeing that it was stopped rather than that it was never running.
+ */
+export function runWithJob<T>(jobId: string, work: () => Promise<T>): Promise<T> {
+  const abort = aborts.get(jobId) ?? new AbortController();
+  aborts.set(jobId, abort);
+  return context.run({ jobId, abort }, work);
+}
+
+/** The signal of the job this code is running under, if it is running under one. */
+export function currentJobSignal(): AbortSignal | undefined {
+  return context.getStore()?.abort.signal;
+}
+
+/** True when the work on this stack has been stopped by its owner. */
+export const jobStopped = () => currentJobSignal()?.aborted ?? false;
+
+/** Stop a job's work where it stands. The row and the lock are the caller's to settle. */
+export function cancelJob(jobId: string, reason: string) {
+  const controller = aborts.get(jobId);
+  if (!controller || controller.signal.aborted) return false;
+  controller.abort(new Error(reason));
+  return true;
+}
 
 const HEARTBEAT_MS = 15_000;
 /** A live pid whose heartbeat stopped this long ago was recycled by the OS. */
@@ -71,12 +120,14 @@ function startHeartbeat() {
 /** This process takes ownership of a job it is about to execute. */
 export function claim(jobId: string, projectId: string) {
   live.set(jobId, projectId);
+  aborts.set(jobId, new AbortController());
   q.beat([jobId], Date.now());
   startHeartbeat();
 }
 
 export function release(jobId: string) {
   live.delete(jobId);
+  aborts.delete(jobId);
   if (!live.size && globalThis.__agentcutHeartbeat) {
     clearInterval(globalThis.__agentcutHeartbeat);
     globalThis.__agentcutHeartbeat = undefined;
@@ -125,11 +176,12 @@ function releaseProject(projectId: string, jobId: string, reason: string) {
 }
 
 /**
- * Force the lock open on a job this process cannot prove is dead — the escape hatch
- * for a run that is genuinely stuck, e.g. a model call that never returns. The work
- * is abandoned, not cancelled: nothing interrupts it, and `ownsJob` makes its result
- * a no-op if it ever does come back. Real cooperative cancellation needs an
- * AbortSignal threaded through conversation, render and transcribe; it is not here yet.
+ * Stop a run and give the project back — the button behind "Stop", and the escape
+ * hatch for a run that is genuinely stuck.
+ *
+ * The job's signal fires, which kills the harness it spawned and ends the work where
+ * it stands; `ownsJob` still makes a late result a no-op, for the parts of a run that
+ * only notice the signal at their next step (a render mid-frame, an ffmpeg pass).
  */
 export function unlockProject(projectId: string) {
   // "Give me my project back" also means "stop recognising my footage". Background
@@ -138,6 +190,7 @@ export function unlockProject(projectId: string) {
   const background = q.backgroundJobs(projectId);
   for (const job of background) {
     q.setJob(job.id, { status: "canceled", error: `stopped by the owner during ${job.stage ?? job.kind}` });
+    cancelJob(job.id, "stopped by the owner");
     release(job.id);
     q.insertEvent({ project_id: projectId, job_id: job.id, kind: "error", name: "job", text: `transcription stopped by the owner`, at: Date.now() });
   }
@@ -145,6 +198,7 @@ export function unlockProject(projectId: string) {
   if (!job) return background[0] ?? null;
   const reason = `stopped by the owner during ${job.stage ?? job.kind}`;
   q.setJob(job.id, { status: "canceled", error: reason });
+  cancelJob(job.id, reason);
   release(job.id);
   releaseProject(projectId, job.id, reason);
   return job;
