@@ -59,7 +59,7 @@ running.
 **4. Open the editor when you want to look or touch something.**
 
 ```sh
-pnpm dev --hostname 127.0.0.1    # http://localhost:3000
+pnpm dev --hostname 127.0.0.1    # http://localhost:7927
 ```
 
 Full setup, configuration and troubleshooting: [docs/SETUP.md](docs/SETUP.md).

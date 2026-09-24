@@ -111,7 +111,7 @@ async function main() {
   publishClips(projectId, edl);
 
   console.log(`\nEDL → ${path.join(dir, "edl.json")}`);
-  console.log(`UI  → http://localhost:3000/p/${projectId}`);
+  console.log(`UI  → http://localhost:7927/p/${projectId}`);
 }
 
 main().catch((e) => {
