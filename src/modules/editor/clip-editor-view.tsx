@@ -349,6 +349,11 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
     toast(message, { duration: 8000, action: { label: "Undo", onClick: () => editor.undo() } });
   }, [editor]);
   const itemSpan = (itemId?: string) => allocation?.items.find(entry => entry.item.id === itemId) ?? null;
+  /** Where the picked clip sits on the programme, in output seconds, for the controls that need it. */
+  const toolbarSpan = (() => {
+    const span = itemSpan(item?.id);
+    return span ? { from: span.from / output.fps, until: (span.from + span.duration) / output.fps } : null;
+  })();
   /** Cut a clip where the playhead sits — the gesture every editor expects from `S`. */
   const splitAtPlayhead = (itemId?: string) => {
     const target = sequence?.items.find(i => i.id === (itemId ?? item?.id));
@@ -358,7 +363,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
     const currentSec = playhead.get();
     const at = sourceSecondsAt(target.clip, currentSec - span.from/output.fps);
     const inside = currentSec > span.from/output.fps + .02 && currentSec < (span.from+span.duration)/output.fps - .02;
-    if (!inside || at <= 0 || at >= target.clip.end-target.clip.start) return setActionError("Move the playhead inside the clip you want to split.");
+    if (!inside || at <= 0 || at >= target.clip.end-target.clip.start) return notify(`Put the playhead inside “${target.clip.title}” to split it.`, "note");
     setActionError(null);
     dispatch([{type:"item.split",sequenceId:sequence.id,itemId:target.id,at,newItemId:uid("i")}]);
   };
@@ -667,7 +672,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
             height with nothing selected, so picking a clip never resizes the preview. */}
         {!!sequence?.items.length && <div className={TOOLBAR_ROW}>
           {canvasSelected && item && sequence
-            ? <ClipToolbar key={`toolbar-${item.id}`} item={item} clip={clip} palette={palette} canSplit={hasContent}
+            ? <ClipToolbar key={`toolbar-${item.id}`} item={item} clip={clip} palette={palette} span={toolbarSpan}
               canDetach={!!item.mediaId && !item.muted && !item.hidden}
               onChange={update}
               onMute={muted=>dispatch([{type:"item.place",sequenceId:sequence.id,itemId:item.id,patch:{muted},before:{muted:item.muted??false}}])}
@@ -676,7 +681,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
             : <p className="px-2 text-xs text-muted-foreground">Pick a clip on the frame or the timeline to edit it.</p>}
         </div>}
         <Card className="min-h-0 max-h-[45dvh] min-w-0 shrink-0 overflow-hidden py-3"><CardContent className="flex min-h-0 flex-col gap-3 overflow-hidden px-4">
-          {sequence && <SequenceTimeline projectId={projectId} sequence={sequence} selectedId={item?.id} dispatch={dispatch} onSeek={seek} playing={playing} onPlayToggle={()=>{if(playing)player.current?.pause();else player.current?.play();}} media={edl.media} mediaUrls={mediaUrls} assetUrls={assetUrls} selectedEdit={selected} onSelectEdit={index=>{setSelected(index);setTab("edit");}} onDropMedia={(id,at,layer)=>appendVideo(id,layer>0,{at,layer})} onDropAsset={(id,at,layer)=>void dropAsset(id,at,layer)} onDropFiles={(files,at,layer)=>dropFiles(files,{at,layer})} onDropLocalFile={(file,kind,at,layer)=>dropLocalFile(file,kind,{at,layer})} onDropSearchHit={(hit,at,layer)=>dropSearchHit(hit,{at,layer})} onReplaceMedia={replaceMedia} onReplaceAsset={(itemId,assetId,editIndex)=>void replaceAsset(itemId,assetId,editIndex)} onSplit={splitAtPlayhead} onDuplicate={duplicateSelected} onDetachAudio={detachAudio} onAskAgent={id=>{const target=sequence?.items.find(i=>i.id===id);setActiveItemId(id);setCanvasSelected(true);setAgentPrefill({text:`About "${target?.clip.title??"this clip"}": `,nonce:Date.now()});}} onNotify={notify} onSelect={(id,t)=>{setActiveItemId(id);setCanvasSelected(true);player.current?.pause();seek(t);resetSelection();}} />}
+          {sequence && <SequenceTimeline projectId={projectId} sequence={sequence} selectedId={item?.id} dispatch={dispatch} onSeek={seek} playing={playing} onPlayToggle={()=>{if(playing)player.current?.pause();else player.current?.play();}} media={edl.media} mediaUrls={mediaUrls} assetUrls={assetUrls} selectedEdit={selected} onSelectEdit={index=>{setSelected(index);setTab("edit");}} onDropMedia={(id,at,layer)=>appendVideo(id,layer>0,{at,layer})} onDropAsset={(id,at,layer)=>void dropAsset(id,at,layer)} onDropFiles={(files,at,layer)=>dropFiles(files,{at,layer})} onDropLocalFile={(file,kind,at,layer)=>dropLocalFile(file,kind,{at,layer})} onDropSearchHit={(hit,at,layer)=>dropSearchHit(hit,{at,layer})} onReplaceMedia={replaceMedia} onReplaceAsset={(itemId,assetId,editIndex)=>void replaceAsset(itemId,assetId,editIndex)} onSplit={splitAtPlayhead} onDuplicate={duplicateSelected} onDetachAudio={detachAudio} onAskAgent={id=>{const target=sequence?.items.find(i=>i.id===id);setActiveItemId(id);setCanvasSelected(true);setAgentPrefill({text:`About "${target?.clip.title??"this clip"}": `,nonce:Date.now()});}} onNotify={notify} onSelect={(id,t)=>{setActiveItemId(id);setCanvasSelected(true);player.current?.pause();if(t!==null)seek(t);resetSelection();}} />}
           {/* Everything a video can be given, in one row under the timeline it lands on.
               Split and duplicate are not here: they act on the selection, so they live with
               the selection in the bar under the frame. The second group does act on the

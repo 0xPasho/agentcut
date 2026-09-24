@@ -17,9 +17,23 @@ const ENTRY = path.join(ROOT, "remotion", "index.ts");
 /**
  * How long one frame may take to fetch and paint. A day, which is no limit in
  * practice: we would rather wait than lose an export, and there is no telling how
- * long a frame of somebody's project takes — the first shot of a five-hour recording
- * has ffmpeg seeking gigabytes into the file, well past Remotion's 28-second default.
- * A render that truly hangs now shows as progress that stops, not as an error.
+ * long a frame of somebody's project takes. A render that truly hangs now shows as
+ * progress that stops, not as an error.
+ *
+ * What the first frame is actually waiting for is worth writing down, because it is
+ * not a seek. `OffthreadVideo` does not stream: the first frame naming a source sends
+ * Remotion's proxy to copy that *whole file* into its own temp directory before a
+ * single pixel comes back (`assets/download-and-map-assets-to-file.js`), and its
+ * downloader accepts nothing but `http(s)` — so serving the workspace over loopback,
+ * which is the only way to hand it a multi-gigabyte recording at all, cannot avoid the
+ * copy. A five-hour capture is tens of gigabytes and the copy is minutes, all of it
+ * charged to frame one, which is why the 28-second default could never have held.
+ *
+ * The copy is cached per source for the rest of the render, so it is paid once and
+ * then forgotten. Paying it at all is the waste: a 26-minute export copies five hours
+ * of footage to read 26 minutes of it. Cutting each item's span out with ffmpeg first
+ * and pointing the composition at those — leaving the EDL untouched — is the fix this
+ * timeout is standing in for.
  */
 const FRAME_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
@@ -140,7 +154,7 @@ export async function renderClips(
     const output = sequence?.output ?? edl.output;
     const inputProps = sequence ? serve.sequenceProps(sequence) : serve.clipProps(clip as Clip);
 
-    const composition = await selectComposition({ serveUrl, id: sequence ? "VideoSequence" : "Clip", inputProps });
+    const composition = await selectComposition({ serveUrl, id: sequence ? "VideoSequence" : "Clip", inputProps, timeoutInMilliseconds: FRAME_TIMEOUT_MS });
     const outputLocation = path.join(outDir, `${clip.id}-${slug(clip.title)}.mp4`);
 
     await renderMedia({

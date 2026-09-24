@@ -2,6 +2,7 @@ import type { MediaSource, VideoSequence } from "../types";
 import { sequenceFrames } from "./sequences";
 import { buildTimeMap, clipFrames, type TimeMap } from "./timeline";
 import type { EditorOperation } from "./operations";
+import { NO_MORE_FOOTAGE } from "../data";
 
 /** At a cut boundary, a left edge keeps the following span; a right edge keeps the preceding one. */
 export function timelineOutputToSource(map: TimeMap, seconds: number, edge: "start" | "end"): number {
@@ -24,7 +25,22 @@ export function buildTimelineTrim(sequence: VideoSequence, itemId: string, edge:
   const source = item.mediaId === null ? null : media.find(m => m.id === item.mediaId);
   if (item.mediaId !== null && !source) throw new Error("Timeline item references missing media");
   let start = clip.start, end = clip.end;
-  if (edge === "start") {
+  /**
+   * A scene with no footage under it has no material to run out of, so dragging its
+   * head to the left does not uncover anything — it makes the scene longer and starts
+   * it earlier. That is written as a longer span, never as a negative `start`: a clip
+   * with no source has nothing for a source timecode to be measured against, and the
+   * schema refuses one below zero anyway. A title that begins at zero was therefore
+   * immovable, because the only thing the trim could think to change was clamped away
+   * and it returned an empty transaction: the edge simply did not respond.
+   */
+  const lengthensHead = item.mediaId === null && edge === "start" && delta < 0;
+  let headGrowth = 0;
+  if (lengthensHead) {
+    // It can still not begin before the timeline does.
+    headGrowth = Math.min(-delta, (item.layer ?? 0) === 0 ? Infinity : entry.from / fps);
+    end = clip.end + headGrowth;
+  } else if (edge === "start") {
     const movement = Math.min(delta, Math.max(0, map.duration - minimum));
     start = movement < 0 ? Math.max(0, clip.start + movement) : clip.start + timelineOutputToSource(map, movement, "start");
     // A layer cannot extend before the start of its timeline.
@@ -36,10 +52,13 @@ export function buildTimelineTrim(sequence: VideoSequence, itemId: string, edge:
     end = Math.max(start + minimum, Math.min(end, source?.durationSec ?? Infinity));
   }
   if (start === clip.start && end === clip.end) return [];
-  const patch: { start?: number; end?: number; edits?: typeof clip.edits } = edge === "start" ? { start } : { end };
+  const patch: { start?: number; end?: number; edits?: typeof clip.edits } = lengthensHead || edge === "end" ? { end } : { start };
   // A standalone title/image/audio represents its entire canvas scene; extend it with the scene.
   if (item.mediaId === null && clip.edits.length === 1 && clip.edits[0].type !== "silence" && clip.edits[0].t === 0 && Math.abs(clip.edits[0].d - (clip.end - clip.start)) < 0.001) {
     patch.edits = [{ ...clip.edits[0], t: 0, d: end - start }];
+  } else if (headGrowth) {
+    // The scene grew backwards; everything already in it stays at the moment it played.
+    patch.edits = clip.edits.map(edit => ({ ...edit, t: edit.t + headGrowth }));
   }
   const operations: EditorOperation[] = [{ type: "item.patch", sequenceId: sequence.id, itemId, patch, before: { start: clip.start, end: clip.end, edits: clip.edits } }];
   if ((item.layer ?? 0) === 0) {
@@ -56,6 +75,30 @@ export function buildTimelineTrim(sequence: VideoSequence, itemId: string, edge:
     operations.push({ type: "item.place", sequenceId: sequence.id, itemId, patch: { at: Math.max(0, (entry.from + entry.duration - duration) / fps) }, before: { at: item.at ?? null } });
   }
   return operations;
+}
+
+/**
+ * Why a trim did nothing.
+ *
+ * `buildTimelineTrim` answers a refused drag with an empty transaction, which the
+ * timeline used to apply in silence: the edge was held, the clip did not move, and
+ * nothing said which of the several walls it had hit. A gesture that cannot work has
+ * to say so, or the editor reads as broken. Written here rather than in the view so
+ * the keyboard trim gives the same answer the pointer one does.
+ */
+export function trimRefusal(sequence: VideoSequence, itemId: string, edge: "start" | "end", media: MediaSource[]): string {
+  const item = sequence.items.find(candidate => candidate.id === itemId);
+  if (!item) return NO_MORE_FOOTAGE;
+  const name = item.clip.title;
+  if (item.mediaId === null) {
+    return edge === "start"
+      ? "This scene already starts at the beginning of the timeline."
+      : `“${name}” cannot be made any shorter.`;
+  }
+  if (edge === "start" && item.clip.start <= 0) return `There is no footage before the start of “${name}”.`;
+  const source = media.find(candidate => candidate.id === item.mediaId);
+  if (edge === "end" && source && item.clip.end >= source.durationSec - 1e-6) return `There is no footage after the end of “${name}”.`;
+  return NO_MORE_FOOTAGE;
 }
 
 /** Free placement preserves every other item's resolved time, including auto-follow items. */

@@ -8,6 +8,7 @@ import { Label } from "@/common/ui/label";
 import { ColorField } from "@/common/ui/color-field";
 import { Popover, PopoverContent, PopoverTrigger } from "@/common/ui/popover";
 import { shotName } from "@/modules/editor/lib/canvas";
+import { usePlayheadSelector } from "@/modules/editor/hooks/playhead";
 import type { Clip, Edit, SequenceItem, TextEdit } from "@/modules/editor/types";
 import { DEFAULT_PALETTE, POSITION_LABELS } from "../data";
 
@@ -22,14 +23,19 @@ import { DEFAULT_PALETTE, POSITION_LABELS } from "../data";
  * a shortcut to the editor, not a second one.
  */
 export function ClipToolbar({
-  item, clip, palette = DEFAULT_PALETTE, canSplit, canDetach,
+  item, clip, palette = DEFAULT_PALETTE, span, canDetach,
   onChange, onMute, onSplit, onDuplicate, onDetachAudio, onRemove,
 }: {
   item: SequenceItem;
   clip: Clip;
   /** Swatches offered for the hook and the captions, usually the active template's brand kit. */
   palette?: string[];
-  canSplit: boolean;
+  /**
+   * Where this clip sits on the programme, in output seconds, or null when it is not
+   * placed. Split needs the playhead inside it, and a button that is always live and
+   * then refuses is a button that taught nobody anything.
+   */
+  span: { from: number; until: number } | null;
   canDetach: boolean;
   onChange: (clip: Clip) => void;
   onMute: (muted: boolean) => void;
@@ -38,6 +44,7 @@ export function ClipToolbar({
   onDetachAudio: () => void;
   onRemove: () => void;
 }) {
+  const canSplit = usePlayheadSelector(seconds => !!span && seconds > span.from + .02 && seconds < span.until - .02);
   const hook = clip.edits.find((e): e is TextEdit => e.type === "text");
   const hookIndex = clip.edits.findIndex(e => e.type === "text");
   const [draft, setDraft] = useState(hook?.text ?? "");
@@ -135,7 +142,7 @@ export function ClipToolbar({
         {item.muted ? <VolumeX /> : <Volume2 />}
       </Button>
       {canDetach ? <Button size="xs" variant="ghost" aria-label="Separate this clip's audio" title="Put this clip's sound on its own track" onClick={onDetachAudio}><Music2 /></Button> : null}
-      <Button size="xs" variant="ghost" disabled={!canSplit} aria-label="Split at the playhead" title="Split at the playhead (S)" onClick={onSplit}><Scissors /></Button>
+      <Button size="xs" variant="ghost" disabled={!canSplit} aria-label={canSplit ? "Split at the playhead" : "Split — move the playhead into this clip first"} title={canSplit ? "Split at the playhead (S)" : "Move the playhead into this clip to split it (S)"} onClick={onSplit}><Scissors /></Button>
       <Button size="xs" variant="ghost" aria-label="Duplicate this clip" title="Duplicate (D)" onClick={onDuplicate}><Copy /></Button>
       <Button size="xs" variant="ghost" aria-label="Remove this clip" title="Remove from the timeline" onClick={onRemove}><Trash2 /></Button>
     </div>

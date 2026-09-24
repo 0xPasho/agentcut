@@ -5,7 +5,7 @@ import { EyeOff, Eye, VolumeX, Volume2, Play, Pause, Plus, Film, Music2, Layers,
 import { Transition } from "@/modules/editor/types";
 import type { MediaSource, VideoSequence } from "@/modules/editor/types";
 import type { EditorOperation } from "@/modules/editor/lib/operations";
-import { buildTimelineGroupMove, buildTimelineMove, buildTimelineTrim, timelineCollides } from "@/modules/editor/lib/timeline-interactions";
+import { buildTimelineGroupMove, buildTimelineMove, buildTimelineTrim, timelineCollides, trimRefusal } from "@/modules/editor/lib/timeline-interactions";
 import { snapDraggedSpan, snapSpan, snapTargets, snapTime, type SnapPoint } from "@/modules/editor/lib/snapping";
 import { usePlayhead, usePlayheadSelector, usePlayheadStore } from "@/modules/editor/hooks/playhead";
 import { cachedMediaPeaks, cachedPeaks, loadMediaPeaks, loadPeaks, thinPeaks } from "@/modules/editor/hooks/waveform";
@@ -45,10 +45,18 @@ function Ruler({ max, children, ...rest }: { max: number } & ComponentProps<"div
     aria-valuenow={Math.min(seconds, max)} aria-valuetext={timeLabel(seconds)} {...rest}>{children}</div>;
 }
 
-/** Splitting needs the playhead inside the clip, and the menu opens long after the last render. */
+/**
+ * Splitting needs the playhead inside the clip, and the menu opens long after the last render.
+ *
+ * When it is not, the item says which of the two things is missing instead of going grey
+ * and leaving the reason to be guessed — for a long time the menu itself was what moved
+ * the playhead out of range, so this read as a split that simply did not exist.
+ */
 function SplitItem({ from, until, onSplit }: { from: number; until: number; onSplit: () => void }) {
   const inside = usePlayheadSelector(seconds => seconds > from + .02 && seconds < until - .02);
-  return <ContextMenuItem shortcut="S" disabled={!inside} onClick={onSplit}><Scissors />Split at playhead</ContextMenuItem>;
+  return <ContextMenuItem shortcut="S" disabled={!inside} onClick={onSplit}>
+    <Scissors />{inside ? "Split at playhead" : "Move the playhead here to split"}
+  </ContextMenuItem>;
 }
 
 /**
@@ -108,7 +116,8 @@ type Props = {
   /** Whose media the peaks belong to: a shot's own audio is drawn from the host's copy of it. */
   projectId: string;
   sequence: VideoSequence; selectedId?: string; dispatch: (ops: EditorOperation[]) => boolean | void;
-  onSelect: (id: string, seconds: number) => void;
+  /** Pick a clip and park the playhead there. `null` picks it without moving the playhead. */
+  onSelect: (id: string, seconds: number | null) => void;
   onSeek: (seconds: number) => void;
   /** Transport lives here because the preview has no controls of its own. */
   playing?: boolean; onPlayToggle?: () => void;
@@ -553,7 +562,15 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
     const next = edge === "start"
       ? (() => { const t = Math.max(0, Math.min(edit.t + edit.d - minimum, landed)); return { t, d: edit.t + edit.d - t }; })()
       : { t: edit.t, d: Math.max(minimum, Math.min(span - edit.t, landed - edit.t)) };
-    if (Math.abs(next.t - edit.t) < 1e-6 && Math.abs(next.d - edit.d) < 1e-6) return;
+    if (Math.abs(next.t - edit.t) < 1e-6 && Math.abs(next.d - edit.d) < 1e-6) {
+      // An overlay is written in its clip's own time and cannot begin before it. That is the
+      // right answer and it used to be given in silence, which reads the same as a broken
+      // edge — so it says which thing is in the way, and what would move it.
+      setNotice(edge === "start" && delta < 0
+        ? `${effectLabel(edit)} already starts with “${shotName(entry)}”. Drag the clip's own edge to make room.`
+        : `${effectLabel(edit)} cannot reach any further inside “${shotName(entry)}”.`);
+      return;
+    }
     const edits = entry.clip.edits.map((value, i) => i === index ? { ...value, ...next } : value);
     commit([{ type: "item.patch", sequenceId: sequence.id, itemId: id, patch: { edits }, before: { edits: entry.clip.edits } }], "Effect resized.");
   };
@@ -575,7 +592,11 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
       } else if (d.kind === "effect") moveEffect(d.snapshot, d.id, d.index!, g.delta);
       else if (d.kind === "effect-start" || d.kind === "effect-end") resizeEffect(d.snapshot, d.id, d.index!, d.kind === "effect-start" ? "start" : "end", g.delta);
       else {
-        try { commit(buildTimelineTrim(d.snapshot, d.id, d.kind, g.delta, media), "Clip trimmed."); }
+        try {
+          const ops = buildTimelineTrim(d.snapshot, d.id, d.kind, g.delta, media);
+          if (ops.length) commit(ops, "Clip trimmed.");
+          else setNotice(trimRefusal(d.snapshot, d.id, d.kind, media));
+        }
         catch (error) { setNotice(error instanceof Error ? error.message : NO_MORE_FOOTAGE); }
       }
     }
@@ -768,7 +789,10 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
                 // so the menu never acts on clips the pointer was nowhere near.
                 if (!selection.has(item.id)) setExtra([]);
                 else setExtra([...selection].filter(id => id !== item.id));
-                onSelect(item.id, from / fps);
+                // Deliberately without a time. Opening this menu used to park the playhead on the
+                // clip's first frame, which is outside the range a split needs it in — so "Split at
+                // playhead" was greyed out every single time the menu that offers it was opened.
+                onSelect(item.id, null);
               }}>
                 <ContextMenuTrigger render={<div className={`group absolute top-2 h-12 rounded-md border ${primary ? "z-10 border-primary ring-1 ring-primary" : active ? "z-10 border-primary/70 ring-1 ring-primary/40" : "border-white/20"} ${audio ? "bg-emerald-950" : "bg-zinc-800"} ${moving ? "opacity-35" : ""}`} style={{ left: from / fps * scale, width: clipWidth }} />}>
                 <button type="button" draggable={false} aria-label={`Select ${item.clip.title}, ${laneName(layer)} track${item.keyframes?.length ? `, ${item.keyframes.length} motion keyframes` : ""}`} aria-pressed={active} aria-describedby={instructionsId} className="absolute inset-0 cursor-grab touch-none overflow-hidden rounded-md text-left focus-visible:outline-2 focus-visible:outline-ring active:cursor-grabbing" onPointerDown={event => begin(event, item.id, "move")} {...sharedPointer}
@@ -806,7 +830,10 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
                 {(["start", "end"] as const).map(edge => <button key={edge} type="button" aria-label={`Trim ${edge} of ${item.clip.title}`} title={`Drag to trim ${edge}; arrow keys adjust one frame`} style={{ width: grip }} className={`absolute inset-y-0 z-20 cursor-ew-resize touch-none rounded-sm bg-primary/80 text-primary-foreground focus-visible:outline-2 focus-visible:outline-ring ${primary ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"} ${edge === "start" ? "left-0" : "right-0"}`} onPointerDown={event => begin(event, item.id, edge)} {...sharedPointer} onClick={event => event.stopPropagation()} onKeyDown={event => {
                   if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
                   event.preventDefault();
-                  try { commit(buildTimelineTrim(sequence, item.id, edge, (event.key === "ArrowLeft" ? -1 : 1) * (event.shiftKey ? 1 : 1 / fps), media), "Clip trimmed."); } catch (error) { setNotice(error instanceof Error ? error.message : NO_MORE_FOOTAGE); }
+                  try {
+                    const ops = buildTimelineTrim(sequence, item.id, edge, (event.key === "ArrowLeft" ? -1 : 1) * (event.shiftKey ? 1 : 1 / fps), media);
+                    if (ops.length) commit(ops, "Clip trimmed."); else setNotice(trimRefusal(sequence, item.id, edge, media));
+                  } catch (error) { setNotice(error instanceof Error ? error.message : NO_MORE_FOOTAGE); }
                 }}><span aria-hidden className="mx-auto block h-5 w-px bg-current/80" /></button>)}
                 </ContextMenuTrigger>
                 <ContextMenuContent>

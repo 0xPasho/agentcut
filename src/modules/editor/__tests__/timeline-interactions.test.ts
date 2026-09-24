@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { Clip, Edl } from "../types";
 import { applyOperations } from "../lib/operations";
-import { buildTimelineMove, buildTimelineTrim } from "../lib/timeline-interactions";
+import { buildTimelineMove, buildTimelineTrim, trimRefusal } from "../lib/timeline-interactions";
 import { sequenceFrames } from "../lib/sequences";
 const fixture = () => Edl.parse({ projectId: "test", source: null, media: [{ id: "source", name: "Source", file: "/tmp/source.mp4", width: 640, height: 360, fps: 10, durationSec: 20 }], clips: [], sequences: [{ id: "main", title: "Main", output: { width: 640, height: 360, fps: 10 }, items: [
   { id: "a", mediaId: "source", clip: Clip.parse({ title: "Test", id: "a", start: 2, end: 6 }) },
@@ -52,6 +52,41 @@ test("canvas title duration grows with its edge", () => {
   const next = applyOperations(initial, buildTimelineTrim(initial.sequences[0], "overlay", "end", 2, initial.media));
   const clip = next.sequences[0].items.find(i => i.id === "overlay")!.clip;
   assert.equal(clip.end, 10); assert.equal(clip.edits[0].d, 10);
+});
+test("a scene with no footage grows from its head, and says so when it cannot", () => {
+  const initial = fixture();
+  const seq = initial.sequences[0];
+  // The head moves half a second earlier: the scene gets longer and starts sooner, because
+  // there is no source behind it whose start could have been uncovered instead.
+  const grown = applyOperations(initial, buildTimelineTrim(seq, "overlay", "start", -0.5, initial.media));
+  const item = grown.sequences[0].items.find(i => i.id === "overlay")!;
+  assert.equal(item.clip.start, 0);
+  assert.equal(item.clip.end, 8.5);
+  assert.equal(item.clip.edits[0].d, 8.5);
+  assert.equal(item.at, 0.5);
+  // It stops at the start of the timeline: the next pull takes it the remaining half second,
+  // and the one after that has nowhere left to go and says so instead of doing nothing.
+  const pinned = applyOperations(grown, buildTimelineTrim(grown.sequences[0], "overlay", "start", -5, initial.media));
+  const head = pinned.sequences[0].items.find(i => i.id === "overlay")!;
+  assert.equal(head.at, 0);
+  assert.equal(head.clip.end, 9);
+  assert.deepEqual(buildTimelineTrim(pinned.sequences[0], "overlay", "start", -5, initial.media), []);
+  assert.match(trimRefusal(pinned.sequences[0], "overlay", "start", initial.media), /beginning of the timeline/);
+  // Overlays that do not fill their scene keep the moment they played at.
+  const many = fixture();
+  many.sequences[0].items[2].clip = Clip.parse({ title: "Test", id: "overlay", start: 0, end: 8, edits: [
+    { type: "text", t: 1, d: 2, text: "One" }, { type: "text", t: 4, d: 2, text: "Two" },
+  ] });
+  const shifted = applyOperations(many, buildTimelineTrim(many.sequences[0], "overlay", "start", -1, many.media));
+  assert.deepEqual(shifted.sequences[0].items.find(i => i.id === "overlay")!.clip.edits.map(e => e.t), [2, 5]);
+});
+test("a refused trim says which wall it hit", () => {
+  const initial = fixture();
+  const seq = initial.sequences[0];
+  assert.deepEqual(buildTimelineTrim(seq, "b", "start", -1, initial.media), []);
+  assert.match(trimRefusal(seq, "b", "start", initial.media), /no footage before/);
+  const atEnd = applyOperations(initial, buildTimelineTrim(seq, "a", "end", 100, initial.media));
+  assert.match(trimRefusal(atEnd.sequences[0], "a", "end", initial.media), /no footage after/);
 });
 let workspace: string;
 let store: typeof import("../server/store");
