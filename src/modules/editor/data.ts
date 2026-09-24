@@ -17,6 +17,20 @@ export const NEW_EDIT: Record<string, (t: number) => Edit> = {
 
 export const SNAP_PX = 8;
 
+/**
+ * How wide one frame is at the timeline's furthest zoom. Twelve pixels is enough to put
+ * the pointer on a single frame and see which one it landed on, which is as precise as
+ * anything here goes: every time the editor writes is rounded to a frame, and so is
+ * every time the renderer reads.
+ */
+export const TARGET_PX_PER_FRAME = 12;
+
+/** What one press of the zoom buttons is worth. About ten of them cross any timeline. */
+export const ZOOM_STEP = 1.8;
+
+/** How coarsely the ruler follows the scroll: wide enough that scrolling rarely re-renders. */
+export const TICK_WINDOW_PX = 1200;
+
 /** Enough of the resize handle stays inside the frame to be grabbed at any size. */
 export const HANDLE_PX = 16;
 

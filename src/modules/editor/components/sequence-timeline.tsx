@@ -20,9 +20,9 @@ import { buildTimeMap, srcToOut } from "@/modules/editor/lib/timeline";
 import { Button } from "../../../common/ui/button";
 import { describeAuthor, isAgentAuthor } from "@/modules/editor/lib/authorship";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel, ContextMenuSeparator, ContextMenuTrigger, Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "../../../common/ui/context-menu";
-import { LABEL_WIDTH, NO_MORE_FOOTAGE, EMPTY_MEDIA, STRIP_FRAMES } from "../data";
+import { LABEL_WIDTH, NO_MORE_FOOTAGE, EMPTY_MEDIA, STRIP_FRAMES, TARGET_PX_PER_FRAME, TICK_WINDOW_PX, ZOOM_STEP } from "../data";
 import { type Drag, type Ghost, type Hover, type ExternalDrop } from "../types";
-import { timeLabel, sourceAt, laneBoxes, MIN_JOINT_PX } from "../lib/sequence-timeline";
+import { timeLabel, frameLabel, sourceAt, laneBoxes, MIN_JOINT_PX } from "../lib/sequence-timeline";
 /* Everything below follows the playhead. They are separate components, and small ones,
    because each of them re-renders as the preview plays and the timeline around them
    must not. See src/modules/editor/hooks/playhead.ts. */
@@ -213,6 +213,8 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
   const suppressClick = useRef(false);
   const [availableWidth, setAvailableWidth] = useState(640);
   const [zoom, setZoom] = useState(1);
+  /** Which wide bucket of the scroll the viewport is in, so the ruler can draw only that part. */
+  const [scrollBucket, setScrollBucket] = useState(0);
   const [extraWidth, setExtraWidth] = useState(0);
   const pointer = useRef<{clientX:number;clientY:number;altKey:boolean;metaKey:boolean;ctrlKey:boolean}|null>(null);
   const hovering = useRef<Hover | null>(null);
@@ -234,7 +236,7 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
   const group = useRef<{ id: string; at: number; layer: number; duration: number }[]>([]);
   const [effectDrop, setEffectDrop] = useState<number | null>(null);
   // Zooming keeps the moment under the pointer still, so the timeline grows around what you are looking at.
-  const geometry = useRef({ scale: 1, fps: 30 });
+  const geometry = useRef({ scale: 1, fps: 30, maxZoom: 12 });
   const anchor = useRef<{ time: number; clientX: number } | null>(null);
   const [marquee, setMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const marqueeRef = useRef<typeof marquee>(null);
@@ -247,7 +249,9 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
     if (!el) return;
     const observer = new ResizeObserver(([entry]) => setAvailableWidth(Math.max(200, entry.contentRect.width - LABEL_WIDTH)));
     observer.observe(el);
-    return () => observer.disconnect();
+    const onScroll = () => setScrollBucket(Math.floor(el.scrollLeft / TICK_WINDOW_PX));
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => { observer.disconnect(); el.removeEventListener("scroll", onScroll); };
   }, []);
   useEffect(() => {
     const cancel = (event: KeyboardEvent) => {
@@ -275,7 +279,7 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
         const { scale: current, fps: rate } = geometry.current;
         const time = Math.max(0, Math.round((event.clientX - el.getBoundingClientRect().left + el.scrollLeft - LABEL_WIDTH) / current * rate) / rate);
         setZoom(value => {
-          const next = Math.min(12, Math.max(1, value * Math.exp(-event.deltaY * 0.002)));
+          const next = Math.min(geometry.current.maxZoom, Math.max(1, value * Math.exp(-event.deltaY * 0.002)));
           if (next !== value) anchor.current = { time, clientX: event.clientX };
           return next;
         });
@@ -293,7 +297,26 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
   const fps = sequence.output.fps;
   const seconds = sequence.items.length ? layout.duration / fps : 10;
   const baseSpan = Math.max(seconds + Math.min(seconds * .08, 3), 5);
-  const baseWidth = Math.max(availableWidth, 480) * zoom;
+  const fitWidth = Math.max(availableWidth, 480);
+  /**
+   * How far in this timeline can go.
+   *
+   * Zoom 1 is the whole video across the panel, which is the right place to start and
+   * the reason the scale is a multiple rather than pixels per second. The ceiling was a
+   * flat 12, and a flat multiple of "everything" is not a ceiling at all — it is a
+   * different one for every video. Twelve times a one-minute clip is six pixels a frame,
+   * which is fine; twelve times twenty-five minutes is a quarter of a pixel a frame, so
+   * a whole second of footage was four pixels wide and there was no placing anything.
+   *
+   * So the ceiling is whatever it takes to reach a frame you can actually aim at, and a
+   * long video simply gets a longer way in. Twelve stays the floor of it, so nothing
+   * short ever zooms less far than it used to.
+   */
+  const maxZoom = Math.max(12, Math.round(TARGET_PX_PER_FRAME * fps * baseSpan / fitWidth));
+  // A video that got shorter can leave the zoom past its own ceiling; it is read through
+  // the clamp rather than corrected in state, so no render is spent putting it back.
+  const zoomLevel = Math.min(zoom, maxZoom);
+  const baseWidth = fitWidth * zoomLevel;
   const scale = baseWidth / baseSpan;
   const width = baseWidth + extraWidth;
   const span = width / scale;
@@ -310,7 +333,7 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
   const selectedMap = selected ? buildTimeMap(selected.item.clip) : null;
   const effectTypes = [...new Set(selected && !standaloneScene(selected.item) ? selected.item.clip.edits.map(edit => edit.type) : [])];
   const roundFrame = (value: number) => Math.round(value * fps) / fps;
-  geometry.current = { scale, fps };
+  geometry.current = { scale, fps, maxZoom };
   useLayoutEffect(() => {
     const held = anchor.current, el = viewport.current;
     if (!held || !el) return;
@@ -705,8 +728,20 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
       </div>
     </div>;
   };
-  const interval = [0.1, .2, .5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800, 3600].find(value => value * scale >= 72) ?? Math.ceil(span / 8 / 3600) * 3600;
-  const ticks = Array.from({ length: Math.floor(span / interval) + 1 }, (_, index) => index * interval);
+  const interval = [1 / fps, 0.1, .2, .5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800, 3600].find(value => value * scale >= 72) ?? Math.ceil(span / 8 / 3600) * 3600;
+  /**
+   * Only the ticks that can be seen. The ruler is the one part of this whose node count
+   * grows with the zoom — one label every 72 pixels of a strip that is now as wide as the
+   * video is long in frames — and twenty-five minutes at the far end of the zoom is seven
+   * thousand of them. The window is rounded to a wide bucket so scrolling re-renders the
+   * timeline rarely rather than continuously, and reaches well past both edges so a tick
+   * is never missing while the next bucket is being crossed.
+   */
+  const visibleFrom = Math.max(0, scrollBucket * TICK_WINDOW_PX - TICK_WINDOW_PX);
+  const visibleTo = scrollBucket * TICK_WINDOW_PX + availableWidth + 2 * TICK_WINDOW_PX;
+  const firstTick = Math.floor(visibleFrom / scale / interval);
+  const lastTick = Math.min(Math.floor(span / interval), Math.ceil(visibleTo / scale / interval));
+  const ticks = Array.from({ length: Math.max(0, lastTick - firstTick + 1) }, (_, index) => (firstTick + index) * interval);
   const sharedPointer = { onPointerMove: move, onPointerUp: end, onPointerCancel: cancelDrag };
   const guide = ghost?.guide ?? externalDrop?.guide ?? scrubGuide ?? null;
   // Stacking is legal, but it hides one clip behind another, so a drop that would do it says so.
@@ -730,8 +765,8 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
         ? <Button size="xs" variant="secondary" className="mr-auto" onClick={() => setExtra([])}>{selection.size} clips selected · Clear</Button>
         : <span className="mr-auto" />}
       <Button size="icon-xs" variant={snapping ? "secondary" : "ghost"} aria-pressed={snapping} aria-label="Snap to clip edges and the playhead" title="Hold Command or Control while dragging to bypass snapping" onClick={() => setSnapping(value => !value)}><Magnet /></Button>
-      <Button size="icon-xs" variant="ghost" aria-label="Zoom out timeline" disabled={zoom <= 1} onClick={() => setZoom(value => Math.max(1, value / 1.5))}><Minus /></Button>
-      <Button size="icon-xs" variant="ghost" aria-label="Zoom in timeline" disabled={zoom >= 12} onClick={() => setZoom(value => Math.min(12, value * 1.5))}><Plus /></Button>
+      <Button size="icon-xs" variant="ghost" aria-label="Zoom out timeline" disabled={zoomLevel <= 1} onClick={() => setZoom(() => Math.max(1, zoomLevel / ZOOM_STEP))}><Minus /></Button>
+      <Button size="icon-xs" variant="ghost" aria-label="Zoom in timeline" disabled={zoomLevel >= maxZoom} onClick={() => setZoom(() => Math.min(maxZoom, zoomLevel * ZOOM_STEP))}><Plus /></Button>
     </div>
     <p id={instructionsId} className="sr-only">Drag clips to move them; drag an edge to trim. Clips move freely on every track and snap to other clips and the playhead; hold Command or Control to bypass snapping, or turn it off with the snapping button. Hold Alt while dragging onto Main to reorder and close gaps. Arrow keys move overlay clips one frame; Shift moves one second. Alt and arrow keys reorder main clips. Shift-click or Command-click to select several clips; dragging one then moves them all. Delete removes the selection. On an edge, arrow keys trim. Escape cancels a drag. Command or Control with the scroll wheel zooms around the pointer, and Shift with the wheel scrolls sideways. Dropping media onto the middle of a matching clip replaces that clip\u2019s media and keeps its place. Sound has its own tracks under the picture: music and separated audio land there, and dragging one over the picture sends it back down.</p>
     <div ref={viewport} className="min-h-0 max-h-80 select-none overflow-auto rounded-xl bg-black/25" aria-label="Video timeline" onDragStart={event => event.preventDefault()} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) { stopDragScroll(); setExternalDrop(null); } }} onDragEnd={() => { stopDragScroll(); setExternalDrop(null); }}>
@@ -743,7 +778,9 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
             onPointerMove={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) scrubTo(event); }}
             onPointerUp={() => setScrubGuide(null)} onPointerCancel={() => setScrubGuide(null)}
             onKeyDown={event => { if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return; event.preventDefault(); onSeek(event.key === "Home" ? 0 : event.key === "End" ? seconds : Math.max(0, Math.min(seconds, playhead.get() + (event.key === "ArrowLeft" ? -1 : 1) * (event.shiftKey ? 1 : 1 / fps)))); }}>
-            {ticks.map(t => <span key={t} aria-hidden style={{ left: t * scale }} className="pointer-events-none absolute inset-y-0 border-l border-white/15 pl-1 pt-1 text-[10px] tabular-nums text-muted-foreground">{timeLabel(t)}</span>)}
+            {/* A tenth of a second is three frames, so once the ticks are finer than that the
+                ruler has to count in frames or print the same number several times over. */}
+            {ticks.map(t => <span key={t} aria-hidden style={{ left: t * scale }} className="pointer-events-none absolute inset-y-0 border-l border-white/15 pl-1 pt-1 text-[10px] tabular-nums text-muted-foreground">{interval < 0.2 ? frameLabel(t, fps) : timeLabel(t)}</span>)}
             <PlayheadMark span={span} scale={scale} className="pointer-events-none absolute bottom-0 h-3 w-3 -translate-x-1/2 rounded-t-sm bg-primary [clip-path:polygon(0_0,100%_0,100%_55%,50%_100%,0_55%)]" />
           </Ruler>
         </div>

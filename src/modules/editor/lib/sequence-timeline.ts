@@ -6,6 +6,42 @@ export function timeLabel(seconds: number) {
   return `${minutes}:${rest.toFixed(rest % 1 > .001 ? 1 : 0).padStart(rest % 1 > .001 ? 4 : 2, "0")}`;
 }
 
+/**
+ * A moment as an editor reads it: minutes, seconds, and which frame inside that second.
+ *
+ * `timeLabel` rounds to a tenth, which is three frames at thirty a second — fine for a
+ * ruler whose ticks are a second apart and useless for one whose ticks are a frame apart,
+ * where it prints the same number several times in a row and reads as a ruler that has
+ * stopped counting. The far end of the zoom is exactly that ruler.
+ */
+export function frameLabel(seconds: number, fps: number) {
+  const rate = Math.max(1, Math.round(fps));
+  const total = Math.round(seconds * rate);
+  const frame = ((total % rate) + rate) % rate;
+  const whole = (total - frame) / rate;
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}:${String(frame).padStart(2, "0")}`;
+}
+
+/**
+ * Seconds from what somebody typed into a time field.
+ *
+ * `12.5` is seconds, `1:05` is minutes and seconds, `1:02:03` is hours as well, and a
+ * fourth part is the frame inside the last second — `0:00:12:07` is the seventh frame of
+ * the twelfth second, which is how a moment is named anywhere else in this trade and the
+ * only way to ask for one frame out of a two-hour recording without counting in decimals.
+ * `null` when it is not a time at all, so a field can say so rather than jump to zero.
+ */
+export function parseTimecode(text: string, fps: number): number | null {
+  const parts = text.trim().split(":");
+  if (!parts.length || parts.length > 4) return null;
+  if (parts.some(part => !/^\d+(\.\d+)?$/.test(part.trim()))) return null;
+  const values = parts.map(part => Number(part));
+  if (!values.every(Number.isFinite)) return null;
+  if (parts.length < 4) return values.reduce((total, value) => total * 60 + value, 0);
+  const [hours, minutes, secs, frame] = values;
+  return hours * 3600 + minutes * 60 + secs + frame / Math.max(1, fps);
+}
+
 export function sourceAt(map: TimeMap, output: number) {
   for (const span of map.spans) {
     if (output <= span.outStart + span.srcEnd - span.srcStart) return span.srcStart + Math.max(0, output - span.outStart);

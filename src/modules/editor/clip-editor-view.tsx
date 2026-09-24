@@ -34,6 +34,7 @@ import { EditorProperties } from "./components/editor-properties";
 import { AgentEditor } from "../agent/components/agent-editor";
 import { MediaBrowser } from "../media/components/media-browser";
 import { SequenceTimeline } from "./components/sequence-timeline";
+import { frameLabel, parseTimecode } from "./lib/sequence-timeline";
 import { SequenceSettings } from "./components/sequence-settings";
 import { Shortcuts } from "./components/shortcuts";
 import { toast } from "sonner";
@@ -736,7 +737,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
         {picked&&<>
           {sequence&&item&&<Disclosure className="shrink-0" heading="h2" summary="Position & audio"><LayerInspector key={`placement-${item.id}`} sequence={sequence} item={item} dispatch={dispatch} /></Disclosure>}
           {sequence&&item&&<Disclosure className="shrink-0" heading="h2" open={!!item.keyframes?.length} summary="Motion" aside={item.keyframes?.length?`${item.keyframes.length} keyframes`:undefined}><MotionInspector key={`motion-${item.id}`} sequence={sequence} item={item} dispatch={dispatch} onSeek={seek} /></Disclosure>}
-          {sequence&&item&&<Disclosure className="shrink-0" heading="h2" summary="Trim & split"><SceneBounds key={item.id} clip={clip} sourceDuration={source?.durationSec} onChange={(start,end)=>{
+          {sequence&&item&&<Disclosure className="shrink-0" heading="h2" summary="Trim & split"><SceneBounds key={item.id} clip={clip} sourceDuration={source?.durationSec} fps={output.fps} onChange={(start,end)=>{
             const duration=end-start;
             const fullCanvasEdit=!source && clip.edits.length===1 && clip.edits[0].t===0 && Math.abs(clip.edits[0].d-(clip.end-clip.start))<.01;
             update({...clip,start,end,...(fullCanvasEdit?{edits:[{...clip.edits[0],d:duration}]}:{})});
@@ -784,11 +785,32 @@ function Transcript({ clip, map, itemOffset, onSeek, onTrimStart }: {
   });
   return <Card className="flex min-h-0 shrink-0 flex-col gap-0 py-0"><div className="px-4 py-2.5 text-xs text-muted-foreground">Transcript — click to seek</div><Separator /><ScrollArea className="h-48"><div className="flex flex-wrap gap-x-1 gap-y-1.5 p-4 text-sm leading-relaxed">{clip.words.map((word,i)=><button key={i} type="button" onClick={()=>onSeek(itemOffset+times[i])} onDoubleClick={()=>onTrimStart(word)} title={`${fmt(times[i])} — double-click to trim the start here`} className={`rounded-md px-1 outline-none hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-ring ${active===i?"bg-primary/25 text-primary":""}`}>{word.w}</button>)}{!clip.words.length&&<p className="text-xs text-muted-foreground">No transcript yet. Caption words can be edited in Properties.</p>}</div></ScrollArea></Card>;
 }
-function SceneBounds({clip,sourceDuration,onChange,onSplit,onSlip}:{clip:Clip;sourceDuration?:number;onChange:(start:number,end:number)=>void;onSplit:(at:number)=>void;onSlip:(delta:number)=>void}) {
+/**
+ * A time field that takes either — seconds, or the timecode the ruler prints.
+ *
+ * Seconds alone is fine for a forty-second clip and hopeless for a moment an hour and
+ * three quarters into a stream: nobody knows what 6517.133 is, and typing it is how a
+ * frame gets missed. `0:00:12:07` says the seventh frame of the twelfth second, which is
+ * how a moment is named anywhere else in this trade. It keeps what was typed until it
+ * parses, so a half-finished timecode is not thrown away mid-keystroke.
+ */
+function TimeField({label,value,fps,max,onChange}:{label:string;value:number;fps:number;max?:number;onChange:(seconds:number)=>void}) {
+  const [draft,setDraft]=useState<string|null>(null);
+  const shown=draft ?? frameLabel(value,fps);
+  const parsed=draft===null?value:parseTimecode(draft,fps);
+  const bad=parsed===null||parsed<0||(max!==undefined&&parsed>max+1e-6);
+  return <label className="space-y-1 text-xs">{label}
+    <Input required inputMode="decimal" aria-invalid={bad} value={shown}
+      onChange={e=>{const next=e.target.value;setDraft(next);const seconds=parseTimecode(next,fps);if(seconds!==null&&seconds>=0&&(max===undefined||seconds<=max+1e-6))onChange(Math.round(seconds*fps)/fps);}}
+      onBlur={()=>setDraft(null)} />
+    {bad?<span role="alert" className="block text-[11px] text-destructive">Use seconds, m:ss, or h:mm:ss:ff.</span>:null}
+  </label>;
+}
+function SceneBounds({clip,sourceDuration,fps,onChange,onSplit,onSlip}:{clip:Clip;sourceDuration?:number;fps:number;onChange:(start:number,end:number)=>void;onSplit:(at:number)=>void;onSlip:(delta:number)=>void}) {
   const [start,setStart]=useState(clip.start),[end,setEnd]=useState(clip.end),[base,setBase]=useState({start:clip.start,end:clip.end}),[split,setSplit]=useState(1);
   const stale=base.start!==clip.start||base.end!==clip.end;
   useEffect(()=>{if(stale&&start===base.start&&end===base.end){setStart(clip.start);setEnd(clip.end);setBase({start:clip.start,end:clip.end});}},[stale,start,end,base,clip.start,clip.end]);
-  return <div className="flex min-w-0 flex-col gap-3"><p className="truncate text-xs text-muted-foreground">{clip.title}</p><form className="space-y-3" onSubmit={e=>{e.preventDefault();if(stale||end<=start)return;onChange(start,end);setBase({start,end});}}>{sourceDuration ? <div className="grid grid-cols-2 gap-3"><label className="space-y-1 text-xs">In (seconds)<Input required type="number" min={0} max={sourceDuration} step="any" value={start} onChange={e=>setStart(Number(e.target.value))} /></label><label className="space-y-1 text-xs">Out (seconds)<Input required type="number" min={0} max={sourceDuration} step="any" value={end} onChange={e=>setEnd(Number(e.target.value))} /></label></div> : <label className="block space-y-1 text-xs">Duration (seconds)<Input required type="number" min={0.01} step="any" value={end-start} onChange={e=>setEnd(start+Number(e.target.value))} /></label>}<Button type="submit" variant="outline" size="sm" disabled={stale||end<=start}>{sourceDuration?"Apply trim":"Apply duration"}</Button>{stale&&<><p role="status" className="text-xs text-muted-foreground">This scene changed. Your trim fields are preserved.</p><Button type="button" size="sm" variant="ghost" onClick={()=>{setStart(clip.start);setEnd(clip.end);setBase({start:clip.start,end:clip.end});}}>Load latest trim</Button></>}</form>{sourceDuration ? <div className="space-y-2">
+  return <div className="flex min-w-0 flex-col gap-3"><p className="truncate text-xs text-muted-foreground">{clip.title}</p><form className="space-y-3" onSubmit={e=>{e.preventDefault();if(stale||end<=start)return;onChange(start,end);setBase({start,end});}}>{sourceDuration ? <div className="grid grid-cols-2 gap-3"><TimeField label="In" value={start} fps={fps} max={sourceDuration} onChange={setStart} /><TimeField label="Out" value={end} fps={fps} max={sourceDuration} onChange={setEnd} /></div> : <label className="block space-y-1 text-xs">Duration (seconds)<Input required type="number" min={0.01} step="any" value={end-start} onChange={e=>setEnd(start+Number(e.target.value))} /></label>}<Button type="submit" variant="outline" size="sm" disabled={stale||end<=start}>{sourceDuration?"Apply trim":"Apply duration"}</Button>{stale&&<><p role="status" className="text-xs text-muted-foreground">This scene changed. Your trim fields are preserved.</p><Button type="button" size="sm" variant="ghost" onClick={()=>{setStart(clip.start);setEnd(clip.end);setBase({start:clip.start,end:clip.end});}}>Load latest trim</Button></>}</form>{sourceDuration ? <div className="space-y-2">
     <p className="text-xs text-muted-foreground">Slip content <span className="tabular-nums">— footage starts at {fmt(clip.start)}</span></p>
     {/* Slipping changes what the clip shows without moving it or changing how long it runs. */}
     <div className="flex gap-2">
