@@ -146,6 +146,21 @@ test("an intro and an outro are placed on the main track from image slots, shift
   assert.equal(sequence.items.filter((i) => i.clip.title === "Intro").length, 1, "re-applying does not stack intros");
   assert.equal(sequence.items.filter((i) => i.clip.title === "Outro").length, 1);
   assert.ok(sequence.items.some((i) => i.id === itemId));
+
+  // An end card somebody pinned is theirs, and the template keeps it — but it still ends
+  // the body: the hook held over it was the mistake an agent's edit made on a real video.
+  const outro = sequence.items.find((i) => i.clip.title === "Outro")!;
+  const pinnedAt = sequenceFrames(sequence).items.find((r) => r.item.id === outro.id)!.from / sequence.output.fps;
+  store.editProject(id, { expectedRevision: store.readEditor(id).revision, operations: [{ type: "item.place", sequenceId, itemId: outro.id, patch: { at: pinnedAt } }] });
+  // Applied again by something that does not bring the card along — no slot filled, or a
+  // template without one. The card on the video is still the end of it.
+  await registry.saveTemplate({ id: "bookended-bare", extends: "bookended", name: "Bookended, bare", intro: { enabled: false }, outro: { enabled: false }, hook: { mode: "sticky" } });
+  await tools.executeEditorTool(id, { tool: "template.apply", templateId: "bookended-bare", sequenceId, expectedRevision: store.readEditor(id).revision, slots: { cover: { assetId: asset.id } } });
+  sequence = store.readEditor(id).edl.sequences[0];
+  const kept = sequence.items.filter((i) => i.clip.title === "Outro");
+  assert.equal(kept.length, 1, "the pinned end card is kept, not doubled");
+  const held = sequence.items.filter((i) => i.clip.title === "Hook").find((i) => i.clip.edits.some((e) => e.by === "template:bookended-bare"))!;
+  assert.ok((held.at ?? 0) + held.clip.end - held.clip.start <= pinnedAt + 0.05, `the hook is gone before a pinned end card too: ends ${(held.at ?? 0) + held.clip.end}, card at ${pinnedAt}`);
 });
 
 test("a derived sequence is a full editable copy in another aspect, recentred, linked to its original, pending", async () => {

@@ -244,6 +244,10 @@ export function layoutFor(template: VideoTemplate, media?: { width: number; heig
   if (layout.mode === "source") return null;
   if (layout.mode === "crop") return { type: "crop" };
   if (!media || !media.width || !media.height) return null;
+  // The two rectangles are shares of a landscape scene — a screen share beside a camera.
+  // A source that is already upright is a finished vertical video, not that scene, and
+  // cutting its corner out as "the camera" zooms into a wall. It is framed whole instead.
+  if (media.height > media.width) return { type: "crop" };
   const pixels = (region: TemplateRegion): Region => {
     const w = Math.max(2, Math.round((region.w || 1) * media.width));
     const h = Math.max(2, Math.round((region.h || 1) * media.height));
@@ -805,8 +809,11 @@ export function templateOperations(
    * with its own sound.
    */
   const spanOf = (title: string) => frames.items.find((entry) => (entry.item.layer ?? 0) === 0 && entry.item.clip.title === title);
-  const introSpan = bookends.intro ? spanOf("Intro") : undefined;
-  const outroSpan = bookends.outro ? spanOf("Outro") : undefined;
+  // A bookend already on the video — kept from an earlier application, placed by hand or
+  // moved — bounds the body as much as one added now: the hook held over an end card
+  // somebody pinned is the same mistake as one held over a fresh one.
+  const introSpan = spanOf("Intro");
+  const outroSpan = spanOf("Outro");
   const bodyStart = introSpan ? (introSpan.from + introSpan.duration) / sequence.output.fps : 0;
   const bodyEnd = outroSpan ? outroSpan.from / sequence.output.fps : duration;
   const body = Math.max(0.2, bodyEnd - bodyStart);

@@ -107,6 +107,9 @@ test("a rectangle given as a share of the frame becomes the pixels of whatever w
   assert.deepEqual(onTop.top, { x: 1175, y: 826, w: 553, h: 290 });
 
   // A rectangle that runs off the edge is pulled back inside it rather than cropping to nothing.
+  // A finished vertical video is not a scene to cut a camera corner out of: re-splitting
+  // one zoomed into a wall. It is framed whole.
+  assert.deepEqual(planner.layoutFor(template, { width: 1080, height: 1920 }), { type: "crop" });
   const over = planner.layoutFor(schema.VideoTemplate.parse({ ...SPLIT, layout: { ...SPLIT.layout, camera: { x: 0.9, y: 0.9, w: 0.3, h: 0.3 } } }), { width: 1000, height: 1000 })!;
   if (over.type !== "split") return assert.fail("split");
   assert.deepEqual(over.bottom, { x: 700, y: 700, w: 300, h: 300 });
