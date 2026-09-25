@@ -426,6 +426,11 @@ stop — they are the streamer's voice reading it.
   third frame; it leaves the same way without the slide (`ramp: "in"`). Its keyframes keep
   it at full size — an `open` comment grows in from 82 %, which is how the two are told
   apart (`isPopComment`). Its `sfx` sits on it at `t: 0`, so moving the card moves the pop.
+- **Where.** The card is placed by its real size (read from the PNG): centred on `y`, then
+  moved up until its bottom edge clears the top of the caption band — captions grow down
+  from their `positionY` — and never above a hook held at the top. A card too tall for the
+  room between them (a long message) is drawn narrower until it fits
+  (`popCardPlacement`, shared by the template and `comments.place`).
 - **The blur.** Every layer under the card gets a `blur` edit over the seconds it is up,
   written in that layer's own source seconds so cuts carry it. `blur` blurs a layer's
   picture and whatever is drawn on it, never its captions. A pop placed by hand writes its

@@ -8,7 +8,7 @@ import { sequenceFrames } from "../../editor/lib/sequences";
 import { coarsen, deadAir } from "../lib/quiet";
 import { brandsInText, transcriptCasing, type Casing } from "../../media/server/search/brand";
 import { VideoTemplate, type CommentReading, type TemplateRegion } from "../types";
-import { blurUnder, isPopComment, popCommentItem, popWindow } from "../lib/comment";
+import { blurUnder, cardBounds, isPopComment, popCommentItem, popWindow } from "../lib/comment";
 import { COMMENT_AUTHOR } from "../data/comment";
 import {
   analyzeSentences, emphasisBeats, punchBeats, redundancyCuts, selectImageCues, silenceCuts, toSentences,
@@ -692,7 +692,7 @@ export function templateOperations(
    * The viewer comment to open on, already drawn as a picture; for a `pop` comment, where
    * the streamer reads it out and the sound it lands with.
    */
-  comment?: { src: string; reading?: CommentReading | null; sound?: { src: string } | null } | null,
+  comment?: { src: string; reading?: CommentReading | null; sound?: { src: string } | null; aspect?: number | null } | null,
 ): EditorOperation[] {
   const by = author ?? templateAuthor(template.id);
   if (!isTemplateEdit({ by })) throw new Error("A template author must start with template:");
@@ -983,7 +983,8 @@ export function templateOperations(
     const layer = topLayer + 6;
     const sound = comment.sound ? { src: comment.sound.src, gain: look.sound.gain, durationSec: look.sound.durationSec } : null;
     push(...blurUnder(sequenceOf(), window, look.blur, layer, by));
-    push(popCommentItem(plan.sequenceId, newId("i"), comment.src, window, layer, look, sound, COMMENT_TITLE, by));
+    push(popCommentItem(plan.sequenceId, newId("i"), comment.src, window, layer, look, sound, COMMENT_TITLE, by,
+      { aspect: comment.aspect ?? null, frame: sequenceOf().output, bounds: cardBounds(sequenceOf()) }));
   }
 
   return operations;

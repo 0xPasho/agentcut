@@ -66,6 +66,52 @@ const POP_BLUR = 16;
 export const isPopComment = (item: { keyframes?: Array<{ width?: number }> | null }) =>
   !item.keyframes?.length || item.keyframes.every((key) => key.width === undefined || key.width === 100);
 
+/** Where the card may sit, as shares of the frame's height: below the hook, above the captions. */
+export type CardBounds = { top: number; bottom: number };
+
+/** Kept between the card and what it must not cover, as a share of the frame's height. */
+const CARD_GAP = 0.012;
+/** A hook card at the top of the frame reaches about this far down: two rows on the white plate. */
+export const TOP_HOOK_CLEARS = 0.2;
+
+/**
+ * Where the card goes and how wide, so it never lies across the hook or the captions.
+ *
+ * It is centred where the look asks, then moved up until its bottom edge clears the top of
+ * the caption band — captions grow down from their `positionY` — and never above the hook.
+ * A card too tall for the room between them (a long message is a tall card) is drawn
+ * narrower until it fits. `aspect` is the picture's height over its width.
+ */
+export function popCardPlacement(
+  look: Pick<TemplateComment, "y" | "widthPct">,
+  aspect: number | null,
+  frame: { width: number; height: number },
+  bounds: CardBounds,
+): { y: number; widthPct: number } {
+  if (!aspect || aspect <= 0) return { y: look.y, widthPct: look.widthPct };
+  const top = bounds.top + CARD_GAP;
+  const bottom = bounds.bottom - CARD_GAP;
+  const room = Math.max(0.05, bottom - top);
+  const heightOf = (widthPct: number) => (widthPct / 100) * aspect * (frame.width / frame.height);
+  const widthPct = heightOf(look.widthPct) <= room ? look.widthPct : Math.max(20, (room / heightOf(100)) * 100);
+  const half = heightOf(widthPct) / 2;
+  const y = Math.max(top + half, Math.min(look.y, bottom - half));
+  return { y: Math.round(y * 1000) / 1000, widthPct: Math.round(widthPct * 10) / 10 };
+}
+
+/**
+ * The room a card has on this sequence: under a hook held at the top, above the captions
+ * of the shot it is read over. Captions grow down from their `positionY`.
+ */
+export function cardBounds(sequence: VideoSequence): CardBounds {
+  const shot = sequence.items.find((item) => (item.layer ?? 0) === 0 && item.mediaId && item.clip.captions.preset !== "none");
+  const captionsTop = shot ? shot.clip.captions.positionY : 1;
+  const hookText = sequence.items.filter((item) => item.clip.title === "Hook")
+    .flatMap((item) => item.clip.edits).find((edit) => edit.type === "text");
+  const hookAtTop = !!hookText && hookText.type === "text" && (hookText.y !== null ? hookText.y < 0.3 : hookText.position === "top");
+  return { top: hookAtTop ? TOP_HOOK_CLEARS : 0, bottom: captionsTop };
+}
+
 /**
  * The card as a layer. It lands in a tenth of a second — sliding in from the right,
  * out of focus and half-seen, sharp on the third frame — and leaves the same way into
@@ -74,7 +120,10 @@ export const isPopComment = (item: { keyframes?: Array<{ width?: number }> | nul
 export function popCommentItem(
   sequenceId: string, id: string, src: string, window: { at: number; end: number }, layer: number,
   look: Pick<TemplateComment, "y" | "widthPct">, sound: { src: string; gain: number; durationSec: number } | null, title: string, by: string,
+  /** Where it may sit and the picture's shape; without them it goes where the look says. */
+  fit?: { aspect: number | null; frame: { width: number; height: number }; bounds: CardBounds },
 ): Extract<EditorOperation, { type: "item.add" }> {
+  const place = fit ? popCardPlacement(look, fit.aspect, fit.frame, fit.bounds) : { y: look.y, widthPct: look.widthPct };
   const seconds = Math.max(MIN_HOLD_SEC / 2, window.end - window.at);
   const ease = Math.min(POP_EASE_SEC, seconds / 4);
   const at = (t: number, x: number, opacity: number, curve: "out" | "in" | "linear") =>
@@ -93,7 +142,7 @@ export function popCommentItem(
       clip: Clip.parse({
         id, title, start: 0, end: seconds, captions: { preset: "none" },
         edits: [
-          { type: "image", t: 0, d: seconds, src, query: "", credit: "", x: 0.5, y: look.y, widthPct: look.widthPct, heightPct: 60, style: "plain", caption: "", by },
+          { type: "image", t: 0, d: seconds, src, query: "", credit: "", x: 0.5, y: place.y, widthPct: place.widthPct, heightPct: 60, style: "plain", caption: "", by },
           { type: "blur", t: 0, d: ease, amount: POP_BLUR, ramp: "out", by },
           { type: "blur", t: seconds - ease, d: ease, amount: POP_BLUR, ramp: "in", by },
           ...(sound ? [{ type: "sfx" as const, t: 0, d: sound.durationSec, src: sound.src, gain: sound.gain, by }] : []),

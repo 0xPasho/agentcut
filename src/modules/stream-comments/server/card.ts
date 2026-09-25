@@ -73,3 +73,22 @@ export async function commentCardAsset(projectId: string, comment: ChatComment, 
     throw error;
   }
 }
+
+/**
+ * A card picture's height over its width, read from the PNG header — what placing it
+ * clear of the hook and the captions needs. Null when the file is not a PNG it can read.
+ */
+export async function cardAspect(asset: AssetRow): Promise<number | null> {
+  const handle = await fs.open(toAbs(asset.path), "r").catch(() => null);
+  if (!handle) return null;
+  try {
+    const head = Buffer.alloc(24);
+    await handle.read(head, 0, 24, 0);
+    if (head.toString("ascii", 1, 4) !== "PNG") return null;
+    const width = head.readUInt32BE(16);
+    const height = head.readUInt32BE(20);
+    return width > 0 ? height / width : null;
+  } finally {
+    await handle.close();
+  }
+}

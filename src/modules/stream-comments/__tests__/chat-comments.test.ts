@@ -198,6 +198,29 @@ test("the reading is found in the words, and the card is timed to it without eat
   assert.deepEqual(popWindow(sequence, look, body, null), { at: 0.6, end: 3 });
 });
 
+test("a comment card is placed between the hook and the captions, never across either", async () => {
+  const { popCardPlacement } = await import("../../templates/lib/comment");
+  const frame = { width: 1080, height: 1920 };
+  const bounds = { top: 0.2, bottom: 0.545 };
+  const look = { y: 0.42, widthPct: 100 };
+  const bottomOf = (p: { y: number; widthPct: number }, aspect: number) => p.y + (p.widthPct / 100) * aspect * (1080 / 1920) / 2;
+  const topOf = (p: { y: number; widthPct: number }, aspect: number) => p.y - (p.widthPct / 100) * aspect * (1080 / 1920) / 2;
+  // A one-line message: where the look puts it.
+  const short = popCardPlacement(look, 832 / 2256, frame, bounds);
+  assert.deepEqual(short, { y: 0.42, widthPct: 100 });
+  // A long message is a tall card: it moves up until it clears the captions.
+  const tall = popCardPlacement(look, 1100 / 2256, frame, bounds);
+  assert.equal(tall.widthPct, 100);
+  assert.ok(bottomOf(tall, 1100 / 2256) <= 0.545 - 0.01, `bottom at ${bottomOf(tall, 1100 / 2256)}`);
+  assert.ok(topOf(tall, 1100 / 2256) >= 0.2, "and stays below the hook");
+  // Too tall for the room between them: drawn narrower until it fits.
+  const huge = popCardPlacement(look, 1600 / 2256, frame, bounds);
+  assert.ok(huge.widthPct < 100);
+  assert.ok(bottomOf(huge, 1600 / 2256) <= 0.545 - 0.01 + 1e-6 && topOf(huge, 1600 / 2256) >= 0.2 - 1e-6, JSON.stringify(huge));
+  // An unreadable picture keeps the look's placement.
+  assert.deepEqual(popCardPlacement(look, null, frame, bounds), look);
+});
+
 test("a pop comment lands over the hook and a blurred frame with its sound, and either editor can switch it", { timeout: 180_000 }, async () => {
   await registry.saveTemplate({ id: "chat-pop", extends: "stream-short", name: "Chat pop", outro: { enabled: false },
     layout: { mode: "crop" }, rhythm: { silence: { enabled: false } },

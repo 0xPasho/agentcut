@@ -5,10 +5,10 @@ import type { Edit, Edl } from "../../editor/types";
 import { sequenceFrames } from "../../editor/lib/sequences";
 import { COMMENT_TITLE, commentItem, isBookendTitle, isTemplateEdit, resolveTarget, type PlannedComment } from "../../templates/server/plan";
 import { TemplateComment } from "../../templates/types";
-import { commentCardAsset } from "./card";
+import { cardAspect, commentCardAsset } from "./card";
 import { answers, chatSource, commentById } from "./comments";
 import { commentReading, lookupComments, plannedComment } from "./resolve";
-import { blurUnder, isPopComment, popCommentItem, popWindow } from "../../templates/lib/comment";
+import { blurUnder, cardBounds, isPopComment, popCommentItem, popWindow } from "../../templates/lib/comment";
 import { COMMENT_AUTHOR, POP_COMMENT } from "../../templates/data/comment";
 
 /** A sound that ships with the app, by name, as an asset id — or null when the owner deleted it. */
@@ -115,7 +115,8 @@ export async function placeComment(
     const sound = await starterSound(look.sound.starter);
     for (const op of blurUnder(sequence(), window, look.blur, topLayer + 1, COMMENT_AUTHOR)) push(op);
     push(popCommentItem(sequenceId, `i_${crypto.randomUUID().slice(0, 8)}`, asset.id, window, topLayer + 1, look,
-      sound ? { src: sound, gain: look.sound.gain, durationSec: look.sound.durationSec } : null, COMMENT_TITLE, COMMENT_AUTHOR));
+      sound ? { src: sound, gain: look.sound.gain, durationSec: look.sound.durationSec } : null, COMMENT_TITLE, COMMENT_AUTHOR,
+      { aspect: await cardAspect(asset), frame: sequence().output, bounds: cardBounds(sequence()) }));
   } else if (comment) {
     const asset = await commentCardAsset(projectId, comment);
     push(commentItem(sequenceId, `i_${crypto.randomUUID().slice(0, 8)}`, asset.id, bodyStart, seconds, topLayer + 1, look, ""));

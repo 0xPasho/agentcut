@@ -601,9 +601,12 @@ export async function applyTemplate(
   plan.comment = opening.planned;
   if (opening.warning) plan.warnings.push(opening.warning);
   // Drawing it needs the renderer's bundle, so it is loaded only for a video that has one.
-  const comment = opening.comment
+  const cards = opening.comment ? await import("../../stream-comments/server/card") : null;
+  const card = opening.comment && cards ? await cards.commentCardAsset(projectId, opening.comment, template.comment.card) : null;
+  const comment = opening.comment && card && cards
     ? {
-      src: (await (await import("../../stream-comments/server/card")).commentCardAsset(projectId, opening.comment, template.comment.card)).id,
+      src: card.id,
+      aspect: await cards.cardAspect(card),
       reading: opening.reading,
       // A `pop` lands with its sound; the switch that silences a template silences this too.
       sound: template.comment.style === "pop" && !silent
