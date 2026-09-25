@@ -33,7 +33,8 @@ trim behavior, and UI adapter. Both interfaces use these operations:
 
 All eight edit types are supported: silence, punch, blur, emphasis, text, image, sound
 effect, and music. `blur` blurs a shot's picture and what is drawn on it for a span —
-never its captions — and is what a `pop` comment lays under its card.
+never its captions — held, coming into focus (`ramp: "out"`) or going out of it
+(`ramp: "in"`); it is what a `pop` comment lays under its card and arrives and leaves with.
 
 Picture and sound are separate tracks. A layer is still a plain z-order integer in the
 EDL, and both interfaces write the same `layer`; `src/modules/editor/lib/tracks.ts` is how that

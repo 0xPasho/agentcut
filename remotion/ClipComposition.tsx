@@ -175,7 +175,11 @@ export const ClipComposition: React.FC<ClipProps> = ({
   const blurPx = clip.edits.reduce((most, e) => {
     if (e.type !== "blur") return most;
     const { t: from, d } = mapWindow(map, e.t, e.d);
-    return d > 0 && t >= from && t < from + d ? Math.max(most, e.amount * (width / 1080)) : most;
+    if (!(d > 0 && t >= from && t < from + d)) return most;
+    // A ramp travels over the span; `hold` does not. Frame-driven, like every animation here.
+    const progress = (t - from) / d;
+    const share = e.ramp === "out" ? 1 - progress : e.ramp === "in" ? progress : 1;
+    return Math.max(most, e.amount * share * (width / 1080));
   }, 0);
   // Blurring a picture darkens its edges into the black around it; pushing in a little
   // keeps the soft border outside the frame.

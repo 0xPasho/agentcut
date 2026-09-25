@@ -395,8 +395,11 @@ stop — they are the streamer's voice reading it.
   `delaySec + seconds`. The math is `src/modules/templates/lib/comment.ts`, shared by the
   template and `comments.place`.
 - **What.** `card: "chat"` draws the dark live-chat bubble — avatar beside the name and the
-  words — instead of the white card. The layer has no keyframes: on and off on the frame.
-  Its `sfx` sits on it at `t: 0`, so moving the card moves the pop.
+  words — instead of the white card. It arrives in a tenth of a second: from 8 % to the
+  right, at 45 % opacity and out of focus (a `blur` edit with `ramp: "out"`), sharp on the
+  third frame; it leaves the same way without the slide (`ramp: "in"`). Its keyframes keep
+  it at full size — an `open` comment grows in from 82 %, which is how the two are told
+  apart (`isPopComment`). Its `sfx` sits on it at `t: 0`, so moving the card moves the pop.
 - **The blur.** Every layer under the card gets a `blur` edit over the seconds it is up,
   written in that layer's own source seconds so cuts carry it. `blur` blurs a layer's
   picture and whatever is drawn on it, never its captions. A pop placed by hand writes its

@@ -48,21 +48,50 @@ export function popWindow(
   return { at: Math.min(at, Math.max(body.start, end - MIN_HOLD_SEC)), end };
 }
 
-/** The card as a layer: no animation at all — it is on the frame it lands, off the frame it goes. */
+/** How long the card takes to arrive and to go: three frames at 30 fps. */
+export const POP_EASE_SEC = 0.1;
+/** It arrives from this far to the right, as a share of the frame's width... */
+const POP_SLIDE_PCT = 8;
+/** ...this far out of focus, on a 1080-wide frame. */
+const POP_BLUR = 16;
+
+/**
+ * A pop comment is the one with no grow on it: it arrives at full size. An `open` one
+ * grows in from 82 % — that is the whole difference between their keyframes.
+ */
+export const isPopComment = (item: { keyframes?: Array<{ width?: number }> | null }) =>
+  !item.keyframes?.length || item.keyframes.every((key) => key.width === undefined || key.width === 100);
+
+/**
+ * The card as a layer. It lands in a tenth of a second — sliding in from the right,
+ * out of focus and half-seen, sharp on the third frame — and leaves the same way into
+ * focus lost, without the slide: quick enough to read as a pop, not a transition.
+ */
 export function popCommentItem(
   sequenceId: string, id: string, src: string, window: { at: number; end: number }, layer: number,
   look: Pick<TemplateComment, "y" | "widthPct">, sound: { src: string; gain: number; durationSec: number } | null, title: string, by: string,
 ): Extract<EditorOperation, { type: "item.add" }> {
   const seconds = Math.max(MIN_HOLD_SEC / 2, window.end - window.at);
+  const ease = Math.min(POP_EASE_SEC, seconds / 4);
+  const at = (t: number, x: number, opacity: number, curve: "out" | "in" | "linear") =>
+    ({ t, x, y: 0, width: 100, height: 100, opacity, ease: curve, by });
   return {
     type: "item.add",
     sequenceId,
     item: {
       id, mediaId: null, at: window.at, layer,
+      keyframes: [
+        at(0, POP_SLIDE_PCT, 0.45, "out"),
+        at(ease, 0, 1, "linear"),
+        at(seconds - ease, 0, 1, "in"),
+        at(seconds, 0, 0, "linear"),
+      ],
       clip: Clip.parse({
         id, title, start: 0, end: seconds, captions: { preset: "none" },
         edits: [
           { type: "image", t: 0, d: seconds, src, query: "", credit: "", x: 0.5, y: look.y, widthPct: look.widthPct, heightPct: 60, style: "plain", caption: "", by },
+          { type: "blur", t: 0, d: ease, amount: POP_BLUR, ramp: "out", by },
+          { type: "blur", t: seconds - ease, d: ease, amount: POP_BLUR, ramp: "in", by },
           ...(sound ? [{ type: "sfx" as const, t: 0, d: sound.durationSec, src: sound.src, gain: sound.gain, by }] : []),
         ],
       }),
@@ -89,7 +118,7 @@ export function blurUnder(sequence: VideoSequence, window: { at: number; end: nu
     const t = outToSrc(map, start - from);
     const d = outToSrc(map, end - from) - t;
     if (d <= 0) continue;
-    operations.push({ type: "item.edit.add", sequenceId: sequence.id, itemId: entry.item.id, edit: { type: "blur", t, d, amount, by } });
+    operations.push({ type: "item.edit.add", sequenceId: sequence.id, itemId: entry.item.id, edit: { type: "blur", t, d, amount, ramp: "hold", by } });
   }
   return operations;
 }

@@ -8,7 +8,7 @@ import { TemplateComment } from "../../templates/types";
 import { commentCardAsset } from "./card";
 import { answers, chatSource, commentById } from "./comments";
 import { commentReading, lookupComments, plannedComment } from "./resolve";
-import { blurUnder, popCommentItem, popWindow } from "../../templates/lib/comment";
+import { blurUnder, isPopComment, popCommentItem, popWindow } from "../../templates/lib/comment";
 import { COMMENT_AUTHOR, POP_COMMENT } from "../../templates/data/comment";
 
 /** A sound that ships with the app, by name, as an asset id — or null when the owner deleted it. */
@@ -44,7 +44,7 @@ const currentComment = (edl: Edl, sequenceId: string) => {
   const tagged = /\bchat:(\d+)\b/.exec(q.getAsset(image.src)?.tags ?? "")?.[1];
   return {
     itemId: item.id, assetId: image.src, seconds: item.clip.end - item.clip.start,
-    commentId: tagged ? Number(tagged) : null, style: item.keyframes?.length ? "open" as const : "pop" as const,
+    commentId: tagged ? Number(tagged) : null, style: isPopComment(item) ? "pop" as const : "open" as const,
   };
 };
 
@@ -88,9 +88,9 @@ export async function placeComment(
   const push = (op: EditorOperation) => { operations.push(op); working = applyOperations(working, [op]); };
   if (promotes) push({ type: "clip.promote", clipId: sequenceId });
   const sequence = () => working.sequences.find((s) => s.id === sequenceId)!;
-  // A comment with no animation on it is a `pop`: it lands and leaves on the frame.
+  // Which way the comment already on the video comes in, kept unless asked otherwise.
   const existing = sequence().items.find((entry) => entry.clip.title === COMMENT_TITLE);
-  const style = request.style ?? (existing && !existing.keyframes?.length ? "pop" : "open");
+  const style = request.style ?? (existing && isPopComment(existing) ? "pop" : "open");
   for (const item of sequence().items.filter((entry) => entry.clip.title === COMMENT_TITLE))
     push({ type: "item.remove", sequenceId, itemId: item.id });
   // The blur a previous pop put under its card goes with the card. A blur somebody added

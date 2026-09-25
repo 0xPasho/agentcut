@@ -202,7 +202,14 @@ test("a pop comment lands over the hook and a blurred frame with its sound, and 
   const comment = all.find((item) => item.clip.title === "Comment")!;
   assert.ok(Math.abs((comment.at ?? 0) - 0.6) < 0.01, `lands at ${comment.at}`);
   assert.ok(Math.abs(comment.clip.end - comment.clip.start - 2.4) < 0.01, "held while it is read, at least 2.4 s");
-  assert.equal(comment.keyframes?.length ?? 0, 0, "on and off on the frame: nothing eases");
+  // It arrives in a tenth of a second from a little to the right, out of focus and half-seen,
+  // and leaves into focus lost the same way — at full size throughout.
+  const keys = comment.keyframes!;
+  assert.equal(keys.length, 4);
+  assert.deepEqual([keys[0].x, keys[0].opacity, keys[1].t, keys[1].x, keys[1].opacity], [8, 0.45, 0.1, 0, 1]);
+  assert.ok(keys.every((key) => key.width === 100), "a pop never grows in; that is the open style");
+  const ramps = comment.clip.edits.filter((edit) => edit.type === "blur").map((edit) => edit.type === "blur" ? [edit.ramp, +edit.t.toFixed(2), +edit.d.toFixed(2)] : null);
+  assert.deepEqual(ramps, [["out", 0, 0.1], ["in", 2.3, 0.1]], "sharp by its third frame, blurred away on its last");
   const image = comment.clip.edits.find((edit) => edit.type === "image")!;
   assert.match(database.q.getAsset(image.type === "image" ? image.src : "")!.tags, /look:chat/, "drawn as the dark chat bubble");
   const pop = comment.clip.edits.find((edit) => edit.type === "sfx")!;
@@ -215,7 +222,7 @@ test("a pop comment lands over the hook and a blurred frame with its sound, and 
   const [under] = footage.clip.edits.filter((edit) => edit.type === "blur");
   assert.ok(under && Math.abs(under.t - 0.6) < 0.01 && Math.abs(under.d - 2.4) < 0.01, `the footage blurs under it: ${JSON.stringify(under)}`);
   assert.equal(blurOf("Hook").length, 1, "and so does the hook");
-  assert.equal(blurOf("Comment").length, 0, "but never the card itself");
+  assert.ok(blurOf("Comment").every((edit) => edit.type === "blur" && edit.ramp !== "hold"), "the card is never held blurred — only its arrival and exit");
 
   const listed = await tools.executeEditorTool(id, { tool: "comments.list", sequenceId }) as import("../server/place").CommentChoices;
   assert.equal(listed.current?.style, "pop");
@@ -233,7 +240,8 @@ test("a pop comment lands over the hook and a blurred frame with its sound, and 
   const popped = layers(id, sequenceId);
   const again = popped.find((item) => item.clip.title === "Comment")!;
   assert.ok(Math.abs((again.at ?? 0) - 0.6) < 0.01);
-  assert.equal(again.keyframes?.length ?? 0, 0);
+  assert.equal(again.keyframes?.length, 4);
+  assert.ok(again.keyframes!.every((key) => key.width === 100));
   assert.ok(again.clip.edits.some((edit) => edit.type === "sfx"));
   assert.ok(popped.find((item) => item.mediaId)!.clip.edits.some((edit) => edit.type === "blur" && edit.by === "comment"));
   assert.equal(hookStart(id, sequenceId), 0);
@@ -248,5 +256,7 @@ test("a pop comment lands over the hook and a blurred frame with its sound, and 
   assert.ok(layerOf("Comment") > layerOf("Hook"), "the card is read over the hook, not under it");
   assert.equal(hookStart(id, sequenceId), 0);
   const blurs = kept.flatMap((item) => item.clip.edits.map((edit) => ({ title: item.clip.title, edit }))).filter(({ edit }) => edit.type === "blur");
-  assert.deepEqual(blurs.map(({ title }) => title).sort(), ["Corte", "Hook"], "the blur is still under their card, on the new hook too, once each");
+  const held = blurs.filter(({ edit }) => edit.type === "blur" && edit.ramp === "hold");
+  assert.deepEqual(held.map(({ title }) => title).sort(), ["Corte", "Hook"], "the blur is still under their card, on the new hook too, once each");
+  assert.equal(blurs.filter(({ title }) => title === "Comment").length, 2, "and their card keeps its own arrival and exit");
 });

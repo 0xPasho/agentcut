@@ -130,6 +130,12 @@ export const BlurEdit = z.object({
   t: z.number(),
   d: z.number().default(2.4),
   amount: z.number().min(1).max(80).default(24),
+  /**
+   * `hold` is the same blur the whole span. `out` starts at `amount` and comes into focus
+   * by the end of it; `in` starts sharp and reaches `amount` by the end — a thing arriving
+   * out of focus, and one leaving into it.
+   */
+  ramp: z.enum(["hold", "in", "out"]).default("hold"),
   by: EditAuthor,
 });
 export type BlurEdit = z.infer<typeof BlurEdit>;

@@ -11,7 +11,7 @@ export const MIN_PREVIEW_PX = 80;
 export const NEW_EDIT: Record<string, (t: number) => Edit> = {
   silence: t => ({ type: "silence", t, d: 0.4, by: "" }),
   punch: t => ({ type: "punch", t, d: 1.2, scale: 1.12, by: "" }),
-  blur: t => ({ type: "blur", t, d: 2.4, amount: 24, by: "" }),
+  blur: t => ({ type: "blur", t, d: 2.4, amount: 24, ramp: "hold", by: "" }),
   emphasis: t => ({ type: "emphasis", t, d: 1, words: [], color: "#ffe600", by: "" }),
   text: t => ({ type: "text", t, d: 3, text: "New title", position: "top", x: null, y: null, style: "card", color: "", background: "", fontScale: 1, by: "" }),
 };

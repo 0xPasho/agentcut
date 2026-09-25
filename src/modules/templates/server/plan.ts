@@ -8,7 +8,7 @@ import { sequenceFrames } from "../../editor/lib/sequences";
 import { coarsen, deadAir } from "../lib/quiet";
 import { brandsInText, transcriptCasing, type Casing } from "../../media/server/search/brand";
 import { VideoTemplate, type CommentReading, type TemplateRegion } from "../types";
-import { blurUnder, popCommentItem, popWindow } from "../lib/comment";
+import { blurUnder, isPopComment, popCommentItem, popWindow } from "../lib/comment";
 import { COMMENT_AUTHOR } from "../data/comment";
 import {
   analyzeSentences, emphasisBeats, punchBeats, redundancyCuts, selectImageCues, silenceCuts, toSentences,
@@ -832,10 +832,10 @@ export function templateOperations(
   // a second, but still waits for it before showing the hook.
   const theirs = sequenceOf().items.find((item) => item.clip.title === COMMENT_TITLE && templateItemState(item) !== "owned");
   // A `pop` comment lands over the hook rather than before it, so the hook never waits for
-  // one. A comment somebody placed keeps its own way in: one that opens the video (it is
-  // animated; a pop is not) still holds the hook back, whatever this template does.
+  // one. A comment somebody placed keeps its own way in: one that opens the video (it
+  // grows in; a pop arrives at full size) still holds the hook back, whatever this template does.
   const pops = template.comment.style === "pop";
-  const opening = theirs ? (theirs.keyframes?.length ? Math.max(0, (theirs.at ?? 0) + theirs.clip.end - theirs.clip.start - bodyStart) : 0)
+  const opening = theirs ? (!isPopComment(theirs) ? Math.max(0, (theirs.at ?? 0) + theirs.clip.end - theirs.clip.start - bodyStart) : 0)
     : comment?.src && !pops ? Math.min(template.comment.seconds, body * 0.5) : 0;
   if (comment?.src && !theirs && !pops) push(commentItem(plan.sequenceId, newId("i"), comment.src, bodyStart, opening, topLayer + 6, template.comment, by));
 
@@ -941,9 +941,10 @@ export function templateOperations(
 
   // A pop somebody placed stays, and so does the blur under it — laid again over the
   // layers this application just replaced, as strong as they had it.
-  if (theirs && !theirs.keyframes?.length) {
-    const amount = sequenceOf().items.flatMap((item) => item.clip.edits).find(isCommentBlur);
-    for (const item of sequenceOf().items) {
+  if (theirs && isPopComment(theirs)) {
+    const amount = sequenceOf().items.filter((item) => item.id !== theirs.id).flatMap((item) => item.clip.edits).find(isCommentBlur);
+    // Their card's own blur is its arrival and its exit, not the blur under it.
+    for (const item of sequenceOf().items.filter((entry) => entry.id !== theirs.id)) {
       const edits = item.clip.edits.filter((edit) => !isCommentBlur(edit));
       if (edits.length !== item.clip.edits.length) push({ type: "item.patch", sequenceId: plan.sequenceId, itemId: item.id, patch: { edits } });
     }

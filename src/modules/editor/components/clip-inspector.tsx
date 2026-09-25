@@ -95,6 +95,16 @@ export function ClipInspector({
             value={[edit.amount]}
             onValueChange={(v) => patch({ amount: num(v) } as Partial<Edit>)}
           />
+          <Select value={edit.ramp} onValueChange={(v) => patch({ ramp: v } as Partial<Edit>)}>
+            <SelectTrigger aria-label="How the blur moves" className="mt-2 w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="hold">Held the whole time</SelectItem>
+              <SelectItem value="out">Comes into focus</SelectItem>
+              <SelectItem value="in">Goes out of focus</SelectItem>
+            </SelectContent>
+          </Select>
         </Field>
       ) : null}
 
