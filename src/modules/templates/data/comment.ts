@@ -11,6 +11,8 @@ export const POP_COMMENT = TemplateComment.parse({
   style: "pop",
   card: "chat",
   seconds: 2.4,
+  maxSeconds: 2.4,
+  latestSec: 1,
   delaySec: 0.6,
   blur: 24,
   y: 0.42,

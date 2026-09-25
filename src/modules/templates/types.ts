@@ -381,6 +381,19 @@ export const TemplateComment = z.object({
   style: z.enum(["open", "pop"]).default("open"),
   /** How long the comment holds. `open`: the hook appears when it goes. `pop`: used when the reading is not found. */
   seconds: z.number().positive().max(10).default(3),
+  /**
+   * `pop`: the longest the card stays up, however long the message takes to read. A
+   * long message read out held its card for five seconds; the format is a beat of the
+   * message over a blurred frame, gone by about the third second, and the captions carry
+   * the rest of the reading.
+   */
+  maxSeconds: z.number().positive().max(10).default(3),
+  /**
+   * `pop`: the latest the card lands, seconds into the video. It waits for the reading
+   * only this long: a clip that talks for five seconds before the message is read still
+   * shows the message a beat in — the viewer is not left four seconds without the question.
+   */
+  latestSec: z.number().min(0).max(10).default(1),
   /** `pop`: when the comment lands if the streamer is not heard reading it — seconds into the video. */
   delaySec: z.number().min(0).max(5).default(0.6),
   /**

@@ -183,10 +183,17 @@ test("the reading is found in the words, and the card is timed to it without eat
   const body = { start: 0, end: 20 };
   // Read from the first word: it still waits half a second, and holds at least 2.4 s.
   assert.deepEqual(popWindow(sequence, look, body, { itemId: "shot", t: 0.2, d: 1.5 }), { at: 0.6, end: 3 });
-  // Read later and longer: it lands on the first word and leaves just after the last.
+  // Read later and longer: it lands on the first word and leaves just after the last...
   const late = popWindow(sequence, look, body, { itemId: "shot", t: 1.2, d: 3.5 });
   assert.equal(late.at, 1.2);
   assert.ok(Math.abs(late.end - 5) < 1e-9, `${late.end}`);
+  // Read five seconds in: the card does not leave the viewer waiting for it.
+  const talky = popWindow(sequence, { ...look, latestSec: 1 }, body, { itemId: "shot", t: 4.79, d: 6 });
+  assert.equal(talky.at, 1, "a beat in, not when the reading finally comes");
+  // ...unless that is longer than the card may stay: a long message is a beat, not a slide.
+  const capped = popWindow(sequence, { ...look, maxSeconds: 2.4 }, body, { itemId: "shot", t: 0.6, d: 8 });
+  assert.equal(capped.at, 0.6);
+  assert.ok(Math.abs(capped.end - 3) < 1e-9, `gone by the third second: ${capped.end}`);
   // Not read at all: the template's own beat.
   assert.deepEqual(popWindow(sequence, look, body, null), { at: 0.6, end: 3 });
 });

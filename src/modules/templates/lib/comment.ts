@@ -30,12 +30,13 @@ export function readingOnProgramme(sequence: VideoSequence, reading: CommentRead
 /**
  * The seconds of the programme the card is on screen. It lands no earlier than
  * `delaySec` into the video — the first half-second is the clip and its hook — and on
- * the streamer's first word of it when that comes later; it leaves just after their last,
- * and never before `seconds` have passed.
+ * the streamer's first word of it when that comes later — but no later than `latestSec`;
+ * it leaves just after their last, never before `seconds` have passed and never after
+ * `maxSeconds`.
  */
 export function popWindow(
   sequence: VideoSequence,
-  look: Pick<TemplateComment, "delaySec" | "seconds" | "followReading">,
+  look: Pick<TemplateComment, "delaySec" | "seconds" | "followReading"> & Partial<Pick<TemplateComment, "maxSeconds" | "latestSec">>,
   body: { start: number; end: number },
   reading: CommentReading | null | undefined,
 ): { at: number; end: number } {
@@ -43,8 +44,11 @@ export function popWindow(
   const earliest = body.start + look.delaySec;
   // Read out before the delay is up: the card still waits for it, unless that would miss
   // the whole reading — then it lands with the first word.
-  const at = read && read.end - AFTER_READING_SEC < earliest ? Math.max(body.start, read.start) : Math.max(read?.start ?? earliest, earliest);
-  const end = Math.min(body.end - 0.2, Math.max(read ? read.end + AFTER_READING_SEC : 0, at + look.seconds));
+  const waited = read && read.end - AFTER_READING_SEC < earliest ? Math.max(body.start, read.start) : Math.max(read?.start ?? earliest, earliest);
+  // ...but not for long: a message read out late in the clip still lands a beat in.
+  const at = Math.min(waited, body.start + Math.max(look.delaySec, look.latestSec ?? Infinity));
+  const hold = Math.max(read ? read.end + AFTER_READING_SEC : 0, at + look.seconds) - at;
+  const end = Math.min(body.end - 0.2, at + Math.min(hold, Math.max(look.seconds, look.maxSeconds ?? Infinity)));
   return { at: Math.min(at, Math.max(body.start, end - MIN_HOLD_SEC)), end };
 }
 

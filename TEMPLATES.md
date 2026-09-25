@@ -413,8 +413,11 @@ stop — they are the streamer's voice reading it.
 
 - **When.** `readingSpan` finds the reading in the words: from the first of the message's
   words said to the last, each said once — it ends when the answer starts reusing them, or
-  at a pause. The card lands on that first word but never before `delaySec`, and leaves
-  0.3 s after the last, holding at least `seconds`. Not read out, it holds `delaySec` to
+  at a pause. The card lands on that first word but never before `delaySec` and never
+  after `latestSec` (1 s: a clip that talks for five seconds before the reading still
+  shows the message a beat in), and leaves 0.3 s after the last word, holding at least
+  `seconds` and at most `maxSeconds` (2.4 s in the pack: gone by about the third second,
+  the captions carrying the rest of a long message). Not read out, it holds `delaySec` to
   `delaySec + seconds`. The math is `src/modules/templates/lib/comment.ts`, shared by the
   template and `comments.place`.
 - **What.** `card: "chat"` draws the dark live-chat bubble — avatar beside the name and the
