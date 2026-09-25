@@ -149,6 +149,11 @@ export async function importTranscript(projectId: string, o: ImportTranscriptOpt
   const job = q.activeJob(projectId);
   if (job && READERS.has(job.kind)) throw new Error(`A ${job.kind} job is reading this project's words; add the transcript when it finishes`);
 
+  // What the timeline's words came from until now: a shot that no longer matches it was
+  // corrected by hand and keeps its words (`freshWords`).
+  const previous = await fs.readFile(path.join(where.dir, "transcript.json"), "utf8")
+    .then((text) => Transcript.safeParse(JSON.parse(text)))
+    .then((parsed) => (parsed.success ? parsed.data : null), () => null);
   const { record } = await writeProvidedTranscript({ text: o.text, name: o.name, file: where.file, dir: where.dir, by: o.by, projectId, onLog: o.onLog });
 
   // The words go onto the timeline through the paths that already do it for the
@@ -160,11 +165,11 @@ export async function importTranscript(projectId: string, o: ImportTranscriptOpt
     // when it finishes, and puts those words on the timeline itself.
     o.onLog?.(`${where.label} is still being recognised; your words replace its words when that run ends`);
   } else if (where.mediaId) {
-    const done = await transcribeProjectMedia(projectId, { mediaIds: [where.mediaId], by: o.by, onLog: o.onLog });
+    const done = await transcribeProjectMedia(projectId, { mediaIds: [where.mediaId], by: o.by, previous, onLog: o.onLog });
     patched = done.results[0]?.items ?? 0;
   } else if (where.file && q.getProject(projectId)?.edl) {
     const { resyncTranscript } = await import("./resync");
-    patched = (await resyncTranscript(projectId, { reuse: true, onLog: o.onLog })).patched;
+    patched = (await resyncTranscript(projectId, { reuse: true, previous, onLog: o.onLog })).patched;
   }
   // Before the first analysis a project has no edit list yet: nothing is cut from the
   // source, and the transcript is simply what that analysis will read.

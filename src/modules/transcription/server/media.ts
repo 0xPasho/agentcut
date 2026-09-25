@@ -2,7 +2,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { projectDir } from "../../../common/server/config";
 import { q } from "../../../common/server/db";
-import { wordsForClip } from "../lib/transcript";
 import { isProvided } from "../lib/import";
 import { probe, audioLevel, SILENCE_PEAK_DB } from "../../media/server/ffmpeg";
 import type { MediaTranscription } from "../../editor/types";
@@ -11,6 +10,7 @@ import type { EditorOperation } from "../../editor/lib/operations";
 import { ensureTranscript, type TranscribeRunOptions } from "./transcribe";
 import { resolveTranscribeMode, type TranscribeMode } from "./settings";
 import { sourceTranscriptState } from "./provided";
+import { readGlossary } from "../../rules/server/glossary";
 
 /**
  * Imported media get their own transcript, one per file, under
@@ -36,6 +36,8 @@ export type MediaTranscribeOptions = Pick<TranscribeRunOptions, "brief" | "provi
   /** Checked between sources: false abandons the rest without marking them failed. */
   keepGoing?: () => boolean;
   onMedia?: (media: { id: string; name: string }, phase: "start" | "done") => void;
+  /** The transcript the media's shots got their words from before: shots corrected by hand keep theirs. */
+  previous?: import("../lib/transcript").Transcript | null;
 };
 
 export type MediaTranscribeResult = {
@@ -128,9 +130,12 @@ async function transcribeOne(projectId: string, media: { id: string; name: strin
   });
   const current = readEditor(projectId);
   const operations: EditorOperation[] = [];
+  const { freshWords } = await import("./resync");
+  const glossary = o.previous ? await readGlossary(projectId) : null;
   for (const sequence of current.edl.sequences) for (const item of sequence.items) {
     if (item.mediaId !== media.id) continue;
-    operations.push({ type: "item.patch", sequenceId: sequence.id, itemId: item.id, patch: { words: wordsForClip(transcript, item.clip.start, item.clip.end) } });
+    const words = freshWords(item.clip.words, item.clip.start, item.clip.end, transcript, o.previous, glossary);
+    if (words) operations.push({ type: "item.patch", sequenceId: sequence.id, itemId: item.id, patch: { words } });
   }
   record(projectId, media.id, {
     status: "done", reason: "", engine: transcript.engine, words: transcript.words.length, at: Date.now(), by,

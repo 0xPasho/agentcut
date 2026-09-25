@@ -339,3 +339,24 @@ test("a word fitted to the speech sits on one side of a silence, never across it
     assert.ok(!(w.t < 2 && end > 7), `${w.w} spans the silence: ${w.t}–${end}`);
   }
 });
+
+test("re-importing keeps a clip's words corrected by hand, and still gives it the glossary", async () => {
+  const { saveGlossary } = await import("../../rules/server/glossary");
+  await sourceProject("handfix");
+  const text = "1\n00:00:00,800 --> 00:00:02,200\nuno dos\n\n2\n00:00:02,800 --> 00:00:04,200\ntres cloud\n";
+  await provided.importTranscript("handfix", { text, name: "vod.srt" });
+  // A person fixes a word by hand: "dos" was really "doce".
+  const { revision, edl } = store.readEditor("handfix");
+  const words = edl.clips[0].words.map((w) => (w.w === "dos" ? { ...w, w: "doce" } : w));
+  store.editProject("handfix", { expectedRevision: revision, operations: [{ type: "clip.patch", clipId: "cut", patch: { words } }] });
+
+  // Then a name goes into the glossary and the transcript is imported again.
+  await saveGlossary({ terms: [{ term: "Claude", aliases: ["cloud"], note: "" }] }, "workspace");
+  try {
+    await provided.importTranscript("handfix", { text, name: "vod.srt" });
+    const after = store.readEditor("handfix").edl.clips[0].words.map((w) => w.w);
+    assert.deepEqual(after, ["uno", "doce", "tres", "Claude"], "the hand fix stays, and the glossary still reaches it");
+  } finally {
+    await saveGlossary({ terms: [] }, "workspace");
+  }
+});

@@ -1,6 +1,7 @@
 import { q } from "../../../common/server/db";
 import { projectDir } from "../../../common/server/config";
-import { wordsForClip, type Transcript } from "../lib/transcript";
+import { wordsForClip, type Transcript, type Word } from "../lib/transcript";
+import { applyGlossary, readGlossary, type Glossary } from "../../rules/server/glossary";
 import { isUrl } from "../../project/server/ingest";
 import { editProject, readEditor } from "../../editor/server/store";
 import type { EditorOperation } from "../../editor/lib/operations";
@@ -10,7 +11,35 @@ export type ResyncOptions = Pick<TranscribeRunOptions, "brief" | "provider" | "m
   expectedRevision?: number;
   /** Reuse a current transcript instead of recognising the audio again. */
   reuse?: boolean;
+  /**
+   * The transcript the timeline's words came from before this one. A shot whose words
+   * no longer match it was corrected by hand, and keeps its words — see `freshWords`.
+   */
+  previous?: Transcript | null;
 };
+
+const sameWords = (a: Word[], b: Word[]) =>
+  a.length === b.length && a.every((w, i) => w.w === b[i].w && Math.abs(w.t - b[i].t) < 1e-3 && Math.abs(w.d - b[i].d) < 1e-3);
+
+/**
+ * The words a shot should carry after its transcript changed, or null to leave them.
+ *
+ * A shot still carrying exactly what the previous transcript gave it takes the new
+ * transcript's words. A shot whose words differ was corrected by hand — a name fixed, a
+ * word re-timed, a phrase merged — and re-importing used to throw that work away on
+ * every clip at once. It keeps its words and only takes the glossary, so a name added to
+ * the glossary still reaches it.
+ */
+export function freshWords(
+  current: Word[], start: number, end: number,
+  transcript: Transcript, previous: Transcript | null | undefined, glossary: Glossary | null,
+): Word[] | null {
+  const edited = !!previous && current.length > 0 && !sameWords(current, wordsForClip(previous, start, end));
+  if (!edited) return wordsForClip(transcript, start, end);
+  if (!glossary) return null;
+  const spelled = applyGlossary({ language: transcript.language, engine: transcript.engine, segments: [], words: current }, glossary);
+  return spelled.changed ? spelled.transcript.words : null;
+}
 
 /**
  * Re-recognise the source and put the new words back into everything already cut
@@ -40,7 +69,8 @@ export async function resyncTranscript(projectId: string, o: ResyncOptions = {})
   });
 
   const { revision, edl } = readEditor(projectId);
-  const operations = wordOperations(edl, transcript, project.source_path);
+  const glossary = o.previous ? await readGlossary(projectId) : null;
+  const operations = wordOperations(edl, transcript, project.source_path, o.previous, glossary);
   if (!operations.length) {
     o.onLog?.("transcript updated; nothing on the timeline is cut from this source");
     return { transcript, patched: 0, revision };
@@ -59,26 +89,21 @@ function wordOperations(
   edl: ReturnType<typeof readEditor>["edl"],
   transcript: Transcript,
   sourceFile: string,
+  previous: Transcript | null | undefined = null,
+  glossary: Glossary | null = null,
 ): EditorOperation[] {
   const operations: EditorOperation[] = [];
   for (const clip of edl.clips) {
-    operations.push({
-      type: "clip.patch",
-      clipId: clip.id,
-      patch: { words: wordsForClip(transcript, clip.start, clip.end) },
-    });
+    const words = freshWords(clip.words, clip.start, clip.end, transcript, previous, glossary);
+    if (words) operations.push({ type: "clip.patch", clipId: clip.id, patch: { words } });
   }
   for (const sequence of edl.sequences) {
     for (const item of sequence.items) {
       // Imported media and canvas scenes have no words from this transcript.
       const media = item.mediaId ? edl.media.find((m) => m.id === item.mediaId) : null;
       if (!media || media.file !== sourceFile) continue;
-      operations.push({
-        type: "item.patch",
-        sequenceId: sequence.id,
-        itemId: item.id,
-        patch: { words: wordsForClip(transcript, item.clip.start, item.clip.end) },
-      });
+      const words = freshWords(item.clip.words, item.clip.start, item.clip.end, transcript, previous, glossary);
+      if (words) operations.push({ type: "item.patch", sequenceId: sequence.id, itemId: item.id, patch: { words } });
     }
   }
   return operations;
