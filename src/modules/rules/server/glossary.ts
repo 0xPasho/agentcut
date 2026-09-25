@@ -94,9 +94,21 @@ export function applyGlossary(transcript: Transcript, glossary: Glossary): { tra
     for (const r of rules) text = text.replace(r.pattern, (m) => { if (m === r.term) return m; changed += 1; return r.term; });
     return text === s.text ? s : { ...s, text };
   });
-  const words = transcript.words.map((w) => {
+  const bare = (word: string) => word.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+  const words = transcript.words.map((w, i) => {
     let text = w.w;
-    for (const r of rules) if (r.single) text = text.replace(r.pattern, (m) => { if (m === r.term) return m; changed += 1; return r.term; });
+    for (const r of rules) {
+      if (!r.single) continue;
+      text = text.replace(r.pattern, (m) => {
+        if (m === r.term) return m;
+        changed += 1;
+        // "ILA" is heard for "la IA": after "con" it becomes "con la IA", but after a
+        // "la" already said the term's own "la" would say it twice.
+        const [lead, ...rest] = r.term.split(/\s+/);
+        const before = transcript.words[i - 1];
+        return rest.length && before && bare(before.w) === bare(lead) ? rest.join(" ") : r.term;
+      });
+    }
     return text === w.w ? w : { ...w, w: text };
   });
   return { transcript: changed ? { ...transcript, segments, words } : transcript, changed };

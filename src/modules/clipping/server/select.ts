@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { extractAudio, grabFrame, type Probe } from "../../media/server/ffmpeg";
 import { speechRunsFromWav, type SpeechRun } from "../../transcription/server/align";
 import { toAgentText, wordsForClip, type Transcript } from "../../transcription/lib/transcript";
+import { SELECTION_GLOSSARY, SELECTION_PREFERENCES } from "../data";
 import { AgentClipProposals, CaptionStyle, Edl, centerCrop, type Clip, SELECTION_AUTHOR } from "../../editor/types";
 import { resolveProvider, type AgentEvent } from "../../agent/server/providers";
 import { trim } from "../../editor/lib/operations";
@@ -96,8 +97,12 @@ export async function selectClips(o: SelectOptions): Promise<Edl> {
     fs.writeFile(path.join(dir, "signals.json"), JSON.stringify(signals, null, 2)),
     fs.writeFile(path.join(dir, "source.json"), JSON.stringify(probe, null, 2)),
     fs.writeFile(path.join(dir, "rules.json"), JSON.stringify(allRules.filter((r) => r.enabled).map(({ id, name, when, stage, priority, description }) => ({ id, name, when, stage, priority, description })), null, 2)),
-    fs.writeFile(path.join(dir, "glossary.json"), JSON.stringify(glossary, null, 2)),
-    fs.writeFile(path.join(dir, "preferences.md"), preferences),
+    // The run works in the project's own folder, where `glossary.json` and `preferences.md`
+    // are the project-level settings. A copy of the merged ones written there became a
+    // project override frozen at the moment of the analysis, and every later edit to the
+    // workspace glossary stopped applying to the project. The copies get their own names.
+    fs.writeFile(path.join(dir, SELECTION_GLOSSARY), JSON.stringify(glossary, null, 2)),
+    fs.writeFile(path.join(dir, SELECTION_PREFERENCES), preferences),
   ]);
 
   const hasFrames = await sampleFrames(videoPath, dir, probe.durationSec, frameEvery)

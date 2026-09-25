@@ -272,3 +272,17 @@ test("a clip whose comment pops in keeps the beat of silence before the reading,
   const [bounded] = tightenBoundaries(close, 2003.06, 2010, { duration: 18000, fps: 30, openingSec: 0.6 });
   assert.ok(bounded >= 2002.9 + 0.1 - 1e-9, `${bounded}`);
 });
+
+test("a selection run never writes over the project's own glossary or preferences", async () => {
+  // It works in the project folder, where these two names are the project-level settings:
+  // a copy written there froze the workspace glossary into a project override, and the
+  // owner's later corrections ("Codets" is Codex) silently stopped applying.
+  const fs = await import("node:fs/promises");
+  const source = await fs.readFile(new URL("../server/select.ts", import.meta.url), "utf8");
+  for (const name of ["glossary.json", "preferences.md"]) {
+    assert.ok(!source.includes(`path.join(dir, "${name}")`), `select.ts writes ${name} into the project folder`);
+  }
+  const { SELECTION_GLOSSARY, SELECTION_PREFERENCES } = await import("../data");
+  assert.notEqual(SELECTION_GLOSSARY, "glossary.json");
+  assert.notEqual(SELECTION_PREFERENCES, "preferences.md");
+});

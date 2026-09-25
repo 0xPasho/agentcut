@@ -238,6 +238,18 @@ test("the glossary fixes known mishearings deterministically and feeds the recog
   assert.equal(changed, 5, "three in the segment text, two in the timed words");
   assert.equal(glossary.applyGlossary(transcript as never, { terms: [] }).changed, 0);
 
+  // A one-word mishearing of a phrase: "ILA" is "la IA". After "con" it says the whole
+  // phrase; after a "la" already said it does not say it twice — in the text and on the words.
+  const ia = { terms: [{ term: "la IA", aliases: ["ILA", "la ILA"], note: "" }] };
+  const said = {
+    language: "es", engine: "test",
+    segments: [{ start: 0, end: 3, text: "Hazlo con ILA y deja que la ILA lo haga." }],
+    words: ["Hazlo", "con", "ILA", "y", "deja", "que", "la", "ILA", "lo", "haga."].map((w, i) => ({ w, t: i * 0.3, d: 0.25 })),
+  };
+  const spelled = glossary.applyGlossary(said as never, ia).transcript;
+  assert.equal(spelled.segments[0].text, "Hazlo con la IA y deja que la IA lo haga.");
+  assert.deepEqual(spelled.words.map((w) => w.w), ["Hazlo", "con", "la IA", "y", "deja", "que", "la", "IA", "lo", "haga."]);
+
   const viaTool = await tools.executeEditorTool(id, { tool: "glossary.get" }) as typeof merged;
   assert.deepEqual(viaTool, merged);
   await assert.rejects(tools.executeEditorTool(id, { tool: "glossary.save", glossary: { terms: [{ term: "" }] } }));
