@@ -250,6 +250,19 @@ test("the glossary fixes known mishearings deterministically and feeds the recog
   assert.equal(spelled.segments[0].text, "Hazlo con la IA y deja que la IA lo haga.");
   assert.deepEqual(spelled.words.map((w) => w.w), ["Hazlo", "con", "la IA", "y", "deja", "que", "la", "IA", "lo", "haga."]);
 
+  // A phrase of as many words is corrected word for word on the timed words, and only as a
+  // phrase: "una guía" is a guide.
+  const guide = { terms: [{ term: "la IA", aliases: ["la guía"], note: "" }] };
+  const heard = {
+    language: "es", engine: "test",
+    segments: [{ start: 0, end: 3, text: "con la guía, no con una guía." }],
+    words: ["con", "la", "guía,", "no", "con", "una", "guía."].map((w, i) => ({ w, t: i * 0.3, d: 0.25 })),
+  };
+  const fixedGuide = glossary.applyGlossary(heard as never, guide).transcript;
+  assert.equal(fixedGuide.segments[0].text, "con la IA, no con una guía.");
+  assert.deepEqual(fixedGuide.words.map((w) => w.w), ["con", "la", "IA,", "no", "con", "una", "guía."]);
+  assert.deepEqual(fixedGuide.words.map((w) => w.t), heard.words.map((w) => w.t), "no word moves");
+
   const viaTool = await tools.executeEditorTool(id, { tool: "glossary.get" }) as typeof merged;
   assert.deepEqual(viaTool, merged);
   await assert.rejects(tools.executeEditorTool(id, { tool: "glossary.save", glossary: { terms: [{ term: "" }] } }));

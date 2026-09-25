@@ -111,5 +111,26 @@ export function applyGlossary(transcript: Transcript, glossary: Glossary): { tra
     }
     return text === w.w ? w : { ...w, w: text };
   });
+  // A phrase heard as another phrase of as many words ("la guía" for "la IA") is corrected
+  // on the timed words too, word for word: nothing merges, so no caption moves. Phrases of
+  // a different length stay a text-only correction, as the note above says.
+  for (const t of glossary.terms) {
+    const target = t.term.split(/\s+/);
+    if (target.length < 2) continue;
+    for (const alias of t.aliases) {
+      const form = alias.toLowerCase().split(/\s+/);
+      if (form.length !== target.length) continue;
+      for (let i = 0; i + form.length <= words.length; i++) {
+        if (!form.every((f, k) => bare(words[i + k].w) === bare(f))) continue;
+        if (target.every((w, k) => words[i + k].w.replace(/[^\p{L}\p{N}]/gu, "") === w.replace(/[^\p{L}\p{N}]/gu, ""))) continue;
+        for (let k = 0; k < form.length; k++) {
+          // Keep the punctuation the word carried: "guía," stays followed by its comma.
+          const tail = /[^\p{L}\p{N}]*$/u.exec(words[i + k].w)?.[0] ?? "";
+          words[i + k] = { ...words[i + k], w: target[k] + tail };
+        }
+        changed += 1;
+      }
+    }
+  }
   return { transcript: changed ? { ...transcript, segments, words } : transcript, changed };
 }
