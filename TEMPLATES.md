@@ -135,7 +135,13 @@ cut short.
   `atFraction: 1` means the last frame before that card rather than a call to action on
   top of it. The music bed is the exception at one end: it plays from the first frame,
   under an intro like any other shot, and still stops at the end card, which arrives
-  with its own sound.
+  with its own sound. The bookends that bound the body are whichever are **on the main
+  track**, not only the ones this application adds: an end card kept from an earlier
+  application, placed by hand or pinned by an agent still ends the hook — the end card
+  plays alone, with no title over it.
+- **An upright source is framed whole.** A split's two rectangles are shares of a
+  landscape scene; a portrait source (taller than wide) is already a finished vertical
+  video, so `layoutFor` gives it `crop` instead of cutting a "camera" corner out of it.
 - **`intro` / `outro`**: a picture held full-frame for `seconds` at the start or the end,
   on the main track, from an `image` slot or an asset id — or a whole video played to its
   end, which is what a channel's end card is. The intro shifts every shot after it; both
