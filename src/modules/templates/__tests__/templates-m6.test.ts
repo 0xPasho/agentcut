@@ -144,6 +144,7 @@ test("an intro and an outro are placed on the main track from image slots, shift
   await tools.executeEditorTool(id, { tool: "template.apply", templateId: "bookended", sequenceId, expectedRevision: first.revision, slots: { cover: { assetId: asset.id } } });
   sequence = store.readEditor(id).edl.sequences[0];
   assert.equal(sequence.items.filter((i) => i.clip.title === "Intro").length, 1, "re-applying does not stack intros");
+  assert.equal(sequence.items.filter((i) => i.clip.title === "Hook").length, 1, "nor hooks: the hook after the intro is still the template's own");
   assert.equal(sequence.items.filter((i) => i.clip.title === "Outro").length, 1);
   assert.ok(sequence.items.some((i) => i.id === itemId));
 
@@ -159,6 +160,7 @@ test("an intro and an outro are placed on the main track from image slots, shift
   sequence = store.readEditor(id).edl.sequences[0];
   const kept = sequence.items.filter((i) => i.clip.title === "Outro");
   assert.equal(kept.length, 1, "the pinned end card is kept, not doubled");
+  assert.equal(sequence.items.filter((i) => i.clip.title === "Hook").length, 1, "the hook the intro pushed back was the template's, so it is replaced, not kept beside a new one");
   const held = sequence.items.filter((i) => i.clip.title === "Hook").find((i) => i.clip.edits.some((e) => e.by === "template:bookended-bare"))!;
   assert.ok((held.at ?? 0) + held.clip.end - held.clip.start <= pinnedAt + 0.05, `the hook is gone before a pinned end card too: ends ${(held.at ?? 0) + held.clip.end}, card at ${pinnedAt}`);
 });

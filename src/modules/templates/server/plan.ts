@@ -630,7 +630,14 @@ export type Bookend = { src: string; seconds: number } | { media: MediaSource; a
 /** The blur a hand-placed pop comment put under its card: part of the comment, not a person's styling of the layer. */
 const isCommentBlur = (edit: Edit) => edit.type === "blur" && edit.by === COMMENT_AUTHOR;
 
-export function templateItemState(item: SequenceItem): TemplateItemState {
+/** Where the body starts: after an Intro on the main track, else at zero. The template starts its layers there. */
+function bodyStartOf(sequence: VideoSequence | undefined): number {
+  if (!sequence) return 0;
+  const intro = sequenceFrames(sequence).items.find((entry) => (entry.item.layer ?? 0) === 0 && entry.item.clip.title === "Intro");
+  return intro ? (intro.from + intro.duration) / sequence.output.fps : 0;
+}
+
+export function templateItemState(item: SequenceItem, sequence?: VideoSequence): TemplateItemState {
   // A video bookend has footage and no edits; its mark is on the clip itself.
   if (item.mediaId !== null && isBookendTitle(item.clip.title) && item.clip.reason.startsWith("template:") && !item.clip.edits.length)
     return item.at !== null && item.at !== undefined ? "moved" : "owned";
@@ -640,14 +647,17 @@ export function templateItemState(item: SequenceItem): TemplateItemState {
   const t = item.transform;
   const placed = !!t && (t.x !== DEFAULT_ITEM_TRANSFORM.x || t.y !== DEFAULT_ITEM_TRANSFORM.y ||
     t.width !== DEFAULT_ITEM_TRANSFORM.width || t.height !== DEFAULT_ITEM_TRANSFORM.height || t.rotation !== DEFAULT_ITEM_TRANSFORM.rotation);
-  // Layers a template always starts at zero: a nonzero start is a person's decision.
-  const retimed = ["Hook", "Watermark", "Music bed"].includes(item.clip.title) && (item.at ?? 0) !== 0;
+  // Layers a template starts where the body does — zero, or the end of an intro card.
+  // Anywhere else is a person's decision. Reading only zero took the template's own hook
+  // after an intro for a moved one, kept it, and stacked a second hook on re-apply.
+  const start = item.at ?? 0;
+  const retimed = ["Hook", "Watermark", "Music bed"].includes(item.clip.title) && start !== 0 && Math.abs(start - bodyStartOf(sequence)) > 0.05;
   // A bookend is placed on the main track with automatic timing; a pinned time is a person's decision.
   const repinned = isBookendTitle(item.clip.title) && (item.at !== null && item.at !== undefined);
   if (repinned) return "moved";
   return placed || retimed ? "moved" : "owned";
 }
-export const isTemplateItem = (item: SequenceItem) => templateItemState(item) === "owned";
+export const isTemplateItem = (item: SequenceItem, sequence?: VideoSequence) => templateItemState(item, sequence) === "owned";
 
 export type ResolvedImage = {
   src: string;
@@ -698,11 +708,11 @@ export function templateOperations(
   if (template.output && JSON.stringify(template.output) !== JSON.stringify(sequenceOf().output))
     push({ type: "sequence.patch", sequenceId: plan.sequenceId, output: template.output });
 
-  for (const item of sequenceOf().items.filter(isTemplateItem))
+  for (const item of sequenceOf().items.filter((entry) => isTemplateItem(entry, sequenceOf())))
     push({ type: "item.remove", sequenceId: plan.sequenceId, itemId: item.id });
   // A template layer someone has moved stays where they put it, and the template does
   // not add a second one of the same kind beside it.
-  const kept = new Set(sequenceOf().items.filter((item) => templateItemState(item) === "moved").map((item) => item.clip.title));
+  const kept = new Set(sequenceOf().items.filter((item) => templateItemState(item, sequenceOf()) === "moved").map((item) => item.clip.title));
 
   for (const planned of plan.items) {
     const item = sequenceOf().items.find((candidate) => candidate.id === planned.itemId);
@@ -837,7 +847,7 @@ export function templateOperations(
   // The comment a clip answers opens it, and the hook takes over when it goes. A comment
   // somebody chose or placed by hand is theirs: the template neither replaces it nor adds
   // a second, but still waits for it before showing the hook.
-  const theirs = sequenceOf().items.find((item) => item.clip.title === COMMENT_TITLE && templateItemState(item) !== "owned");
+  const theirs = sequenceOf().items.find((item) => item.clip.title === COMMENT_TITLE && templateItemState(item, sequenceOf()) !== "owned");
   // A `pop` comment lands over the hook rather than before it, so the hook never waits for
   // one. A comment somebody placed keeps its own way in: one that opens the video (it
   // grows in; a pop arrives at full size) still holds the hook back, whatever this template does.
