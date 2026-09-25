@@ -65,3 +65,29 @@ test("a range with no bytes in it is said to be unsatisfiable rather than crashi
     assert.equal(res.headers.get("content-range"), "bytes */9000");
   }
 });
+
+test("an asset that is missing is never cached, and one that is served is kept for good", async () => {
+  const fs = await import("node:fs/promises");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "agentcut-asset-route-"));
+  process.env.AGENTCUT_WORKSPACE = dir;
+  const { q } = await import("../db");
+  const { GET } = await import("../../../app/api/assets/[id]/file/route");
+  // Asset paths are relative to the workspace, which is this test's own folder.
+  const file = path.join(dir, "assets", "card.png");
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  q.insertAsset({ id: "a_route", kind: "image", scope: "library", project_id: null, path: "assets/card.png", name: "card.png", tags: "", source: "test",
+    source_url: null, license: null, attribution: null, width: null, height: null, duration_sec: null, sha256: "x", created_at: Date.now() } as never);
+  const call = () => GET(new Request("http://x/api/assets/a_route/file") as never, { params: Promise.resolve({ id: "a_route" }) });
+  const served = await call();
+  assert.equal(served.status, 200);
+  assert.match(served.headers.get("cache-control") ?? "", /immutable/);
+  await fs.rm(file);
+  const missing = await call();
+  assert.equal(missing.status, 404);
+  assert.equal(missing.headers.get("cache-control"), "no-store", "a 404 kept for a year kept a restored card off the preview");
+  const unknown = await GET(new Request("http://x/api/assets/a_none/file") as never, { params: Promise.resolve({ id: "a_none" }) });
+  assert.equal(unknown.headers.get("cache-control"), "no-store");
+});

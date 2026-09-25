@@ -189,7 +189,8 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
         </div>
         <Badge variant={project.status === "error" ? "destructive" : "secondary"}>
           {busy && <Loader2 aria-hidden className="mr-1 size-3 motion-safe:animate-spin" />}
-          {project.job?.stage ?? project.status}
+          {/* A stopped or finished job's last stage is history, not what the project is doing. */}
+          {project.job?.status === "running" ? project.job.stage : project.status}
         </Badge>
       </Glass>
 

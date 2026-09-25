@@ -8,8 +8,11 @@ export const runtime = "nodejs";
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const row = q.getAsset(id);
-  if (!row) return new Response("not found", { status: 404 });
+  if (!row) return new Response("not found", { status: 404, headers: { "Cache-Control": "no-store" } });
   const res = await fileResponse(toAbs(row.path), req.headers);
-  res.headers.set("Cache-Control", "public, max-age=31536000, immutable");
+  // An asset id names its bytes, so a picture that was served can be kept for good. A
+  // miss cannot: marked immutable, one moment with the file away kept the preview on a
+  // 404 after the file was back, while the export — which asks again — showed it.
+  res.headers.set("Cache-Control", res.ok ? "public, max-age=31536000, immutable" : "no-store");
   return res;
 }
