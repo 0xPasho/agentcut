@@ -85,7 +85,7 @@ async function fitWords(segments: Segment[], file: string | null, dir: string, o
  * Parse, time and write a provided transcript into `dir`. No project needed: the
  * command line calls this for a video it clips without one.
  */
-export async function writeProvidedTranscript(o: { text: string; name?: string; file: string | null; dir: string; by?: string; onLog?: (text: string) => void }) {
+export async function writeProvidedTranscript(o: { text: string; name?: string; file: string | null; dir: string; by?: string; projectId?: string; onLog?: (text: string) => void }) {
   const durationSec = o.file ? await probe(o.file).then((meta) => meta.durationSec).catch(() => undefined) : undefined;
   const parsed = parseTranscript(o.text, { name: o.name, durationSec });
   const lastStart = Math.max(parsed.words.at(-1)?.t ?? 0, parsed.segments.at(-1)?.start ?? 0);
@@ -96,12 +96,19 @@ export async function writeProvidedTranscript(o: { text: string; name?: string; 
   await fs.mkdir(o.dir, { recursive: true });
   const timing = parsed.words.length ? "words" : "segments";
   const words = parsed.words.length ? parsed.words : await fitWords(parsed.segments, o.file, o.dir, o.onLog);
-  const transcript = Transcript.parse({
+  // What was said is theirs; how the channel's names are spelled is theirs too. The
+  // owner's glossary — deterministic, their own — is the one pass a provided transcript
+  // gets: a service that heard "Cloud" for "Claude" seventy times is still the source of
+  // truth for everything else. The proofreading model never touches it.
+  const { readGlossary, applyGlossary } = await import("../../rules/server/glossary");
+  const spelled = applyGlossary(Transcript.parse({
     language: parsed.language ?? "und",
     engine: providedEngine(parsed.format),
     segments: parsed.segments,
     words,
-  });
+  }), await readGlossary(o.projectId));
+  const transcript = spelled.transcript;
+  if (spelled.changed) o.onLog?.(`glossary corrected ${spelled.changed} words`);
 
   const record: ProvidedTranscript = {
     name: o.name?.trim() || `transcript.${parsed.format === "lines" ? "txt" : parsed.format}`,
@@ -142,7 +149,7 @@ export async function importTranscript(projectId: string, o: ImportTranscriptOpt
   const job = q.activeJob(projectId);
   if (job && READERS.has(job.kind)) throw new Error(`A ${job.kind} job is reading this project's words; add the transcript when it finishes`);
 
-  const { record } = await writeProvidedTranscript({ text: o.text, name: o.name, file: where.file, dir: where.dir, by: o.by, onLog: o.onLog });
+  const { record } = await writeProvidedTranscript({ text: o.text, name: o.name, file: where.file, dir: where.dir, by: o.by, projectId, onLog: o.onLog });
 
   // The words go onto the timeline through the paths that already do it for the
   // recogniser's: they read the transcript just written, so there is one way words land.
@@ -155,11 +162,13 @@ export async function importTranscript(projectId: string, o: ImportTranscriptOpt
   } else if (where.mediaId) {
     const done = await transcribeProjectMedia(projectId, { mediaIds: [where.mediaId], by: o.by, onLog: o.onLog });
     patched = done.results[0]?.items ?? 0;
-  } else if (where.file) {
+  } else if (where.file && q.getProject(projectId)?.edl) {
     const { resyncTranscript } = await import("./resync");
     patched = (await resyncTranscript(projectId, { reuse: true, onLog: o.onLog })).patched;
   }
-  return { ...record, engine: providedEngine(record.format), target: where.mediaId ?? "source", patched, revision: readEditor(projectId).revision };
+  // Before the first analysis a project has no edit list yet: nothing is cut from the
+  // source, and the transcript is simply what that analysis will read.
+  return { ...record, engine: providedEngine(record.format), target: where.mediaId ?? "source", patched, revision: q.getProject(projectId)?.edl ? readEditor(projectId).revision : null };
 }
 
 /**
@@ -178,7 +187,7 @@ export async function discardTranscript(projectId: string, o: { mediaId?: string
     const { forgetTranscription } = await import("./media");
     forgetTranscription(projectId, where.mediaId);
   }
-  return { target: where.mediaId ?? "source", revision: readEditor(projectId).revision };
+  return { target: where.mediaId ?? "source", revision: q.getProject(projectId)?.edl ? readEditor(projectId).revision : null };
 }
 
 /**

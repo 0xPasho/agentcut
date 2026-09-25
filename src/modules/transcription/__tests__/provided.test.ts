@@ -223,6 +223,20 @@ test("a transcript timed per line becomes the source's words, on the speech, and
   assert.equal(kept, SRT, "the file as it was handed over is kept");
 });
 
+test("a transcript can be handed over before the first analysis, when there is no edit list yet", async () => {
+  database.q.insertProject({ id: "fresh", name: "fresh", source_path: talking, created_at: Date.now() });
+  const result = await provided.importTranscript("fresh", { text: SRT, name: "vod.srt" });
+  assert.equal(result.patched, 0);
+  assert.equal(result.revision, null, "nothing is cut from the source yet");
+  assert.equal(mediaTranscribe.transcriptionState("fresh").source.status, "provided");
+  const fake = fakeRecogniser();
+  const { projectDir } = await import("../../../common/server/config");
+  const analysed = await transcribeIndex.ensureTranscript({ dir: projectDir("fresh"), sourcePath: talking, recognise: fake.recognise });
+  assert.equal(analysed.transcript.engine, "provided:srt", "and the analysis that follows reads it");
+  assert.equal(fake.calls, 0);
+  await provided.discardTranscript("fresh");
+});
+
 test("the recogniser never replaces it — not on analysis, not when forced, not when it finishes after the import", async () => {
   await sourceProject("truth");
   const { projectDir } = await import("../../../common/server/config");
@@ -298,4 +312,19 @@ test("a speaker label after the time is who is speaking, not part of what they s
   // Twenty seconds after seven words is not seven words' worth of line.
   const gap = parseTranscript("00:00:29 A a Instagram y a TikTok ¿Qué onda?\n00:00:49 Hoy es el día 174.");
   assert.ok(Math.abs(gap.segments[0].end - (29 + 8 * 0.6)) < 1e-9, `${gap.segments[0].end}`);
+});
+
+test("the owner's glossary spells the channel's names in a provided transcript too, and nothing else is changed", async () => {
+  const { saveGlossary } = await import("../../rules/server/glossary");
+  await saveGlossary({ terms: [{ term: "Claude", aliases: ["Cloud", "Cloudde"], note: "" }] }, "workspace");
+  try {
+    database.q.insertProject({ id: "spelled", name: "spelled", source_path: talking, created_at: Date.now() });
+    await provided.importTranscript("spelled", { text: "1\n00:00:00,800 --> 00:00:02,200\npagas cloudde\n\n2\n00:00:02,800 --> 00:00:04,200\nuso Cloud diario\n", name: "vod.srt" });
+    const { projectDir } = await import("../../../common/server/config");
+    const saved = Transcript.parse(JSON.parse(await fs.readFile(path.join(projectDir("spelled"), "transcript.json"), "utf8")));
+    assert.deepEqual(saved.words.map((w) => w.w), ["pagas", "Claude", "uso", "Claude", "diario"]);
+    assert.equal(saved.engine, "provided:srt", "still the person's transcript");
+  } finally {
+    await saveGlossary({ terms: [] }, "workspace");
+  }
 });

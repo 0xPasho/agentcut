@@ -175,7 +175,9 @@ export async function transcribeProjectMedia(projectId: string, o: MediaTranscri
  * the durable record on the media, plus whatever is running in this process.
  */
 export function transcriptionState(projectId: string) {
-  const { edl, revision } = readEditor(projectId);
+  // Before the first analysis there is no edit list and so no imported media — but the
+  // source's words already matter: the analysis panel offers a transcript right there.
+  const { edl, revision } = q.getProject(projectId)?.edl ? readEditor(projectId) : { edl: { media: [] as Array<{ id: string; name: string; transcription?: MediaTranscription }> }, revision: null };
   const live = transcribingNow(projectId);
   const mode = resolveTranscribeMode(projectId);
   return {
