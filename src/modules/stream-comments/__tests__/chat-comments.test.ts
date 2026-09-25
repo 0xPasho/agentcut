@@ -315,3 +315,16 @@ test("a chat export is a chat, its drawn cards are the comment cards, and the se
     comments.saveChatSource("");
   }
 });
+
+test("the reading is the stretch that says most of the message, not a stray word of it said before", () => {
+  // Measured on a real clip: "…la app de Claude", six seconds of silence, then the message read out.
+  const said = [
+    ...speak("de la app de Claude", 0),
+    ...speak("¿Qué dura más, Codex 100 dólares o Claude de 100 dólares para desarrollos web y CRM?", 7),
+    ...speak("Yo creo que te dura más Claude", 13.5),
+  ];
+  const span = comments.readingSpan(said, "Que dura más , códex 100 dlrs o claude 100 dlrs , para desarrollos web y CRM")!;
+  assert.equal(span.t, 7, "it starts where the message does, not on the stray Claude");
+  const crm = said.find((w) => w.w === "CRM?")!;
+  assert.ok(Math.abs(span.t + span.d - (crm.t + crm.d)) < 1e-9, "and ends on its last word, through the number said twice");
+});

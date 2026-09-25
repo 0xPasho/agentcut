@@ -328,3 +328,14 @@ test("the owner's glossary spells the channel's names in a provided transcript t
     await saveGlossary({ terms: [] }, "workspace");
   }
 });
+
+test("a word fitted to the speech sits on one side of a silence, never across it", () => {
+  // One line, two phrases, five seconds of silence between them.
+  const seg = { start: 0, end: 10 };
+  const runs = [{ start: 0, end: 2 }, { start: 7, end: 10 }];
+  const words = spreadOverSpeech(wordsAcross("de la app de Claude qué dura más dólares", 10), seg, runs);
+  for (const w of words) {
+    const end = w.t + w.d;
+    assert.ok(!(w.t < 2 && end > 7), `${w.w} spans the silence: ${w.t}–${end}`);
+  }
+});

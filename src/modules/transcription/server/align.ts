@@ -216,19 +216,31 @@ export function spreadOverSpeech(words: Word[], seg: { start: number; end: numbe
   // A word that fills a run exactly ends where the run ends, but the next one
   // starts after the pause — so where a run boundary lands depends on which edge
   // of a word is being placed.
-  const at = (t: number, edge: "start" | "end") => {
+  const at = (t: number, edge: "start" | "end"): { at: number; run: number } => {
     let left = Math.max(0, t) * scale;
-    for (const run of inside) {
+    for (const [index, run] of inside.entries()) {
       const dur = run.end - run.start;
-      if (left < dur || (edge === "end" && left <= dur)) return run.start + left;
+      if (left < dur || (edge === "end" && left <= dur)) return { at: run.start + left, run: index };
       left -= dur;
     }
     const tail = inside.length ? inside[inside.length - 1].end : seg.start;
-    return Math.min(seg.end, tail + left);
+    return { at: Math.min(seg.end, tail + left), run: inside.length };
   };
 
   return words.map((w) => {
-    const t = at(w.t, "start");
-    return { ...w, t, d: Math.max(0.01, at(w.t + w.d, "end") - t) };
+    const start = at(w.t, "start");
+    const end = at(w.t + w.d, "end");
+    let t = start.at;
+    let stop = end.at;
+    // A word is said on one side of a silence or the other, never across it: stretched
+    // over the pause it claims the dead air — the cut that should take the pause out
+    // refuses, and a caption sits lit on nothing. It keeps the side holding most of it.
+    if (end.run !== start.run && start.run < inside.length && end.run < inside.length) {
+      const before = inside[start.run].end - t;
+      const after = stop - inside[end.run].start;
+      if (before >= after) stop = inside[start.run].end;
+      else t = inside[end.run].start;
+    }
+    return { ...w, t, d: Math.max(0.01, stop - t) };
   });
 }

@@ -184,33 +184,56 @@ export const answers = (comment: RankedComment) =>
 
 /** A pause longer than this inside a reading means the streamer has moved on to answering. */
 const READING_GAP_SEC = 1.5;
+/** Two of a comment's words further apart than this are two mentions of it, not one reading. */
+const READING_HIT_GAP_SEC = 3;
+/** A reading starts with its phrase when the phrase began this little before the first word of the message. */
+const PHRASE_LEAD_SEC = 1;
 
 /**
- * When the streamer reads the comment out, in the clip's own seconds: from the first of
- * its words they say to the last. A reading says each of the comment's words once, so it
- * ends when every one has been said, when one comes round a second time — the answer
- * using the question's words — or at a pause. Null when they never say it.
+ * When the streamer reads the comment out, in the clip's own seconds.
+ *
+ * A reading is a stretch of speech with no pause longer than a breath, in which the
+ * comment's own words come up. Only a word of it not yet said extends the reading: the
+ * answer that follows uses the question's words again ("pago la suscripción de Claude")
+ * and a number said twice in one message is still one message. Of all such stretches
+ * the one saying the most of the comment is the reading — a stray "Claude" in the
+ * sentence before is not — and it has to say two of its words, unless it only has one.
+ * Null when they never read it.
  */
 export function readingSpan(words: Word[], text: string, listenSec = 30): { t: number; d: number } | null {
   const wanted = new Set(contentWords(text));
   if (!wanted.size) return null;
-  const said = new Set<string>();
-  let first: Word | null = null;
-  let last: Word | null = null;
+  const need = Math.min(2, wanted.size);
+  type Run = { first: Word; last: Word; said: Set<string> };
+  let best: Run | null = null;
+  let run: Run | null = null;
+  const close = () => {
+    if (run && run.said.size >= need && (!best || run.said.size > best.said.size)) best = run;
+    run = null;
+  };
+  let heard = -Infinity;
+  // Where the phrase being said began: "¿Qué dura…" is read from "¿Qué", which is too
+  // common a word to be one of the message's own.
+  let phrase: Word | null = null;
   for (const word of words) {
     if (word.t > listenSec) break;
+    if (word.t - heard > READING_GAP_SEC) { close(); phrase = word; }
+    heard = word.t + word.d;
     const hits = contentWords(word.w).filter((w) => wanted.has(w));
-    if (!hits.length) {
-      if (last && word.t - (last.t + last.d) > READING_GAP_SEC) break;
-      continue;
+    if (!hits.length) continue;
+    const current = run as Run | null;
+    if (current && word.t - (current.last.t + current.last.d) > READING_HIT_GAP_SEC) close();
+    const open = run as Run | null;
+    if (!open) run = { first: phrase && word.t - phrase.t <= PHRASE_LEAD_SEC ? phrase : word, last: word, said: new Set(hits) };
+    else if (hits.some((w) => !open.said.has(w))) {
+      for (const hit of hits) open.said.add(hit);
+      open.last = word;
     }
-    if (last && (word.t - (last.t + last.d) > READING_GAP_SEC || hits.every((w) => said.has(w)))) break;
-    for (const hit of hits) said.add(hit);
-    first ??= word;
-    last = word;
-    if (said.size === wanted.size) break;
+    if ((run as Run | null)?.said.size === wanted.size) close();
   }
-  return first && last ? { t: first.t, d: last.t + last.d - first.t } : null;
+  close();
+  const found = best as Run | null;
+  return found ? { t: found.first.t, d: found.last.t + found.last.d - found.first.t } : null;
 }
 
 /** The window of chat a clip could be answering, in epoch ms. */
