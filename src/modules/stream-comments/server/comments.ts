@@ -4,6 +4,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { db } from "../../../common/server/db";
 import type { Word } from "../../transcription/lib/transcript";
+import { exportFile, readExportComments } from "./exports";
 
 /**
  * The stream's chat, on the video's clock.
@@ -76,6 +77,9 @@ export function saveChatSource(file: string) {
  * the chat keeps writing to this file while a stream is live.
  */
 export function readComments(file: string, fromMs: number, toMs: number): ChatComment[] {
+  // An export folder (or its messages.json) is a chat too: the same messages, already drawn.
+  const exported = exportFile(file);
+  if (exported) return readExportComments(exported, fromMs, toMs);
   const chat = new DatabaseSync(file, { readOnly: true });
   try {
     const rows = chat.prepare(
@@ -99,6 +103,8 @@ export function readComments(file: string, fromMs: number, toMs: number): ChatCo
 }
 
 export function commentById(file: string, id: number): ChatComment | null {
+  const exported = exportFile(file);
+  if (exported) return readExportComments(exported, 0, Number.MAX_SAFE_INTEGER).find((comment) => comment.id === id) ?? null;
   const chat = new DatabaseSync(file, { readOnly: true });
   try {
     const row = chat.prepare("SELECT ts FROM events WHERE id = ? AND type = 'chat'").get(id) as { ts: number } | undefined;

@@ -379,6 +379,23 @@ A clip cut from a stream is usually an answer, and the question was typed into t
   replaces it nor adds a second, and its hook still waits for it. `template.apply` takes
   `commentId` too.
 
+### The chat's own export
+
+The unified chat also exports a folder per stream under `clips/` — `messages.json` and a
+`cards/` folder with every message already drawn in the channel's design. When a message
+has a card there (any export beside the configured `chat.db`, or the export folder itself
+set as the chat source), **that picture is the comment card**, copied into the project
+byte for byte; the card is only drawn here when there is none. `chat.setSource` accepts an
+export folder or its `messages.json` as well as a database.
+
+### What the selection agent sees
+
+Before clips are chosen, every message is matched against what the streamer says after it
+arrived (`stream-comments/server/read-out.ts`, the same ranking a template uses), and the
+agent gets `chat.txt`: the messages read out loud first, each with the second it was read,
+then the rest. Its prompt says a question read out and answered is the strongest clip a
+stream has, to start half a second before the reading and to keep the whole answer.
+
 ### The pop: the message bursts in while it is read out
 
 `style: "open"` (the default above) opens the video on the message. `style: "pop"` is how a

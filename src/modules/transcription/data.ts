@@ -28,3 +28,10 @@ export const WORD_MAX_SEC = 1.2;
  * recording this app cuts runs ten hours, and a millisecond clock passes it in ten minutes.
  */
 export const MS_THRESHOLD = 36_000;
+
+/**
+ * A line timed only by where it starts lasts at most this long per word, and never less
+ * than the minimum: slow speech is ~0.5 s a word, so this is room, not a guess at pace.
+ */
+export const LINE_SEC_PER_WORD = 0.6;
+export const LINE_MIN_SEC = 2.5;

@@ -107,8 +107,9 @@ test("timestamped lines read with the time beside the text or above it, and unti
   const beside = parseTranscript("Stream del martes\n[00:00:10] Arrancamos\n[1:02:03] Ya casi\ncontinúa aquí\n", { durationSec: 4000 });
   assert.equal(beside.format, "lines");
   assert.deepEqual(beside.segments.map((s) => [s.start, s.end, s.text]), [
-    [10, 3723, "Arrancamos"],
-    [3723, 3725, "Ya casi continúa aquí"],
+    // A line lasts what it takes to say, not the hour of silence until the next one.
+    [10, 12.5, "Arrancamos"],
+    [3723, 3725.5, "Ya casi continúa aquí"],
   ]);
   const above = parseTranscript("0:03\nhola a todos\n0:07\nbienvenidos\n");
   assert.deepEqual(above.segments.map((s) => [s.start, s.text]), [[3, "hola a todos"], [7, "bienvenidos"]]);
@@ -285,4 +286,16 @@ test("imported media takes one through the same tool the panel calls, and a forc
   assert.equal(store.readEditor(id).edl.media[0].transcription, undefined, "the source reads as not transcribed again");
   assert.deepEqual(store.readEditor(id).edl.sequences[0].items[0].clip.words.map((w) => w.w), ["uno", "dos"], "the words stay until something replaces them");
   await assert.rejects(tools.executeEditorTool(id, { tool: "transcript.import", mediaId }), /file path or as its text/);
+});
+
+test("a speaker label after the time is who is speaking, not part of what they said", () => {
+  const parsed = parseTranscript("00:00:00 [Speaker 1]\nPues nos vamos al en vivo.\n00:00:24 [Speaker 1]\nMuy bien, ahí está.\n\n04:43:21 [Speaker 2]\nBye.\n", { durationSec: 17006 });
+  assert.deepEqual(parsed.segments.map((s) => [s.start, +s.end.toFixed(3), s.speaker, s.text]), [
+    [0, 3.6, "Speaker 1", "Pues nos vamos al en vivo."],
+    [24, 26.5, "Speaker 1", "Muy bien, ahí está."],
+    [17001, 17003.5, "Speaker 2", "Bye."],
+  ]);
+  // Twenty seconds after seven words is not seven words' worth of line.
+  const gap = parseTranscript("00:00:29 A a Instagram y a TikTok ¿Qué onda?\n00:00:49 Hoy es el día 174.");
+  assert.ok(Math.abs(gap.segments[0].end - (29 + 8 * 0.6)) < 1e-9, `${gap.segments[0].end}`);
 });

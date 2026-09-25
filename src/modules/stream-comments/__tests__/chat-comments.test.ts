@@ -260,3 +260,58 @@ test("a pop comment lands over the hook and a blurred frame with its sound, and 
   assert.deepEqual(held.map(({ title }) => title).sort(), ["Corte", "Hook"], "the blur is still under their card, on the new hook too, once each");
   assert.equal(blurs.filter(({ title }) => title === "Comment").length, 2, "and their card keeps its own arrival and exit");
 });
+
+// ─── the chat's own export: its cards, and what the selection agent is shown ─
+
+test("a chat export is a chat, its drawn cards are the comment cards, and the selection sees what was read out", { timeout: 180_000 }, async () => {
+  const exportDir = path.join(workspace, "export");
+  await fs.mkdir(path.join(exportDir, "cards"), { recursive: true });
+  const card = path.join(exportDir, "cards", "001-501.png");
+  const drawn = spawnSync(FFMPEG, ["-y", "-f", "lavfi", "-i", "color=c=0x18181b@1:size=900x300,format=rgba", "-frames:v", "1", card], { encoding: "utf8" });
+  assert.equal(drawn.status, 0, drawn.stderr);
+  const at = (sec: number) => LIVE + sec * 1000;
+  const message = (id: number, sec: number, text: string, extra: Record<string, unknown> = {}) => ({
+    id, type: "chat", platform: "youtube", text, time: { ts: at(sec) }, image: `cards/001-${id}.png`,
+    user: { handle: "@evan", nickname: "Evan", avatar: "", is_bot: false }, ...extra,
+  });
+  await fs.writeFile(path.join(exportDir, "messages.json"), JSON.stringify({ messages: [
+    message(501, CLIP_START - 60, "Recomendaciones para primer saas?"),
+    message(502, CLIP_START - 30, "hola a todos"),
+    message(503, CLIP_START - 20, "compra ya", { user: { nickname: "bot", is_bot: true } }),
+    { id: 504, type: "gift", platform: "tiktok", text: null, time: { ts: at(CLIP_START) } },
+  ] }));
+  // The panel's and the agent's `chat.setSource` is this function: a folder is accepted like a database.
+  comments.saveChatSource(exportDir);
+  try {
+    const read = comments.readComments(exportDir, at(0), at(200));
+    assert.deepEqual(read.map((c) => c.id), [501, 502], "chat from people only: no bot, no gift");
+
+    // The selection agent is shown the chat on the video's clock, read-outs first.
+    const { readOuts, chatText } = await import("../server/read-out");
+    const words = WORDS.map((w) => ({ ...w, t: w.t + CLIP_START }));
+    const chat = readOuts(LIVE, 115, words);
+    const evan = chat.find((c) => c.id === 501)!;
+    assert.ok(evan.readSec !== null && Math.abs(evan.readSec - (CLIP_START + 0.2)) < 0.01, `read at ${evan.readSec}`);
+    assert.equal(chat.find((c) => c.id === 502)!.readSec, null, "a greeting nobody reads out is not a read-out");
+    const text = chatText(chat);
+    assert.match(text, /# Read out loud on stream \(1\)\n- read at 100\.2s \(sent 40s\) · id 501 · youtube · Evan: Recomendaciones/);
+    const { buildSelectPrompt } = await import("../../clipping/lib/prompt");
+    const { SelectionSpec } = await import("../../clipping/types");
+    const prompt = buildSelectPrompt({ probe: { width: 1920, height: 1080, fps: 30, durationSec: 115 } as never, spec: SelectionSpec.parse({ output: { width: 1080, height: 1920, fps: 30 } }), userBrief: "", hasFrames: false, chunks: [], chat: { read: 1, total: 2 } });
+    assert.match(prompt, /chat\.txt/);
+    assert.match(prompt, /The chat is where most of the clips are/);
+
+    // And the card the export drew is the card the video shows.
+    await registry.saveTemplate({ id: "chat-export", extends: "stream-short", name: "Chat export", outro: { enabled: false }, layout: { mode: "crop" },
+      comment: { enabled: true, style: "pop", card: "chat" } });
+    const { id, sequenceId } = await project();
+    await tools.executeEditorTool(id, { tool: "template.apply", templateId: "chat-export", sequenceId, expectedRevision: store.readEditor(id).revision });
+    const layer = layers(id, sequenceId).find((item) => item.clip.title === "Comment")!;
+    const image = layer.clip.edits.find((edit) => edit.type === "image")!;
+    const asset = database.q.getAsset(image.type === "image" ? image.src : "")!;
+    assert.match(asset.tags, /chat:501\b.*look:export/, asset.tags);
+    assert.equal(await fs.readFile(path.join(workspace, asset.path)).then((b) => b.length), (await fs.readFile(card)).length, "the export's own picture, byte for byte");
+  } finally {
+    comments.saveChatSource("");
+  }
+});

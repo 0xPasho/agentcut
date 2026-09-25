@@ -1,6 +1,6 @@
 import type { Segment, Word } from "./transcript";
 import type { ParsedTranscript, TranscriptFormat } from "../types";
-import { MS_THRESHOLD, PROVIDED_ENGINE, SEGMENT_GAP_SEC, SEGMENT_MAX_SEC, SEGMENT_MIN_SEC, WORD_MAX_SEC } from "../data";
+import { LINE_MIN_SEC, LINE_SEC_PER_WORD, MS_THRESHOLD, PROVIDED_ENGINE, SEGMENT_GAP_SEC, SEGMENT_MAX_SEC, SEGMENT_MIN_SEC, WORD_MAX_SEC } from "../data";
 
 /**
  * Reading a transcript somebody already has.
@@ -191,9 +191,16 @@ function parseLines(body: string, durationSec?: number): ParsedTranscript {
   }
   const segments: Segment[] = rows.map((row, i) => {
     const next = rows[i + 1];
-    const guess = row.start + Math.max(2, row.text.split(/\s+/).length * 0.45);
-    const end = row.end ?? (next ? next.start : Math.min(guess, durationSec ?? guess));
-    return { start: row.start, end: Math.max(end, row.start), text: row.text, speaker: null };
+    // A label a transcription service puts after the time — `[Speaker 1]`, `(Ana)` — is
+    // who is speaking, not something they said.
+    const label = /^[[(]([^\])]{1,40})[\])]\s*/.exec(row.text);
+    const text = label ? row.text.slice(label[0].length).trim() : row.text;
+    // Without an end of its own a line runs to the next one — but a line of seven words
+    // does not take the twenty seconds of silence after it, and its words would be spread
+    // across whatever else is heard there. It lasts what it takes to say, at most.
+    const said = row.start + Math.max(LINE_MIN_SEC, text.split(/\s+/).length * LINE_SEC_PER_WORD);
+    const end = row.end ?? Math.min(next ? next.start : Infinity, said, durationSec ?? Infinity);
+    return { start: row.start, end: Math.max(end, row.start), text, speaker: label ? label[1].trim() : null };
   });
   return { format: "lines", language: null, segments, words: [] };
 }

@@ -70,6 +70,16 @@ export async function selectClips(o: SelectOptions): Promise<Edl> {
 
   await fs.mkdir(dir, { recursive: true });
   const chunks = await writeTranscriptChunks(dir, transcript, probe.durationSec);
+  // The chat on the video's clock, with what was read out marked: the material a stream
+  // short is made of, and something the transcript alone cannot show.
+  const { readOuts, chatText } = await import("../../stream-comments/server/read-out");
+  let chatLog: ReturnType<typeof readOuts> = [];
+  // A chat that cannot be read is a missing signal, not a failed analysis.
+  try { if (probe.recordedAt) chatLog = readOuts(probe.recordedAt, probe.durationSec, transcript.words); } catch { chatLog = []; }
+  const chatPath = path.join(dir, "chat.txt");
+  if (chatLog.length) await fs.writeFile(chatPath, chatText(chatLog));
+  else await fs.rm(chatPath, { force: true });
+  const chat = chatLog.length ? { read: chatLog.filter((c) => c.readSec !== null).length, total: chatLog.length } : undefined;
   // The owner's rules, preferences and glossary travel with the material. Rules are
   // judged here, not executed: the host runs the matched ones after publishing.
   const allRules = await listRules(o.projectId);
@@ -102,7 +112,7 @@ export async function selectClips(o: SelectOptions): Promise<Edl> {
   const provider = await resolveProvider(o.provider);
   const result = await provider.run({
     cwd: dir,
-    prompt: buildSelectPrompt({ probe, spec, userBrief, hasFrames, chunks, rules: { select: selectRules, edit: editRules }, style, preferences, glossary: glossaryBrief(glossary) }),
+    prompt: buildSelectPrompt({ probe, spec, userBrief, hasFrames, chunks, chat, rules: { select: selectRules, edit: editRules }, style, preferences, glossary: glossaryBrief(glossary) }),
     allowedTools: shellEnabled() ? [...ALLOWED_TOOLS, ...SHELL_TOOLS] : ALLOWED_TOOLS,
     deniedTools: shellEnabled() ? DENIED_TOOLS : [...DENIED_TOOLS, "Bash"],
     model: o.model,

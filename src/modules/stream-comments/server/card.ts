@@ -6,7 +6,8 @@ import { projectDir } from "../../../common/server/config";
 import { registerAsset, toAbs } from "../../media/server/assets";
 import { getBundle } from "../../render/server/render";
 import type { AssetRow } from "../../../common/server/db";
-import type { ChatComment } from "./comments";
+import { chatSource, type ChatComment } from "./comments";
+import { exportCard } from "./exports";
 
 /**
  * The avatar as a data URL, fetched now. TikTok signs its avatar links and they expire
@@ -36,6 +37,21 @@ const MAX_CHARS = 180;
  * again reuses the picture already there instead of stacking copies.
  */
 export async function commentCardAsset(projectId: string, comment: ChatComment, look: "light" | "chat" = "light"): Promise<AssetRow> {
+  // The chat's own export drew this message already, in the channel's design: that is the card.
+  const source = chatSource().path;
+  const drawn = source ? exportCard(source, comment.id) : null;
+  if (drawn) {
+    const dir = path.join(projectDir(projectId), "assets");
+    await fs.mkdir(dir, { recursive: true });
+    const file = path.join(dir, `chat-${comment.id}${path.extname(drawn) || ".png"}`);
+    await fs.copyFile(drawn, file);
+    const asset = await registerAsset({
+      file, kind: "image", scope: "project", projectId, source: "chat",
+      name: `Comentario de ${comment.name}.png`, tags: `chat comment ${comment.platform} chat:${comment.id} look:export`,
+    });
+    if (path.resolve(toAbs(asset.path)) !== path.resolve(file)) await fs.rm(file, { force: true });
+    return asset;
+  }
   const text = comment.text.length > MAX_CHARS ? `${comment.text.slice(0, MAX_CHARS - 1).trimEnd()}…` : comment.text;
   const inputProps = { platform: comment.platform, name: comment.name, text, avatar: await avatarData(comment.avatar), look };
   const serveUrl = await getBundle();
