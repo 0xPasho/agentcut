@@ -8,7 +8,7 @@
     "brief": "One complete thing out of hours of a stream: a question from the chat read out with its whole answer, or one idea explained on its own. When it answers a chat message, start about half a second before you begin reading it out, so the clip opens on you and the hook before the message lands. End where the answer lands, and never cut the payoff. A clip has to make sense to somebody who has never seen the stream."
   },
   "comment": {
-    "enabled": true, "style": "pop", "card": "chat", "seconds": 2.4, "maxSeconds": 2.4, "delaySec": 0.6, "latestSec": 1, "followReading": true,
+    "enabled": true, "style": "pop", "card": "chat", "seconds": 2.4, "maxSeconds": 2.4, "delaySec": 0.6, "latestSec": 1, "lookbackSec": 900, "followReading": true,
     "blur": 24, "y": 0.42, "widthPct": 94,
     "sound": { "enabled": true, "starter": "bubble", "gain": 1.4, "durationSec": 0.3 }
   },

@@ -13,6 +13,7 @@ export const POP_COMMENT = TemplateComment.parse({
   seconds: 2.4,
   maxSeconds: 2.4,
   latestSec: 1,
+  lookbackSec: 900,
   delaySec: 0.6,
   blur: 24,
   y: 0.42,

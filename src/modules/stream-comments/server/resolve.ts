@@ -2,7 +2,7 @@ import type { Edl, SequenceItem } from "../../editor/types";
 import { probe } from "../../media/server/ffmpeg";
 import type { PlannedComment } from "../../templates/server/plan";
 import type { CommentReading, VideoTemplate } from "../../templates/types";
-import { answers, chatSource, chatWindow, commentById, rankComments, readComments, readingSpan, type ChatComment, type RankedComment } from "./comments";
+import { answers, answersAfter, chatSource, chatWindow, commentById, rankComments, readComments, readingSpan, type ChatComment, type RankedComment } from "./comments";
 
 /**
  * Which comment a video opens on, and why — or why none.
@@ -85,7 +85,8 @@ export async function resolveTemplateComment(
   }
   const lookup = await lookupComments(edl, sequenceId, template.comment.lookbackSec);
   if (lookup.problem) return { comment: null, planned: null, reading: null, warning: `No comment to open on: ${lookup.problem}` };
-  const best = lookup.ranked.find(answers);
+  const clipStart = lookup.item!.clip.start;
+  const best = lookup.ranked.find((comment) => answersAfter(comment, clipStart - comment.atSec));
   if (!best) {
     return { comment: null, planned: null, reading: null, warning:
       `No comment to open on: none of the ${lookup.ranked.length} messages around this clip is one the streamer reads out. Choose one by hand if it answers somebody.` };

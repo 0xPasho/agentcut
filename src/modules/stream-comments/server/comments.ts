@@ -236,6 +236,15 @@ export function readingSpan(words: Word[], text: string, listenSec = 30): { t: n
   return found ? { t: found.first.t, d: found.last.t + found.last.d - found.first.t } : null;
 }
 
+/** Read later than this after it arrived, a message is backlog, and has to be read out more fully to count. */
+export const BACKLOG_SEC = 240;
+/** How many of its words a backlog message must be heard saying: "ya volvió" said ten minutes on is a coincidence. */
+export const BACKLOG_WORDS = 3;
+
+/** `answers`, held higher for a message read long after it arrived. */
+export const answersAfter = (comment: RankedComment, lateSec: number) =>
+  answers(comment) && (lateSec <= BACKLOG_SEC || comment.matched.length >= BACKLOG_WORDS);
+
 /** The window of chat a clip could be answering, in epoch ms. */
 export function chatWindow(clip: { start: number; end: number }, recordedAt: number, lookbackSec = LOOKBACK_SEC) {
   return {

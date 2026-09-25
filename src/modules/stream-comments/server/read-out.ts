@@ -1,5 +1,5 @@
 import type { Word } from "../../transcription/lib/transcript";
-import { answers, chatSource, rankComments, readComments, readingSpan, type ChatComment } from "./comments";
+import { answersAfter, chatSource, rankComments, readComments, readingSpan, type ChatComment } from "./comments";
 
 /**
  * The stream's chat laid on the video's clock, for the agent choosing clips.
@@ -13,8 +13,12 @@ import { answers, chatSource, rankComments, readComments, readingSpan, type Chat
 
 export type ReadOut = ChatComment & { sentSec: number; readSec: number | null };
 
-/** How long after a message arrives the streamer may still get to it. */
-const REACH_SEC = 180;
+/**
+ * How long after a message arrives the streamer may still get to it. Streams read their
+ * backlog: "¿otra alternativa barata a Cursor?" was read seven and a half minutes after it
+ * was sent, well past the three minutes this once allowed.
+ */
+const REACH_SEC = 900;
 /** The stretch of speech one reading is looked for in, stepped across the reach. */
 const WINDOW_SEC = 30;
 const STEP_SEC = 3;
@@ -41,7 +45,7 @@ export function readOuts(recordedAt: number, durationSec: number, words: Word[])
     for (let start = Math.max(0, sentSec - 2); start < sentSec + REACH_SEC && start < durationSec; start += STEP_SEC) {
       const window = words.slice(from(words, start), from(words, start + WINDOW_SEC)).map((w) => ({ ...w, t: w.t - start }));
       const [ranked] = rankComments([comment], { start, words: window }, recordedAt, { listenSec: WINDOW_SEC });
-      if (!ranked || !answers(ranked)) continue;
+      if (!ranked || !answersAfter(ranked, start - sentSec)) continue;
       const span = readingSpan(window, comment.text, WINDOW_SEC);
       return { ...comment, sentSec, readSec: span ? start + span.t : start };
     }

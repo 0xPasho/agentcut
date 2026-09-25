@@ -414,7 +414,11 @@ export const TemplateComment = z.object({
   y: z.number().min(0).max(1).default(0.26),
   /** The card's width, as a share of the output width. */
   widthPct: z.number().min(20).max(100).default(92),
-  /** How long before the clip a comment may have arrived and still be the one it answers. */
+  /**
+   * How long before the clip a comment may have arrived and still be the one it answers.
+   * A stream reads its backlog — seven minutes late is ordinary — so a stream template
+   * wants far more than the default.
+   */
   lookbackSec: z.number().min(10).max(1800).default(240),
 }).strict();
 export type TemplateComment = z.infer<typeof TemplateComment>;

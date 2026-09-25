@@ -358,3 +358,13 @@ test("the reading is the stretch that says most of the message, not a stray word
   const crm = said.find((w) => w.w === "CRM?")!;
   assert.ok(Math.abs(span.t + span.d - (crm.t + crm.d)) < 1e-9, "and ends on its last word, through the number said twice");
 });
+
+test("a message read from the backlog counts when it is read out in full, not when a word of it comes round", () => {
+  const ranked = (text: string, matched: string[]) => ({ id: 1, platform: "tiktok", ts: 0, name: "x", handle: "", avatar: "", color: "", text, atSec: 0, score: 1, matched }) as never;
+  // Seven minutes late and read out word for word: the question the clip answers.
+  assert.equal(comments.answersAfter(ranked("sabes otra alternativa barata a cursor?", ["sabes", "otra", "alternativa", "barata", "cursor"]), 455), true);
+  // Ten minutes late, one word of it said: a coincidence, not a reading.
+  assert.equal(comments.answersAfter(ranked("ya volvió", ["volvio"]), 600), false);
+  // The same two words a minute after it arrived: the streamer reading it.
+  assert.equal(comments.answersAfter(ranked("pagas claude?", ["pagas", "claude"]), 60), true);
+});
