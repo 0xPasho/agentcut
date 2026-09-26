@@ -14,7 +14,7 @@ import { executeEditorTool, type ToolActivity } from "../../editor/server/tools"
 /** Reading something is not activity: polling for status would otherwise fill the feed. */
 export const QUIET_TOOL = /\.(read|list|get|schema|status|looks|preview|providers|browseLocal|transcription)$/;
 
-export type ToolSource = "web" | "mcp" | "cli";
+export type ToolSource = "web" | "mcp" | "cli" | "recipe";
 
 /** Put one line in the project's feed, from whichever interface produced it. */
 export function recordActivity(projectId: string, e: { kind: string; name?: string | null; text: string }, via: ToolSource) {

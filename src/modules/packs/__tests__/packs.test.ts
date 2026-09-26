@@ -366,7 +366,7 @@ test("every pack that ships with the product can be read and installed from the 
   // anything is copied. A shipped pack that fails this is a folder we point people at and
   // that refuses to install.
   const ids = (await fs.readdir(shippedPacks, { withFileTypes: true })).filter((e) => e.isDirectory()).map((e) => e.name).sort();
-  assert.deepEqual(ids, ["news-desk", "stream-shorts"], "a new pack folder joins this list and these checks");
+  assert.deepEqual(ids, ["news-desk", "showcase", "stream-shorts"], "a new pack folder joins this list and these checks");
   for (const id of ids) {
     const preview = await packs.inspectPack(path.join(shippedPacks, id));
     assert.equal(preview.manifest.id, id, `${id}: the folder and the manifest disagree`);
@@ -428,4 +428,118 @@ test("the news pack that ships with the product installs, and its template cuts 
   assert.equal(retakeCuts(words, template.rhythm.retake, 5, template.rhythm.filler.words).length, 1, "and the take that was abandoned goes whole");
 
   await packs.removePack("news-desk");
+});
+
+test("a pack's recipe is code that runs only once trusted, edits through the editor's tools, and cannot reach past its sandbox", { timeout: 120_000 }, async () => {
+  const recipes = await import("../server/recipes");
+  const dir = path.join(workspace, "coded-pack");
+  await fs.mkdir(path.join(dir, "recipes", "lib"), { recursive: true });
+  await fs.writeFile(path.join(dir, "recipes", "lib", "title.mjs"), `export const title = (text) => ({ type: "text", t: 0, d: 2, text, position: "top", style: "card", by: "recipe" });\n`);
+  const code = `import fs from "node:fs";
+import { title } from "./lib/title.mjs";
+export default async function (ctx) {
+  const denied = {};
+  try { fs.readFileSync("/etc/hosts"); denied.read = false; } catch { denied.read = true; }
+  try { await fetch("https://example.com"); denied.net = false; } catch { denied.net = true; }
+  try { await ctx.call({ tool: "packs.remove", id: "anything" }); denied.tool = false; } catch { denied.tool = true; }
+  try { await ctx.ffmpeg(["-i", "/etc/hosts", "x.png"]); denied.path = false; } catch { denied.path = true; }
+  await ctx.ffmpeg(["-f", "lavfi", "-i", "color=c=red:s=64x36", "-frames:v", "1", "plate.png"]);
+  const asset = await ctx.upload("plate.png", "plate.png");
+  const { revision, edl } = await ctx.call({ tool: "project.read" });
+  const sequence = edl.sequences[0];
+  await ctx.call({ tool: "project.edit", expectedRevision: revision, operations: [{ type: "item.add", sequenceId: sequence.id, item: {
+    id: "from-recipe", mediaId: null, layer: 1, at: 0,
+    clip: { id: "from-recipe", title: ctx.params.words, start: 0, end: 2, captions: { preset: "none" }, edits: [title(ctx.params.words),
+      { type: "image", t: 0, d: 2, src: asset.id, y: 0.5, x: null, widthPct: 100, heightPct: 100, style: "plain", by: "recipe" }] },
+  } }] });
+  const timeline = await ctx.timeline();
+  ctx.log("placed");
+  return { denied, items: timeline.items.length, asset: asset.id };
+}
+`;
+  await fs.writeFile(path.join(dir, "recipes", "stamp.mjs"), code);
+  await fs.writeFile(path.join(dir, "pack.json"), JSON.stringify({
+    id: "coded", name: "Coded", recipeFiles: ["recipes/lib/title.mjs"],
+    recipes: [{ id: "stamp", label: "Stamp", file: "recipes/stamp.mjs", params: { words: { type: "string", default: "Hola" }, count: { type: "number", required: true } } }],
+  }));
+
+  // Shown in full before anything is installed, with the hash trusting it records.
+  const preview = await packs.inspectPack(dir);
+  assert.equal(preview.recipes.recipes[0].source, code);
+  assert.deepEqual(preview.recipes.files.map((f) => f.file), ["recipes/lib/title.mjs"]);
+  assert.match(preview.recipes.hash, /^[0-9a-f]{64}$/);
+
+  const installed = await packs.importPack(dir);
+  assert.equal(installed.recipesHash, preview.recipes.hash);
+  assert.equal(installed.trustedRecipesHash, null, "nothing a pack brings is trusted by installing it");
+  const { id } = await mediaService.createVideoProject("Recipe", [{ file: source }]);
+  const run = { tool: "packs.recipes.run", pack: "coded", recipe: "stamp", params: { count: 1 } };
+  await assert.rejects(tools.executeEditorTool(id, run), /not trusted/);
+  const listed = await tools.executeEditorTool(id, { tool: "packs.recipes.list" }) as Array<{ id: string; trusted: boolean }>;
+  assert.deepEqual(listed.map((r) => [r.id, r.trusted]), [["stamp", false]]);
+  // There is no tool that trusts: only the person does, from the pack's page or the terminal.
+  await assert.rejects(tools.executeEditorTool(id, { tool: "packs.recipes.trust", id: "coded" }));
+
+  await recipes.trustRecipes("coded", true);
+  await assert.rejects(tools.executeEditorTool(id, { ...run, params: {} }), /needs count/, "a required parameter is said before anything runs");
+  const before = store.readEditor(id).revision;
+  const result = await tools.executeEditorTool(id, run) as import("../types").RecipeRunResult;
+  assert.deepEqual((result.result as { denied: Record<string, boolean> }).denied, { read: true, net: true, tool: true, path: true }, "the sandbox holds");
+  assert.deepEqual(result.logs, ["placed"]);
+  assert.ok(result.revision! > before, "it edited, through project.edit");
+  const item = store.readEditor(id).edl.sequences[0].items.find((i) => i.id === "from-recipe");
+  assert.equal(item?.clip.title, "Hola", "its defaults apply");
+  assert.ok(database.q.getAsset((result.result as { asset: string }).asset), "what it drew is in the library");
+
+  // One changed byte of code and the trust is gone; the same bytes keep it.
+  await packs.importPack(dir, { replace: true });
+  assert.ok((await recipes.listRecipes()).every((r) => r.trusted), "re-importing the same code keeps it trusted");
+  await fs.writeFile(path.join(dir, "recipes", "lib", "title.mjs"), `export const title = (text) => ({ type: "text", t: 0, d: 3, text, position: "top", style: "card", by: "recipe" });\n`);
+  await packs.importPack(dir, { replace: true });
+  assert.ok((await recipes.listRecipes()).every((r) => !r.trusted), "changed code asks again");
+
+  // The code travels with the pack; trust does not.
+  const exported = await packs.exportPack({ id: "coded-again", name: "Coded again", stylePack: "coded", dir: path.join(workspace, "coded-export") });
+  assert.deepEqual(exported.manifest.recipes.map((r) => r.id), ["stamp"]);
+  assert.equal(await fs.readFile(path.join(exported.dir, "recipes", "lib", "title.mjs"), "utf8"), await fs.readFile(path.join(dir, "recipes", "lib", "title.mjs"), "utf8"));
+  await packs.removePack("coded");
+});
+
+test("the showcase pack's recipes open a video: a trailer teaser, the camera full screen, and a jump card whose time is the timeline's", { timeout: 180_000 }, async () => {
+  const recipes = await import("../server/recipes");
+  const installed = await packs.importPack(path.join(shippedPacks, "showcase"));
+  assert.equal(installed.recipes.length, 3);
+  await recipes.trustRecipes("showcase", true);
+  const { id } = await mediaService.createVideoProject("Showcase", [{ file: source }]);
+  const run = (recipe: string, params: Record<string, unknown>) => tools.executeEditorTool(id, { tool: "packs.recipes.run", pack: "showcase", recipe, params }) as Promise<import("../types").RecipeRunResult>;
+  // The source is eight seconds: split it so there is a shot for the jump card to land on.
+  const sequence = () => store.readEditor(id).edl.sequences[0];
+  const first = sequence().items[0];
+  await tools.executeEditorTool(id, { tool: "project.edit", expectedRevision: store.readEditor(id).revision, operations: [{ type: "item.split", sequenceId: sequence().id, itemId: first.id, at: 4, newItemId: "the-test" }] });
+
+  await run("camera-intro", { region: { x: 200, y: 100, w: 120, h: 80 }, inset: 2 });
+  await run("jump-card", { target: "the-test", at: 1, duration: 2 });
+  const teaser = await run("teaser", { moments: [{ start: 5, end: 6.5 }, { start: 7, end: 8, crop: { x: 0, y: 0, w: 160, h: 90 } }] });
+  const items = sequence().items;
+  assert.deepEqual(items.filter((i) => i.id.startsWith("sc-teaser-shot-")).map((i) => i.id), ["sc-teaser-shot-1", "sc-teaser-shot-2"]);
+  assert.equal(items.find((i) => i.id === first.id)?.transition ?? null, null, "the video opens on a hard cut out of the teaser");
+  const music = items.find((i) => i.id === "sc-teaser-music")!;
+  assert.equal(music.clip.edits[0].type, "music");
+  assert.equal((music.clip.edits[0] as { src: string }).src, installed.assets["a_53cab359938b"], "the pack's own bed, under its id on this machine");
+
+  // The teaser moved everything: the camera and the card were put back in step with it.
+  const { sequenceFrames } = await import("../../editor/lib/sequences");
+  const placed = sequenceFrames(sequence());
+  const fps = sequence().output.fps;
+  const opens = placed.items.find((r) => r.item.id === first.id)!.from / fps;
+  assert.ok(Math.abs((teaser.result as { seconds: number }).seconds - opens) < 0.05);
+  assert.ok(Math.abs((items.find((i) => i.id === "sc-camera")!.at ?? -1) - opens) < 0.05, "the camera layer sits on the first shot after the teaser");
+  const lands = placed.items.find((r) => r.item.id === "the-test")!;
+  const expected = `${Math.floor((lands.from + (lands.transition?.frames ?? 0)) / fps / 60)}:${String(Math.floor(((lands.from + (lands.transition?.frames ?? 0)) / fps) % 60)).padStart(2, "0")}`;
+  assert.equal(items.find((i) => i.id === "sc-jump")?.clip.title, `Bríncate al ${expected}`, "the card names the time the test starts, read off the timeline");
+
+  // Running it again replaces what it made instead of stacking a second teaser.
+  await run("teaser", { moments: [{ start: 5, end: 6 }] });
+  assert.equal(sequence().items.filter((i) => i.id.startsWith("sc-teaser-shot-")).length, 1);
+  await packs.removePack("showcase");
 });

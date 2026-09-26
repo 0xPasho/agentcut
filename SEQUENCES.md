@@ -319,7 +319,8 @@ keyframe holds that value for the whole item, the way a single crop keyframe doe
 outside the keyframes the value holds at the nearest one at either end.
 
 The catalogue of curves is small and named — `linear`, `ease`, `in`, `out`, `hold` —
-because a pack is data and may never ship code, so the only curves that exist are the
+because a pack is data at render time and may never ship a curve — its recipes write
+keyframes with these, they cannot add one — so the only curves that exist are the
 ones spelled in the schema. They are quadratic: `ease` is the punch-in's own
 `inOut(quad)`, which is the shape this editor has already agreed reads as arriving
 rather than jumping. `hold` does not travel at all; the value steps on the frame the

@@ -148,7 +148,7 @@ cut off.
 ## Why the pack brings thresholds and nothing else
 
 The alternative is an expression language: `duration > 60 && cuts < 3`. It is refused for
-the same reason [packs never ship code](./AGENT-FIRST.md): the moment a pack can express a
+the same reason [packs never ship render-time code](./AGENT-FIRST.md) (a pack's recipes edit; they do not measure): the moment a pack can express a
 condition, it wants to express a measurement, and then it wants a function, and then a
 pack is a program you install from a URL.
 

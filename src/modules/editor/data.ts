@@ -146,3 +146,13 @@ export const FRAME = "mx-auto w-full overflow-hidden rounded-3xl bg-black ring-1
  * it and taller than most windows. Cap the tall ones by height and centre them.
  */
 export const MAX_HEIGHT = 460;
+
+/** What sits behind the editor's Video menu, by the name its dialog carries. */
+export const VIDEO_PANELS = {
+  plan: "Plan and templates",
+  rules: "Rules and preferences",
+  review: "What correct looks like",
+  recipes: "Pack recipes",
+  comment: "Opening comment",
+  settings: "Video settings",
+} as const;

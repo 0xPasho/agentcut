@@ -24,6 +24,7 @@ const COMMANDS = {
   projects: { kind: "tsx", entry: "scripts/projects.ts", help: 'list | create "Project name" video1.mp4 ... | batch "Set name" [--brief "..."] video1.mp4 video2.mp4 ...' },
   render: { kind: "tsx", entry: "scripts/render.ts", help: "render clips: <projectId|edl.json> [--only id,id]" },
   mcp: { kind: "tsx", entry: "scripts/mcp.ts", help: "serve the editor tools over MCP (stdio) for Claude Code, Codex or OpenCode" },
+  packs: { kind: "tsx", entry: "scripts/packs.ts", help: "list | inspect <path|url> | import <path|url> [--replace] | recipes | trust <packId> | untrust <packId> | run <projectId> <packId> <recipeId> [--param name=value ...]" },
   rules: { kind: "tsx", entry: "scripts/rules.ts", help: "list | show <id> | evaluate <projectId> [--sequence ID] | apply <projectId> <ruleId,...> [--sequence ID] | glossary | preferences" },
   templates: { kind: "tsx", entry: "scripts/templates.ts", help: "list | show <id> | plan|apply <projectId> <templateId> [--sequence ID] [--slot name=folder] [--text name=line] [--asset name=id]" },
 };
@@ -71,6 +72,7 @@ function plan(command, rest, root, from) {
   const spec = COMMANDS[command];
   const args = rest.map((arg, index) => {
     // Only path positions are rewritten. Instructions and project titles are literal.
+    if (command === "packs" && (rest[0] === "inspect" || rest[0] === "import") && index === 1 && !/^https?:\/\//i.test(arg)) return path.resolve(from, arg.replace(/^~(?=\/)/, process.env.HOME ?? "~"));
     if (command === "projects" && (rest[0] === "create" || rest[0] === "batch") && index >= 2 && !arg.startsWith("--") && rest[index - 1] !== "--brief") return path.resolve(from, arg.replace(/^~(?=\/)/, process.env.HOME ?? "~"));
     if ((command === "render" && index === 0 && /\.json$/i.test(arg)) || (command === "edit" && rest[1] === "call" && index === 2)) return path.resolve(from, arg);
     // --slot name=folder: the folder is a caller-relative path; the slot name is not.

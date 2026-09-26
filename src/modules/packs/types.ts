@@ -5,7 +5,8 @@ import { GlossaryTerm } from "../rules/types";
  * A pack is the unit that travels: templates, rules, glossary entries, assets and
  * quick actions that belong together, with a manifest. A folder with `pack.json`,
  * `templates/`, `rules/` and `assets/` — servable from any static host, importable
- * by path or URL. Nothing in a pack is code.
+ * by path or URL. The only code a pack may carry is an edit-time recipe (decision 143),
+ * which runs once the owner trusts it and edits through the same tools as everyone else.
  */
 export const PackAsset = z.object({
   /** Path inside the pack, e.g. `assets/outro.mp4`. */
@@ -41,6 +42,34 @@ export const QuickAction = z.object({
 }).strict();
 export type QuickAction = z.infer<typeof QuickAction>;
 
+/**
+ * One value a recipe asks for. The default is what the recipe does when nobody says
+ * otherwise; the description is what the editor's form and the agent both read.
+ */
+export const RecipeParam = z.object({
+  type: z.enum(["string", "number", "boolean", "json"]),
+  description: z.string().default(""),
+  default: z.unknown().optional(),
+  required: z.boolean().default(false),
+}).strict();
+export type RecipeParam = z.infer<typeof RecipeParam>;
+
+/**
+ * Code a pack carries: an edit-time recipe (decision 143). An ES module whose default
+ * export receives the project and edits it through the editor's own tools — so what it
+ * makes is ordinary EDL a person can open, change and render offline. It never runs at
+ * render time and never runs until the owner has trusted this exact code.
+ */
+export const PackRecipe = z.object({
+  id: z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "lowercase letters, digits and dashes"),
+  label: z.string().min(1).max(60),
+  description: z.string().default(""),
+  /** Path inside the pack, e.g. `recipes/teaser.mjs`. */
+  file: z.string().min(1),
+  params: z.record(z.string(), RecipeParam).default({}),
+}).strict();
+export type PackRecipe = z.infer<typeof PackRecipe>;
+
 export const PackManifest = z.object({
   schema: z.literal(1).default(1),
   id: z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "lowercase letters, digits and dashes"),
@@ -69,6 +98,13 @@ export const PackManifest = z.object({
    */
   review: z.string().default(""),
   examples: z.array(PackExample).default([]),
+  /** Edit-time code (decision 143). Each is shown in full before install and runs only once trusted. */
+  recipes: z.array(PackRecipe).default([]),
+  /**
+   * Files the recipes read besides their own modules — shared helpers, fonts, a license.
+   * Listed rather than globbed because a pack served over HTTP cannot be listed.
+   */
+  recipeFiles: z.array(z.string().min(1)).default([]),
 }).strict();
 export type PackManifest = z.infer<typeof PackManifest>;
 
@@ -97,8 +133,35 @@ export const InstalledPack = z.object({
   provides: z.object({ templates: z.array(z.string()).default([]), rules: z.array(z.string()).default([]) }).prefault({}),
   /** The examples, with `file` relative to the pack's folder in the workspace. */
   examples: z.array(PackExample).default([]),
+  /** The recipes, with `file` relative to the pack's folder in the workspace. */
+  recipes: z.array(PackRecipe).default([]),
+  recipeFiles: z.array(z.string()).default([]),
+  /** sha256 over every recipe module and recipe file, in manifest order. Empty when there is no code. */
+  recipesHash: z.string().default(""),
+  /**
+   * The hash the owner trusted, or null. Only a person sets it, from the pack's page or
+   * the terminal; a re-import that changes one byte of code no longer matches it.
+   */
+  trustedRecipesHash: z.string().nullable().default(null),
 }).strict();
 export type InstalledPack = z.infer<typeof InstalledPack>;
+
+/** A recipe as the editor and the tools list it: which pack, and whether it may run. */
+export type RecipeView = PackRecipe & { pack: string; packName: string; trusted: boolean };
+
+/** What a recipe run returns: the recipe's own summary, what it logged, and the revision it left. */
+export type RecipeRunResult = { pack: string; recipe: string; result: unknown; logs: string[]; revision: number | null };
+
+/** Messages between the host and a recipe's process. */
+export type RecipeHostMessage =
+  | { type: "start"; file: string; params: Record<string, unknown>; projectId: string; scratch: string; fonts: string[]; pack: { id: string; dir: string; assets: Record<string, string> } }
+  | { type: "reply"; id: number; ok: true; value: unknown }
+  | { type: "reply"; id: number; ok: false; error: string };
+export type RecipeChildMessage =
+  | { type: "request"; id: number; method: "call" | "timeline" | "upload" | "ffmpeg"; payload: unknown }
+  | { type: "log"; text: string }
+  | { type: "done"; result: unknown }
+  | { type: "failed"; error: string };
 
 /** A pack's style guide as the editor and the tools return it: each example with the still to open. */
 export type PackStyle = {

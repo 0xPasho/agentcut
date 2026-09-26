@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "checks": [
+    { "id": "length", "metric": "video.durationSec", "min": 480, "max": 2400, "severity": "critical",
+      "fix": "Under eight minutes the test was not shown; past forty the wait was not cut." },
+    { "id": "no-dead-air", "metric": "silence.longestGapSec", "max": 4, "severity": "suggestion",
+      "fix": "Four seconds of nothing outside gameplay is somebody waiting on a model. Cut it." },
+    { "id": "no-burned-captions", "metric": "captions.on", "is": false, "severity": "suggestion",
+      "fix": "A horizontal video gets the platform's captions; burned ones cover the screen being shown." }
+  ],
+  "rubric": [
+    { "id": "teaser-first", "severity": "critical", "evidence": "timestamp",
+      "ask": "Do the first ten seconds show both results as a trailer (bars, label, music) before the greeting?",
+      "fix": "Pick the best moment of each result and the line that sums the comparison up, and place the teaser." },
+    { "id": "nothing-contradicted", "severity": "critical", "evidence": "quote",
+      "ask": "Is anything said that the rest of the video contradicts, such as a result being ready when it is built again later?",
+      "fix": "Cut the claim; keep only what the video goes on to show." },
+    { "id": "no-failed-run", "severity": "critical", "evidence": "timestamp",
+      "ask": "Does a failed or discarded attempt appear, or anything about redoing it?",
+      "fix": "Join the end of the news straight to the attempt that was kept." },
+    { "id": "jump-card-true", "severity": "critical", "evidence": "timestamp",
+      "ask": "Does the jump card name the time at which the test really starts?",
+      "fix": "Run the jump-card recipe again; it reads the time off the timeline." },
+    { "id": "no-chat", "severity": "suggestion", "evidence": "quote",
+      "ask": "Is any chat message read out or answered during the wait?",
+      "fix": "Keep only the progress marks of the wait." },
+    { "id": "said-once", "severity": "suggestion", "evidence": "quote",
+      "ask": "Is any sentence heard twice in a row, a retake left in?",
+      "fix": "Keep the second, complete take." },
+    { "id": "ends-on-verdict", "severity": "suggestion", "evidence": "timestamp",
+      "ask": "Does the video end on the grades and the goodbye?",
+      "fix": "End after the goodbye that follows the verdict." }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "showcase-comparison",
+  "name": "Showcase — model comparison",
+  "description": "A live model comparison cut from a stream: the news with an opinion, the same prompt run on both, the results side by side and a verdict. Horizontal at the stream's own size, no captions.",
+  "extends": "news-desk",
+  "tags": ["horizontal", "comparison", "stream", "section"],
+  "selection": {
+    "minSec": 480,
+    "maxSec": 2400,
+    "minSegmentSec": 3,
+    "brief": "A comparison of two models on one prompt, cut from a stream. Keep the greeting that says what is compared, the news read with the speaker's opinion (concise), the start of the test that was kept, the progress marks of the wait, the results played and then side by side, and the verdict with its grades. Drop chat readings and answers, setup, failed or redone attempts and anything about them, and any claim the rest of the video contradicts."
+  },
+  "rhythm": {
+    "silence": { "enabled": true, "minGapSec": 0.55, "keepSec": 0.15, "maxGapSec": 30 },
+    "redundancy": { "enabled": true, "minWords": 2, "maxGapSec": 1.5 },
+    "retake": { "enabled": true, "maxGapSec": 2.5, "minWords": 3, "similarity": 0.7, "strayWords": 2, "keepSec": 0.1, "maxWords": 30 }
+  }
+}

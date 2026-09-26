@@ -42,6 +42,7 @@ import { toast } from "sonner";
 import { TemplatePanel } from "../templates/components/template-panel";
 import { CommentPanel } from "../stream-comments/components/comment-panel";
 import { ReviewPanel } from "../review/components/review-panel";
+import { RecipesPanel } from "../packs/components/recipes-panel";
 import { RulesPanel } from "../rules/components/rules-panel";
 import { PlanPanel } from "../plan/components/plan-panel";
 import { useEditor } from "@/modules/editor/hooks/use-editor";
@@ -62,7 +63,7 @@ import { Clip as ClipSchema, type Clip, type Edit, type Edl, type SequenceItem }
 import { emptySequencePlan } from "@/modules/plan/types";
 import { uid, sourceSecondsAt } from "./lib/clip-editor-view";
 import { type TemplateOption } from "./types";
-import { EMPTY, MIN_PREVIEW_PX, NEW_EDIT, PLAYBACK_RATES } from "./data";
+import { EMPTY, MIN_PREVIEW_PX, NEW_EDIT, PLAYBACK_RATES, VIDEO_PANELS } from "./data";
 
 /** A single editor for generated clips, imported footage, and source-free canvases. */
 export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, clipId, sequenceId }: {
@@ -105,7 +106,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
   const [assetBusy, setAssetBusy] = useState(false);
   const [templateOptions, setTemplateOptions] = useState<TemplateOption[]>([]);
   /** Which of the video’s own panels is open. None by default: the frame is the editor. */
-  const [panel, setPanel] = useState<null | "plan" | "rules" | "review" | "comment" | "settings">(null);
+  const [panel, setPanel] = useState<null | keyof typeof VIDEO_PANELS>(null);
   useEffect(() => { api.editorTool<TemplateOption[]>(projectId, { tool: "templates.list" }).then(list => setTemplateOptions(list.map(t => ({ id: t.id, name: t.name, brand: t.brand })))).catch(() => {}); }, [projectId]);
   const [fileDrag, setFileDrag] = useState(false);
   const clipboard = useRef<SequenceItem | null>(null);
@@ -704,6 +705,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
           <ContextMenuItem onClick={()=>setPanel("plan")}>Plan and templates</ContextMenuItem>
           <ContextMenuItem onClick={()=>setPanel("rules")}>Rules and preferences</ContextMenuItem>
           <ContextMenuItem onClick={()=>setPanel("review")}>What correct looks like</ContextMenuItem>
+          <ContextMenuItem onClick={()=>setPanel("recipes")}>Pack recipes</ContextMenuItem>
           <ContextMenuItem onClick={()=>setPanel("comment")}>Opening comment</ContextMenuItem>
           <ContextMenuItem onClick={()=>setPanel("settings")}>Video settings</ContextMenuItem>
         </MenuContent>
@@ -801,11 +803,12 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
     <Dialog open={panel !== null} onOpenChange={open=>{if(!open)setPanel(null);}}>
       <DialogContent className="max-h-[85dvh] w-[min(38rem,92vw)] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{panel==="plan"?"Plan and templates":panel==="rules"?"Rules and preferences":panel==="review"?"What correct looks like":panel==="comment"?"Opening comment":"Video settings"}</DialogTitle>
+          <DialogTitle>{panel ? VIDEO_PANELS[panel] : ""}</DialogTitle>
         </DialogHeader>
         {panel==="plan"&&sequence&&<PlanPanel projectId={projectId} edl={edl} sequenceId={activeSequenceId} templates={templateOptions} dispatch={dispatch} seek={seek} beforeRun={save} afterRun={editor.reload}><TemplatePanel projectId={projectId} sequenceId={activeSequenceId} beforeApply={save} afterApply={editor.reload} onBusy={setAssetBusy} /></PlanPanel>}
         {panel==="rules"&&<RulesPanel projectId={projectId} sequenceId={sequence ? activeSequenceId : undefined} beforeApply={save} afterApply={editor.reload} />}
         {panel==="review"&&<ReviewPanel projectId={projectId} sequenceId={sequence ? activeSequenceId : undefined} afterChange={editor.reload} />}
+        {panel==="recipes"&&<RecipesPanel projectId={projectId} sequenceId={sequence ? activeSequenceId : undefined} beforeRun={save} afterChange={editor.reload} />}
         {panel==="comment"&&sequence&&<CommentPanel projectId={projectId} sequenceId={activeSequenceId} beforeApply={save} afterApply={editor.reload} />}
         {panel==="settings"&&sequence&&<SequenceSettings key={sequence.id} sequence={sequence} dispatch={dispatch} />}
       </DialogContent>

@@ -80,6 +80,8 @@ const DESCRIPTIONS: Record<string, string> = {
   "conversation.read": "The project's conversation, oldest first.",
   "conversation.undo": "Take back everything one agent turn did, as one edit.",
   "packs.list": "Installed packs and what each brought.",
+  "packs.recipes.list": "Recipes installed packs carry: edit-time code with its parameters, and whether the owner has trusted it on this machine.",
+  "packs.recipes.run": "Run a trusted pack recipe against this project. It edits through project.edit like any other change; an untrusted recipe is refused with where the owner trusts it.",
   "packs.inspect": "Read a pack (path or URL) without installing: templates, rules with their text, assets, quick actions.",
   "packs.import": "Install a pack into the workspace; existing ids are kept unless replace is true.",
   "packs.remove": "Remove a pack's templates and rules. Assets stay.",

@@ -30,7 +30,8 @@ streamer-kit/
 }
 ```
 
-Nothing in a pack is code. Templates are the same documents as in `workspace/templates/`
+Templates and rules are data. The only code a pack may carry is a recipe (below), which
+runs at edit time once you trust it. Templates are the same documents as in `workspace/templates/`
 (a sparse `extends` document travels sparse); rules are the same as in `workspace/rules/`.
 
 ## Style guide and references
@@ -78,12 +79,14 @@ note on what to take from it.
 ```
 Settings → Packs → Import a pack → packs/news-desk → Read it
 Settings → Packs → Import a pack → packs/stream-shorts → Read it
+Settings → Packs → Import a pack → packs/showcase → Read it
 ```
 
 | Pack | For | Carries |
 | --- | --- | --- |
 | `news-desk` | One take about one story, tightened into a video | `news-desk-daily`, which builds on the built-in `news-desk` with a stall list in English and Spanish, and three rules: a news take is edited as one, somebody else's clip runs whole, the sponsor read stays whole |
 | `stream-shorts` | Vertical shorts out of a screen-share stream | `stream-shorts-clip`, which builds on the built-in `stream-short`, keeps the hook up throughout, pops the chat message the clip answers in over a blurred frame while it is read out (`comment.style: "pop"`) and cuts stalls and retakes, and three rules: show the comment as it is read, end on your card, nothing covers the screen |
+| `showcase` | A long model comparison out of a stream: news, the same prompt on both, results side by side, verdict | `showcase-comparison`, which builds on the built-in `news-desk`; a style guide for what stays and what goes (anything the video later contradicts, a failed run, the chat during the wait); a review with the questions that catch those; a CC0 dramatic bed; and three recipes — `teaser`, `camera-intro`, `jump-card` — that build the opening |
 
 What they carry that a template cannot is `STYLE.md` — what a good one *is*, what comes out
 of a recording and what has to stay — which the selection agent reads before it decides
@@ -93,10 +96,64 @@ asked (does it open on the message it answers; is the whole video about one stor
 empty until you fill it, and a clip with nothing in it ends on the last word rather than on
 somebody else's sting.
 
-Nothing in either is code. The passes they switch on (`rhythm.filler`, `rhythm.retake`)
-ship with the app; a pack is what decides where they belong, and says why. Both are
-installed from the repository by the tests, so a folder we point people at cannot quietly
-stop working.
+Neither of the first two is code. The passes they switch on (`rhythm.filler`, `rhythm.retake`)
+ship with the app; a pack is what decides where they belong, and says why. `showcase` is the
+first to carry recipes. All three are installed from the repository by the tests — and
+`showcase`'s recipes are trusted and run there against a real video — so a folder we point
+people at cannot quietly stop working.
+
+## Recipes: code in a pack
+
+Some videos need more than a template can say. The model-comparison video opens with a
+teaser cut from moments later in it, dressed as a trailer; the greeting starts on the
+camera full screen and settles into its corner; at 25 seconds a card tells the viewer the
+minute the test starts. None of that is a knob on a template, and each video has its own
+moments and its own minute. So a pack may carry **recipes**: code that builds parts of a
+video the way the owner would by hand, and can be run again on the next one.
+
+```json
+"recipes": [
+  { "id": "jump-card", "label": "Aviso: bríncate a la prueba", "file": "recipes/jump-card.mjs",
+    "description": "A lower third telling the viewer at what minute the test starts.",
+    "params": {
+      "target": { "type": "string", "required": true, "description": "The first shot of the test." },
+      "at": { "type": "number", "default": 25 }
+    } }
+],
+"recipeFiles": ["recipes/lib/showcase.mjs", "recipes/fonts/BebasNeue-Regular.ttf"]
+```
+
+A recipe is an ES module whose default export receives `ctx` and returns a summary:
+
+| `ctx.` | What |
+| --- | --- |
+| `params` | The declared parameters, resolved: given, else the default, coerced to their type. A missing required one is refused before anything runs. |
+| `call(request)` | One editor tool: `project.read`, `project.edit`, `assets.list`, `templates.list`, `templates.get`. Nothing else. |
+| `timeline(sequenceId?)` | Every item's start and length in output seconds, as the renderer places them (`sequenceFrames`), so a recipe never re-implements the timing. |
+| `upload(file, name)` | Put a file from the scratch folder in the library; returns the asset. |
+| `ffmpeg(args)` | ffmpeg in the scratch folder. Arguments name files there, without slashes. |
+| `pack` | `{ id, dir, assets }` — its folder, and its assets' ids on this machine. |
+| `scratch`, `fonts`, `log(text)` | The folder it may write, the font folders it may read, a line for the activity feed. |
+
+- **Edit-time only.** What a recipe makes is ordinary EDL written by `project.edit`:
+  it renders offline, it is undone with undo, and every part of it can be changed in the
+  editor afterwards. Nothing from a pack runs at render time (decision 44 stands for that).
+- **Idempotent by convention.** A recipe owns the items it creates by id (`sc-` in
+  `showcase`) and replaces them when run again, so running it after a change puts things
+  back in step instead of stacking a copy.
+- **Trust is a person's, and it is per hash.** Installing a pack trusts nothing. The pack's
+  page (**Settings → Packs → the pack → Recipes**) shows every file in full with the sha256
+  of all of them, and **Trust this code** records that hash; so does
+  `agentcut packs trust <id>`. There is no tool that trusts: an agent can run a trusted
+  recipe and cannot trust one. A re-import with the same bytes keeps the trust; one changed
+  byte asks again. Export carries the code and never the trust.
+- **Sandboxed.** A run is a child `node --permission` process: it reads its pack, its
+  scratch folder and the machine's font folders, writes only scratch, and has no network,
+  no child processes, no workers and an empty environment. Everything else goes back to
+  the host over IPC through the short list above.
+- **Where it runs.** **Video → Pack recipes** in the editor (a form from `params`, the draft
+  saved first), `packs.recipes.list` / `packs.recipes.run` for the agent and MCP, and
+  `agentcut packs run <projectId> <pack> <recipe> --param name=value`.
 
 ## What correct looks like
 
@@ -127,7 +184,7 @@ or as a question with an answer that has to point somewhere.
 - **The pack brings thresholds, not measurements.** `metric` names one entry in a catalogue
   the host owns — length, cuts per minute, caption rate, whether the captions cross the
   seam, and the seven things `style.audit` reads back out of an export's pixels. A pack
-  cannot lie about a number it did not take, and cannot ship code to take one.
+  cannot lie about a number it did not take, and its code (recipes) edits rather than measures.
 - **What cannot be measured is asked.** A rubric item is answered with a timestamp, a
   frame, an EDL field or a quote; an answer with nothing beside it counts as
   "cannot tell", and on a critical item that is a finding rather than a pass.
@@ -198,4 +255,6 @@ search, no remote discovery. A marketplace is still an open question in
 ## Tools
 
 `packs.list`, `packs.inspect`, `packs.import`, `packs.remove`, `packs.export`,
-`quickactions.list` — the same functions behind the panel, the agent and MCP.
+`packs.recipes.list`, `packs.recipes.run`, `quickactions.list` — the same functions behind
+the panel, the agent and MCP. Trusting recipes is not among them on purpose; the terminal has
+`agentcut packs list | inspect | import | recipes | trust | untrust | run`.

@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "id": "showcase",
+  "name": "Showcase — comparativas en vivo",
+  "version": "1.0.0",
+  "author": "pasho",
+  "description": "A long horizontal video out of a stream where two models get the same prompt: a trailer-style teaser, the greeting on the camera full screen, a jump card to the test, the news, the test, the results side by side and the verdict. Carries the recipes that build the opening.",
+  "templates": ["showcase-comparison"],
+  "rules": [],
+  "style": "STYLE.md",
+  "review": "review.json",
+  "assets": [
+    { "file": "assets/cinematic-dramatic-buildup.mp3", "kind": "audio", "name": "Cinematic Dramatic Buildup", "tags": "music dramatic trailer teaser",
+      "license": "CC0 1.0", "attribution": "BurghRecords — https://freesound.org/people/BurghRecords/sounds/456102", "id": "a_53cab359938b" }
+  ],
+  "recipes": [
+    { "id": "teaser", "label": "Teaser (lo que viene)", "file": "recipes/teaser.mjs",
+      "description": "Opens the video with a few moments from later on, as a trailer: black bars, a tracked label, dramatic music, and a hard cut into the greeting. Replaces the teaser it made before, and puts the camera intro and the jump card back in step.",
+      "params": {
+        "moments": { "type": "json", "required": true, "description": "[{ \"start\": s, \"end\": s, \"cuts\": [[a, b]], \"crop\": { \"x\", \"y\", \"w\", \"h\" }, \"title\" }] in source seconds and pixels, in the order they play." },
+        "label": { "type": "string", "default": "A CONTINUACIÓN", "description": "The words in the bottom bar." },
+        "music": { "type": "string", "default": "a_53cab359938b", "description": "Audio asset for the bed; defaults to the pack's own." },
+        "gain": { "type": "number", "default": 0.55, "description": "Music level, 0 to 2." },
+        "dissolve": { "type": "number", "default": 0.25, "description": "Seconds of dissolve between teaser shots." },
+        "sequenceId": { "type": "string", "description": "Which video; the first one when empty." }
+      } },
+    { "id": "camera-intro", "label": "Cámara a pantalla completa", "file": "recipes/camera-intro.mjs",
+      "description": "The first shot after the teaser opens on the camera full screen, holds, and eases into its corner, landing exactly on it.",
+      "params": {
+        "region": { "type": "json", "default": { "x": 1152, "y": 790, "w": 576, "h": 326 }, "description": "The camera's rectangle in the stream, in source pixels." },
+        "inset": { "type": "number", "default": 6, "description": "Pixels trimmed from the top of the region so the screen above never shows." },
+        "hold": { "type": "number", "default": 1.5, "description": "Seconds full screen." },
+        "move": { "type": "number", "default": 0.9, "description": "Seconds to settle into the corner." },
+        "item": { "type": "string", "description": "The shot to open on; the first after the teaser when empty." },
+        "sequenceId": { "type": "string", "description": "Which video; the first one when empty." }
+      } },
+    { "id": "jump-card", "label": "Aviso: bríncate a la prueba", "file": "recipes/jump-card.mjs",
+      "description": "A lower third telling the viewer at what minute the test starts, with the minute read off the timeline.",
+      "params": {
+        "target": { "type": "string", "required": true, "description": "The item the jump lands on: the first shot of the test." },
+        "at": { "type": "number", "default": 25, "description": "Seconds into the video it appears." },
+        "duration": { "type": "number", "default": 10, "description": "Seconds on screen." },
+        "question": { "type": "string", "default": "¿SOLO QUIERES VER LA PRUEBA Y LOS JUEGOS?", "description": "The small line." },
+        "lead": { "type": "string", "default": "BRÍNCATE AL", "description": "The big line, before the time." },
+        "sequenceId": { "type": "string", "description": "Which video; the first one when empty." }
+      } }
+  ],
+  "recipeFiles": ["recipes/lib/showcase.mjs", "recipes/lib/font.mjs", "recipes/fonts/BebasNeue-Regular.ttf", "recipes/fonts/OFL.txt"],
+  "quickActions": [
+    { "label": "Armar el showcase", "text": "Edit {selection} as a Showcase comparison: follow the pack's style guide for what stays and what goes, then open it with the teaser, camera-intro and jump-card recipes." }
+  ]
+}

@@ -9,7 +9,7 @@ import { VideoTemplate } from "../../templates/types";
 import { listRules, saveRule, deleteRule, rulesDir } from "../../rules/server/registry";
 import { Rule } from "../../rules/types";
 import { readGlossaryLevel, saveGlossary } from "../../rules/server/glossary";
-import { InstalledPack, PackManifest, type PackExample, type QuickAction } from "../types";
+import { InstalledPack, PackManifest, type PackExample, type PackRecipe, type QuickAction } from "../types";
 import { scanStyle, styleRefusal, type StyleProblem } from "../lib/style";
 import { PACK_REVIEW_FILE } from "../../review/data";
 import { lintReview } from "../../review/lib/lint";
@@ -21,7 +21,8 @@ import { contactSheet } from "../../media/server/ffmpeg";
  * recorded; nothing stays linked to where it came from, so offline rendering keeps
  * working. Everything a pack carries is shown before it is installed, because rules
  * and quick actions are text an agent will read: another person's pack is untrusted
- * until the owner has looked at it.
+ * until the owner has looked at it. A pack's recipes are code (decision 143): shown in
+ * full here, copied with the pack, and never run until the owner trusts their hash.
  */
 export const packsDir = () => path.join(WORKSPACE, "packs");
 /** Where an installed pack keeps what is not a template, rule or asset: its style guide and examples. */
@@ -67,6 +68,11 @@ export type PackPreview = {
    */
   review: { review: PackReview; warnings: string[]; problems: StyleProblem[] };
   examples: PackExample[];
+  /**
+   * The pack's code, in full, because it is a program that will edit your projects once
+   * trusted. `hash` is what trusting it records; any change to any file changes it.
+   */
+  recipes: { recipes: Array<PackRecipe & { source: string }>; files: Array<{ file: string; bytes: number; text: string | null }>; hash: string };
   /** Always true for anything that did not come from this workspace. */
   untrusted: true;
 };
@@ -102,12 +108,32 @@ export async function inspectPack(sourceText: string): Promise<PackPreview> {
   // A question and a fix sentence reach the agent exactly as the guide does, so they are
   // scanned exactly as the guide is.
   const reviewText = [...review.checks.map((c) => c.fix), ...review.rubric.map((r) => `${r.ask}\n${r.fix}`)].join("\n");
+  const recipes = await readRecipes(source, manifest);
   return {
     manifest, source: sourceText, hash, templates, rules, assets: manifest.assets.map((a) => ({ file: a.file, kind: a.kind, name: a.name })), quickActions: manifest.quickActions,
     style: { text: styleText, problems: scanStyle(`${styleText}\n${exampleText}`) },
     review: { review, warnings: lintReview(review), problems: scanStyle(reviewText) },
     examples: manifest.examples, untrusted: true,
+    recipes: {
+      recipes: manifest.recipes.map((r) => ({ ...r, source: recipes.entries.get(r.file)!.toString("utf8") })),
+      files: manifest.recipeFiles.map((file) => { const bytes = recipes.entries.get(file)!; return { file, bytes: bytes.length, text: /\.(m?js|json|md|txt)$/i.test(file) ? bytes.toString("utf8") : null }; }),
+      hash: recipes.hash,
+    },
   };
+}
+
+/** Every file a pack's recipes are made of, read once, and the hash that trusting them records. */
+async function readRecipes(source: Source, manifest: PackManifest) {
+  const entries = new Map<string, Buffer>();
+  const names = [...manifest.recipes.map((r) => r.file), ...manifest.recipeFiles];
+  for (const name of names) {
+    if (path.isAbsolute(name) || name.split(/[\\/]/).includes("..")) throw new Error(`Recipe file escapes the pack: ${name}`);
+    if (!entries.has(name)) entries.set(name, await readEntry(source, name));
+  }
+  if (!names.length) return { entries, hash: "" };
+  const digest = createHash("sha256");
+  for (const name of [...entries.keys()]) digest.update(name).update("\0").update(entries.get(name)!).update("\0");
+  return { entries, hash: digest.digest("hex") };
 }
 
 /** Copy a pack into the workspace. Existing user templates and rules with the same id are replaced only with `replace`. */
@@ -173,10 +199,19 @@ export async function importPack(sourceText: string, options: { replace?: boolea
     if (example.kind === "video") await contactSheet(path.join(folder, file), path.join(folder, `${file}.jpg`));
     examples.push({ ...example, file });
   }
+  const recipeFiles = await readRecipes(source, manifest);
+  for (const [name, bytes] of recipeFiles.entries) {
+    await fs.mkdir(path.dirname(path.join(folder, name)), { recursive: true });
+    await fs.writeFile(path.join(folder, name), bytes);
+  }
+  // Trust follows the code, not the pack: the same bytes keep it, one changed byte loses it.
+  const previous = (await listPacks()).find((p) => p.id === manifest.id);
+  const trusted = previous?.trustedRecipesHash && previous.trustedRecipesHash === recipeFiles.hash ? recipeFiles.hash : null;
   const installed = InstalledPack.parse({
     id: manifest.id, name: manifest.name, version: manifest.version, description: manifest.description, author: manifest.author,
     source: sourceText, hash: preview.hash, installedAt: Date.now(), templates, rules, assets: assetIds, glossary, quickActions: manifest.quickActions,
     provides: { templates: manifest.templates, rules: manifest.rules }, examples,
+    recipes: manifest.recipes, recipeFiles: manifest.recipeFiles, recipesHash: recipeFiles.hash, trustedRecipesHash: trusted,
   });
   await fs.mkdir(packsDir(), { recursive: true });
   await fs.writeFile(path.join(packsDir(), `${manifest.id}.json`), JSON.stringify(installed, null, 2));
@@ -256,6 +291,8 @@ export async function exportPack(request: ExportRequest): Promise<{ dir: string;
   let style = "";
   let review = "";
   let examples: PackExample[] = [];
+  let recipes: PackRecipe[] = [];
+  let recipeFiles: string[] = [];
   if (request.stylePack) {
     const pack = (await listPacks()).find((p) => p.id === request.stylePack);
     if (!pack) throw new Error(`No installed pack named ${request.stylePack}`);
@@ -266,11 +303,18 @@ export async function exportPack(request: ExportRequest): Promise<{ dir: string;
     await fs.mkdir(path.join(dir, "examples"), { recursive: true });
     for (const example of pack.examples) await fs.copyFile(path.join(packFolder(pack.id), example.file), path.join(dir, example.file));
     examples = pack.examples;
+    // The code travels with the pack it belongs to; trust does not travel at all.
+    for (const name of [...pack.recipes.map((r) => r.file), ...pack.recipeFiles]) {
+      await fs.mkdir(path.dirname(path.join(dir, name)), { recursive: true });
+      await fs.copyFile(path.join(packFolder(pack.id), name), path.join(dir, name));
+    }
+    recipes = pack.recipes;
+    recipeFiles = pack.recipeFiles;
   }
   const manifest = PackManifest.parse({
     id: request.id, name: request.name, version: request.version, description: request.description, author: request.author,
     templates: chosenTemplates, rules: chosenRules, glossary: request.glossary ? (await readGlossaryLevel("workspace")).terms : [], assets, quickActions: request.quickActions ?? [],
-    style, review, examples,
+    style, review, examples, recipes, recipeFiles,
   });
   await fs.writeFile(path.join(dir, "pack.json"), JSON.stringify(manifest, null, 2));
   return { dir, manifest };

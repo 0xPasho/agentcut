@@ -5,6 +5,7 @@ import { reviewObservations } from "@/modules/rules/server/observations";
 import { onboardingState, runOnboarding, skipOnboarding, saveOnboardingAnswers, reopenOnboarding, dismissOnboardingReminder, ONBOARDING_QUESTIONS } from "@/modules/onboarding/server/onboarding";
 import { readStyle, saveStyle, addExample, updateExample, removeExample } from "@/modules/packs/server/style";
 import { inspectPack, importPack, removePack, exportPack } from "@/modules/packs/server/packs";
+import { recipeSources, trustRecipes } from "@/modules/packs/server/recipes";
 import { readPackReview, savePackReview } from "@/modules/review/server/criteria";
 import { lintReview } from "@/modules/review/lib/lint";
 import { PackReview } from "@/modules/review/types";
@@ -23,7 +24,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const body = (await req.json().catch(() => ({}))) as { action?: string; rule?: unknown; review?: unknown; id?: string; glossary?: unknown; text?: string; answers?: unknown; source?: string; replace?: boolean; pack?: Parameters<typeof exportPack>[0]; scope?: string; task?: string; provider?: string; model?: string; value?: string; file?: string; title?: string; note?: string; mode?: string | null; path?: string };
+  const body = (await req.json().catch(() => ({}))) as { action?: string; rule?: unknown; review?: unknown; id?: string; glossary?: unknown; text?: string; answers?: unknown; source?: string; replace?: boolean; pack?: Parameters<typeof exportPack>[0]; scope?: string; task?: string; provider?: string; model?: string; value?: string; file?: string; title?: string; note?: string; mode?: string | null; path?: string; trust?: boolean };
   try {
     switch (body.action) {
       case "rules.save": return Response.json(await saveRule(body.rule, "workspace"));
@@ -42,6 +43,10 @@ export async function POST(req: Request) {
       case "packs.import": return Response.json(await importPack(String(body.source ?? ""), { replace: !!body.replace }));
       case "packs.remove": return Response.json(await removePack(String(body.id ?? "")));
       case "packs.export": return Response.json(await exportPack(body.pack as Parameters<typeof exportPack>[0]));
+      // Trusting a pack's code is a person's decision (decision 143): this route and the
+      // terminal are the only ways in, and no editor tool reaches it.
+      case "packs.recipes.source": return Response.json(await recipeSources(String(body.id ?? "")));
+      case "packs.recipes.trust": return Response.json(await trustRecipes(String(body.id ?? ""), body.trust !== false));
       case "review.catalogue": return Response.json(METRICS);
       case "packs.review.get": { const review = await readPackReview(String(body.id ?? "")); return Response.json({ review, warnings: lintReview(review) }); }
       case "packs.review.set": return Response.json(await savePackReview(String(body.id ?? ""), PackReview.parse(body.review)));

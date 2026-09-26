@@ -129,6 +129,9 @@ node scripts/agentcut.mjs projects create "Travel edit" one.mp4 two.mp4
 node scripts/agentcut.mjs edit PROJECT_ID ask "Move the title to the bottom"
 node scripts/agentcut.mjs render PROJECT_ID
 node scripts/agentcut.mjs templates list
+node scripts/agentcut.mjs packs import packs/showcase
+node scripts/agentcut.mjs packs trust showcase     # after reading its recipes: they are code
+node scripts/agentcut.mjs packs run PROJECT_ID showcase jump-card --param target=ITEM_ID
 ```
 
 ## Your data

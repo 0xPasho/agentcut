@@ -6,6 +6,7 @@ import { ArrowLeft, BookA, FolderOpen, Globe, Images, LayoutTemplate, Loader2, M
 import { api } from "@/common/api/client";
 import type { InstalledPack } from "@/modules/packs/types";
 import { StyleEditor } from "@/modules/packs/components/style-editor";
+import { RecipesTrust } from "@/modules/packs/components/recipes-trust";
 import { ReviewEditor } from "@/modules/review/components/review-editor";
 import { Button } from "@/common/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/common/ui/dialog";
@@ -67,6 +68,15 @@ export function PackView({ id }: { id: string }) {
       </Panel>
 
       <Contents pack={pack} data={data} />
+
+      {!!pack.recipes.length && (
+        <Panel className="flex flex-col gap-3">
+          <PanelHeading title="Recipes">
+            Code this pack carries to build parts of a video — edit-time only, never at render. What it makes is ordinary editing you can change afterwards. Run them from the editor under Video → Pack recipes, or ask the agent.
+          </PanelHeading>
+          <RecipesTrust pack={pack} pending={pending === `trust:${pack.id}`} onTrust={(trust) => void run(`trust:${pack.id}`, () => api.workspace({ action: "packs.recipes.trust", id: pack.id, trust }))} />
+        </Panel>
+      )}
 
       <Panel className="flex flex-col gap-3">
         <PanelHeading title="Style guide and references">

@@ -146,6 +146,10 @@ export const EditorToolCall = z.discriminatedUnion("tool", [
     quickActions: z.array(z.object({ label: z.string(), text: z.string() })).optional(), dir: z.string().optional(), stylePack: z.string().optional() }),
   // A pack's style guide and reference videos, and which guide this project's videos are
   // made to. The Settings → Packs editor and the project panel call these same tools.
+  // Pack recipes (decision 143): run one against this project. Trusting code is not a
+  // tool — only a person does that, from the pack's page or the terminal.
+  z.object({ tool: z.literal("packs.recipes.list") }),
+  z.object({ tool: z.literal("packs.recipes.run"), pack: z.string().min(1), recipe: z.string().min(1), params: z.record(z.string(), z.unknown()).default({}) }),
   z.object({ tool: z.literal("packs.review.get"), id: z.string().min(1) }),
   z.object({ tool: z.literal("packs.review.set"), id: z.string().min(1), review: z.unknown() }),
   z.object({ tool: z.literal("packs.style.get"), id: z.string().min(1) }),
@@ -515,6 +519,8 @@ export async function executeEditorTool(projectId: string, raw: unknown, onActiv
     case "packs.examples.remove": { const { removeExample } = await import("../../packs/server/style"); return removeExample(call.id, call.file); }
     case "style.active": { const { activeStyle } = await import("../../packs/server/style"); return activeStyle(projectId, call.sequenceId); }
     case "style.choose": { const { chooseStyle } = await import("../../packs/server/style"); return chooseStyle(projectId, call.pack); }
+    case "packs.recipes.list": { const { listRecipes } = await import("../../packs/server/recipes"); return listRecipes(); }
+    case "packs.recipes.run": { const { runRecipe } = await import("../../packs/server/recipes"); return runRecipe(projectId, call, onActivity); }
     case "packs.list": { const { listPacks } = await import("../../packs/server/packs"); return listPacks(); }
     case "packs.inspect": { const { inspectPack } = await import("../../packs/server/packs"); return inspectPack(call.source); }
     case "packs.import": { const { importPack } = await import("../../packs/server/packs"); return importPack(call.source, { replace: call.replace }); }
