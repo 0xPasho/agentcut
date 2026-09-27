@@ -7,6 +7,8 @@ import { spawnSync } from "node:child_process";
 import { Clip, Edl } from "../types";
 import { applyOperations } from "../lib/operations";
 import { sequenceFrames } from "../lib/sequences";
+import { videoActions } from "../lib/video-actions";
+import { invertOperations } from "../lib/history";
 import { FFMPEG } from "../../../common/server/bin";
 let workspace: string;
 let store: typeof import("../server/store");
@@ -23,6 +25,40 @@ before(async () => {
   assert.equal(result.status, 0, result.stderr);
 });
 after(async () => { database.db.close(); await fs.rm(workspace, { recursive: true, force: true }); });
+
+test("bulk status and deletion share atomic UI/agent operations across timelines and legacy clips", async () => {
+  const { id } = await mediaService.createVideoProject("Bulk actions", [{ file: source }]);
+  const first = store.readEditor(id);
+  const sequence = first.edl.sequences[0];
+  store.editProject(id, { expectedRevision: first.revision, operations: [
+    { type: "clip.add", clip: Clip.parse({ id: "legacy-bulk", title: "Legacy", start: 0, end: 1, edits: [{ type: "text", t: 0, d: 1, text: "Keep this", position: "top", style: "card" }] }) },
+    { type: "sequence.add", sequence: { ...sequence, id: "untouched", title: "Untouched" } },
+  ] });
+  const initial = store.readEditor(id);
+  const ids = [sequence.id, "legacy-bulk"];
+  const operations = videoActions(initial.edl, ids, "approved");
+  const expected = applyOperations(initial.edl, operations);
+  const { PATCH } = await import("../../../app/api/projects/[id]/route");
+  const { NextRequest } = await import("next/server");
+  const response = await PATCH(new NextRequest(`http://localhost/api/projects/${id}`, {
+    method: "PATCH", body: JSON.stringify({ expectedRevision: initial.revision, operations }),
+  }), { params: Promise.resolve({ id }) });
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).edl, expected);
+  assert.deepEqual(expected.sequences.find(video => video.id === "untouched"), initial.edl.sequences.find(video => video.id === "untouched"));
+  assert.equal(expected.sequences.find(video => video.id === "legacy-bulk")?.items[0].clip.edits[0].type, "text");
+  await tools.executeEditorTool(id, { tool: "project.edit", expectedRevision: initial.revision + 1, operations: invertOperations(initial.edl, operations) });
+  await tools.executeEditorTool(id, { tool: "project.edit", expectedRevision: initial.revision + 2, operations });
+  assert.deepEqual(store.readEditor(id).edl, expected, "the UI can inspect exactly the same result after the agent handoff");
+  const current = store.readEditor(id);
+  await assert.rejects(tools.executeEditorTool(id, { tool: "project.edit", expectedRevision: initial.revision, operations: videoActions(current.edl, ids, "delete") }), /changed elsewhere/);
+  assert.deepEqual(store.readEditor(id), current);
+  assert.throws(() => videoActions(current.edl, [...ids, "missing"], "delete"), /no longer exists/);
+  const deleted = store.editProject(id, { expectedRevision: current.revision, operations: videoActions(current.edl, ids, "delete") });
+  assert.deepEqual(deleted.edl.sequences.map(video => video.id), ["untouched"]);
+  assert.deepEqual(deleted.edl.media, current.edl.media);
+  assert.deepEqual(videoActions(current.edl, [], "delete"), []);
+});
 
 test("three sources become a local sequence, UI and agent edits hand off without losing work", async () => {
   const { id } = await mediaService.createVideoProject("Three videos", [{ file: source }, { file: source }, { file: source }]);

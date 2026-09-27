@@ -21,6 +21,9 @@ import {
 import { cn } from "cn";
 import { Button, buttonVariants } from "@/common/ui/button";
 import { ProjectStatus } from "./components/project-status";
+import { VideoSelectionBar } from "./components/video-selection-bar";
+import { useVideoSelection } from "./hooks/use-video-selection";
+import { videoActions } from "../editor/lib/video-actions";
 import { Card } from "@/common/ui/card";
 import { Input } from "@/common/ui/input";
 import { Label } from "@/common/ui/label";
@@ -68,10 +71,11 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
   const editor = useEditor(initial.id, initial.edl ? { edl: initial.edl, revision: initial.revision } : null);
   const chat = useProjectChat(initial.id, { beforeRun: editor.save, afterUndo: editor.reload });
   const [error, setError] = useState<string | null>(null);
+  const [actionPending, setActionPending] = useState(false);
 
   const edl = editor.snapshot?.edl ?? null;
   const revision = editor.snapshot?.revision ?? initial.revision;
-  const busy = BUSY.has(project.status) || project.job?.status === "running";
+  const busy = actionPending || BUSY.has(project.status) || project.job?.status === "running";
 
   // One list, because there is one thing here. `clip.promote` moves a generated clip
   // into `sequences` under its own id on the first edit, so rendering the two
@@ -86,6 +90,8 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
     () => videos.find((v) => v.id === selectedId) ?? shown[0] ?? null,
     [videos, shown, selectedId],
   );
+  const selection = useVideoSelection(shown.map(video => video.id));
+  const checkedVideos = shown.filter(video => selection.ids.includes(video.id));
 
   const assetUrls = useMemo(() => {
     const out: Record<string, string> = {};
@@ -122,6 +128,8 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
   useEffect(() => { if (status === "ready" || status === "error") void refresh(); }, [status, refresh]);
 
   const run = async (fn: () => Promise<unknown>) => {
+    if (busy) return;
+    setActionPending(true);
     setError(null);
     setMenuOpen(false);
     try {
@@ -130,7 +138,30 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
       await refresh();
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setActionPending(false);
     }
+  };
+
+  const renderVideos = (ids: string[]) => run(async () => {
+    if (!ids.length) return;
+    const saved = await api.getProject(initial.id);
+    await api.render(initial.id, ids, saved.revision);
+  });
+
+  const changeVideos = async (ids: string[], action: "delete" | SequenceStatus) => {
+    if (!edl || busy || editor.conflict) return false;
+    setError(null);
+    setActionPending(true);
+    try {
+      if (!editor.dispatch(videoActions(edl, ids, action))) return false;
+      if (!(await editor.save())) return false;
+      selection.clear();
+      return true;
+    } catch (cause) {
+      setError((cause as Error).message);
+      return false;
+    } finally { setActionPending(false); }
   };
 
   const openEditor = (video: ProjectVideo) => async (event: React.MouseEvent) => {
@@ -248,7 +279,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                 <Search aria-hidden />
                 Find more
               </Button>
-              <Button size="sm" variant="ghost" disabled={busy || !videos.length} onClick={() => run(() => api.render(initial.id))}>
+              <Button size="sm" variant="ghost" disabled={busy || !videos.length} onClick={() => renderVideos(videos.map(video => video.id))}>
                 <Clapperboard aria-hidden />
                 Render all
               </Button>
@@ -273,7 +304,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                     <Sparkles aria-hidden />
                     Edit pending videos
                   </MenuItem>
-                  <MenuItem disabled={busy || !approved} onClick={() => run(() => api.render(initial.id))}>
+                  <MenuItem disabled={busy || !approved} onClick={() => renderVideos(videos.filter(video => video.status === "approved").map(video => video.id))}>
                     <Clapperboard aria-hidden />
                     Render approved videos
                   </MenuItem>
@@ -312,7 +343,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                       variant={filter === value ? "secondary" : "ghost"}
                       aria-pressed={filter === value}
                       disabled={value !== "all" && counts[value] === 0}
-                      onClick={() => setFilter(value)}
+                      onClick={() => { selection.clear(); setFilter(value); }}
                       className="font-normal"
                     >
                       {value !== "all" && <StatusIcon status={value} />}
@@ -344,6 +375,19 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                 </div>
               </div>
 
+              <VideoSelectionBar
+                videos={checkedVideos}
+                visibleCount={shown.length}
+                all={selection.all}
+                busy={busy || editor.conflict}
+                error={error || editor.error}
+                onSelectAll={selection.selectAll}
+                onClear={selection.clear}
+                onStatus={status => { void changeVideos(selection.ids, status); }}
+                onRender={() => { void renderVideos(selection.ids); }}
+                onDelete={ids => changeVideos(ids, "delete")}
+              />
+
               {/* The pane scrolls, not the page: at forty candidates a page that grows
                   with the list pushes the preview, the agent and every action below
                   five screens of rows. */}
@@ -357,6 +401,8 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                       revision={revision}
                       selectedId={selected?.id ?? null}
                       rendered={project.rendered}
+                      checkedIds={selection.ids}
+                      onToggle={selection.toggle}
                       handlers={{
                         onSelect: setSelectedId,
                         onOpen: openEditor,
@@ -466,7 +512,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                   <SlidersHorizontal aria-hidden />
                   Open editor
                 </Link>
-                <Button size="sm" disabled={busy} onClick={() => run(() => api.render(initial.id, [selected.id]))}>
+                <Button size="sm" disabled={busy} onClick={() => renderVideos([selected.id])}>
                   {busy ? <Loader2 aria-hidden className="motion-safe:animate-spin" /> : <Clapperboard aria-hidden />}
                   Render
                 </Button>

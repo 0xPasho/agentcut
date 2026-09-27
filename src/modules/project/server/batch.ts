@@ -1,4 +1,7 @@
 import { q } from "../../../common/server/db";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { projectDir } from "../../../common/server/config";
 import { editProject, readEditor, RevisionConflict } from "../../editor/server/store";
 import type { AgentEvent, AgentProvider } from "../../agent/server/providers";
 import { recordMessage } from "../../agent/server/conversation";
@@ -126,10 +129,23 @@ export function renderTargets(edl: ReturnType<typeof readEditor>["edl"], only?: 
 }
 
 /** After a render: the videos that were rendered are now `rendered`. */
-export function markRendered(projectId: string, sequenceIds: string[]) {
+export async function markRendered(projectId: string, sequenceIds: string[], expectedRevision?: number) {
   const current = readEditor(projectId);
+  // An edit during export makes those files stale; do not mark newer work as rendered.
+  if (expectedRevision !== undefined && current.revision !== expectedRevision) return;
   const operations = current.edl.sequences
     .filter((s) => sequenceIds.includes(s.id) && s.plan.status !== "rendered")
     .map((s) => ({ type: "sequence.plan.patch" as const, sequenceId: s.id, patch: { status: "rendered" as const } }));
-  if (operations.length) editProject(projectId, { expectedRevision: current.revision, operations });
+  if (!operations.length) return;
+  const next = editProject(projectId, { expectedRevision: current.revision, operations });
+  // Only plan.status changed. Keep current exports downloadable across this metadata
+  // revision, without reviving any file that was already stale before the render.
+  const file = path.join(projectDir(projectId), "rendered.json");
+  const manifest = await fs.readFile(file, "utf8").then(JSON.parse).catch(() => null) as Record<string, { revision: number; file: string }> | null;
+  if (!manifest) return;
+  for (const entry of Object.values(manifest)) {
+    if (entry.revision === current.revision) entry.revision = next.revision;
+  }
+  await fs.writeFile(`${file}.tmp`, JSON.stringify(manifest));
+  await fs.rename(`${file}.tmp`, file);
 }

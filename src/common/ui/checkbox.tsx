@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check } from "lucide-react";
+import { Check, Minus } from "lucide-react";
 import { cn } from "cn";
 
 /**
@@ -23,9 +23,11 @@ export function Checkbox({
   className,
   boxClassName,
   disabled,
+  indeterminate = false,
   ...props
 }: Omit<React.ComponentProps<"input">, "type" | "checked" | "onChange" | "children"> & {
   checked: boolean;
+  indeterminate?: boolean;
   onCheckedChange: (next: boolean) => void;
   /** The visible word. A box with nothing beside it says nothing. */
   children?: React.ReactNode;
@@ -43,6 +45,7 @@ export function Checkbox({
         type="checkbox"
         className="peer sr-only"
         checked={checked}
+        ref={(input) => { if (input) input.indeterminate = indeterminate; }}
         disabled={disabled}
         onChange={(e) => onCheckedChange(e.target.checked)}
         {...props}
@@ -52,11 +55,12 @@ export function Checkbox({
         className={cn(
           "grid size-4 shrink-0 place-items-center rounded-[6px] bg-black/25 text-transparent ring-1 ring-foreground/25 shadow-(--field-shadow) transition-colors duration-150",
           "peer-checked:bg-primary peer-checked:text-primary-foreground peer-checked:ring-primary",
+          indeterminate && "bg-primary text-primary-foreground ring-primary",
           "peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring motion-reduce:transition-none",
           boxClassName,
         )}
       >
-        <Check className="size-3 stroke-[3]" />
+        {indeterminate ? <Minus className="size-3 stroke-[3]" /> : <Check className="size-3 stroke-[3]" />}
       </span>
       {children ? <span className="min-w-0">{children}</span> : null}
     </label>

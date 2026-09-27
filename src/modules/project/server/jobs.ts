@@ -305,7 +305,7 @@ async function render(job: JobRow, dir: string, only?: string[], expectedRevisio
     },
   });
 
-  markRendered(pid, rendered.outputs.map((o) => o.clip.id));
+  await markRendered(pid, rendered.outputs.map((o) => o.clip.id), rendered.revision);
   q.setProject(pid, { status: "ready" });
   log(pid, job.id, "stage", "render complete");
 }

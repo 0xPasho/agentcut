@@ -96,11 +96,26 @@ test("rendering without a list covers approved videos only, once anything is app
   assert.deepEqual(batch.renderTargets(start.edl, [b]), [b]);
   store.editProject(id, { expectedRevision: start.revision, operations: [{ type: "sequence.plan.patch", sequenceId: a, patch: { status: "approved" } }] });
   assert.deepEqual(batch.renderTargets(store.readEditor(id).edl), [a]);
-  batch.markRendered(id, [a, b]);
+  const revision = store.readEditor(id).revision;
+  const dir = path.join(workspace, "projects", id);
+  await fs.mkdir(path.join(dir, "clips"), { recursive: true });
+  await fs.writeFile(path.join(dir, "clips", "current.mp4"), "test export");
+  await fs.writeFile(path.join(dir, "clips", "stale.mp4"), "old export");
+  await fs.writeFile(path.join(dir, "rendered.json"), JSON.stringify({
+    [a]: { revision, file: "current.mp4" },
+    [b]: { revision: revision - 1, file: "stale.mp4" },
+  }));
+  await batch.markRendered(id, [a, b], revision);
   const after = store.readEditor(id).edl;
   assert.equal(after.sequences[0].plan.status, "rendered");
   assert.equal(after.sequences[1].plan.status, "rendered");
   assert.deepEqual(batch.renderTargets(after), [a, b]);
+  const { renderedClips } = await import("../server/clip-files");
+  assert.deepEqual(Object.keys(await renderedClips(id)), [a], "status updates keep current files downloadable without reviving stale exports");
+  const next = store.readEditor(id);
+  store.editProject(id, { expectedRevision: next.revision, operations: [{ type: "sequence.plan.patch", sequenceId: a, patch: { status: "edited" } }] });
+  await batch.markRendered(id, [a], next.revision);
+  assert.equal(store.readEditor(id).edl.sequences[0].plan.status, "edited", "a render finishing after another edit cannot mark the newer work rendered");
 });
 
 test("transcribing imported media puts words on its shots and a missing recogniser is reported, not thrown", async () => {

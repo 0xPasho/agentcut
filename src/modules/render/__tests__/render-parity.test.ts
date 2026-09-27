@@ -21,19 +21,23 @@ test("UI, agent and CLI render the same saved revision, ignoring a stale exporte
     const { executeEditorTool } = await import("../../editor/server/tools");
     const create = (id: string) => {
       q.insertProject({ id, name: id, source_path: source, created_at: Date.now() });
-      return publishClips(id, Edl.parse({ projectId: id, source: { file: source, width: 320, height: 180, fps: 10, durationSec: 1 }, output: { width: 180, height: 320, fps: 10 }, clips: [{ id: "one", title: "Parity", start: 0, end: 1, captions: { preset: "none" }, edits: [] }] }));
+      return publishClips(id, Edl.parse({ projectId: id, source: { file: source, width: 320, height: 180, fps: 10, durationSec: 1 }, output: { width: 180, height: 320, fps: 10 }, clips: ["one", "two", "unselected"].map(clipId => ({ id: clipId, title: clipId, start: 0, end: 1, captions: { preset: "none" }, edits: [] })) }));
     };
     const ui = create("ui"), agent = create("agent");
     const operations = [{ type: "edit.add", clipId: "one", edit: { type: "text", t: 0, d: 1, text: "SHARED", position: "center", style: "card" } }];
     const uiSaved = editProject("ui", { expectedRevision: ui.revision, operations });
     await executeEditorTool("agent", { tool: "project.edit", expectedRevision: agent.revision, operations });
-    const uiOutput = await renderProject("ui", { expectedRevision: uiSaved.revision });
+    const uiOutput = await renderProject("ui", { only: ["one", "two"], expectedRevision: uiSaved.revision });
+    assert.deepEqual(uiOutput.outputs.map(output => output.clip.id), ["one", "two"]);
+    assert.ok(!(await fs.readdir(path.join(workspace, "projects/ui/clips"))).some(file => file.startsWith("unselected-")));
     const hash = (file: string) => {
       const result = spawnSync(FFMPEG, ["-v", "error", "-i", file, "-f", "framemd5", "-"], { encoding: "utf8" });
       assert.equal(result.status, 0, result.stderr); return result.stdout;
     };
     const expected = hash(uiOutput.outputs[0].file);
-    const agentOutput = await executeEditorTool("agent", { tool: "project.render", expectedRevision: 2 }) as typeof uiOutput;
+    const agentOutput = await executeEditorTool("agent", { tool: "project.render", only: ["one", "two"], expectedRevision: 2 }) as typeof uiOutput;
+    assert.deepEqual(agentOutput.outputs.map(output => output.clip.id), ["one", "two"]);
+    assert.equal(hash(agentOutput.outputs[1].file), hash(uiOutput.outputs[1].file));
     assert.equal(hash(agentOutput.outputs[0].file), expected);
     await fs.writeFile(path.join(workspace, "projects/ui/edl.json"), "{}", "utf8");
     const cli = spawnSync(path.join(process.cwd(), "node_modules/.bin/tsx"), ["scripts/render.ts", "ui"], { env: { ...process.env, AGENTCUT_WORKSPACE: workspace }, encoding: "utf8", timeout: 90_000 });

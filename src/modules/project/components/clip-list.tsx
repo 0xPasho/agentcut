@@ -5,6 +5,7 @@ import Link from "next/link";
 import { BadgeCheck, Clock3, Download, FileVideo, Film, PencilLine, SlidersHorizontal, Trash2 } from "lucide-react";
 import { cn } from "cn";
 import { Button, buttonVariants } from "@/common/ui/button";
+import { Checkbox } from "@/common/ui/checkbox";
 import { clipUrl, thumbUrl } from "@/common/api/client";
 import { count, runtime } from "@/common/lib/format";
 import type { ProjectVideo } from "@/modules/project/lib/overview";
@@ -27,6 +28,8 @@ export function ClipList({
   selectedId,
   rendered,
   handlers,
+  checkedIds = [],
+  onToggle,
 }: {
   videos: ProjectVideo[];
   layout: VideoLayout;
@@ -35,6 +38,8 @@ export function ClipList({
   selectedId: string | null;
   rendered: string[];
   handlers: ClipListHandlers;
+  checkedIds?: string[];
+  onToggle?: (id: string) => void;
 }) {
   const list = useRef<HTMLUListElement>(null);
 
@@ -74,6 +79,9 @@ export function ClipList({
           tabbable={video.id === selectedId || (!videos.some(v => v.id === selectedId) && video.id === videos[0]?.id)}
           rendered={rendered.includes(video.id)}
           handlers={handlers}
+          checked={checkedIds.includes(video.id)}
+          selecting={checkedIds.length > 0}
+          onToggle={onToggle}
         />
       ))}
     </ul>
@@ -89,6 +97,9 @@ function ClipRow({
   selected,
   rendered,
   handlers,
+  checked,
+  selecting,
+  onToggle,
 }: {
   video: ProjectVideo;
   layout: VideoLayout;
@@ -98,6 +109,9 @@ function ClipRow({
   selected: boolean;
   rendered: boolean;
   handlers: ClipListHandlers;
+  checked: boolean;
+  selecting: boolean;
+  onToggle?: (id: string) => void;
 }) {
   const [poster, setPoster] = useState(true);
   const row = useRef<HTMLLIElement>(null);
@@ -114,11 +128,25 @@ function ClipRow({
     <li
       ref={row}
       className={cn(
-        "group/row relative flex min-w-0 items-center gap-3 rounded-2xl p-2 transition-colors duration-150 ease-out motion-reduce:transition-none",
+        "group/row relative flex min-w-0 flex-wrap items-center gap-3 rounded-2xl p-2 transition-colors duration-150 ease-out motion-reduce:transition-none sm:flex-nowrap",
         grid && "flex-col items-stretch bg-white/3",
         selected ? "bg-white/8 ring-1 ring-inset ring-primary/50" : "hover:bg-white/5",
+        checked && "bg-primary/8 ring-2 ring-inset ring-primary/70",
       )}
     >
+      {onToggle && (
+        <Checkbox
+          checked={checked}
+          onCheckedChange={() => onToggle(video.id)}
+          aria-label={`Select ${video.title}`}
+          className={cn(
+            "z-10 size-10 shrink-0 justify-center rounded-xl transition-opacity duration-150 motion-reduce:transition-none",
+            grid && "absolute end-3 top-3 bg-background/90 shadow-sm",
+            !selecting && "[@media(hover:hover)]:opacity-0 group-hover/row:opacity-100 focus-within:opacity-100 group-focus-within/row:opacity-100",
+          )}
+          boxClassName="size-5 rounded-md"
+        />
+      )}
       <button
         data-row
         type="button"
@@ -177,6 +205,7 @@ function ClipRow({
       <div
         className={cn(
           "flex shrink-0 items-center gap-1",
+          !grid && "w-full justify-end sm:w-auto",
           (selected || grid) ? "visible" : "invisible lg:group-hover/row:visible",
         )}
       >

@@ -11,6 +11,16 @@ batch with an `expectedRevision`. A successful batch increments the revision onc
 a stale batch fails with a conflict and does not change the project. `edl.json` is a
 derived export, never the authority for a project-ID render.
 
+The project overview supports multiple checked videos independently of its preview.
+List/grid and sorting preserve the selection; changing filters clears it, and Select
+visible only checks the current results. Bulk status and deletion compose existing
+operations through `editor/lib/video-actions.ts` and save one atomic batch. A legacy
+clip receives `clip.promote` before `sequence.plan.patch`, preserving its ID and edits.
+Agents can submit the same operation batch through `project.edit`; both interfaces
+render explicit IDs through `project.render` / the render API after saving. Render all
+includes every video, while Render approved includes only the approved status.
+Deletion names its targets in a confirmation dialog and keeps source media.
+
 `src/modules/editor/lib/operations.ts` owns the operation schemas, validation, immutable reducer,
 trim behavior, and UI adapter. Both interfaces use these operations:
 
