@@ -16,6 +16,36 @@ command read and write the same files.
 | `glossary.json` | How names are spelled | Recogniser, proofreader, a deterministic fix-up, every agent |
 | `preferences.md` | How the owner likes their videos, in their words | Every agent prompt |
 
+## Creating and editing rules
+
+Workspace → Rules and Video → Rules and preferences use the same rule form.
+**Create a rule** starts with an idea in plain language and example requests; **Create
+manually** opens the same editable draft. An existing rule has **Ask the agent to help
+with this rule** beside its controls. The agent sees the current draft, conversation,
+installed templates, library assets and existing rules. It returns a proposal or asks
+for a missing decision. The workspace/project selection and the observations task
+model preference are honored. It does not save or apply the result.
+
+The draft shows the condition, actual settings, named files, instruction, and scope.
+Common video settings have direct controls; **All video settings** exposes a structured
+patch editor derived from the template schema, including arrays and aspect variants.
+Removing a setting restores template inheritance; changing one preserves all unrelated
+fields. Library image pools can be ordered without writing JSON. Internal IDs are
+generated, and existing IDs remain stable. File-backed instructions are shown as their
+resolved text and saved inline when edited.
+
+**Save rule** calls the existing registry service in both interfaces. Failed saves keep
+the draft, warnings remain visible, and deletion requires confirmation. Saving is not
+retroactive: existing videos keep their edits. An instruction supplies guidance to the
+agent; automatic settings run when rules are applied. Applying rules to the current
+video remains in the editor's rule panel.
+
+`rules.draft` accepts `text`, an optional `current` rule, and optional `history` turns
+(`role: user | assistant`, `text`); it returns `{ rule, message }`, with `rule: null`
+when clarification is needed. The workspace HTTP action calls the same service without
+a project. The agent's isolated run files are removed after reading the proposal.
+Validation uses the existing template merge function, not a second application model.
+
 ## Rules
 
 ```json

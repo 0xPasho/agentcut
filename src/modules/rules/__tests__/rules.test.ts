@@ -293,3 +293,59 @@ test("preferences are the owner's words, kept per level and handed to every agen
   assert.match(prompt, /Short hooks\. Never emojis\./);
   assert.match(prompt, /rules\.apply/);
 });
+
+test("rule form edits sparse settings without dropping unrelated agent fields", async () => {
+  const { changeSetting, ruleEffects, editableRule } = await import("../lib/rule-form");
+  const { Rule } = await import("../types");
+  const overrides = { images: { mode: "off", density: 0.25 }, comment: { enabled: true, followReading: true }, music: { gain: 0.2 } };
+  const changed = changeSetting(overrides, ["images", "mode"], "auto");
+  assert.deepEqual(changed, { ...overrides, images: { mode: "auto", density: 0.25 } });
+  assert.deepEqual(changeSetting(changed, ["images", "mode"], undefined), { ...overrides, images: { density: 0.25 } });
+  const rule = Rule.parse({ id: "form-fields", name: "Gameplay", when: "gameplay", then: { overrides, promptFile: "guidance.md", prompt: "shadowed" } });
+  const record = { ...rule, level: "workspace" as const, file: "ignored", promptText: "Keep the game visible", warnings: ["note"] };
+  const editable = editableRule(record);
+  assert.equal(editable.then.prompt, "Keep the game visible");
+  assert.equal(editable.then.promptFile, undefined);
+  assert.equal("warnings" in editable, false);
+  const lines = ruleEffects(record, []);
+  assert.ok(lines.includes("Supporting images · Mode: Off"));
+  assert.ok(lines.includes("Agent instruction: Keep the game visible"));
+  assert.ok(!lines.join(" ").includes("tells the agent something"));
+});
+
+test("rule drafts ask questions or propose valid rules without saving, and round-trip through both save paths", async () => {
+  const { draftRule } = await import("../server/draft");
+  const { editableRule, changeSetting } = await import("../lib/rule-form");
+  const { Rule } = await import("../types");
+  const before = (await registry.listRules()).map(r => r.id);
+  const proposal = Rule.parse({ id: "draft-gameplay", name: "Keep gameplay clear", when: "the clip shows gameplay", stage: "edit", then: { overrides: { images: { mode: "off" } }, prompt: "Keep the game interface visible." } });
+  let response: { rule: typeof proposal | null; message: string } = { rule: null, message: "Which outro file should I use?" };
+  const runner: AgentProvider = { id: "test", label: "Test", async available() { return true; }, async run(options) {
+    const context = JSON.parse(await fs.readFile(path.join(options.cwd, "context.json"), "utf8"));
+    assert.ok(context.ruleSchema && context.settingsSchema);
+    assert.ok(Array.isArray(context.templates));
+    await fs.writeFile(path.join(options.cwd, "proposal.json"), JSON.stringify(response));
+    return { provider: "test", text: "DONE", events: [], durationMs: 1 };
+  } };
+  const question = await draftRule({ text: "Add my outro" }, undefined, runner);
+  assert.equal(question.rule, null);
+  response = { rule: proposal, message: "Disable added pictures during gameplay." };
+  const draft = await draftRule({ text: "Keep gameplay clear", history: [{ role: "user", text: "No added pictures" }] }, undefined, runner);
+  assert.deepEqual((await registry.listRules()).map(r => r.id), before);
+  assert.deepEqual(draft.rule, proposal);
+  const human = editableRule(draft.rule!);
+  human.then.overrides = changeSetting(human.then.overrides, ["comment", "enabled"], true);
+  const saved = await registry.saveRule(human);
+  assert.deepEqual(editableRule(await registry.getRule(saved.id)), human);
+  const projectId = database.q.listProjects()[0]?.id;
+  assert.ok(projectId);
+  const fromTool = await tools.executeEditorTool(projectId, { tool: "rules.save", rule: human, level: "project" });
+  assert.deepEqual(editableRule(fromTool as typeof saved), human);
+  const invalid = { ...proposal, then: { overrides: { images: { mode: "not-a-mode" } } } };
+  response = { rule: invalid as typeof proposal, message: "An invalid draft" };
+  await assert.rejects(() => draftRule({ text: "bad" }, undefined, runner));
+  response = { rule: { ...proposal, id: "another-id" }, message: "Refined" };
+  const revised = await draftRule({ text: "refine", current: human }, undefined, runner);
+  assert.equal(revised.rule?.id, human.id);
+  assert.deepEqual(await fs.readdir(path.join(workspace, "rule-drafts")), []);
+});

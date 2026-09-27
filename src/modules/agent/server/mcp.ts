@@ -70,6 +70,7 @@ const DESCRIPTIONS: Record<string, string> = {
   "rules.list": "Rules that apply to this project, with level and resolved prompt text.",
   "rules.get": "One rule.",
   "rules.schema": "The rule document schema.",
+  "rules.draft": "Draft or refine a rule with the configured agent. Returns a proposal or a clarifying question; never saves or applies it. Pass current and history for follow-up turns.",
   "rules.save": "Create or replace a rule at workspace or project level.",
   "rules.delete": "Delete a rule.",
   "rules.evaluate": "Have an agent judge which rules hold for a video.",

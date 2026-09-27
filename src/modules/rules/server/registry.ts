@@ -1,3 +1,4 @@
+import { ruleError } from "../lib/rule-form";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
@@ -81,11 +82,25 @@ async function checkRule(rule: Rule, dir: string): Promise<void> {
     throw new Error(`Rule ${rule.id} runs at the select stage, where there are no clips yet to apply a template to. Give it stage "edit" or "both", or leave it a prompt for the selection.`);
 }
 
+/** Shared by manual saving and agent proposals; a draft never writes the registry. */
+export async function validateRule(input: unknown, level: RuleLevel = "workspace", projectId?: string): Promise<Rule> {
+  try {
+    const rule = Rule.parse(input);
+    await checkRule(rule, rulesDir(level, projectId));
+    if (rule.then.overrides) {
+      const { getTemplate } = await import("../../templates/server/registry");
+      const { VideoTemplate } = await import("../../templates/types");
+      const { mergeTemplate } = await import("../../templates/server/plan");
+      const base = rule.then.template ? await getTemplate(rule.then.template).catch(() => null) : null;
+      mergeTemplate(base ?? VideoTemplate.parse({ id: "rule-validation", name: "Rule validation", output: { width: 1080, height: 1920, fps: 30 } }), rule.then.overrides);
+    }
+    return rule;
+  } catch (error) { throw new Error(ruleError(error)); }
+}
+
 export async function saveRule(input: unknown, level: RuleLevel = "workspace", projectId?: string): Promise<RuleRecord> {
-  const rule = Rule.parse(input);
+  const rule = await validateRule(input, level, projectId);
   const dir = rulesDir(level, projectId);
-  if (rule.then.promptFile) promptFilePath(dir, rule.then.promptFile);
-  await checkRule(rule, dir);
   await fs.mkdir(dir, { recursive: true });
   const file = path.join(dir, `${rule.id}.json`);
   const temp = `${file}.${process.pid}.tmp`;

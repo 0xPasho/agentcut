@@ -1,3 +1,4 @@
+import { draftRule } from "@/modules/rules/server/draft";
 import { saveRule, deleteRule } from "@/modules/rules/server/registry";
 import { saveGlossary } from "@/modules/rules/server/glossary";
 import { savePreferences } from "@/modules/rules/server/preferences";
@@ -27,6 +28,7 @@ export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as { action?: string; rule?: unknown; review?: unknown; id?: string; glossary?: unknown; text?: string; answers?: unknown; source?: string; replace?: boolean; pack?: Parameters<typeof exportPack>[0]; scope?: string; task?: string; provider?: string; model?: string; value?: string; file?: string; title?: string; note?: string; mode?: string | null; path?: string; trust?: boolean };
   try {
     switch (body.action) {
+      case "rules.draft": return Response.json(await draftRule(body));
       case "rules.save": return Response.json(await saveRule(body.rule, "workspace"));
       case "rules.delete": return Response.json(await deleteRule(String(body.id ?? ""), "workspace"));
       case "glossary.save": return Response.json(await saveGlossary(body.glossary, "workspace"));

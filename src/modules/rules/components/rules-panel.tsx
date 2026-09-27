@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useState, type ReactNode } from "react";
 import { Loader2, Plus, Trash2, Wand2 } from "lucide-react";
 import { api } from "@/common/api/client";
 import type { Rule, RuleRecord, RuleLevel } from "@/modules/rules/types";
@@ -9,7 +9,10 @@ import type { Glossary } from "@/modules/rules/server/glossary";
 import type { Proposals, Observation } from "@/modules/rules/server/observations";
 
 import type { AssetSummary } from "@/common/api/client";
-import { RuleSlots } from "./rule-slots";
+import { RuleForm } from "./rule-form";
+import { RuleEffects } from "./rule-effects";
+import { DeleteRule } from "./delete-rule";
+import { editableRule, ruleEffects } from "../lib/rule-form";
 import { Badge } from "../../../common/ui/badge";
 import { Button } from "../../../common/ui/button";
 import { Checkbox } from "@/common/ui/checkbox";
@@ -23,7 +26,7 @@ import { Separator } from "../../../common/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../../common/ui/tabs";
 import { type TemplateOption, type Loaded } from "../types";
 import { EMPTY_RULE, STAGE_LABELS } from "../data";
-import { stripRecord } from "../lib/rules-panel";
+
 
 export function RulesPanel({ projectId, sequenceId, beforeApply, afterApply }: {
   projectId?: string;
@@ -87,10 +90,11 @@ export function RulesPanel({ projectId, sequenceId, beforeApply, afterApply }: {
         <TabsTrigger value="preferences" className="flex-1">Preferences</TabsTrigger>
       </TabsList>
       <TabsContent value="rules" className="space-y-4 pt-4">
-        {projectId && sequenceId && <JudgeAndApply projectId={projectId} sequenceId={sequenceId} rules={data.rules} beforeApply={beforeApply} afterApply={afterApply} onError={setError} />}
-        <RuleList rules={data.rules} templates={data.templates} assets={data.assets} canProject={!!projectId} pending={pending}
-          onSave={(rule, level) => run(`save:${rule.id}`, () => write({ tool: "rules.save", rule, level }, { action: "rules.save", rule }))}
-          onDelete={(rule) => run(`delete:${rule.id}`, () => write({ tool: "rules.delete", id: rule.id, level: rule.level }, { action: "rules.delete", id: rule.id }))} />
+        <RuleList rules={data.rules} templates={data.templates} assets={data.assets} projectId={projectId} canProject={!!projectId} pending={pending}
+          onSave={async (rule, level) => { const result = await write({ tool: "rules.save", rule, level }, { action: "rules.save", rule }); await load(); return result; }}
+          onDelete={async (rule) => { await write({ tool: "rules.delete", id: rule.id, level: rule.level }, { action: "rules.delete", id: rule.id }); await load(); }}>
+          {projectId && sequenceId && <JudgeAndApply projectId={projectId} sequenceId={sequenceId} rules={data.rules} beforeApply={beforeApply} afterApply={afterApply} onError={setError} />}
+        </RuleList>
       </TabsContent>
       <TabsContent value="glossary" className="pt-4">
         <GlossaryEditor glossary={data.glossary} canProject={!!projectId} pending={pending}
@@ -124,7 +128,7 @@ function JudgeAndApply({ projectId, sequenceId, rules, beforeApply, afterApply, 
   const [busy, setBusy] = useState("");
   const [result, setResult] = useState("");
   const candidates = rules.filter((r) => r.enabled && r.stage !== "select");
-  if (!candidates.length) return <p className="text-xs text-muted-foreground">No editing rules yet. Add one below and it applies to this video and every other.</p>;
+  if (!candidates.length) return <p className="text-xs text-muted-foreground">No editing rules yet. Create one for this project or for every project.</p>;
 
   const judge = async () => {
     setBusy("judge"); onError(""); setResult("");
@@ -150,8 +154,8 @@ function JudgeAndApply({ projectId, sequenceId, rules, beforeApply, afterApply, 
   return (
     <div className="space-y-3 rounded-xl border border-border p-3">
       <div className="flex items-center gap-2">
-        <p className="flex-1 text-sm font-medium">This video</p>
-        <Button size="xs" variant="outline" disabled={!!busy} onClick={judge}>{busy === "judge" ? <Loader2 className="motion-safe:animate-spin" /> : <Wand2 />}Which rules hold?</Button>
+        <p className="flex-1 text-sm font-medium">Apply rules to this video</p>
+        <Button size="xs" variant="outline" disabled={!!busy} onClick={judge}>{busy === "judge" ? <Loader2 className="motion-safe:animate-spin" /> : <Wand2 />}Check this video</Button>
       </div>
       <ul className="space-y-1.5">
         {candidates.map((r) => {
@@ -166,103 +170,41 @@ function JudgeAndApply({ projectId, sequenceId, rules, beforeApply, afterApply, 
         })}
       </ul>
       {evaluation && !!evaluation.tags.length && <p className="text-xs text-muted-foreground">Seen as: {evaluation.tags.join(", ")}</p>}
-      <Button size="sm" disabled={!checked.size || !!busy} onClick={apply}>{busy === "apply" ? <Loader2 className="motion-safe:animate-spin" /> : null}Apply checked rules</Button>
+      <Button size="sm" disabled={!checked.size || !!busy} onClick={apply}>{busy === "apply" ? <Loader2 className="motion-safe:animate-spin" /> : null}Apply selected rules</Button>
       {result && <p role="status" className="text-xs text-muted-foreground">{result}</p>}
     </div>
   );
 }
 
-function RuleList({ rules, templates, assets, canProject, pending, onSave, onDelete }: {
-  rules: RuleRecord[]; templates: TemplateOption[]; assets: AssetSummary[]; canProject: boolean; pending: string;
-  onSave: (rule: Rule, level: RuleLevel) => void; onDelete: (rule: RuleRecord) => void;
+function RuleList({ rules, templates, assets, projectId, canProject, pending, onSave, onDelete, children }: {
+  children?: ReactNode; rules: RuleRecord[]; templates: TemplateOption[]; assets: AssetSummary[]; projectId?: string; canProject: boolean; pending: string;
+  onSave: (rule: Rule, level: RuleLevel) => Promise<unknown>; onDelete: (rule: RuleRecord) => Promise<unknown>;
 }) {
   const [editing, setEditing] = useState<{ rule: Rule; level: RuleLevel } | null>(null);
+  if (editing) return <RuleForm key={editing.rule.id || "new"} initial={editing.rule} isNew={!editing.rule.id} level={editing.level} templates={templates} assets={assets} projectId={projectId}
+    onCancel={() => setEditing(null)} onSave={onSave} />;
   return (
     <div className="space-y-3">
+      {children}
       <ul className="space-y-2">
         {rules.map((r) => <li key={`${r.level}:${r.id}`} className="rounded-xl border border-border p-3 text-sm">
-          <div className="flex items-center gap-2">
-            <span className="min-w-0 flex-1 truncate font-medium">{r.name}</span>
-            <Badge variant="outline" className="text-[10px]">{r.level}</Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="min-w-0 flex-1 break-words font-medium">{r.name}</span>
+            <Badge variant="outline" className="text-[10px]">{r.level === "workspace" ? "Every project" : "This project"}</Badge>
             <Badge variant="secondary" className="text-[10px]">{STAGE_LABELS[r.stage]}</Badge>
             {!r.enabled && <Badge variant="destructive" className="text-[10px]">off</Badge>}
           </div>
           <p className="mt-1 text-xs text-muted-foreground">When {r.when}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {[r.then.template && `template ${r.then.template}`, r.then.overrides && "overrides",
-              r.then.slots && `${Object.keys(r.then.slots).length} input${Object.keys(r.then.slots).length === 1 ? "" : "s"}`,
-              (r.promptText || r.then.prompt) && "instruction"].filter(Boolean).join(" · ") || "no action yet"}
-          </p>
+          <RuleEffects rule={r} templates={templates} assets={assets} />
           <div className="mt-2 flex gap-2">
-            <Button size="xs" variant="outline" onClick={() => setEditing({ rule: stripRecord(r), level: r.level })}>Edit</Button>
-            <Button size="xs" variant="ghost" disabled={pending === `delete:${r.id}`} aria-label={`Delete ${r.name}`} onClick={() => onDelete(r)}><Trash2 /></Button>
+            <Button size="xs" variant="outline" onClick={() => setEditing({ rule: editableRule(r), level: r.level })}>Edit</Button>
+            <DeleteRule name={r.name} pending={pending === `delete:${r.id}`} onDelete={() => onDelete(r)} />
           </div>
         </li>)}
       </ul>
-      {editing
-        ? <RuleForm initial={editing.rule} level={editing.level} templates={templates} assets={assets} canProject={canProject} pending={pending.startsWith("save:")}
-            onCancel={() => setEditing(null)} onSave={(rule, level) => { onSave(rule, level); setEditing(null); }} />
-        : <Button size="sm" variant="outline" onClick={() => setEditing({ rule: EMPTY_RULE, level: "workspace" })}><Plus />New rule</Button>}
-    </div>
-  );
-}
+      <Button size="sm" onClick={() => setEditing({ rule: EMPTY_RULE, level: canProject ? "project" : "workspace" })}><Plus />Create a rule</Button>
 
-function RuleForm({ initial, level: initialLevel, templates, assets, canProject, pending, onSave, onCancel }: {
-  initial: Rule; level: RuleLevel; templates: TemplateOption[]; assets: AssetSummary[]; canProject: boolean; pending: boolean;
-  onSave: (rule: Rule, level: RuleLevel) => void; onCancel: () => void;
-}) {
-  const id = useId();
-  const [rule, setRule] = useState<Rule>(initial);
-  const [level, setLevel] = useState<RuleLevel>(initialLevel);
-  const [overrides, setOverrides] = useState(initial.then.overrides ? JSON.stringify(initial.then.overrides, null, 2) : "");
-  const [jsonError, setJsonError] = useState("");
-  const set = (patch: Partial<Rule>) => setRule({ ...rule, ...patch });
-  const setThen = (patch: Partial<Rule["then"]>) => setRule({ ...rule, then: { ...rule.then, ...patch } });
-  const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-  return (
-    <form className="space-y-3 rounded-xl border border-border p-3" onSubmit={(e) => {
-      e.preventDefault();
-      let parsed: Record<string, unknown> | undefined;
-      if (overrides.trim()) {
-        try { parsed = JSON.parse(overrides); } catch { setJsonError("Overrides must be JSON, e.g. {\"images\":{\"mode\":\"off\"}}"); return; }
-      }
-      setJsonError("");
-      const then = { ...rule.then, overrides: parsed, template: rule.then.template || undefined,
-        slots: Object.keys(rule.then.slots ?? {}).length ? rule.then.slots : undefined,
-        prompt: rule.then.prompt?.trim() || undefined };
-      onSave({ ...rule, id: rule.id || slug(rule.name), then }, level);
-    }}>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="space-y-1"><Label htmlFor={`${id}-name`}>Name</Label><Input id={`${id}-name`} required value={rule.name} onChange={(e) => set({ name: e.target.value, id: initial.id || slug(e.target.value) })} /></div>
-        <div className="space-y-1"><Label htmlFor={`${id}-id`}>Id</Label><Input id={`${id}-id`} required pattern="[a-z0-9][a-z0-9\-]*" value={rule.id} disabled={!!initial.id} onChange={(e) => set({ id: e.target.value })} /></div>
-      </div>
-      <div className="space-y-1"><Label htmlFor={`${id}-when`}>When</Label><Textarea id={`${id}-when`} required value={rule.when} placeholder="the clip is gameplay footage" onChange={(e) => set({ when: e.target.value })} /></div>
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="space-y-1"><Label id={`${id}-stage`}>Applies while</Label>
-          <Select value={rule.stage} onValueChange={(v) => set({ stage: v as Rule["stage"] })}>
-            <SelectTrigger aria-labelledby={`${id}-stage`} className="w-full"><SelectValue>{(v: unknown) => STAGE_LABELS[String(v)]}</SelectValue></SelectTrigger>
-            <SelectContent>{Object.entries(STAGE_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
-          </Select></div>
-        <div className="space-y-1"><Label htmlFor={`${id}-priority`}>Priority</Label><Input id={`${id}-priority`} type="number" step={1} value={rule.priority} onChange={(e) => set({ priority: Number(e.target.value) || 0 })} /></div>
-        <div className="space-y-1"><Label id={`${id}-level`}>Saved for</Label>
-          <Select value={level} onValueChange={(v) => setLevel(v as RuleLevel)}>
-            <SelectTrigger aria-labelledby={`${id}-level`} className="w-full"><SelectValue>{(v: unknown) => v === "project" ? "This project" : "Every project"}</SelectValue></SelectTrigger>
-            <SelectContent><SelectItem value="workspace">Every project</SelectItem>{canProject && <SelectItem value="project">This project</SelectItem>}</SelectContent>
-          </Select></div>
-      </div>
-      <Separator />
-      <div className="space-y-1"><Label id={`${id}-template`}>Then use template</Label>
-        <Select value={rule.then.template ?? ""} onValueChange={(v) => setThen({ template: v ? String(v) : undefined })}>
-          <SelectTrigger aria-labelledby={`${id}-template`} className="w-full"><SelectValue>{(v: unknown) => templates.find((t) => t.id === v)?.name ?? "Keep whatever template is on the video"}</SelectValue></SelectTrigger>
-          <SelectContent><SelectItem value="">Keep whatever template is on the video</SelectItem>{templates.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}{t.builtin ? "" : " (yours)"}</SelectItem>)}</SelectContent>
-        </Select></div>
-      <RuleSlots slots={templates.find((t) => t.id === rule.then.template)?.slots ?? []} assets={assets}
-        value={rule.then.slots ?? {}} onChange={(slots) => setThen({ slots })} />
-      <div className="space-y-1"><Label htmlFor={`${id}-overrides`}>Template overrides (JSON)</Label><Textarea id={`${id}-overrides`} className="font-mono text-xs" value={overrides} placeholder='{"images":{"mode":"off"}}' onChange={(e) => setOverrides(e.target.value)} />{jsonError && <p className="text-xs text-destructive">{jsonError}</p>}</div>
-      <div className="space-y-1"><Label htmlFor={`${id}-prompt`}>Instruction for the agent</Label><Textarea id={`${id}-prompt`} value={rule.then.prompt ?? ""} placeholder="Never cover the game with pictures." onChange={(e) => setThen({ prompt: e.target.value })} /></div>
-      <Checkbox checked={rule.enabled} onCheckedChange={(enabled) => set({ enabled })}>Enabled</Checkbox>
-      <div className="flex gap-2"><Button size="sm" type="submit" disabled={pending}>{pending ? <Loader2 className="motion-safe:animate-spin" /> : null}Save rule</Button><Button size="sm" type="button" variant="ghost" onClick={onCancel}>Cancel</Button></div>
-    </form>
+    </div>
   );
 }
 
@@ -345,7 +287,7 @@ function Review({ observations, glossary, preferences, pending, review, onAccept
         {proposals.notes && <p className="text-xs text-muted-foreground">{proposals.notes}</p>}
         {!proposals.rules.length && !proposals.glossary.length && !proposals.preferences && <p className="text-xs text-muted-foreground">Nothing repeats often enough to propose a rule.</p>}
         {proposals.rules.map((rule) => <div key={rule.id} className="flex items-start gap-2">
-          <div className="min-w-0 flex-1"><span className="font-medium">{rule.name}</span><span className="block text-xs text-muted-foreground">When {rule.when} → {[rule.then.template && `template ${rule.then.template}`, rule.then.overrides && `overrides ${JSON.stringify(rule.then.overrides)}`, rule.then.prompt].filter(Boolean).join(" · ")}</span></div>
+          <div className="min-w-0 flex-1"><span className="font-medium">{rule.name}</span><span className="block text-xs text-muted-foreground">When {rule.when} → {ruleEffects(rule, []).join("; ")}</span></div>
           <Button size="xs" variant="outline" disabled={accepted.has(`rule:${rule.id}`) || pending === `save:${rule.id}`} onClick={() => accept(`rule:${rule.id}`, () => onAcceptRule(rule))}>{accepted.has(`rule:${rule.id}`) ? "Saved" : "Save rule"}</Button>
         </div>)}
         {proposals.glossary.map((term) => <div key={term.term} className="flex items-start gap-2">

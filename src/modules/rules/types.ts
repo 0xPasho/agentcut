@@ -127,3 +127,20 @@ export type TemplateOption = { id: string; name: string; builtin: boolean; slots
 
 
 export type Loaded = { rules: RuleRecord[]; glossary: Glossary; preferences: { workspace: string; project: string }; templates: TemplateOption[]; assets: AssetSummary[]; observations: Observation[] };
+
+export const RuleDraftRequest = z.object({
+  text: z.string().trim().min(1).max(8000),
+  current: Rule.optional(),
+  history: z.array(z.object({ role: z.enum(["user", "assistant"]), text: z.string().max(12000) })).max(20).default([]),
+});
+export type RuleDraftRequest = z.infer<typeof RuleDraftRequest>;
+export const RuleDraftReply = z.object({ rule: Rule.nullable(), message: z.string().min(1).max(12000) });
+export type RuleDraftReply = z.infer<typeof RuleDraftReply>;
+export type RuleDraftTurn = RuleDraftRequest["history"][number];
+
+/** The template's own JSON schema supplies choices and bounds to the patch controls. */
+export type SettingSchema = {
+  type?: string | string[]; properties?: Record<string, SettingSchema>; additionalProperties?: SettingSchema | boolean;
+  items?: SettingSchema; enum?: unknown[]; const?: unknown; default?: unknown; anyOf?: SettingSchema[]; oneOf?: SettingSchema[];
+  minimum?: number; maximum?: number; exclusiveMinimum?: number; exclusiveMaximum?: number;
+};

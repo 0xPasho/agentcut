@@ -1,3 +1,4 @@
+import { RuleDraftRequest } from "../../rules/types";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
@@ -96,6 +97,7 @@ export const EditorToolCall = z.discriminatedUnion("tool", [
   z.object({ tool: z.literal("comments.place"), sequenceId: z.string().optional(), clipId: z.string().optional(),
     commentId: z.union([z.number().int().nonnegative(), z.literal("none")]), seconds: z.number().positive().max(10).optional(),
     style: z.enum(["open", "pop"]).optional(), expectedRevision: z.number().int().nonnegative() }),
+  z.object({ tool: z.literal("rules.draft"), ...RuleDraftRequest.shape }),
   z.object({ tool: z.literal("rules.list") }),
   z.object({ tool: z.literal("rules.get"), id: z.string().min(1) }),
   z.object({ tool: z.literal("rules.schema") }),
@@ -419,6 +421,7 @@ export async function executeEditorTool(projectId: string, raw: unknown, onActiv
     case "comments.place": { const { placeComment } = await import("../../stream-comments/server/place"); return placeComment(projectId, call, "agent"); }
     // Rules, glossary and preferences: workspace level applies to every project, project
     // level to this one. Both interfaces read and write the same files through these.
+    case "rules.draft": { const { draftRule } = await import("../../rules/server/draft"); return draftRule(call, projectId); }
     case "rules.list": { const { listRules } = await import("../../rules/server/registry"); return listRules(projectId); }
     case "rules.get": { const { getRule } = await import("../../rules/server/registry"); return getRule(call.id, projectId); }
     case "rules.schema": { const { ruleSchema } = await import("../../rules/server/registry"); return ruleSchema(); }
