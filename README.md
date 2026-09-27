@@ -4,156 +4,83 @@
 
 <h1 align="center">agentcut</h1>
 
-<p align="center"><strong>The coding agent you already pay for edits your videos.</strong></p>
+<p align="center"><strong>Edit and publish videos with your AI agent.</strong></p>
 
-You have Claude Code, Codex, Cursor or OpenCode. agentcut turns it into a video editor:
-you describe the video in your terminal, the agent cuts, captions, scores and renders
-it. When you want to change something yourself, open the browser editor. It is the same
-project, live, with a timeline: fix what the agent did, or keep editing by hand.
+Describe the video you want. Your agent makes the cuts, adds captions, titles and
+music, and prepares it for publishing. Open the visual editor whenever you want
+to review or change something. You and your agent work on the same project.
 
-No API keys, no account, no upload. Everything runs on your machine with the
-subscription you already have.
+agentcut is a local video harness: it gives your agent the tools to work on videos,
+from the first edit to publication. It works with Claude Code, Codex, Cursor and
+OpenCode, using the agent you already have installed and signed in.
 
-![The editor: a stream clip the agent cut, its timeline, and the agent's steps on the right](docs/images/editor.png)
+![The editor with a video preview, timeline and agent conversation](docs/images/editor.png)
 
-## How it works
+## What you can do
 
-```
- you, in your terminal ──▶ your agent ──MCP──▶ agentcut ◀──browser── you, by hand
-                                                  │
-                                       one project, one timeline,
-                                       one set of editing operations
-                                                  │
-                                               render
-```
+- **Make a video.** Start with an idea, your footage, or an empty project.
+- **Find clips.** Turn a stream, podcast or long recording into shorter videos.
+- **Edit together.** Ask for changes in plain language or make them on the timeline.
+- **Keep your style.** Reuse templates, save editing preferences and share them in packs.
+- **Prepare and publish.** Review the video, write captions for each social account,
+  and plan when to post it on a calendar.
 
-The agent and the browser call the same operations on the same saved project. What the
-agent does shows up on your timeline within a second; what you drag is what the agent
-reads next. Every clip, title and cut says who placed it, so you can always see why
-something is there.
+Publishing supports Postgun, Postbridge and guided iPhone sessions. It is still
+being tested: real posts through connected accounts and iPhone apps have not yet
+been verified. See [publishing setup and status](PUBLISHING.md).
 
-## Quick start
+## Get started
 
-**1. Install.** Node.js 22.13+ and pnpm 11.9.0.
+You need Node.js 22.13+ and an installed, signed-in agent CLI.
 
 ```sh
+git clone https://github.com/0xPasho/agentcut.git
+cd agentcut
 npm install --global pnpm@11.9.0
 pnpm install --frozen-lockfile
+pnpm dev --hostname 127.0.0.1
 ```
 
-**2. Give it to your agent.** Once, with the absolute path to this checkout:
+Open [localhost:7927](http://localhost:7927) and describe what you want to make.
 
-```sh
-claude mcp add agentcut -- node /absolute/path/to/scripts/agentcut.mjs mcp
-codex  mcp add agentcut -- node /absolute/path/to/scripts/agentcut.mjs mcp
-```
+> Make a 40-second clip about the pricing discussion. Add captions and my outro.
 
-Cursor and OpenCode take the same command in their MCP config. No server needs to be
-running.
-
-**3. Ask.**
-
-> Make a 40-second vertical short out of `~/recordings/stream.mp4` about the pricing
-> part. Captions in my usual style, add the outro, render it.
-
-**4. Open the editor when you want to look or touch something.**
-
-```sh
-pnpm dev --hostname 127.0.0.1    # http://localhost:7927
-```
-
-Full setup, configuration and troubleshooting: [docs/SETUP.md](docs/SETUP.md).
-
-## What you can ask for
-
-- **Clips from a long recording.** A stream, a podcast, a talk. The agent reads the
-  transcript, the audio and sampled frames, picks the moments, and each one becomes an
-  editable video with a score and a plan.
-- **A video from footage.** Drop recordings, say what you want, get a cut with titles,
-  captions, pictures and music.
-- **A series.** Several recordings edited the same way, with one plan they all follow.
-- **A change.** "Move the title down", "tighter cuts", "swap the outro". Edits apply
-  directly, highlighted, undoable as one step.
-
-![A clipping project: the ranked clips, the agent's steps, and the selected clip's preview](docs/images/clips.png)
-
-## Make it yours
-
-Four things shape every video the agent makes. All of them are files your agent, the
-browser and the CLI read the same way.
-
-- **Templates** are the structure of a finished video: where the hook goes, how
-  captions look, how often a picture may interrupt, how the video ends. They also say
-  what *kind* of video to make: a set of shorts, or one long section.
-  [TEMPLATES.md](TEMPLATES.md)
-- **Rules** say when to do what. "When the clip is gameplay, use this template and no
-  pictures." A **glossary** keeps names spelled right in captions. **preferences.md**
-  says how you like your videos, in your own words. [RULES.md](RULES.md)
-- **Packs** are how all of that travels. A pack is a folder with templates, rules, the
-  assets they need, a style guide (`STYLE.md`) and what a finished video must be true of,
-  so a look can be checked, not only applied. Import one from a path or a URL; export
-  yours to share it. [PACKS.md](PACKS.md), [REVIEW.md](REVIEW.md)
-- **Your corrections.** Every time you fix something the agent placed, it is written
-  down, and the agent reads that before its next run.
-
-## The browser editor
-
-A timeline with as many layers as you need: footage, titles, images, music, sound. Trim,
-split, move, keyframe, add transitions, restyle captions. Pick a clip and ask the agent
-about that clip right there. Nothing in it is a second implementation: every button
-calls the same operation the agent calls. [docs/EDITING.md](docs/EDITING.md)
-
-![The home screen: describe a video, attach footage, or clip a long one](docs/images/home.png)
-
-## Clipping needs two more tools
-
-Editing and rendering need nothing else. Finding clips inside a recording also needs
-`whisper-cli` for local transcription and an agent CLI installed and signed in;
-`yt-dlp` only for URL imports.
+To find clips in recordings, you also need `whisper-cli` for transcription.
+Importing videos from links needs `yt-dlp`. On macOS:
 
 ```sh
 brew install whisper.cpp yt-dlp
-brew install --cask claude-code && claude    # sign in once, then exit
 ```
 
-The first transcription downloads the Whisper model (about 1.6 GB). Clipping is the one
-place agentcut launches an agent itself rather than being driven by yours; a picker
-chooses which CLI and model. [HARNESS.md](HARNESS.md)
+The first transcription downloads a model of about 1.6 GB.
+See the [setup guide](docs/SETUP.md) for more options and troubleshooting.
 
-## Scripting
+### Use your agent from the terminal
 
-The same tools without MCP and without a server:
+Connect agentcut through MCP, using the full path to your checkout. Run the command
+for your agent:
 
 ```sh
-node scripts/agentcut.mjs projects create "Travel edit" one.mp4 two.mp4
-node scripts/agentcut.mjs edit PROJECT_ID ask "Move the title to the bottom"
-node scripts/agentcut.mjs render PROJECT_ID
-node scripts/agentcut.mjs templates list
-node scripts/agentcut.mjs packs import packs/showcase
-node scripts/agentcut.mjs packs trust showcase     # after reading its recipes: they are code
-node scripts/agentcut.mjs packs run PROJECT_ID showcase jump-card --param target=ITEM_ID
+claude mcp add agentcut -- node /absolute/path/to/agentcut/scripts/agentcut.mjs mcp
+codex mcp add agentcut -- node /absolute/path/to/agentcut/scripts/agentcut.mjs mcp
 ```
 
-## Your data
+Cursor and OpenCode use the same server command in their MCP settings. The browser
+editor does not need to be running for your agent to work on a project.
 
-Projects, media and renders live in `workspace/` inside this checkout. There is no
-agentcut account and nothing is uploaded by agentcut. Agent runs send prompts,
-transcripts and sampled frames to whichever provider your CLI is signed in to, under
-that provider's terms. The server has no authentication and binds to loopback; it is
-meant for your machine.
+## Your projects stay on your computer
+
+Media, projects and exports are stored locally. Editing and rendering need no
+agentcut account. Your agent sends prompts, transcripts and sampled frames to its
+AI provider. Publishing connects to external accounts and uploads the videos you
+choose to send.
 
 ## More
 
-- [Setup and troubleshooting](docs/SETUP.md) · [Editing by hand](docs/EDITING.md)
-- [The shared editor and its tools](EDITOR.md) · [Sequences and the timeline](SEQUENCES.md)
-- [Templates](TEMPLATES.md) · [Rules](RULES.md) · [Packs](PACKS.md) · [Review](REVIEW.md) · [Harnesses](HARNESS.md)
-- [Direction and decisions](AGENT-FIRST.md) · [Requirements](SPEC.md) · [Design](DESIGN.md) · [Brand](BRAND.md)
-- [Working on the code](AGENTS.md)
+- [Editing](docs/EDITING.md) · [Publishing](PUBLISHING.md)
+- [Templates](TEMPLATES.md) · [Rules](RULES.md) · [Packs](PACKS.md)
+- [Agent support](HARNESS.md) · [How the shared editor works](EDITOR.md)
+- [Project direction](AGENT-FIRST.md) · [Contributing](AGENTS.md)
 
-```sh
-pnpm exec tsc --noEmit && pnpm test && pnpm test:render
-```
-
-Rendering uses [Remotion](https://www.remotion.dev/license): free for individuals and
-companies of up to three people; larger companies need a licence. The project format
-does not depend on it, so the renderer can be swapped.
+Rendering uses [Remotion](https://www.remotion.dev/license), which has its own
+licensing terms.
