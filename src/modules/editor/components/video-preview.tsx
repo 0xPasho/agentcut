@@ -64,6 +64,7 @@ export function VideoPreview({
     const output = sequence.output;
     return (
       <Player
+        key={`${projectId}:${video.id}`}
         component={SequenceComposition}
         inputProps={sequenceProps}
         durationInFrames={sequenceFrames(sequence).duration}
@@ -82,6 +83,7 @@ export function VideoPreview({
   if (!clip || !clipProps) return null;
   return (
     <Player
+      key={`${projectId}:${video.id}`}
       component={ClipComposition}
       inputProps={clipProps}
       durationInFrames={clipFrames(buildTimeMap(clip), edl.output.fps)}

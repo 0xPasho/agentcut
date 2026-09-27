@@ -141,11 +141,15 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
 
   const remove = (video: ProjectVideo) => {
     if (!window.confirm(`Delete “${video.title}”? This cannot be undone.`)) return;
-    editor.dispatch([
+    const removed = editor.dispatch([
       video.kind === "sequence"
         ? { type: "sequence.remove", sequenceId: video.id }
         : { type: "clip.remove", clipId: video.id },
     ]);
+    if (removed && selected?.id === video.id) {
+      const index = shown.findIndex((candidate) => candidate.id === video.id);
+      setSelectedId(shown[index + 1]?.id ?? shown[index - 1]?.id ?? null);
+    }
   };
 
   /** One click to move a candidate out of triage, the commonest action at forty of them. */
