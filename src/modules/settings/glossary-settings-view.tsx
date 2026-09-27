@@ -1,197 +1,162 @@
 "use client";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2, Palette, Plus, Search, Trash2 } from "lucide-react";
+import { BookOpen, ChevronRight, Palette, Plus, Search } from "lucide-react";
 import { api } from "@/common/api/client";
-import type { Glossary, GlossaryTerm } from "@/modules/rules/server/glossary";
+import type { GlossaryTerm } from "@/modules/rules/types";
 import { Button } from "@/common/ui/button";
 import { Input } from "@/common/ui/input";
-import { Label } from "@/common/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/common/ui/tabs";
-import { Glass } from "@/common/ui/glass";
-import { Empty, ErrorLine, Loading, Panel, SectionHeader } from "./components/section-header";
+import { Empty, ErrorLine, Loading, SectionHeader } from "./components/section-header";
 import { SubjectForm, Swatches } from "./components/subject-form";
+import { GlossaryNameDialog } from "./components/glossary-name-dialog";
 import { useWorkspaceSettings } from "./hooks";
-import { type Row } from "./types";
-import { toRows, rowsToGlossary, count } from "./lib";
+import type { GlossarySelection } from "./types";
+import { count } from "./lib";
 import { EMPTY_KIT } from "./data";
 
-/**
- * One list (decision 132). Every name the recogniser must get right is a row; a
- * row that has been given a look — colours, fonts, a logo — is a subject (decision
- * 48), shown with its swatches and filterable on its own. The spelling, the
- * mishearings and the one line of what it is are the same fields either way, and
- * the two writers (the table's save and the look's form) both call `glossary.save`
- * with the whole level, which is what the tool writes.
- */
+/** One list, one active draft, and the same whole-level glossary.save as the agent. */
 export function GlossarySettings() {
-  const { data, error, pending, run, setError } = useWorkspaceSettings();
-  const id = useId();
+  const { data, error, reload } = useWorkspaceSettings();
   const router = useRouter();
   const params = useSearchParams();
-  const [rows, setRows] = useState<Row[] | null>(null);
   const [filter, setFilter] = useState("");
-  const [look, setLook] = useState<{ term: GlossaryTerm; isNew: boolean } | null>(null);
-
-  // The filter is the URL, so /settings/subjects lands here with subjects showing and
-  // the back button undoes the choice.
-  const show: "all" | "subjects" = params.get("show") === "subjects" ? "subjects" : "all";
-  const setShow = (next: "all" | "subjects") => router.replace(next === "subjects" ? "/settings/glossary?show=subjects" : "/settings/glossary");
-
-  // The server's list is the truth until it is edited; after that the draft is,
-  // until it is saved. Reloading after a save brings both back together.
-  useEffect(() => { if (data) setRows(toRows(data.glossary)); }, [data]);
-
-  const saved = useMemo(() => (data ? toRows(data.glossary) : []), [data]);
-  const dirty = !!rows && JSON.stringify(rows) !== JSON.stringify(saved);
-  const subjects = (rows ?? []).filter((r) => r.brand).length;
+  const [editing, setEditing] = useState<GlossarySelection | null>(null);
+  const [look, setLook] = useState<GlossarySelection | null>(null);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const [saveError, setSaveError] = useState("");
+  const [notice, setNotice] = useState("");
+  const returnFocus = useRef<HTMLElement | null>(null);
+  const addNameRef = useRef<HTMLButtonElement | null>(null);
+  const show = params.get("show") === "subjects" ? "subjects" : "all";
+  const terms = data?.glossary.terms ?? [];
+  const subjects = terms.filter((term) => term.brand).length;
   const needle = filter.trim().toLowerCase();
-  const shown = (rows ?? []).map((row, index) => ({ row, index }))
-    .filter(({ row }) => show === "all" || row.brand)
-    .filter(({ row }) => !needle || `${row.term} ${row.aliases} ${row.note}`.toLowerCase().includes(needle));
+  const shown = terms.map((term, index) => ({ term, index }))
+    .filter(({ term }) => show === "all" || term.brand)
+    .filter(({ term }) => !needle || `${term.term} ${term.aliases.join(" ")} ${term.note}`.toLowerCase().includes(needle));
 
-  const update = (index: number, patch: Partial<Row>) =>
-    setRows((current) => (current ?? []).map((r, i) => (i === index ? { ...r, ...patch } : r)));
-
-  const termOf = (row: Row, brand: GlossaryTerm["brand"]): GlossaryTerm =>
-    ({ term: row.term, aliases: row.aliases.split(",").map((a) => a.trim()).filter(Boolean), note: row.note, brand });
-
-  /** Writing one look is writing the glossary: the saved list, with this term replaced or added. */
-  const saveLook = (term: GlossaryTerm, replacing?: string) => {
-    const terms = data?.glossary.terms ?? [];
-    const key = (replacing ?? term.term).toLowerCase();
-    const next: Glossary = {
-      terms: terms.some((t) => t.term.toLowerCase() === key) ? terms.map((t) => (t.term.toLowerCase() === key ? term : t)) : [...terms, term],
-    };
-    return run(`look:${term.term}`, async () => {
-      await api.workspace({ action: "glossary.save", glossary: next });
-      setLook(null);
+  const openName = (selection: GlossarySelection) => {
+    returnFocus.current = document.activeElement as HTMLElement;
+    setSaveError("");
+    setNotice("");
+    setEditing(selection);
+  };
+  const closeName = () => {
+    setEditing(null);
+    requestAnimationFrame(() => {
+      const target = returnFocus.current?.isConnected ? returnFocus.current : addNameRef.current;
+      target?.focus();
     });
   };
+  const openLook = (selection: GlossarySelection) => {
+    setSaveError("");
+    setLook(selection);
+  };
+  const save = async (selection: GlossarySelection, term: GlossaryTerm | null) => {
+    if (savingRef.current || !data) return;
+    savingRef.current = true;
+    setSaving(true);
+    setSaveError("");
+    let next = terms.filter((_, index) => index !== selection.index);
+    if (term && selection.index === null) next = [...terms, term];
+    if (term && selection.index !== null) next = terms.map((current, index) => index === selection.index ? term : current);
+    try {
+      await api.workspace({ action: "glossary.save", glossary: { terms: next } });
+      await reload();
+      if (term && selection.index === null) {
+        setFilter("");
+        if (!term.brand) router.replace("/settings/glossary", { scroll: false });
+      }
+      closeName();
+      setLook(null);
+      setNotice(term ? `Saved ${term.term}.` : `Removed ${selection.term.term}.`);
+    } catch (e) {
+      setSaveError((e as Error).message);
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+  };
 
-  if (look) {
-    return (
-      <SubjectForm
-        initial={look.term}
-        isNew={look.isNew}
-        rules={(data?.rules ?? []).filter((r) => r.subject?.toLowerCase() === look.term.term.toLowerCase())}
-        images={(data?.assets ?? []).filter((a) => a.kind === "image")}
-        pending={pending.startsWith("look:")}
-        error={error}
-        onCancel={() => { setLook(null); setError(""); }}
-        onSave={(term) => saveLook(term, look.isNew ? undefined : look.term.term)}
-        // Only a term that has a look can lose it.
-        onForget={look.isNew || !look.term.brand ? undefined : () => saveLook({ term: look.term.term, aliases: look.term.aliases, note: look.term.note }, look.term.term)}
-      />
-    );
-  }
-
-  const addName = <Button size="sm" type="button" variant="outline" onClick={() => { setShow("all"); setFilter(""); setRows([...(rows ?? []), { term: "", aliases: "", note: "" }]); }}><Plus />Add name</Button>;
-  const newSubject = <Button size="sm" type="button" variant="outline" disabled={dirty} onClick={() => setLook({ term: { term: "", aliases: [], note: "", brand: EMPTY_KIT }, isNew: true })}><Palette />New subject</Button>;
-
-  let list: React.ReactNode = <Loading label="Loading your glossary" />;
-  if (rows && rows.length === 0) list = (
-    <Empty title="No names yet" action={addName}>
-      Add the names a speech recogniser gets wrong — your product, your handle, the people you
-      mention. Every agent is told to spell them this way.
-    </Empty>
-  );
-  if (rows && rows.length > 0) list = (
-    <>
-      <div className="flex flex-wrap items-center gap-3">
-        <Tabs value={show} onValueChange={(v) => setShow(v as "all" | "subjects")}>
-          <TabsList aria-label="Which names to show">
-            <TabsTrigger value="all">All <span className="ms-1 tabular-nums text-muted-foreground">{rows.length}</span></TabsTrigger>
-            <TabsTrigger value="subjects">Subjects <span className="ms-1 tabular-nums text-muted-foreground">{subjects}</span></TabsTrigger>
-          </TabsList>
-        </Tabs>
-        {rows.length > 8 && (
-          <div className="relative min-w-0 flex-1 sm:max-w-xs">
-            <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-            {/* Enter here narrows the list; it never saves the glossary. */}
-            <Input type="search" aria-label="Filter names" className="pl-9" placeholder="Filter names" value={filter}
-              onChange={(e) => setFilter(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} />
-          </div>
-        )}
-      </div>
-
-      {shown.length === 0 && (
-        <p className="text-sm text-muted-foreground">
-          {needle && <>No name matches “{filter.trim()}”. <button type="button" className="underline underline-offset-2" onClick={() => setFilter("")}>Clear the filter</button></>}
-          {!needle && "No subjects yet. Give a name a look, and it shows here."}
-        </p>
-      )}
-      {shown.length > 0 && (
-        <ul className="flex flex-col gap-2">
-          {shown.map(({ row, index }) => (
-            <Panel as="li" key={index} className="grid gap-3 py-3.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.3fr)_auto] sm:items-end">
-              <div className="space-y-1">
-                <Label htmlFor={`${id}-term-${index}`} className="text-xs text-muted-foreground">Spelled</Label>
-                <Input id={`${id}-term-${index}`} value={row.term} placeholder="Claude" onChange={(e) => update(index, { term: e.target.value })} />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor={`${id}-aliases-${index}`} className="text-xs text-muted-foreground">Heard as</Label>
-                <Input id={`${id}-aliases-${index}`} value={row.aliases} placeholder="clod, cloud AI" onChange={(e) => update(index, { aliases: e.target.value })} />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor={`${id}-note-${index}`} className="text-xs text-muted-foreground">What it is</Label>
-                <Input id={`${id}-note-${index}`} value={row.note} placeholder="Anthropic's model" onChange={(e) => update(index, { note: e.target.value })} />
-              </div>
-              <div className="flex items-center gap-1 justify-self-end sm:pb-0.5">
-                {row.brand && (
-                  <Button type="button" size="xs" variant="outline" className="gap-1.5" disabled={dirty || !row.term.trim()}
-                    onClick={() => setLook({ term: termOf(row, row.brand), isNew: false })}>
-                    <Swatches kit={row.brand} small />Subject
-                  </Button>
-                )}
-                {!row.brand && (
-                  <Button type="button" size="xs" variant="ghost" className="text-muted-foreground" disabled={dirty || !row.term.trim()}
-                    onClick={() => setLook({ term: termOf(row, EMPTY_KIT), isNew: false })}>
-                    <Palette />Give it a look
-                  </Button>
-                )}
-                <Button
-                  type="button" size="icon-sm" variant="ghost"
-                  aria-label={`Remove ${row.term || "this name"}`}
-                  onClick={() => setRows((current) => (current ?? []).filter((_, i) => i !== index))}
-                ><Trash2 /></Button>
-              </div>
-            </Panel>
-          ))}
-        </ul>
-      )}
-      <p className="max-w-prose text-xs text-muted-foreground">
-        Separate the mishearings with commas. A term with capitals also fixes its own lowercase, so
-        “Claude” catches “claude” without being listed twice. {subjects ? `${count(subjects, "name")} ${subjects === 1 ? "has" : "have"} a look of ${subjects === 1 ? "its" : "their"} own.` : ""}
-      </p>
-    </>
+  if (look) return (
+    <SubjectForm
+      initial={look.term} isNew={look.index === null}
+      rules={(data?.rules ?? []).filter((rule) => rule.subject?.toLowerCase() === look.term.term.toLowerCase())}
+      images={(data?.assets ?? []).filter((asset) => asset.kind === "image")}
+      pending={saving} error={saveError}
+      onCancel={() => { if (!saving) setLook(null); }}
+      onSave={(term) => void save(look, term)}
+      onForget={look.index === null || !look.term.brand ? undefined : () => void save(look, { term: look.term.term, aliases: look.term.aliases, note: look.term.note })}
+    />
   );
 
+  const addName = <Button ref={addNameRef} type="button" disabled={!data} onClick={() => openName({ term: { term: "", aliases: [], note: "" }, index: null })}><Plus aria-hidden />Add name</Button>;
   return (
-    <form
-      className="flex flex-col gap-5"
-      onSubmit={(e) => {
-        e.preventDefault();
-        run("glossary", () => api.workspace({ action: "glossary.save", glossary: rowsToGlossary(rows ?? []) }));
-      }}
-    >
-      <SectionHeader title="Glossary" action={rows?.length ? <>{addName}{newSubject}</> : undefined}>
-        Names the captions must spell right. Give one a look and projects about it start from its colours.
+    <div className="flex min-w-0 flex-col gap-6">
+      <SectionHeader title="Glossary" action={addName}>
+        The right spelling for every name, in every project.
       </SectionHeader>
-
-      {list}
-
       <ErrorLine>{error}</ErrorLine>
-      {dirty && (
-        // The one floating control panel on the page, so it is glass, like the header.
-        <Glass shape="card" className="sticky bottom-4 flex flex-wrap items-center gap-3 px-4 py-3">
-          <p className="min-w-0 flex-1 text-sm">Unsaved changes <span className="text-muted-foreground">— save the list before giving a name a look.</span></p>
-          <Button type="button" variant="ghost" size="sm" onClick={() => setRows(saved)}>Discard</Button>
-          <Button type="submit" size="sm" disabled={pending === "glossary"}>
-            {pending === "glossary" && <Loader2 aria-hidden className="motion-safe:animate-spin" />}Save glossary
-          </Button>
-        </Glass>
+      {!data && !error && <Loading label="Loading your glossary" />}
+      {data && terms.length === 0 && (
+        <Empty title="Get the names right">
+          Add people, products and phrases your captions should spell correctly, along with the ways they are misheard.
+        </Empty>
       )}
-    </form>
+      {data && terms.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Tabs value={show} onValueChange={(value) => router.replace(value === "subjects" ? "/settings/glossary?show=subjects" : "/settings/glossary", { scroll: false })}>
+              <TabsList aria-label="Filter names">
+                <TabsTrigger value="all">All names <span className="ms-1 text-muted-foreground tabular-nums">{terms.length}</span></TabsTrigger>
+                <TabsTrigger value="subjects">Subjects <span className="ms-1 text-muted-foreground tabular-nums">{subjects}</span></TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <div className="relative w-full sm:w-72">
+              <Search aria-hidden className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input type="search" aria-label="Search names, variants and descriptions" className="ps-9" placeholder="Search names and variants…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+            </div>
+          </div>
+          {shown.length > 0 && (
+            <div className="overflow-hidden rounded-3xl bg-card ring-1 ring-foreground/10">
+              <div aria-hidden className="hidden grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.5fr)_1rem] gap-6 border-b border-foreground/10 px-5 py-3 text-xs font-medium text-muted-foreground lg:grid">
+                <span>Correct spelling</span><span>Heard as</span><span>Context</span><span />
+              </div>
+              <ul className="divide-y divide-foreground/10">
+                {shown.map(({ term, index }) => (
+                  <li key={index}>
+                    <button type="button" aria-label={`Edit ${term.term}`} onClick={() => openName({ term, index })}
+                      className="group grid w-full grid-cols-[minmax(0,1fr)_1rem] items-center gap-x-6 gap-y-1 px-5 py-4 text-start transition-colors hover:bg-foreground/5 focus-visible:bg-foreground/5 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring motion-reduce:transition-none lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.5fr)_1rem]">
+                      <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium wrap-anywhere">
+                        {term.term}
+                        {term.brand && <span className="inline-flex items-center gap-1.5 rounded-full bg-foreground/5 px-2 py-0.5 text-xs font-normal text-muted-foreground"><Swatches kit={term.brand} small />Subject</span>}
+                      </span>
+                      <span className="col-start-1 row-start-2 text-sm leading-relaxed text-muted-foreground wrap-anywhere lg:col-auto lg:row-auto">
+                        {term.aliases.length > 0 ? term.aliases.join(", ") : <span className="hidden lg:inline">—</span>}
+                      </span>
+                      <span className="col-start-1 row-start-3 text-sm leading-relaxed text-muted-foreground wrap-anywhere lg:col-auto lg:row-auto">
+                        {term.note || <span className="hidden lg:inline">—</span>}
+                      </span>
+                      <ChevronRight aria-hidden className="col-start-2 row-start-1 size-4 text-muted-foreground group-hover:text-foreground lg:col-auto lg:row-auto" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {shown.length === 0 && needle && <Empty title="No matching names" action={<Button variant="outline" onClick={() => setFilter("")}>Clear search</Button>}>No names, variants or descriptions match “{filter.trim()}”.</Empty>}
+          {shown.length === 0 && !needle && <Empty title="Give a name its own look" action={<Button variant="outline" onClick={() => router.replace("/settings/glossary", { scroll: false })}>Browse names</Button>}>Subjects are names with colours, fonts or a logo. Open a name to add its look.</Empty>}
+          <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
+            <p role="status" className="tabular-nums">{count(shown.length, "name")}{needle && ` matching “${filter.trim()}”`}</p>
+            <Button type="button" size="sm" variant="ghost" onClick={() => openLook({ term: { term: "", aliases: [], note: "", brand: EMPTY_KIT }, index: null })}><Palette aria-hidden />New subject</Button>
+          </div>
+        </div>
+      )}
+      <p className="flex items-start gap-2 text-xs leading-relaxed text-muted-foreground"><BookOpen aria-hidden className="mt-0.5 size-3.5 shrink-0" />Names guide transcription and caption corrections. Add a look to make a name a subject.</p>
+      <p role="status" className="text-sm text-muted-foreground">{notice}</p>
+      {editing && <GlossaryNameDialog selection={editing} pending={saving} error={saveError} onClose={closeName} onSave={(term) => void save(editing, term)} onLook={() => { setEditing(null); openLook(editing); }} />}
+    </div>
   );
 }

@@ -18,11 +18,13 @@ import type { chatSource } from "../stream-comments/server/comments";
  * proofreader and a find-and-replace over the transcript — which is why it is a
  * table and not a rule.
  *
- * One save for the list, because `glossary.save` writes a level whole; a per-row
- * save would be the same write wearing a smaller button, and two rows edited with
- * one saved would quietly save both.
+ * `glossary.save` writes a level whole. The workspace list now holds only one
+ * active name draft, so saving it cannot silently save another unfinished row.
  */
 export type Row = { term: string; aliases: string; note: string; brand?: GlossaryTerm["brand"] };
+
+/** Only the selected name is drafted; null index creates a new glossary entry. */
+export type GlossarySelection = { term: GlossaryTerm; index: number | null };
 
 
 /** A template as the settings pages see it: enough to list, preview and delete, never to edit. */
