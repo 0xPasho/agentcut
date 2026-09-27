@@ -13,10 +13,22 @@ existing project/video; repeat releases get new publication IDs. The existing vi
 review status remains authoritative for Draft/Approved. Delivery summaries derive
 from individual destination facts, including partial success and uncertain results.
 
-The editor's **Video → Publication**, project selection's **Review batch**, Calendar,
+The editor's **Video → Publication**, project selection's **Prepare publications**, Calendar,
 workspace MCP tools, CLI and browser API call `executePublicationCommand`. Metadata
 is separate from the EDL. Approving the video calls the shared editor operations;
 publishing never rewrites a timeline. Agent approval attribution stays `agent`.
+
+The project overview puts publication actions inside the selection's preparation
+dialog. Opening it saves the editor and prepares or resumes publications for exactly
+the checked videos through `publication.prepare`. Local slot reservation, each
+publication's shared form, revision-bound review, and explicit batch authorization
+or sending stay in that dialog. Background refreshes preserve the reviewed publication
+IDs; explicitly preparing a new release replaces that video's entry in the review.
+Changing a publication revision requires reviewing it again. Unsaved copy must
+be saved or explicitly discarded before moving to another publication or closing.
+Calendar remains a persistent project navigation link. The always-visible
+preparation/reservation/review toolbar was removed because it displaced the videos
+and presented unavailable actions before a selection existed.
 
 Copy consists of a shared YouTube title, description and hashtags, with nullable
 per-destination overrides. Null inherits; an empty override clears. Metadata tags are

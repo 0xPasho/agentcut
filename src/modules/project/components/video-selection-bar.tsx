@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { CheckCheck, ChevronDown, Clapperboard, Trash2, X } from "lucide-react";
 import { Button } from "@/common/ui/button";
 import { Checkbox } from "@/common/ui/checkbox";
@@ -12,7 +12,7 @@ import type { SequenceStatus } from "@/modules/plan/types";
 import { STATUSES, STATUS } from "../data";
 import { StatusIcon } from "./clip-list";
 
-export function VideoSelectionBar({ videos, visibleCount, all, busy, error, onSelectAll, onClear, onStatus, onRender, onDelete }: {
+export function VideoSelectionBar({ videos, visibleCount, all, busy, error, onSelectAll, onClear, onStatus, onRender, onDelete, children, publicationAction }: {
   videos: ProjectVideo[];
   visibleCount: number;
   all: boolean;
@@ -23,24 +23,32 @@ export function VideoSelectionBar({ videos, visibleCount, all, busy, error, onSe
   onStatus: (status: SequenceStatus) => void;
   onRender: () => void;
   onDelete: (ids: string[]) => Promise<boolean>;
+  children?: ReactNode;
+  publicationAction?: ReactNode;
 }) {
   const [statusOpen, setStatusOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [targets, setTargets] = useState<ProjectVideo[]>([]);
   const selected = videos.length > 0;
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl bg-muted/40 px-3 py-2 ring-1 ring-inset ring-foreground/10">
-      <Checkbox checked={all} indeterminate={selected && !all} disabled={!visibleCount || busy}
-        onCheckedChange={() => all ? onClear() : onSelectAll()} aria-label={`Select all visible videos (${visibleCount})`}>
-        <span className="text-xs">Select visible</span>
-      </Checkbox>
-      <span role="status" className="text-xs font-medium tabular-nums text-muted-foreground">
-        {selected ? `${videos.length} selected` : `${visibleCount} visible`}
-      </span>
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <Checkbox checked={all} indeterminate={selected && !all} disabled={!visibleCount || busy}
+          className="min-h-10 shrink-0 px-1"
+          onCheckedChange={() => all ? onClear() : onSelectAll()} aria-label={`Select visible videos (${visibleCount})`}>
+          <span className="text-xs">Select visible</span>
+        </Checkbox>
+        {children}
+      </div>
       {(selected || targets.length > 0) && <>
-        <div className="ms-auto flex flex-wrap items-center gap-1">
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-white/5 p-2">
+          <span role="status" className="me-auto px-1 text-xs font-medium tabular-nums">
+            {videos.length} selected
+          </span>
+          <Button size="sm" className="min-h-9" disabled={busy} onClick={onRender}><Clapperboard aria-hidden className="size-4" />Render {count(videos.length, "video", "videos")}</Button>
+          {publicationAction}
           <Popover open={statusOpen} onOpenChange={setStatusOpen}>
-            <PopoverTrigger render={<Button size="sm" variant="ghost" disabled={busy}><CheckCheck aria-hidden /> Set status <ChevronDown aria-hidden /></Button>} />
+            <PopoverTrigger render={<Button size="sm" variant="ghost" className="min-h-9" disabled={busy}><CheckCheck aria-hidden className="size-4" /> Set status <ChevronDown aria-hidden className="size-3.5" /></Button>} />
             <PopoverContent align="start" className="w-48 rounded-2xl p-1.5">
               {STATUSES.map(status => (
                 <Button key={status} variant="ghost" className="w-full justify-start" disabled={busy} onClick={() => { setStatusOpen(false); onStatus(status); }}>
@@ -49,9 +57,8 @@ export function VideoSelectionBar({ videos, visibleCount, all, busy, error, onSe
               ))}
             </PopoverContent>
           </Popover>
-          <Button size="sm" variant="outline" disabled={busy} onClick={onRender}><Clapperboard aria-hidden />Render selected</Button>
           <Dialog open={targets.length > 0} onOpenChange={open => { if (!open && !deleting) setTargets([]); }}>
-            <DialogTrigger render={<Button size="sm" variant="ghost" disabled={busy} onClick={() => setTargets([...videos])}><Trash2 aria-hidden />Delete</Button>} />
+            <DialogTrigger render={<Button size="icon" variant="ghost" aria-label={`Delete ${count(videos.length, "selected video", "selected videos")}`} title="Delete selected videos" disabled={busy} onClick={() => setTargets([...videos])}><Trash2 aria-hidden className="size-4" /></Button>} />
             <DialogContent showCloseButton={!deleting}>
               <DialogHeader>
                 <DialogTitle>Delete {count(targets.length, "video", "videos")}?</DialogTitle>
@@ -71,7 +78,7 @@ export function VideoSelectionBar({ videos, visibleCount, all, busy, error, onSe
               </DialogFooter>
             </DialogContent>
           </Dialog>
-          <Button size="icon-sm" variant="ghost" aria-label="Clear selection" disabled={busy} onClick={onClear}><X aria-hidden /></Button>
+          <Button size="icon" variant="ghost" aria-label="Clear selection" title="Clear selection" disabled={busy} onClick={onClear}><X aria-hidden className="size-4" /></Button>
         </div>
       </>}
     </div>

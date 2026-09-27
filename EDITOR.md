@@ -17,8 +17,11 @@ visible only checks the current results. Bulk status and deletion compose existi
 operations through `editor/lib/video-actions.ts` and save one atomic batch. A legacy
 clip receives `clip.promote` before `sequence.plan.patch`, preserving its ID and edits.
 Agents can submit the same operation batch through `project.edit`; both interfaces
-render explicit IDs through `project.render` / the render API after saving. Render all
-includes every video, while Render approved includes only the approved status.
+render explicit IDs through `project.render` / the render API after saving. The overview
+shows a counted render action only after videos are checked. To render all videos,
+select visible with no status filter; to render only approved videos, filter first,
+then select visible. A compact Liquid Glass toolbar keeps New video and Calendar
+available, moves Find more into the project menu, and shows the video count once.
 Deletion names its targets in a confirmation dialog and keeps source media.
 
 `src/modules/editor/lib/operations.ts` owns the operation schemas, validation, immutable reducer,
@@ -666,8 +669,11 @@ revision checks, undo/redo and the same agent tool handoff as other item edits.
 **Video → Publication** prepares the active clip/timeline in place, including
 source-free videos. It exposes shared copy, destination overrides/options, reservations,
 video approval, pinned export preview, revision-bound agent authorization, delivery
-results and attended phone controls. Project selection supports batch review through
-the same form. Published siblings remain intact while failed destinations are corrected.
+results and attended phone controls. Project selection's Prepare publications opens
+the same form in one dialog with local slot reservations and batch review. Each review
+is tied to its saved publication revision; unsaved fields must be saved or discarded
+before switching publications. Sending or authorizing the reviewed batch is explicit.
+Published siblings remain intact while failed destinations are corrected.
 
 Publication commands are registered for browser API, workspace MCP and CLI, and as the
 editor's `publishing` tool. Hosted editor commands bind to their project. Video approval

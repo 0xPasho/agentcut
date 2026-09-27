@@ -25,9 +25,10 @@ export function PublicationPanel({ projectId, sequenceId, beforeRun, afterChange
   </section>;
 }
 
-export function PublicationForm({ publication: p, data, run, busy, beforeRun, afterChange }: { publication: PublicationDetail; data: PublishingOverview; run: PublishingRun; busy: boolean; beforeRun?: () => Promise<boolean>; afterChange?: () => void }) {
+export function PublicationForm({ publication: p, data, run, busy, beforeRun, afterChange, onDirtyChange, onPublicationChange, batchReview = false }: { publication: PublicationDetail; data: PublishingOverview; run: PublishingRun; busy: boolean; beforeRun?: () => Promise<boolean>; afterChange?: () => void; onDirtyChange?: (dirty: boolean) => void; onPublicationChange?: (publication: PublicationDetail) => void; batchReview?: boolean }) {
   const [draft, setDraft] = useState(p), [dirty, setDirty] = useState(false), [proposal, setProposal] = useState<AgentCopyProposal | null>(null), [localTime, setLocalTime] = useState(""), [formError, setFormError] = useState(""), [confirm, setConfirm] = useState(false);
   useEffect(() => { if (!dirty) setDraft(p); }, [p, dirty]);
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => { setConfirm(false); }, [p.revision, p.artifactId]);
   const locked = p.destinations.some(d => !["not_sent", "failed"].includes(d.state));
   const update = (next: PublicationDetail) => { setDraft(next); setDirty(true); setConfirm(false); };
@@ -62,7 +63,10 @@ export function PublicationForm({ publication: p, data, run, busy, beforeRun, af
       <p className="text-xs text-muted-foreground">{draft.scheduledAt ? `Reserved: ${new Date(draft.scheduledAt).toLocaleString(undefined, { timeZone: draft.timezone })} (${draft.timezone})` : "No time reserved. Publish sends immediately."}</p>
       <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => { update({ ...draft, scheduledAt: null }); setLocalTime(""); }}>Clear local reservation</Button><Button variant="outline" disabled={dirty} onClick={() => void run({ tool: "publication.slots", ids: [p.id], from: new Date().toISOString().slice(0, 10), days: 30, reserve: true, revisions: { [p.id]: p.revision } })}>Reserve next free slot</Button></div>
     </fieldset>
-    <Button disabled={busy || !dirty} onClick={() => void save()}>Save publication</Button>
+    <div className="flex flex-wrap gap-2">
+      <Button disabled={busy || !dirty} onClick={() => void save()}>Save publication</Button>
+      {batchReview && dirty && <Button variant="ghost" disabled={busy} onClick={() => { setDraft(p); setDirty(false); setLocalTime(""); setFormError(""); }}>Discard changes</Button>}
+    </div>
     <section className="space-y-3"><h3 className="text-sm font-medium">Approved video</h3>
       {!p.videoApproved && <Button variant="outline" disabled={busy || p.projectRevision === null} onClick={async () => { if (beforeRun && !await beforeRun()) return; const latest = await run<PublicationDetail>({ tool: "publication.read", id: p.id }); if (latest?.projectRevision !== null && latest?.projectRevision !== undefined) await run({ tool: "publication.approveVideo", id: p.id, projectRevision: latest.projectRevision }); afterChange?.(); }}><Check />Approve video</Button>}
       {p.artifact && <><video controls preload="metadata" className="max-h-80 w-full rounded-lg bg-black" src={`/api/publishing/artifact/${p.artifact.id}`} /><p className="text-xs text-muted-foreground">Pinned export · {p.artifact.width} × {p.artifact.height} · {Math.round(p.artifact.duration)} seconds</p><a className="text-sm underline underline-offset-4" href={`/api/publishing/artifact/${p.artifact.id}`} download={`${p.artifact.id}.mp4`}>Download this pinned export</a></>}
@@ -70,17 +74,20 @@ export function PublicationForm({ publication: p, data, run, busy, beforeRun, af
       <Button variant="outline" disabled={busy || dirty || locked} onClick={async () => { if (beforeRun && !await beforeRun()) return; await run({ tool: "publication.pin", id: p.id, revision: p.revision, render: true }); }}><Download />{p.artifact ? "Render and replace export" : "Render and pin export"}</Button>
     </section>
     {p.destinations.some(d => data.connections.find(c => c.id === data.accounts.find(a => a.id === d.accountId)?.connectionId)?.provider === "iphone") && <fieldset disabled={busy || locked} className="space-y-3"><legend className="mb-2 text-sm font-medium">Video on the iPhone</legend><label className="block space-y-1 text-sm">Location<select className="min-h-10 w-full rounded-lg border bg-background px-3" value={draft.phoneSource?.kind ?? "drive"} onChange={e => update({ ...draft, phoneSource: { kind: e.target.value as "drive" | "photos", folder: draft.phoneSource?.folder ?? "", file: draft.phoneSource?.file ?? "", artifactId: p.artifactId } })}><option value="drive">Google Drive → Photos</option><option value="photos">Already in Photos</option></select></label><label className="block space-y-1 text-sm">Drive folder<Input value={draft.phoneSource?.folder ?? ""} onChange={e => update({ ...draft, phoneSource: { kind: draft.phoneSource?.kind ?? "drive", file: draft.phoneSource?.file ?? "", folder: e.target.value, artifactId: p.artifactId } })} /></label><label className="block space-y-1 text-sm">Exact video filename<Input value={draft.phoneSource?.file ?? ""} onChange={e => update({ ...draft, phoneSource: { kind: draft.phoneSource?.kind ?? "drive", folder: draft.phoneSource?.folder ?? "", file: e.target.value, artifactId: p.artifactId } })} /></label><p className="text-xs text-muted-foreground">Identify the copy of the pinned export. The phone session will verify it before uploading.</p><Button variant="outline" disabled={!dirty} onClick={() => void save()}>Save phone source</Button></fieldset>}
-    <section className="space-y-3"><h3 className="text-sm font-medium">Send publication</h3>
+    <section className="space-y-3"><h3 className="text-sm font-medium">{batchReview ? "Delivery status" : "Send publication"}</h3>
       <Button variant="outline" disabled={busy || dirty} onClick={async () => { const issues = await run<ValidationIssue[]>({ tool: "publication.validate", id: p.id }); if (issues) setFormError(issues.length ? issues.map(issue => issue.message).join("\n") : "Ready for review and delivery."); }}>Check publication readiness</Button>
-      <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={confirm} onChange={e => setConfirm(e.target.checked)} />I reviewed this export, the text, selected accounts and times.</label>
+      {!batchReview && <><label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={confirm} onChange={e => setConfirm(e.target.checked)} />I reviewed this export, the text, selected accounts and times.</label>
       <Button disabled={busy || dirty || !confirm || !p.destinations.some(d => ["not_sent", "failed"].includes(d.state))} onClick={() => void run({ tool: "publication.dispatch", id: p.id, revision: p.revision, confirmed: true })}><Send />{p.scheduledAt ? "Schedule publication" : "Publish now"}</Button>
-      <Button variant="outline" disabled={busy || dirty || !confirm} onClick={async () => { const result = await run({ tool: "publication.authorize", id: p.id, revision: p.revision }); if (result) setFormError("This exact publication is approved for the agent to send. Any edit requires a new approval."); }}>Approve for agent delivery</Button>
+      <Button variant="outline" disabled={busy || dirty || !confirm} onClick={async () => { const result = await run({ tool: "publication.authorize", id: p.id, revision: p.revision }); if (result) setFormError("This exact publication is approved for the agent to send. Any edit requires a new approval."); }}>Approve for agent delivery</Button></>}
       <p className="text-xs text-muted-foreground">API destinations run locally until the provider accepts them. Start the attended session below for phone destinations.</p>
       <Button variant="outline" disabled={busy} onClick={() => void run({ tool: "publication.refresh", id: p.id })}>Refresh network status</Button>
       {p.destinations.map(d => <DestinationResult key={d.id} destination={d} publication={p} account={data.accounts.find(a => a.id === d.accountId)} session={data.sessions.find(s => s.status === "active" && s.publicationId === p.id && s.destinationIds.includes(d.id))} run={run} busy={busy} />)}
     </section>
     <PhonePanel publication={p} data={data} run={run} busy={busy} />
-    {locked && <Button variant="outline" disabled={busy} onClick={() => void run({ tool: "publication.prepare", projectId: p.projectId, sequenceIds: [p.sequenceId], repeat: true })}>Prepare a new release</Button>}
+    {locked && <Button variant="outline" disabled={busy || dirty} onClick={async () => {
+      const prepared = await run<PublicationDetail[]>({ tool: "publication.prepare", projectId: p.projectId, sequenceIds: [p.sequenceId], repeat: true });
+      if (prepared?.[0]) onPublicationChange?.(prepared[0]);
+    }}>Prepare a new release</Button>}
   </div>;
 }
 

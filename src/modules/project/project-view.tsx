@@ -5,12 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
+  CalendarDays,
   Captions,
   Download,
   Film,
   Loader2,
-  LayoutGrid,
-  List,
   MoreHorizontal,
   Video,
   Search,
@@ -23,6 +22,7 @@ import { Button, buttonVariants } from "@/common/ui/button";
 import { ProjectStatus } from "./components/project-status";
 import { ProjectPublications } from "../publishing/components/project-publications";
 import { VideoSelectionBar } from "./components/video-selection-bar";
+import { VideoViewOptions } from "./components/video-view-options";
 import { useVideoSelection } from "./hooks/use-video-selection";
 import { videoActions } from "../editor/lib/video-actions";
 import { Card } from "@/common/ui/card";
@@ -47,7 +47,7 @@ import { emptySequencePlan, type SequenceStatus } from "@/modules/plan/types";
 import { api, assetUrl, clipUrl, type ProjectDetail } from "@/common/api/client";
 import { useProjectStream } from "@/common/hooks/use-project-stream";
 import { count, runtime } from "@/common/lib/format";
-import { projectVideos, SORTS, sortVideos, statusCounts, type ProjectVideo, type VideoSort } from "@/modules/project/lib/overview";
+import { projectVideos, sortVideos, statusCounts, type ProjectVideo, type VideoSort } from "@/modules/project/lib/overview";
 import type { Edit } from "@/modules/editor/types";
 import { useTemplates } from "@/common/hooks/use-templates";
 import { BUSY, STATUSES, FILTERS, MAKES } from "./data";
@@ -57,7 +57,6 @@ import { analyzeOptions, editHref } from "./lib/project-view";
 export function ProjectView({ initial }: { initial: ProjectDetail }) {
   const router = useRouter();
   const statusId = useId();
-  const sortId = useId();
   const [project, setProject] = useState(initial);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // What to make out of the source, not just how many: the templates on this machine say
@@ -205,7 +204,6 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
 
   const hasSource = !!edl?.source;
   const pending = edl?.sequences.some((s) => s.plan.status === "pending") ?? false;
-  const approved = edl?.sequences.some((s) => s.plan.status === "approved") ?? false;
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-6 pt-4 pb-10">
@@ -220,14 +218,12 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
         </Button>
         <div className="min-w-0 flex-1">
           <h1 title={project.name} className="truncate text-lg font-semibold tracking-tight">{project.name}</h1>
-          <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums">
+          {project.probe && <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums">
             <Film aria-hidden strokeWidth={1.5} className="size-3.5 shrink-0" />
             <span className="truncate">
-              {project.probe
-                ? `${project.probe.width} × ${project.probe.height} · ${runtime(project.probe.durationSec)}`
-                : count(videos.length, "video", "videos")}
+              {project.probe.width} × {project.probe.height} · {runtime(project.probe.durationSec)}
             </span>
-          </p>
+          </p>}
         </div>
         <div role="status" className="max-w-full sm:max-w-64">
           <ProjectStatus status={project.status} running={project.job?.status === "running"} stage={project.job?.stage} />
@@ -265,38 +261,37 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
         <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
           <div className="flex min-w-0 flex-col gap-6">
             <section aria-labelledby="videos-heading" className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-            <h2 id="videos-heading" className="text-base font-medium tabular-nums">
-              {count(videos.length, "video", "videos")}
+          <Glass className="@container flex flex-col gap-2 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <h2 id="videos-heading" className="px-1 text-sm font-medium tabular-nums">
+              {filter === "all" ? count(videos.length, "video", "videos") : `${shown.length} of ${count(videos.length, "video", "videos")}`}
             </h2>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={busy || !hasSource}
-                title="Analyze the source again for more highlights"
-                onClick={() => setFinding(true)}
-              >
-                <Search aria-hidden />
-                Find more
-              </Button>
-              <Button size="sm" variant="ghost" disabled={busy || !videos.length} onClick={() => renderVideos(videos.map(video => video.id))}>
-                <Clapperboard aria-hidden />
-                Render all
-              </Button>
-              <Button size="sm" variant="outline" disabled={busy} onClick={newVideo}>
-                <Video aria-hidden />
+            <div className="ms-auto flex items-center gap-1">
+              <Button size="sm" variant="outline" className="min-h-9" disabled={busy} onClick={newVideo}>
+                <Video aria-hidden className="size-4" />
                 New video
               </Button>
+              <Link href="/calendar" aria-label="Calendar" title="Calendar" className={cn(buttonVariants({ size: "sm", variant: "ghost" }), "min-h-9")}>
+                <CalendarDays aria-hidden className="size-4" />
+                <span className="hidden sm:inline">Calendar</span>
+              </Link>
               <Popover open={menuOpen} onOpenChange={setMenuOpen}>
                 <PopoverTrigger
                   render={
-                    <Button size="icon-sm" variant="ghost" aria-label="More project actions">
-                      <MoreHorizontal aria-hidden />
+                    <Button size="icon" variant="ghost" aria-label="More project actions" title="More project actions">
+                      <MoreHorizontal aria-hidden className="size-4" />
                     </Button>
                   }
                 />
                 <PopoverContent side="bottom" align="end" className="w-64 rounded-2xl p-1.5">
+                  <MenuItem
+                    disabled={busy || !hasSource}
+                    hint="Analyze the source again for more highlights"
+                    onClick={() => { setMenuOpen(false); setFinding(true); }}
+                  >
+                    <Search aria-hidden className="size-4" />
+                    Find more
+                  </MenuItem>
                   <MenuItem
                     disabled={busy || !pending}
                     hint="Transcribe, plan and edit every pending video under the shared plan"
@@ -304,10 +299,6 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                   >
                     <Sparkles aria-hidden />
                     Edit pending videos
-                  </MenuItem>
-                  <MenuItem disabled={busy || !approved} onClick={() => renderVideos(videos.filter(video => video.status === "approved").map(video => video.id))}>
-                    <Clapperboard aria-hidden />
-                    Render approved videos
                   </MenuItem>
                   <MenuItem
                     disabled={busy || !hasSource}
@@ -333,50 +324,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
             </div>
           </div>
 
-          {videos.length ? (
-            <>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <div role="group" aria-label="Filter by status" className="flex flex-wrap items-center gap-1">
-                  {FILTERS.map(({ value, label }) => (
-                    <Button
-                      key={value}
-                      size="xs"
-                      variant={filter === value ? "secondary" : "ghost"}
-                      aria-pressed={filter === value}
-                      disabled={value !== "all" && counts[value] === 0}
-                      onClick={() => { selection.clear(); setFilter(value); }}
-                      className="font-normal"
-                    >
-                      {value !== "all" && <StatusIcon status={value} />}
-                      {label}
-                      <span className="text-muted-foreground tabular-nums">{counts[value]}</span>
-                    </Button>
-                  ))}
-                </div>
-                <div className="ms-auto flex flex-wrap items-center gap-2">
-                  <div role="group" aria-label="Video layout" className="flex items-center gap-1 rounded-full bg-muted/50 p-1">
-                    <Button size="sm" variant={layout === "list" ? "secondary" : "ghost"} aria-pressed={layout === "list"} onClick={() => setLayout("list")}>
-                      <List aria-hidden /> List
-                    </Button>
-                    <Button size="sm" variant={layout === "grid" ? "secondary" : "ghost"} aria-pressed={layout === "grid"} onClick={() => setLayout("grid")}>
-                      <LayoutGrid aria-hidden /> Grid
-                    </Button>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Label id={sortId} className="text-xs text-muted-foreground">Sort</Label>
-                    <Select value={sort} onValueChange={(v) => setSort(v as VideoSort)}>
-                      <SelectTrigger aria-labelledby={sortId} size="sm" className="w-44">
-                        <SelectValue>{(v) => SORTS.find((s) => s.value === v)?.label}</SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {SORTS.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-
-              <ProjectPublications projectId={initial.id} sequenceIds={selection.ids} beforeRun={editor.save} />
+          {videos.length > 0 && (
               <VideoSelectionBar
                 videos={checkedVideos}
                 visibleCount={shown.length}
@@ -388,7 +336,32 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                 onStatus={status => { void changeVideos(selection.ids, status); }}
                 onRender={() => { void renderVideos(selection.ids); }}
                 onDelete={ids => changeVideos(ids, "delete")}
-              />
+                publicationAction={<ProjectPublications projectId={initial.id} sequenceIds={selection.ids} beforeRun={editor.save} disabled={busy || editor.conflict} />}
+              >
+                <div className="ms-auto flex flex-wrap items-center gap-2">
+                  <Select value={filter} onValueChange={value => { if (!value) return; selection.clear(); setFilter(value); }}>
+                    <SelectTrigger aria-label="Filter videos by status" className="h-9 rounded-full border-transparent bg-white/5 px-3 text-xs shadow-none">
+                      <SlidersHorizontal aria-hidden className="size-3.5" />
+                      <SelectValue>{value => value === "all" ? "All statuses" : STATUS[value as SequenceStatus]?.label}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent align="start" alignItemWithTrigger={false}>
+                      {FILTERS.map(({ value, label }) => (
+                        <SelectItem key={value} value={value} disabled={value !== "all" && counts[value] === 0}>
+                          {value !== "all" && <StatusIcon status={value} />}
+                          {value === "all" ? "All statuses" : label}
+                          <span className="ms-auto text-muted-foreground tabular-nums">{counts[value]}</span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <VideoViewOptions layout={layout} sort={sort} onLayout={setLayout} onSort={setSort} />
+                </div>
+              </VideoSelectionBar>
+          )}
+          </Glass>
+
+          {videos.length ? (
+            <>
 
               {/* The pane scrolls, not the page: at forty candidates a page that grows
                   with the list pushes the preview, the agent and every action below

@@ -29,6 +29,7 @@ export const Publication = z.object({ id: z.string(), projectId: z.string(), seq
 export type Publication = z.infer<typeof Publication>;
 export type PublicationDetail = Publication & { status: PublicationStatus; videoApproved: boolean; projectRevision: number | null; newerEdit: boolean; artifact: Artifact | null };
 export type PublishingRun = <T = unknown>(input: unknown) => Promise<T | undefined>;
+export type PublicationBatchResult = { id: string; ok: boolean; error?: string };
 export const PublishingSettings = z.object({ timezone: z.string().default("America/Mexico_City"), slots: z.array(z.object({ weekday: z.number().int().min(0).max(6), time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/) })).default([]), minGapMinutes: z.number().int().min(1).default(60), leadMinutes: z.number().int().min(1).default(30), defaultAccountIds: z.array(z.string()).default([]), writing: z.string().default(""), autoPrepare: z.boolean().default(false), evidenceRetentionDays: z.number().int().min(1).max(3650).default(30), phoneBinary: z.string().default(""), revision: z.number().int().default(0) }).strict();
 export type PublishingSettings = z.infer<typeof PublishingSettings>;
 export type Occupancy = { accountId: string; at: string; publicationId: string };
