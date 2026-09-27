@@ -1,75 +1,40 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { q } from "@/common/server/db";
 import { jobState } from "@/modules/project/lib/job-state";
 import { reapDeadJobs } from "@/modules/project/server/reaper";
 
 export const runtime = "nodejs";
-export const maxDuration = 3600;
+
+/** What a first read returns: as much as the panel keeps, not a project's whole history. */
+const BACKLOG = 400;
 
 /**
- * SSE over a polled events table: survives Next's dev-mode module reloads,
- * which an in-memory emitter would not.
+ * The activity feed since `since`, and where the project stands now — one short answer,
+ * polled. This used to be a server-sent stream, and a stream holds a connection for as
+ * long as the page is open. The browser allows six per host across every tab, and a
+ * `<video>` buffering the source takes some of them; with a few agentcut tabs open the
+ * pool was full, and every request after that — the editor's own page load included —
+ * waited for a socket that never came free. The page sat on "Rendering" forever.
  */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  let lastId = Number(req.nextUrl.searchParams.get("since") ?? 0);
-  // The tick runs twice a second; liveness does not change that fast.
-  const REAP_EVERY_MS = 5_000;
-  let lastReap = 0;
-  const encoder = new TextEncoder();
-
-  const stream = new ReadableStream({
-    start(controller) {
-      let closed = false;
-      const send = (event: string, data: unknown) => {
-        if (closed) return;
-        controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
-      };
-
-      const tick = () => {
-        if (closed) return;
-        try {
-          for (const e of q.eventsSince(id, lastId)) {
-            lastId = e.id;
-            send("log", { id: e.id, kind: e.kind, name: e.name, text: e.text, at: e.at, jobId: e.job_id });
-          }
-          // This stream is what the editor believes about the project, so it has to be
-          // the thing that notices a job whose process died — otherwise a page left open
-          // through a crash shows "working" until somebody reloads it.
-          if (Date.now() - lastReap > REAP_EVERY_MS) { lastReap = Date.now(); reapDeadJobs(id); }
-          const job = q.latestJob(id);
-          const project = q.getProject(id);
-          send("status", {
-            revision: project?.revision ?? 0,
-            status: project?.status ?? "unknown",
-            error: project?.error ?? null,
-            job: jobState(job),
-          });
-        } catch {
-          // a transient read during a write shouldn't kill the stream
-        }
-      };
-
-      const interval = setInterval(tick, 500);
-      tick();
-
-      req.signal.addEventListener("abort", () => {
-        closed = true;
-        clearInterval(interval);
-        try {
-          controller.close();
-        } catch {
-          // already closed
-        }
-      });
+  const since = Number(req.nextUrl.searchParams.get("since") ?? 0) || 0;
+  // This is what the editor believes about the project, so it has to be the thing that
+  // notices a job whose process died — otherwise a page left open through a crash shows
+  // "working" until somebody reloads it.
+  reapDeadJobs(id);
+  const rows = q.eventsSince(id, since);
+  const events = (since ? rows : rows.slice(-BACKLOG))
+    .map((e) => ({ id: e.id, kind: e.kind, name: e.name, text: e.text, at: e.at, jobId: e.job_id }));
+  const project = q.getProject(id);
+  return NextResponse.json({
+    events,
+    cursor: rows.at(-1)?.id ?? since,
+    status: {
+      revision: project?.revision ?? 0,
+      status: project?.status ?? "unknown",
+      error: project?.error ?? null,
+      job: jobState(q.latestJob(id)),
     },
-  });
-
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-    },
-  });
+  }, { headers: { "Cache-Control": "no-store" } });
 }

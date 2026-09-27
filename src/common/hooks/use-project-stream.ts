@@ -1,13 +1,15 @@
 "use client";
 import { useSyncExternalStore } from "react";
-import type { JobState, LogEvent } from "../api/client";
-import { type ProjectStream, type Entry } from "../api/types";
+import type { JobState } from "../api/client";
+import { type ProjectStream, type ProjectEvents, type Entry } from "../api/types";
 
 const EMPTY: ProjectStream = { events: [], status: null, error: null, revision: 0, job: null, connected: false };
 /** Enough to scroll back through a long run without growing without bound. */
 const MAX_EVENTS = 400;
-/** A remount (React's strict double-render, a tab switch) should not drop the stream. */
+/** A remount (React's strict double-render, a tab switch) should not restart the feed. */
 const LINGER_MS = 5_000;
+/** As often as the editor polls the revision; a run's lines are seconds apart. */
+const POLL_MS = 1_000;
 
 const streams = new Map<string, Entry>();
 
@@ -16,23 +18,53 @@ function publish(entry: Entry, next: Partial<ProjectStream>) {
   for (const listener of entry.listeners) listener();
 }
 
+/**
+ * Polled, never streamed: a held-open connection per tab is what filled the browser's
+ * six sockets for this host and left every later page load waiting on "Rendering".
+ * Each poll is a short request that gives its socket back.
+ */
 function open(projectId: string): Entry {
-  const source = new EventSource(`/api/projects/${projectId}/events`);
-  const entry: Entry = { source, refs: 0, snapshot: { ...EMPTY }, listeners: new Set() };
+  let stopped = false;
+  let inFlight = false;
+  const entry: Entry = { refs: 0, snapshot: { ...EMPTY }, listeners: new Set(), cursor: 0, stop: () => {} };
 
-  source.addEventListener("log", (e) => {
-    const data = JSON.parse((e as MessageEvent).data) as LogEvent;
-    const events = entry.snapshot.events;
-    if (events.some((p) => p.id === data.id)) return;
-    publish(entry, { events: [...events, data].slice(-MAX_EVENTS), connected: true });
-  });
-  source.addEventListener("status", (e) => {
-    const data = JSON.parse((e as MessageEvent).data) as { status: string; revision: number; error: string | null; job: JobState | null };
-    const s = entry.snapshot;
-    if (s.connected && s.status === data.status && s.revision === data.revision && s.error === data.error && sameJob(s.job, data.job)) return;
-    publish(entry, { status: data.status, revision: data.revision, error: data.error, job: data.job, connected: true });
-  });
-  source.addEventListener("error", () => publish(entry, { connected: false }));
+  const poll = async () => {
+    if (stopped || inFlight) return;
+    inFlight = true;
+    clearTimeout(entry.timer);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/events?since=${entry.cursor}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(String(res.status));
+      const data = await res.json() as ProjectEvents;
+      if (stopped) return;
+      entry.cursor = data.cursor;
+      const seen = new Set(entry.snapshot.events.map((e) => e.id));
+      const fresh = data.events.filter((e) => !seen.has(e.id));
+      const events = fresh.length ? [...entry.snapshot.events, ...fresh].slice(-MAX_EVENTS) : entry.snapshot.events;
+      const s = entry.snapshot;
+      const { status, revision, error, job } = data.status;
+      const same = s.connected && !fresh.length && s.status === status && s.revision === revision && s.error === error && sameJob(s.job, job);
+      if (!same) publish(entry, { events, status, revision, error, job, connected: true });
+    } catch {
+      if (!stopped && entry.snapshot.connected) publish(entry, { connected: false });
+    } finally {
+      inFlight = false;
+      if (!stopped) entry.timer = setTimeout(poll, POLL_MS);
+    }
+  };
+
+  // A hidden tab's timers are throttled to about once a minute; coming back to it has
+  // to show what the agent did meanwhile at once.
+  const resume = () => { if (document.visibilityState === "visible") void poll(); };
+  document.addEventListener("visibilitychange", resume);
+  window.addEventListener("focus", resume);
+  entry.stop = () => {
+    stopped = true;
+    clearTimeout(entry.timer);
+    document.removeEventListener("visibilitychange", resume);
+    window.removeEventListener("focus", resume);
+  };
+  void poll();
   return entry;
 }
 
@@ -53,7 +85,7 @@ function subscribe(projectId: string, listener: () => void) {
     if (current.refs > 0) return;
     current.closing = setTimeout(() => {
       if (current.refs > 0) return;
-      current.source.close();
+      current.stop();
       streams.delete(projectId);
     }, LINGER_MS);
   };

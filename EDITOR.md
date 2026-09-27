@@ -106,10 +106,12 @@ first. Other writers' saved changes appear through polling, without replacing lo
 tab has its timers throttled to roughly once a minute, so returning to the window polls at once
 rather than waiting: the agent edits the same project while nobody is looking at it.
 
-Two channels carry two different things, and both are real. The SSE stream
-(`/api/projects/[id]/events`) carries the activity feed and a status tick — revision number,
-project status, the running job — so the panel knows *that* something changed. The EDL
-itself never travels over the stream: `useEditor` polls the revision once a second
+Two channels carry two different things, and both are real. The events poll
+(`/api/projects/[id]/events?since=`) carries the activity feed and a status tick — revision
+number, project status, the running job — so the panel knows *that* something changed. It is
+a short request once a second, not a stream: a held-open connection per tab filled the
+browser's six sockets for the host, and every later page load waited on "Rendering" forever. The EDL
+itself never travels over the feed: `useEditor` polls the revision once a second
 (`src/modules/editor/hooks/use-editor.ts`) and fetches the project whole when it moved.
 
 A revision conflict preserves the draft and blocks saving. The UI offers downloading the
@@ -232,8 +234,8 @@ all of it lands in one place, the project's `events` table:
 - `src/modules/project/server/activity-log.ts` runs an editor tool and writes that line to the project's feed,
   whoever started it: the UI (`via: "web"`), a terminal agent (`"mcp"`), the CLI (`"cli"`).
   Reads and status polls stay out of the feed so it does not fill with someone's polling.
-- The web streams it over SSE (`/api/projects/[id]/events`). `useProjectStream` keeps one
-  connection per project, so every surface reads the same trail. The project page shows it
+- The web polls it (`/api/projects/[id]/events?since=`). `useProjectStream` keeps one
+  poll per project, so every surface reads the same trail. The project page shows it
   once, in the agent panel: a second raw copy of the same feed below it was noise, not a
   second view.
   The panel is a chat: `src/modules/agent/lib/thread.ts` interleaves the conversation with the feed by
