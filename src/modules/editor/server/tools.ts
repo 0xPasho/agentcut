@@ -1,4 +1,5 @@
 import { RuleDraftRequest } from "../../rules/types";
+import { PublicationCommand } from "../../publishing/types";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
@@ -22,6 +23,7 @@ import { reapDeadJobs } from "../../project/server/reaper";
 const AudioKindSchema = z.enum(["sfx", "music"]).default("sfx");
 
 export const EditorToolCall = z.discriminatedUnion("tool", [
+  z.object({ tool: z.literal("publishing"), request: PublicationCommand }),
   z.object({ tool: z.literal("project.read") }),
   // What is happening right now, for any interface that has to wait: the running
   // job and everything logged since `since`. Read-only, and safe to poll.
@@ -240,6 +242,10 @@ export async function executeEditorTool(projectId: string, raw: unknown, onActiv
   // able to run it before the first project exists. Everything else needs one.
   if (!WORKSPACE_TOOLS.some((prefix) => call.tool.startsWith(prefix)) && !q.getProject(projectId)) throw new Error("Project not found");
   switch (call.tool) {
+    case "publishing": {
+      const { executePublicationCommand } = await import("../../publishing/server/tools");
+      return executePublicationCommand(call.request, { actor: "agent", projectId });
+    }
     case "project.read": return readEditor(projectId);
     case "project.status": return projectStatus(projectId, call.since, call.limit);
     case "project.unlock": {

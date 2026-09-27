@@ -113,6 +113,8 @@ export async function runBatch(projectId: string, o: BatchOptions = {}): Promise
     try { await generateProjectPlan(projectId, agentOptions); } catch (error) { log("error", `shared plan: ${(error as Error).message}`); }
   }
   videos.sort((a, b) => pending.findIndex((s) => s.id === a.sequenceId) - pending.findIndex((s) => s.id === b.sequenceId));
+  const { prepareGenerated } = await import("../../publishing/server/batch");
+  await prepareGenerated(projectId, videos.filter(v => v.ok).map(v => v.sequenceId), message => log("error", message));
   return { revision: readEditor(projectId).revision, videos };
 }
 

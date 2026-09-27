@@ -119,6 +119,8 @@ async function main() {
   });
 
   publishClips(projectId, edl);
+  const { prepareGenerated } = await import("../src/modules/publishing/server/batch");
+  await prepareGenerated(projectId, [...edl.clips, ...edl.sequences].map(video => video.id), message => console.error(message));
 
   console.log(`\nEDL → ${path.join(dir, "edl.json")}`);
   console.log(`UI  → http://localhost:7927/p/${projectId}`);

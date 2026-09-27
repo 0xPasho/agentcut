@@ -74,7 +74,9 @@ test("the MCP server exposes every editor tool from the same schema, and calls g
   const listed = mcp.listMcpTools();
   const editorTools = tools.editorToolSchema() as { anyOf?: unknown[]; oneOf?: unknown[] };
   const variants = (editorTools.anyOf ?? editorTools.oneOf ?? []).length;
-  assert.equal(listed.length, variants + 3, "one MCP tool per editor tool, plus projects and the conversation");
+  const { PublicationCommand } = await import("../../publishing/types");
+  assert.equal(listed.length, variants + 3 + PublicationCommand.options.length, "editor tools, workspace publishing tools, projects and conversation");
+  assert.equal(new Set(listed.map(t => t.name)).size, listed.length, "tool names remain unique");
   const edit = listed.find((t) => t.name === "agentcut_project_edit")!;
   assert.deepEqual(edit.inputSchema.required, ["projectId", "expectedRevision", "operations"]);
   assert.ok(!("tool" in (edit.inputSchema.properties as object)), "the discriminator is not a parameter");

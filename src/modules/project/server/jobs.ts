@@ -256,6 +256,9 @@ async function analyze(job: JobRow, sourcePath: string, dir: string, options: An
   log(pid, job.id, "stage", sections
     ? `ready — ${sections === 1 ? edl.sequences[0].title : `${sections} videos`}, ${edl.sequences.reduce((n, s) => n + s.items.length, 0)} stretches kept`
     : `ready — ${edl.clips.length} clips`);
+  const { prepareGenerated } = await import("../../publishing/server/batch");
+  await prepareGenerated(pid, [...edl.clips, ...edl.sequences].map(video => video.id), message => log(pid, job.id, "error", message, "publication"));
+
 }
 
 /**

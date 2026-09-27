@@ -1,4 +1,4 @@
-import { BookA, Cpu, Images, LayoutTemplate, Monitor, Package, Scale, UserRound } from "lucide-react";
+import { BookA, Cpu, Images, LayoutTemplate, Monitor, Package, Scale, UserRound, CalendarDays, Send } from "lucide-react";
 import type { Rule } from "../rules/types";
 import type { GlossaryTerm } from "../rules/server/glossary";
 import type { WorkspaceSection, ExportDraft } from "./types";
@@ -12,6 +12,8 @@ import type { WorkspaceSection, ExportDraft } from "./types";
  * settings (decision 131).
  */
 export const WORKSPACE_SECTIONS: readonly WorkspaceSection[] = [
+  { id: "calendar", href: "/calendar", label: "Calendar", icon: CalendarDays, blurb: "Reservations and confirmed publications across accounts." },
+  { id: "publishing", href: "/settings/publishing", label: "Publishing", icon: Send, blurb: "Phone and API connections, accounts and publication times." },
   { id: "library", href: "/library", label: "Library", icon: Images, blurb: "Images, sounds and reusable video for every project." },
   { id: "profile", href: "/settings", label: "You", icon: UserRound, blurb: "What you make, who it is for, and how you like it done." },
   { id: "rules", href: "/settings/rules", label: "Rules", icon: Scale, blurb: "Standing instructions the agent judges against every video." },

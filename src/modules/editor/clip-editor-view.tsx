@@ -46,6 +46,7 @@ import { ReviewPanel } from "../review/components/review-panel";
 import { RecipesPanel } from "../packs/components/recipes-panel";
 import { RulesPanel } from "../rules/components/rules-panel";
 import { PlanPanel } from "../plan/components/plan-panel";
+import { PublicationPanel } from "../publishing/components/publication-panel";
 import { useEditor } from "@/modules/editor/hooks/use-editor";
 import { patchFromClip, type EditorOperation } from "@/modules/editor/lib/operations";
 import { assetEdit } from "@/modules/editor/lib/asset-edit";
@@ -713,6 +714,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
           <ContextMenuItem onClick={()=>setPanel("review")}>What correct looks like</ContextMenuItem>
           <ContextMenuItem onClick={()=>setPanel("recipes")}>Pack recipes</ContextMenuItem>
           <ContextMenuItem onClick={()=>setPanel("comment")}>Opening comment</ContextMenuItem>
+          <ContextMenuItem onClick={()=>setPanel("publication")}>Publication</ContextMenuItem>
           <ContextMenuItem onClick={()=>setPanel("settings")}>Video settings</ContextMenuItem>
         </MenuContent>
       </Menu>
@@ -808,7 +810,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
     </fieldset>
 
     <Dialog open={panel !== null} onOpenChange={open=>{if(!open)setPanel(null);}}>
-      <DialogContent className="max-h-[85dvh] w-[min(38rem,92vw)] overflow-y-auto">
+      <DialogContent className={panel === "publication" ? "max-h-[85dvh] w-[min(42rem,94vw)] sm:max-w-[42rem] overflow-y-auto" : "max-h-[85dvh] w-[min(38rem,92vw)] overflow-y-auto"}>
         <DialogHeader>
           <DialogTitle>{panel ? VIDEO_PANELS[panel] : ""}</DialogTitle>
         </DialogHeader>
@@ -818,6 +820,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
         {panel==="recipes"&&<RecipesPanel projectId={projectId} sequenceId={sequence ? activeSequenceId : undefined} beforeRun={save} afterChange={editor.reload} />}
         {panel==="comment"&&sequence&&<CommentPanel projectId={projectId} sequenceId={activeSequenceId} beforeApply={save} afterApply={editor.reload} />}
         {panel==="settings"&&sequence&&<SequenceSettings key={sequence.id} sequence={sequence} dispatch={dispatch} />}
+        {panel==="publication"&&<PublicationPanel projectId={projectId} sequenceId={activeSequenceId} beforeRun={save} afterChange={editor.reload} />}
       </DialogContent>
     </Dialog>
   </main></PlayheadProvider>;

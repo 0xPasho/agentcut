@@ -326,7 +326,7 @@ test("every section of the rail is a page, and the old addresses still land some
   }
   // The pages are thin, and every one of them renders a view from the settings module.
   const ids = WORKSPACE_SECTIONS.map((s) => s.id);
-  assert.deepEqual(ids, ["library", "profile", "rules", "glossary", "packs", "templates", "agents", "machine"]);
+  assert.deepEqual(ids, ["calendar", "publishing", "library", "profile", "rules", "glossary", "packs", "templates", "agents", "machine"]);
 });
 
 test("the export form sends everything the export tool accepts", async () => {

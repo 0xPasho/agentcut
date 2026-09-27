@@ -1,5 +1,7 @@
 import { createInterface } from "node:readline";
 import { z } from "zod";
+import { PublicationCommand } from "../../publishing/types";
+import { executePublicationCommand } from "../../publishing/server/tools";
 import { q } from "../../../common/server/db";
 import { EditorToolCall } from "../../editor/server/tools";
 import { RevisionConflict } from "../../editor/server/store";
@@ -143,13 +145,24 @@ const EXTRA = [
 ];
 
 export function listMcpTools() {
-  return [...EXTRA, ...editorMcpTools().map(({ name, description, inputSchema }) => ({ name, description, inputSchema }))];
+  return [...EXTRA, ...editorMcpTools().map(({ name, description, inputSchema }) => ({ name, description, inputSchema })), ...publishingMcpTools()];
+}
+
+function publishingMcpTools() {
+  return PublicationCommand.options.map(variant => {
+    const tool = variant.shape.tool.value;
+    const schema = z.toJSONSchema(variant, { io: "input" }) as JsonSchema;
+    const { tool: _tool, ...properties } = schema.properties ?? {}; void _tool;
+    return { name: mcpToolName(tool), tool, description: `Shared publishing command: ${tool}. Uses the same state and validation as the editor. Only dispatch a batch the user authorized; unknown results require reconciliation before retry.`, inputSchema: { ...schema, properties, required: (schema.required ?? []).filter(k => k !== "tool") } };
+  });
 }
 
 /** Where a terminal agent's call reports while it runs, so it can relay progress to its human. */
 export type McpActivity = (e: { kind: string; name?: string; text: string }) => void;
 
 export async function callMcpTool(name: string, args: Record<string, unknown>, onActivity?: McpActivity): Promise<unknown> {
+  const publishing = publishingMcpTools().find(t => t.name === name);
+  if (publishing) return executePublicationCommand({ ...args, tool: publishing.tool }, { actor: "agent" });
   if (name === "agentcut_projects_list") return q.listProjects().map((p) => ({ id: p.id, name: p.name, status: p.status, revision: p.revision }));
   if (name === "agentcut_message_record") {
     const a = z.object({ projectId: z.string(), text: z.string().min(1), role: z.enum(["user", "agent"]).default("agent"), sequenceId: z.string().optional() }).parse(args);

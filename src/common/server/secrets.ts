@@ -69,6 +69,18 @@ function stored(id: ProviderKeyId): string {
   return row?.value ?? "";
 }
 
+/** Connection credentials use the same write-only workspace store as provider keys. */
+export function connectionSecret(id: string): string {
+  const row = db.prepare("SELECT value FROM settings WHERE scope = ? AND key = ?").get(SCOPE, `publishing:${id}`) as { value: string } | undefined;
+  return row?.value ?? "";
+}
+
+export function setConnectionSecret(id: string, value: string): void {
+  const key = `publishing:${id}`;
+  if (!value.trim()) { db.prepare("DELETE FROM settings WHERE scope = ? AND key = ?").run(SCOPE, key); return; }
+  db.prepare("INSERT INTO settings(scope,key,value) VALUES(?,?,?) ON CONFLICT(scope,key) DO UPDATE SET value=excluded.value").run(SCOPE, key, value.trim());
+}
+
 /**
  * The value to spend on a request. Synchronous because the providers read it in
  * the middle of a search, and an await there would be the only async thing in the

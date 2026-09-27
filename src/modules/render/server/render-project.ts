@@ -32,7 +32,7 @@ export async function claimPidLock(lockPath: string, busy: string) {
 
 const claimRenderLock = (lockPath: string) => claimPidLock(lockPath, "This project already has a render in progress.");
 
-export async function renderProject(projectId: string, options: { only?: string[]; expectedRevision?: number; onProgress?: (p: RenderProgress) => void; conformMinBytes?: number } = {}) {
+export async function renderProject(projectId: string, options: { only?: string[]; expectedRevision?: number; onProgress?: (p: RenderProgress) => void; conformMinBytes?: number; capture?: (outputs: Array<{ clip: { id: string; title: string }; file: string }>, revision: number) => Promise<void> } = {}) {
   const dir = projectDir(projectId);
   const lockPath = path.join(dir, "render.lock");
   const lock = await claimRenderLock(lockPath);
@@ -48,6 +48,8 @@ export async function renderProject(projectId: string, options: { only?: string[
     if (blocks.length) throw new Error(refusal(blocks));
     const { renderClips } = await import("./render");
     const outputs = await renderClips(snapshot.edl, dir, options);
+    // Capture immutable downstream deliverables before another render can replace files.
+    await options.capture?.(outputs, snapshot.revision);
     const file = path.join(dir, "rendered.json");
     const manifest: Record<string, { revision: number; file: string }> = await fs.readFile(file, "utf8").then(JSON.parse).catch(() => ({}));
     for (const output of outputs) manifest[output.clip.id] = { revision: snapshot.revision, file: path.basename(output.file) };

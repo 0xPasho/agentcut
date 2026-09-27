@@ -243,3 +243,36 @@ Tests create temporary workspaces. Render tests need working local media tools a
 a render browser, and may need network access for the first browser download. They
 do not require a live Claude session. Passing local tests does not certify every
 operating system or third-party CLI version.
+
+## Publishing connections and local runner
+
+Open **Settings → Publishing**. Add an iPhone, Postgun or Postbridge connection.
+API keys are write-only workspace secrets. Set the correct Postgun instance URL and
+refresh accounts; permissions must include the relevant media/read/write/delete scopes
+and `posts:publish` for immediate posts. Postbridge can create Instagram/TikTok consent
+links; connect YouTube in Postbridge and then refresh accounts. Link equivalent accounts
+across routes. Refresh provider calendars before planning against remote occupancy.
+
+Set timezone, weekly slots, spacing, preparation time, default accounts and writing
+guidance. Automatic preparation is optional: it writes draft copy/reservations, never
+submits. The editor's **Video → Publication** is the normal place to review and send.
+
+On macOS, open iPhone Mirroring with the locked phone nearby. Build the phone tool from
+Publishing settings (requires Apple's Swift compiler), or set an existing compatible
+executable. Grant Accessibility and Screen Recording to the application running
+Agentcut; restart it after permission changes. Use **Check phone connection**. Identify
+the exact pinned export in Drive/Photos, queue reviewed destinations, and start an
+attended agent or manual session. Phone work does not run unattended on app startup.
+
+`agentcut dev/start` recovers API work with a detached worker. When starting Next directly
+with `pnpm dev/start`, run `pnpm publishing:worker` to recover existing work. Dispatch
+also starts the worker. Logs are in `workspace/publishing/runner.log` (relative to the
+configured workspace). `agentcut publishing list`, `call request.json` and `tick` expose
+the shared services. Unknown outcomes must be reconciled; restarting is not permission
+to send them twice. Keep the computer awake for local work.
+
+Cadence import accepts an explicitly selected database snapshot or JSON export and
+account/video mappings. Preview first. Apply makes a local backup, migrates identifiable
+video bytes and preserves uncertain delivery facts for reconciliation. Configure API
+keys afresh. At cutover stop Cadence dispatch for imported publications. See
+[PUBLISHING.md](../PUBLISHING.md) for rollback and open live acceptance requirements.

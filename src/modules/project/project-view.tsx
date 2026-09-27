@@ -21,6 +21,7 @@ import {
 import { cn } from "cn";
 import { Button, buttonVariants } from "@/common/ui/button";
 import { ProjectStatus } from "./components/project-status";
+import { ProjectPublications } from "../publishing/components/project-publications";
 import { VideoSelectionBar } from "./components/video-selection-bar";
 import { useVideoSelection } from "./hooks/use-video-selection";
 import { videoActions } from "../editor/lib/video-actions";
@@ -375,6 +376,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                 </div>
               </div>
 
+              <ProjectPublications projectId={initial.id} sequenceIds={selection.ids} beforeRun={editor.save} />
               <VideoSelectionBar
                 videos={checkedVideos}
                 visibleCount={shown.length}

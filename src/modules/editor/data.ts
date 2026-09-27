@@ -149,6 +149,7 @@ export const MAX_HEIGHT = 460;
 
 /** What sits behind the editor's Video menu, by the name its dialog carries. */
 export const VIDEO_PANELS = {
+  publication: "Publication",
   plan: "Plan and templates",
   rules: "Rules and preferences",
   review: "What correct looks like",

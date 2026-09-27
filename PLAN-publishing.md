@@ -1,12 +1,15 @@
 # Publishing from Agentcut
 
-Status: **implementation plan, not shipped; product direction partially confirmed**.
+Status: **implementation present; live acceptance open**.
+The owner subsequently authorized the complete implementation. See [PUBLISHING.md](./PUBLISHING.md)
+for the implemented contracts, verification and remaining live acceptance gates.
 Written and updated 2026-09-26. After the grill-me interview, the owner confirmed that
 this feature must execute real publication, with a realistic draft → approved →
 publishing → published lifecycle. iPhone Mirroring running on the local computer is
 the primary delivery route to integrate first; it has already been used successfully
 to publish through the existing workflow. Postgun and Postbridge remain in scope.
-Unanswered policy choices below remain provisional. This planning conversation does
+The implementation uses the conservative defaults below: explicit delivery approval,
+attended phone execution and no automatic submission when a video is approved. This planning conversation does
 not select a particular video/account/batch for a live publishing run.
 
 ## 1. Product outcome
@@ -617,8 +620,8 @@ method claims to undo remote effects. Import itself must create no such effects.
 
 ## 16. Implementation order and completion gates
 
-Work on `main`, by explicit file paths, respecting concurrent changes. No code changes
-were made for this proposal. Before implementation read the relevant bundled Next.js
+Work on `main`, by explicit file paths, respecting concurrent changes. The following order describes the original proposal; implementation status and
+evidence are now tracked in PUBLISHING.md. Before implementation read the relevant bundled Next.js
 guides under `node_modules/next/dist/docs/` for route handlers, server/client boundaries
 and data loading; do not apply remembered APIs blindly.
 
@@ -674,28 +677,20 @@ servers for destructive/error paths. Live publishing or native-app commit tests 
 the owner's explicit test-content/account authorization; this planning request is
 not that authorization. A dry run proves mapping and UI, not real delivery.
 
-For this documentation-only proposal, validate file references and patch whitespace;
-do not claim implementation tests or live publication tests were run.
+The original proposal was documentation-only. The implementation acceptance record
+is maintained in PUBLISHING.md; automated evidence never substitutes for live delivery.
 
 ## 18. Documentation and release accounting
 
-The owner's confirmed publishing scope, primary phone route and lifecycle are recorded
-in AGENT-FIRST decision 145. Remaining interview policies are still proposals. When
-the owner resolves those choices, add the next free numbered Decided rows to
-[AGENT-FIRST.md](./AGENT-FIRST.md) in the same commit as the corresponding accepted
-design, covering publication/destinations, local-vs-remote scheduling, immutable
-approval, shared commands and attended phone execution. Do not reserve a row number
-now: another session may add decisions meanwhile. Until then, the remaining technical
-and policy proposals must not be presented as accepted decisions beyond row 145.
-
-Amend [SPEC.md](./SPEC.md) with optional local-first publishing and its actual status;
-[EDITOR.md](./EDITOR.md) with publication controls/shared commands; and
-[docs/SETUP.md](./docs/SETUP.md) with connections, runner and phone setup. Keep the
-founding S1–S10 decisions and pack-registry publishing terminology distinct. Amend
-promised rows when the full feature ships, citing the acceptance evidence.
+The owner authorized the full implementation after the planning conversation.
+AGENT-FIRST decisions 145 and 147 record the scope and chosen defaults.
+[PUBLISHING.md](./PUBLISHING.md) tracks the implemented contracts, local verification
+and open live acceptance gates. SPEC.md, EDITOR.md and docs/SETUP.md document the
+entry points and operational requirements. The founding S1–S10 decisions and
+pack-registry terminology remain separate.
 
 The release is complete only when a user can prepare a publication inside the editor,
 see all destinations on the calendar, configure both API providers, execute the
 advertised attended phone flows, and recover failures with the same capabilities
 available to the agent. Optional Cadence migration is complete only if requested and
-verified against the selected existing data. This plan itself ships no capability.
+verified against the selected existing data. Implementation exists; the live gates above still determine release acceptance.

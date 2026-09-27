@@ -660,3 +660,17 @@ The track is a view of existing `clip.words` and `clip.captions`, not a second s
 store or an independent compositing layer. Its phrase grouping and silence-cut mapping
 call the renderer's `toLines` and `mapWords`. Changes use `item.patch`, including
 revision checks, undo/redo and the same agent tool handoff as other item edits.
+
+## Publication panel
+
+**Video → Publication** prepares the active clip/timeline in place, including
+source-free videos. It exposes shared copy, destination overrides/options, reservations,
+video approval, pinned export preview, revision-bound agent authorization, delivery
+results and attended phone controls. Project selection supports batch review through
+the same form. Published siblings remain intact while failed destinations are corrected.
+
+Publication commands are registered for browser API, workspace MCP and CLI, and as the
+editor's `publishing` tool. Hosted editor commands bind to their project. Video approval
+uses shared editor operations; metadata lives outside the EDL. The render service's
+capture callback pins bytes under its existing lock. See [PUBLISHING.md](./PUBLISHING.md)
+for delivery semantics and the pending live acceptance gates.

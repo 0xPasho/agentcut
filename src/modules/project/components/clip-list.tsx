@@ -11,6 +11,9 @@ import { count, runtime } from "@/common/lib/format";
 import type { ProjectVideo } from "@/modules/project/lib/overview";
 import type { SequenceStatus } from "@/modules/plan/types";
 import { STATUS } from "../data";
+import { usePublishing } from "../../publishing/hooks";
+import { PublicationStatusBadge } from "../../publishing/components/status";
+import type { PublicationStatus } from "../../publishing/types";
 import { type VideoLayout, type ClipListHandlers } from "../types";
 
 export function StatusIcon({ status }: { status: SequenceStatus }) {
@@ -42,6 +45,7 @@ export function ClipList({
   onToggle?: (id: string) => void;
 }) {
   const list = useRef<HTMLUListElement>(null);
+  const { data: publishing } = usePublishing(projectId);
 
   // Arrows walk the list and Tab leaves it: one stop for forty rows, the way every
   // other list of this shape behaves.
@@ -73,6 +77,7 @@ export function ClipList({
           key={video.id}
           layout={layout}
           video={video}
+          publicationStatus={publishing?.publications.filter(p => p.sequenceId === video.id).at(-1)?.status}
           projectId={projectId}
           revision={revision}
           selected={video.id === selectedId}
@@ -90,6 +95,7 @@ export function ClipList({
 
 function ClipRow({
   video,
+  publicationStatus,
   layout,
   tabbable,
   projectId,
@@ -102,6 +108,7 @@ function ClipRow({
   onToggle,
 }: {
   video: ProjectVideo;
+  publicationStatus?: PublicationStatus;
   layout: VideoLayout;
   tabbable: boolean;
   projectId: string;
@@ -192,8 +199,8 @@ function ClipRow({
             {runtime(video.durationSec)} · {count(video.shots, "shot", "shots")}
           </span>
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <StatusIcon status={video.status} />
-            {status.label}
+            {publicationStatus ? <PublicationStatusBadge status={publicationStatus} /> : <StatusIcon status={video.status} />}
+            {!publicationStatus && status.label}
             {video.tags.length ? <span className="truncate">· {video.tags.join(", ")}</span> : null}
           </span>
         </span>

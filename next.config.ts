@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Isolated browser checks can run beside the owner's dev server.
+  distDir: process.env.AGENTCUT_NEXT_DIST || ".next",
   // Native binaries and the Remotion renderer must not be bundled by webpack/turbopack.
   serverExternalPackages: [
     "@remotion/renderer",

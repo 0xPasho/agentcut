@@ -18,6 +18,7 @@ const PACKAGE_NAME = "agentcut";
 const WIN = process.platform === "win32";
 
 const COMMANDS = {
+  publishing: { kind: "tsx", entry: "scripts/publishing.ts", help: "list | call request.json | tick — shared publishing commands" },
   dev: { kind: "pnpm", script: "dev", help: "start the Next dev server" },
   start: { kind: "pnpm", script: "start", help: "start the built Next server" },
   edit: { kind: "tsx", entry: "scripts/edit.ts", help: "headless editor: <projectId> [read | call req.json | ask ...]" },
@@ -88,6 +89,7 @@ function plan(command, rest, root, from) {
     }
     return arg;
   });
+  if (command === "publishing" && args[0] === "call" && args[1]) args[1] = path.resolve(from, args[1]);
   if (spec.kind === "tsx") {
     const tsx = localBin(root, "tsx") ?? onPath("tsx");
     if (!tsx) throw new Error(`tsx not found — run "pnpm install" in ${root}`);
@@ -129,6 +131,11 @@ function main() {
     return;
   }
 
+  if (["dev", "start"].includes(command)) {
+    const worker = spawn(process.execPath, ["--import", path.join(root, "node_modules/tsx/dist/loader.mjs"), path.join(root, "scripts/publishing-runner.ts")], { cwd: root, env, stdio: "ignore", detached: true });
+    worker.on("error", () => console.error("Publishing worker could not restart. Run agentcut publishing tick."));
+    worker.unref();
+  }
   const child = spawn(resolved.command, resolved.args, { cwd: resolved.cwd, env, stdio: "inherit", shell: WIN });
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) process.on(signal, () => child.kill(signal));
   child.on("error", error => {

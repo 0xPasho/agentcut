@@ -179,3 +179,13 @@ Everything before and after the agent step is deterministic and cacheable.
 This diagram describes initial clip generation. Subsequent editing by either the human
 or the agent must follow the shared-editor requirement above; it is not a separate
 agent-only generation path followed by a human-only editing path.
+
+## Optional local publishing
+
+The publishing module extends the existing editor through real delivery: one release,
+independent account destinations, shared/per-network copy, immutable pinned exports,
+a calendar, API routes and attended iPhone Mirroring. It uses existing video review
+and shared editor operations. Social publishing is distinct from publishing packs to
+a registry. Implementation and verification are documented in [PUBLISHING.md](./PUBLISHING.md).
+Live native submission and authenticated provider acceptance remain open until the
+owner selects a test batch; automated contract tests do not pass those gates.

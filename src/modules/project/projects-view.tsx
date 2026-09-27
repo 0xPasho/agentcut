@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { HardDrive, Library, Settings } from "lucide-react";
+import { HardDrive, Library, Settings, CalendarDays } from "lucide-react";
 import { AgentcutIcon } from "@/common/components/agentcut-mark";
 import { Button } from "@/common/ui/button";
 import type { ProjectSummary } from "@/common/api/client";
@@ -21,6 +21,7 @@ export function ProjectsView({ projects, showReminder }: { projects: ProjectSumm
           <Button variant="ghost" className="ml-auto" nativeButton={false} render={<Link href="/library" />}>
             <Library aria-hidden className="size-4" />Library
           </Button>
+          <Button variant="ghost" nativeButton={false} render={<Link href="/calendar" />}><CalendarDays aria-hidden className="size-4" />Calendar</Button>
           <Button variant="ghost" nativeButton={false} render={<Link href="/settings" />}><Settings aria-hidden className="size-4" />Settings</Button>
         </nav>
         </Glass>
