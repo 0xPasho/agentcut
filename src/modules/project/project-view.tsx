@@ -12,11 +12,11 @@ import {
   LayoutGrid,
   List,
   MoreHorizontal,
-  Plus,
+  Video,
   Search,
   SlidersHorizontal,
   Sparkles,
-  Wand2,
+  Clapperboard,
 } from "lucide-react";
 import { cn } from "cn";
 import { Button, buttonVariants } from "@/common/ui/button";
@@ -30,8 +30,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/common/ui/textarea";
 import { AgentPicker } from "@/modules/agent/components/agent-picker";
 import { SourceTranscript } from "@/modules/transcription/components/source-transcript";
-import { Glass, ScrollEdge } from "@/common/ui/glass";
-import { ClipList, StatusDot } from "@/modules/project/components/clip-list";
+import { Glass } from "@/common/ui/glass";
+import { ClipList, StatusIcon } from "@/modules/project/components/clip-list";
 import { STATUS } from "@/modules/project/data";
 import { VideoPreview } from "@/modules/editor/components/video-preview";
 import { useEditor } from "@/modules/editor/hooks/use-editor";
@@ -62,7 +62,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
   const [brief, setBrief] = useState("");
   const [finding, setFinding] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [layout, setLayout] = useState<VideoLayout>("list");
+  const [layout, setLayout] = useState<VideoLayout>("grid");
   const [sort, setSort] = useState<VideoSort>("score");
   const [filter, setFilter] = useState<SequenceStatus | "all">("all");
   const editor = useEditor(initial.id, initial.edl ? { edl: initial.edl, revision: initial.revision } : null);
@@ -244,11 +244,11 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                 Find more
               </Button>
               <Button size="sm" variant="ghost" disabled={busy || !videos.length} onClick={() => run(() => api.render(initial.id))}>
-                <Wand2 aria-hidden />
+                <Clapperboard aria-hidden />
                 Render all
               </Button>
               <Button size="sm" variant="outline" disabled={busy} onClick={newVideo}>
-                <Plus aria-hidden />
+                <Video aria-hidden />
                 New video
               </Button>
               <Popover open={menuOpen} onOpenChange={setMenuOpen}>
@@ -269,7 +269,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                     Edit pending videos
                   </MenuItem>
                   <MenuItem disabled={busy || !approved} onClick={() => run(() => api.render(initial.id))}>
-                    <Wand2 aria-hidden />
+                    <Clapperboard aria-hidden />
                     Render approved videos
                   </MenuItem>
                   <MenuItem
@@ -310,7 +310,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                       onClick={() => setFilter(value)}
                       className="font-normal"
                     >
-                      {value !== "all" && <StatusDot status={value} />}
+                      {value !== "all" && <StatusIcon status={value} />}
                       {label}
                       <span className="text-muted-foreground tabular-nums">{counts[value]}</span>
                     </Button>
@@ -343,7 +343,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                   with the list pushes the preview, the agent and every action below
                   five screens of rows. */}
               <div className="relative">
-                <div className="-mx-2 overflow-y-auto px-2 lg:max-h-[calc(100dvh-19rem)] lg:min-h-80">
+                <div className="-mx-2 overflow-y-auto px-2 py-1 [scrollbar-gutter:stable] lg:max-h-[calc(100dvh-19rem)] lg:min-h-80">
                   {shown.length ? (
                     <ClipList
                       layout={layout}
@@ -367,7 +367,6 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                     </p>
                   )}
                 </div>
-                <ScrollEdge edge="bottom" className="hidden h-10 rounded-b-3xl lg:block" />
               </div>
             </>
           ) : (
@@ -387,7 +386,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                   </Button>
                 )}
                 <Button variant="outline" disabled={busy} onClick={newVideo}>
-                  <Plus aria-hidden />
+                  <Video aria-hidden />
                   New video
                 </Button>
               </div>
@@ -463,7 +462,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                   Open editor
                 </Link>
                 <Button size="sm" disabled={busy} onClick={() => run(() => api.render(initial.id, [selected.id]))}>
-                  {busy ? <Loader2 aria-hidden className="motion-safe:animate-spin" /> : <Wand2 aria-hidden />}
+                  {busy ? <Loader2 aria-hidden className="motion-safe:animate-spin" /> : <Clapperboard aria-hidden />}
                   Render
                 </Button>
                 {project.rendered.includes(selected.id) && (

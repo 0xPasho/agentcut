@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Check, Download, Film, SlidersHorizontal, Trash2 } from "lucide-react";
+import { BadgeCheck, Clock3, Download, FileVideo, Film, PencilLine, SlidersHorizontal, Trash2 } from "lucide-react";
 import { cn } from "cn";
 import { Button, buttonVariants } from "@/common/ui/button";
 import { clipUrl, thumbUrl } from "@/common/api/client";
@@ -12,9 +12,11 @@ import type { SequenceStatus } from "@/modules/plan/types";
 import { STATUS } from "../data";
 import { type VideoLayout, type ClipListHandlers } from "../types";
 
-export function StatusDot({ status }: { status: SequenceStatus }) {
-  if (status === "rendered") return <Check aria-hidden className="size-3 text-primary" />;
-  return <span aria-hidden className={cn("size-2 rounded-full", STATUS[status].dot)} />;
+export function StatusIcon({ status }: { status: SequenceStatus }) {
+  if (status === "pending") return <Clock3 aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />;
+  if (status === "edited") return <PencilLine aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />;
+  if (status === "approved") return <BadgeCheck aria-hidden className="size-3.5 shrink-0 text-primary" />;
+  return <FileVideo aria-hidden className="size-3.5 shrink-0 text-primary" />;
 }
 
 export function ClipList({
@@ -112,7 +114,7 @@ function ClipRow({
     <li
       ref={row}
       className={cn(
-        "group/row relative flex items-center gap-3 rounded-2xl p-2 transition-colors duration-150 ease-out motion-reduce:transition-none",
+        "group/row relative flex min-w-0 items-center gap-3 rounded-2xl p-2 transition-colors duration-150 ease-out motion-reduce:transition-none",
         grid && "flex-col items-stretch bg-white/3",
         selected ? "bg-white/8 ring-1 ring-inset ring-primary/50" : "hover:bg-white/5",
       )}
@@ -138,7 +140,7 @@ function ClipRow({
           )}
         </span>
 
-        <span className={cn("relative shrink-0 overflow-hidden rounded-lg bg-black ring-1 ring-foreground/10", grid ? "h-56 w-full" : "h-[70px] w-10")}>
+        <span className={cn("relative shrink-0 overflow-hidden rounded-lg bg-black ring-1 ring-foreground/10", grid ? "aspect-[4/5] w-full" : "h-[70px] w-10")}>
           {poster ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -162,7 +164,7 @@ function ClipRow({
             {runtime(video.durationSec)} · {count(video.shots, "shot", "shots")}
           </span>
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <StatusDot status={video.status} />
+            <StatusIcon status={video.status} />
             {status.label}
             {video.tags.length ? <span className="truncate">· {video.tags.join(", ")}</span> : null}
           </span>
@@ -188,7 +190,7 @@ function ClipRow({
           onClick={() => handlers.onApprove(video)}
           className={cn(approved && "text-primary")}
         >
-          <Check aria-hidden />
+          <BadgeCheck aria-hidden />
         </Button>
         <Link
           href={handlers.href(video)}

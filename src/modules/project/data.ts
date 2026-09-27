@@ -19,14 +19,14 @@ export const ASPECTS: Record<string, { width: number; height: number; fps: numbe
 
 
 /**
- * Status reads as a dot plus its word, never as a colour on its own: four states
+ * Status reads as an icon plus its word, never as a colour on its own: four states
  * told apart by hue alone are four states nobody can tell apart.
  */
-export const STATUS: Record<SequenceStatus, { label: string; dot: string }> = {
-  pending: { label: "Pending", dot: "bg-transparent ring-1 ring-inset ring-muted-foreground" },
-  edited: { label: "Edited", dot: "bg-muted-foreground" },
-  approved: { label: "Approved", dot: "bg-primary" },
-  rendered: { label: "Rendered", dot: "bg-primary" },
+export const STATUS: Record<SequenceStatus, { label: string }> = {
+  pending: { label: "Pending" },
+  edited: { label: "Edited" },
+  approved: { label: "Approved" },
+  rendered: { label: "Rendered" },
 };
 
 
