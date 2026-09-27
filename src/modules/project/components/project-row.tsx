@@ -3,11 +3,11 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, CircleAlert, Film, Loader2, MoreHorizontal, Trash2 } from "lucide-react";
+import { Film, MoreHorizontal, Trash2 } from "lucide-react";
 import { Button } from "@/common/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/common/ui/popover";
 import { api, type ProjectSummary } from "@/common/api/client";
-import { BUSY } from "../data";
+import { ProjectStatus } from "./project-status";
 
 export function ProjectRow({ project }: { project: ProjectSummary }) {
   const router = useRouter();
@@ -15,7 +15,6 @@ export function ProjectRow({ project }: { project: ProjectSummary }) {
   const [error, setError] = useState<string | null>(null);
   const [failedThumbnail, setFailedThumbnail] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const busy = BUSY.has(project.status);
   const videos = project.sequenceCount ?? 0;
 
   const remove = () => start(async () => {
@@ -46,13 +45,7 @@ export function ProjectRow({ project }: { project: ProjectSummary }) {
             {videos > 0 && <span>{videos} {videos === 1 ? "video" : "videos"}</span>}
             {videos > 0 && project.clipCount > 0 && <span aria-hidden>·</span>}
             {project.clipCount > 0 && <span>{project.clipCount} {project.clipCount === 1 ? "clip" : "clips"}</span>}
-            {(videos > 0 || project.clipCount > 0) && <span aria-hidden>·</span>}
-            <span className={`inline-flex items-center gap-1 capitalize ${project.status === "error" ? "text-destructive" : ""}`}>
-              {project.status === "ready" && <Check aria-hidden className="size-3" />}
-              {project.status === "error" && <CircleAlert aria-hidden className="size-3" />}
-              {busy && <Loader2 aria-hidden className="size-3 motion-safe:animate-spin" />}
-              {project.status}
-            </span>
+            <ProjectStatus status={project.status} />
           </div>
         </div>
       </Link>

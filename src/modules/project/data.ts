@@ -1,4 +1,17 @@
 import type { SequenceStatus } from "../plan/types";
+
+export const PROJECT_STATUS_LABELS: Record<string, string> = {
+  new: "New project",
+  ready: "Ready",
+  error: "Needs attention",
+  download: "Downloading",
+  probe: "Reading media",
+  transcribe: "Transcribing",
+  signals: "Analyzing footage",
+  agent: "Editing",
+  rendering: "Rendering",
+  bundling: "Preparing export",
+};
 /** How a project's status reads as a badge. */
 export const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   ready: "secondary",

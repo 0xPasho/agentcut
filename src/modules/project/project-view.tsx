@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { cn } from "cn";
 import { Button, buttonVariants } from "@/common/ui/button";
-import { Badge } from "@/common/ui/badge";
+import { ProjectStatus } from "./components/project-status";
 import { Card } from "@/common/ui/card";
 import { Input } from "@/common/ui/input";
 import { Label } from "@/common/ui/label";
@@ -177,24 +177,25 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
       <Glass
         shape="capsule"
         thickness="thick"
-        className="sticky top-4 z-20 flex flex-wrap items-center gap-3 px-4 py-2.5"
+        className="sticky top-4 z-20 flex flex-wrap items-center gap-3 rounded-3xl px-3 py-3 sm:rounded-full sm:px-4"
       >
-        <Button aria-label="Back to projects" variant="ghost" size="icon" nativeButton={false} render={<Link href="/" />}>
+        <Button aria-label="Back to projects" variant="ghost" size="icon" className="size-10 shrink-0 bg-foreground/5 ring-1 ring-inset ring-foreground/10" nativeButton={false} render={<Link href="/" />}>
           <ArrowLeft aria-hidden className="size-4" />
         </Button>
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-lg font-semibold tracking-tight">{project.name}</h1>
-          <p className="truncate text-xs text-muted-foreground tabular-nums">
-            {project.probe
-              ? `${project.probe.width} × ${project.probe.height} · ${runtime(project.probe.durationSec)}`
-              : project.sourcePath}
+          <h1 title={project.name} className="truncate text-lg font-semibold tracking-tight">{project.name}</h1>
+          <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums">
+            <Film aria-hidden strokeWidth={1.5} className="size-3.5 shrink-0" />
+            <span className="truncate">
+              {project.probe
+                ? `${project.probe.width} × ${project.probe.height} · ${runtime(project.probe.durationSec)}`
+                : count(videos.length, "video", "videos")}
+            </span>
           </p>
         </div>
-        <Badge variant={project.status === "error" ? "destructive" : "secondary"}>
-          {busy && <Loader2 aria-hidden className="mr-1 size-3 motion-safe:animate-spin" />}
-          {/* A stopped or finished job's last stage is history, not what the project is doing. */}
-          {project.job?.status === "running" ? project.job.stage : project.status}
-        </Badge>
+        <div role="status" className="max-w-full sm:max-w-64">
+          <ProjectStatus status={project.status} running={project.job?.status === "running"} stage={project.job?.stage} />
+        </div>
       </Glass>
 
       {busy && project.job ? <Progress value={project.job.progress * 100} className="h-1.5" /> : null}

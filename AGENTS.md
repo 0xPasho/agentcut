@@ -129,6 +129,11 @@ Run `pnpm test` for editing changes and `pnpm test:render` when rendering/state 
 
 ## Interface work
 
+Treat visual details as part of completion: use deliberately sized SVG icons, never
+text glyphs as substitute controls; give status indicators consistent iconography,
+spacing and readable labels across list rows and headers. Keep internal paths and
+raw state identifiers out of primary page chrome. Inspect the result in the browser.
+
 `.claude/skills/` carries the UI skills this project designs against: `better-ui`
 (polish, motion, icons, surfaces), plus `better-colors`, `better-layout`,
 `better-typography`, `better-writing`, `better-accessibility` and `interface-review`.
