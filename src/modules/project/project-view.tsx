@@ -9,6 +9,8 @@ import {
   Download,
   Film,
   Loader2,
+  LayoutGrid,
+  List,
   MoreHorizontal,
   Plus,
   Search,
@@ -45,7 +47,7 @@ import { projectVideos, SORTS, sortVideos, statusCounts, type ProjectVideo, type
 import type { Edit } from "@/modules/editor/types";
 import { useTemplates } from "@/common/hooks/use-templates";
 import { BUSY, STATUSES, FILTERS, MAKES } from "./data";
-import type { MakeChoice } from "./types";
+import type { MakeChoice, VideoLayout } from "./types";
 import { analyzeOptions, editHref } from "./lib/project-view";
 
 export function ProjectView({ initial }: { initial: ProjectDetail }) {
@@ -60,6 +62,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
   const [brief, setBrief] = useState("");
   const [finding, setFinding] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [layout, setLayout] = useState<VideoLayout>("list");
   const [sort, setSort] = useState<VideoSort>("score");
   const [filter, setFilter] = useState<SequenceStatus | "all">("all");
   const editor = useEditor(initial.id, initial.edl ? { edl: initial.edl, revision: initial.revision } : null);
@@ -313,16 +316,26 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                     </Button>
                   ))}
                 </div>
-                <div className="ms-auto flex items-center gap-2">
-                  <Label id={sortId} className="text-xs text-muted-foreground">Sort</Label>
-                  <Select value={sort} onValueChange={(v) => setSort(v as VideoSort)}>
-                    <SelectTrigger aria-labelledby={sortId} size="sm" className="w-44">
-                      <SelectValue>{(v) => SORTS.find((s) => s.value === v)?.label}</SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SORTS.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                <div className="ms-auto flex flex-wrap items-center gap-2">
+                  <div role="group" aria-label="Video layout" className="flex items-center gap-1 rounded-full bg-muted/50 p-1">
+                    <Button size="sm" variant={layout === "list" ? "secondary" : "ghost"} aria-pressed={layout === "list"} onClick={() => setLayout("list")}>
+                      <List aria-hidden /> List
+                    </Button>
+                    <Button size="sm" variant={layout === "grid" ? "secondary" : "ghost"} aria-pressed={layout === "grid"} onClick={() => setLayout("grid")}>
+                      <LayoutGrid aria-hidden /> Grid
+                    </Button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label id={sortId} className="text-xs text-muted-foreground">Sort</Label>
+                    <Select value={sort} onValueChange={(v) => setSort(v as VideoSort)}>
+                      <SelectTrigger aria-labelledby={sortId} size="sm" className="w-44">
+                        <SelectValue>{(v) => SORTS.find((s) => s.value === v)?.label}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SORTS.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </div>
 
@@ -333,6 +346,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                 <div className="-mx-2 overflow-y-auto px-2 lg:max-h-[calc(100dvh-19rem)] lg:min-h-80">
                   {shown.length ? (
                     <ClipList
+                      layout={layout}
                       videos={shown}
                       projectId={initial.id}
                       revision={revision}

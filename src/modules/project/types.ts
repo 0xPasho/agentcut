@@ -21,3 +21,5 @@ export type MakeChoice = {
   /** A section's running time. 0 means "whatever the template asks for". */
   minutes: number;
 };
+
+export type VideoLayout = "list" | "grid";

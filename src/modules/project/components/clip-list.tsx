@@ -10,23 +10,16 @@ import { count, runtime } from "@/common/lib/format";
 import type { ProjectVideo } from "@/modules/project/lib/overview";
 import type { SequenceStatus } from "@/modules/plan/types";
 import { STATUS } from "../data";
-import { type ClipListHandlers } from "../types";
+import { type VideoLayout, type ClipListHandlers } from "../types";
 
 export function StatusDot({ status }: { status: SequenceStatus }) {
   if (status === "rendered") return <Check aria-hidden className="size-3 text-primary" />;
   return <span aria-hidden className={cn("size-2 rounded-full", STATUS[status].dot)} />;
 }
 
-/**
- * Forty candidates, ranked.
- *
- * Rows, not a grid of posters: at this count the decision is "which of these is worth
- * my time", and that is read down a column of scores and titles, not across ten rows
- * of tall pictures. The one vertical thing on the screen is the preview beside it —
- * showing the same shape twice bought nothing and cost five screens of scrolling.
- */
 export function ClipList({
   videos,
+  layout,
   projectId,
   revision,
   selectedId,
@@ -34,6 +27,7 @@ export function ClipList({
   handlers,
 }: {
   videos: ProjectVideo[];
+  layout: VideoLayout;
   projectId: string;
   revision: number;
   selectedId: string | null;
@@ -46,29 +40,36 @@ export function ClipList({
   // other list of this shape behaves.
   const onKeyDown = (event: React.KeyboardEvent<HTMLUListElement>) => {
     const keys = ["ArrowDown", "ArrowUp", "Home", "End"];
-    if (!keys.includes(event.key)) return;
-    const index = videos.findIndex((v) => v.id === selectedId);
+    if (layout === "grid") keys.push("ArrowLeft", "ArrowRight");
+    if (!keys.includes(event.key) || !(event.target as HTMLElement).matches("[data-row]")) return;
+    const index = Array.from(list.current?.querySelectorAll("[data-row]") ?? []).indexOf(event.target as Element);
     if (index < 0) return;
+    const rows = Array.from(list.current?.children ?? []) as HTMLLIElement[];
+    const columns = layout === "grid" ? Math.max(1, rows.filter(row => row.offsetTop === rows[0]?.offsetTop).length) : 1;
     const next =
-      event.key === "ArrowDown" ? Math.min(videos.length - 1, index + 1)
-      : event.key === "ArrowUp" ? Math.max(0, index - 1)
+      event.key === "ArrowDown" ? Math.min(videos.length - 1, index + columns)
+      : event.key === "ArrowUp" ? Math.max(0, index - columns)
+      : event.key === "ArrowRight" ? Math.min(videos.length - 1, index + 1)
+      : event.key === "ArrowLeft" ? Math.max(0, index - 1)
       : event.key === "Home" ? 0
       : videos.length - 1;
-    if (next === index) return;
     event.preventDefault();
+    if (next === index) return;
     handlers.onSelect(videos[next].id);
     list.current?.querySelectorAll<HTMLButtonElement>("[data-row]")[next]?.focus();
   };
 
   return (
-    <ul ref={list} onKeyDown={onKeyDown} className="flex flex-col gap-1">
+    <ul ref={list} onKeyDown={onKeyDown} className={layout === "grid" ? "grid grid-cols-[repeat(auto-fill,minmax(min(100%,13rem),1fr))] gap-3" : "flex flex-col gap-1"}>
       {videos.map((video) => (
         <ClipRow
           key={video.id}
+          layout={layout}
           video={video}
           projectId={projectId}
           revision={revision}
           selected={video.id === selectedId}
+          tabbable={video.id === selectedId || (!videos.some(v => v.id === selectedId) && video.id === videos[0]?.id)}
           rendered={rendered.includes(video.id)}
           handlers={handlers}
         />
@@ -79,6 +80,8 @@ export function ClipList({
 
 function ClipRow({
   video,
+  layout,
+  tabbable,
   projectId,
   revision,
   selected,
@@ -86,6 +89,8 @@ function ClipRow({
   handlers,
 }: {
   video: ProjectVideo;
+  layout: VideoLayout;
+  tabbable: boolean;
   projectId: string;
   revision: number;
   selected: boolean;
@@ -94,6 +99,7 @@ function ClipRow({
 }) {
   const [poster, setPoster] = useState(true);
   const row = useRef<HTMLLIElement>(null);
+  const grid = layout === "grid";
   const status = STATUS[video.status];
   const approved = video.status === "approved" || video.status === "rendered";
 
@@ -107,18 +113,19 @@ function ClipRow({
       ref={row}
       className={cn(
         "group/row relative flex items-center gap-3 rounded-2xl p-2 transition-colors duration-150 ease-out motion-reduce:transition-none",
+        grid && "flex-col items-stretch bg-white/3",
         selected ? "bg-white/8 ring-1 ring-inset ring-primary/50" : "hover:bg-white/5",
       )}
     >
       <button
         data-row
         type="button"
-        tabIndex={selected ? 0 : -1}
+        tabIndex={tabbable ? 0 : -1}
         aria-pressed={selected}
         onClick={() => handlers.onSelect(video.id)}
-        className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-xl text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        className={cn("flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-xl text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50", grid && "relative flex-col items-stretch")}
       >
-        <span className="flex w-9 shrink-0 flex-col items-center gap-1.5">
+        <span className={cn("flex w-9 shrink-0 flex-col items-center gap-1.5", grid && "absolute start-2 top-2 z-10 rounded-lg bg-black/80 p-1.5 text-white")}>
           <span className={cn("text-base leading-none font-semibold tabular-nums", video.score === null && "text-muted-foreground")}>
             {video.score ?? "–"}
           </span>
@@ -131,7 +138,7 @@ function ClipRow({
           )}
         </span>
 
-        <span className="relative h-[70px] w-10 shrink-0 overflow-hidden rounded-lg bg-black ring-1 ring-foreground/10">
+        <span className={cn("relative shrink-0 overflow-hidden rounded-lg bg-black ring-1 ring-foreground/10", grid ? "h-56 w-full" : "h-[70px] w-10")}>
           {poster ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -139,7 +146,7 @@ function ClipRow({
               alt=""
               loading="lazy"
               onError={() => setPoster(false)}
-              className="size-full object-cover"
+              className={cn("size-full", grid ? "object-contain" : "object-cover")}
             />
           ) : (
             <span className="flex size-full items-center justify-center">
@@ -149,7 +156,7 @@ function ClipRow({
         </span>
 
         <span className="flex min-w-0 flex-1 flex-col gap-1">
-          <span className="truncate text-sm font-medium">{video.title}</span>
+          <span className={cn("text-sm font-medium", grid ? "line-clamp-2" : "truncate")}>{video.title}</span>
           <span className="truncate text-xs text-muted-foreground tabular-nums">
             {video.sourceStart !== null ? `${runtime(video.sourceStart)} → ${runtime(video.sourceStart + video.durationSec)} · ` : ""}
             {runtime(video.durationSec)} · {count(video.shots, "shot", "shots")}
@@ -168,7 +175,7 @@ function ClipRow({
       <div
         className={cn(
           "flex shrink-0 items-center gap-1",
-          selected ? "visible" : "invisible lg:group-hover/row:visible",
+          (selected || grid) ? "visible" : "invisible lg:group-hover/row:visible",
         )}
       >
         <Button
