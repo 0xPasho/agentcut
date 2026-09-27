@@ -140,7 +140,7 @@ function ClipRow({
           )}
         </span>
 
-        <span className={cn("relative shrink-0 overflow-hidden rounded-lg bg-black ring-1 ring-foreground/10", grid ? "aspect-[4/5] w-full" : "h-[70px] w-10")}>
+        <span className={cn("relative shrink-0 overflow-hidden rounded-lg bg-black ring-1 ring-foreground/10", grid ? "w-full" : "h-[70px] w-10")}>
           {poster ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -148,10 +148,10 @@ function ClipRow({
               alt=""
               loading="lazy"
               onError={() => setPoster(false)}
-              className={cn("size-full", grid ? "object-contain" : "object-cover")}
+              className={cn("object-contain", grid ? "block h-auto w-full" : "size-full")}
             />
           ) : (
-            <span className="flex size-full items-center justify-center">
+            <span className={cn("flex size-full items-center justify-center", grid && "aspect-video")}>
               <Film aria-hidden className="size-4 text-muted-foreground" />
             </span>
           )}

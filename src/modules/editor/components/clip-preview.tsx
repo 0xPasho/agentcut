@@ -50,8 +50,8 @@ export function ClipPreview({
       compositionHeight={edl.output.height}
       controls
       doubleClickToFullscreen
-      className="aspect-[9/16] w-full overflow-hidden rounded-2xl border border-border bg-black"
-      style={{ width: "100%" }}
+      className="w-full overflow-hidden rounded-2xl border border-border bg-black"
+      style={{ width: "100%", aspectRatio: `${edl.output.width} / ${edl.output.height}` }}
     />
   );
 }
