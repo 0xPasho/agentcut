@@ -100,8 +100,10 @@ not certification against an authenticated deployed account.
 
 Settings can compile Agentcut's original Swift input bridge or point to an existing
 compatible `phonectl`. iPhone Mirroring remains a local macOS dependency; API use
-and editing work without Swift. Start an attended session only after queueing the
-reviewed payload and identifying its pinned export in Drive or Photos.
+and editing work without Swift. The connection check validates window geometry, Accessibility and an actual
+window capture, then deletes the diagnostic image. It reports known setup failures
+without exposing process arguments or pasted text. Start an attended session only
+after queueing the reviewed payload and identifying its pinned export in Drive or Photos.
 
 The host owns focus, screen capture and input. The existing vision harness receives
 only session-bound action/record/abort schemas and exchanges request/response files.
@@ -149,9 +151,9 @@ sending imported work when Agentcut becomes the authority. No bidirectional sync
 - Isolated browser acceptance saves copy, approves the video, pins an actual render,
   saves its phone source and opens monthly/mobile Calendar without page errors or
   horizontal overflow. It performs no social submission.
-- Repository checks on 2026-09-26: `pnpm test` passed 538 tests;
+- Repository checks on 2026-09-26: `pnpm test` passed 540 tests;
   `pnpm test:render` passed 36 tests; `pnpm exec tsc --noEmit` passed.
-  The publishing suite accounts for 20 domain/contract tests plus one real-render test.
+  The publishing suite accounts for 22 domain/contract tests plus one real-render test.
 - Still required: an owner-selected live video/account/time and attended iPhone test
   through native submission and verification; controlled authenticated checks on the
   actual Postgun/Postbridge connections. No real social post has been submitted as

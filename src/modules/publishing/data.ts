@@ -4,6 +4,12 @@ export const STATUS_LABELS: Record<PublicationStatus, string> = { draft: "Draft"
 export const FORMATS: Record<Format, { network: Network; label: string }> = { "youtube-video": { network: "youtube", label: "YouTube video" }, "youtube-short": { network: "youtube", label: "YouTube Short" }, "instagram-reel": { network: "instagram", label: "Instagram Reel" }, "tiktok-video": { network: "tiktok", label: "TikTok video" } };
 export const PROVIDER_URLS = { iphone: "", postgun: "https://api.postgun.ai", postbridge: "https://api.post-bridge.com" };
 export const ACTIVE_DELIVERY = ["queued", "sending", "scheduled", "published", "unknown", "cancel_pending"];
+export const PHONE_COMMAND_ERRORS: Record<string, string> = {
+  "Open iPhone Mirroring": "Open iPhone Mirroring on this Mac, connect the nearby locked iPhone, then check the connection again.",
+  "No visible Mirroring window": "Bring the iPhone Mirroring window onto the screen, then check the connection again.",
+  "Refused: focus and Accessibility required": "Keep iPhone Mirroring in front and grant Accessibility to the application running Agentcut.",
+  "Point outside window": "The Mirroring window changed. Capture a new screen before choosing another position.",
+};
 export const PHONE_GUIDE = {
   transfer: "Find the exact approved file in Drive, Send a copy → Save Video. Verify the filename, duration, dimensions and visible contents in Photos. Download once for this publication. For an existing Photos item verify identity; newest alone is insufficient.",
   instagram: "Verify the account. Create a Reel; reject restored drafts. Select exactly the approved video, verify the preview, Next through editor. Paste caption once and inspect it. For scheduling, More options → Schedule this reel; inspect the date/time picker and read back its actual value. Before the final Share/Schedule tap, verify account, video, text and time against the approved payload. After submission verify in profile or Scheduled content and capture evidence.",

@@ -260,7 +260,9 @@ submits. The editor's **Video → Publication** is the normal place to review an
 On macOS, open iPhone Mirroring with the locked phone nearby. Build the phone tool from
 Publishing settings (requires Apple's Swift compiler), or set an existing compatible
 executable. Grant Accessibility and Screen Recording to the application running
-Agentcut; restart it after permission changes. Use **Check phone connection**. Identify
+Agentcut; restart it after permission changes. Use **Check phone connection** with
+the Mirroring window open. The check captures that window and immediately deletes
+the diagnostic image; seeing a window or having Accessibility alone is insufficient. Identify
 the exact pinned export in Drive/Photos, queue reviewed destinations, and start an
 attended agent or manual session. Phone work does not run unattended on app startup.
 

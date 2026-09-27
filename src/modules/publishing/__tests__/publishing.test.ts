@@ -310,3 +310,21 @@ test("cancel timeout is reconciled from remote absence, and a stale poll cannot 
     assert.equal(store.publication(p.id).destinations[0].state, "cancelled");
   } finally { await new Promise<void>(resolve => server.close(() => resolve())); }
 });
+
+test("phone diagnostics distinguish setup failures without disclosing clipboard or process arguments", async () => {
+  const { phoneCommandFailure } = await import("../lib/phone");
+  assert.match(phoneCommandFailure({ code: "ENOENT" }), /Build it in Publishing settings/);
+  assert.match(phoneCommandFailure({ stderr: "Open iPhone Mirroring\n" }), /Open iPhone Mirroring on this Mac/);
+  assert.match(phoneCommandFailure({ stderr: "No visible Mirroring window" }), /onto the screen/);
+  assert.match(phoneCommandFailure({ killed: true, stderr: "paste private-caption" }), /may have received the input/);
+  assert.ok(!phoneCommandFailure({ message: "Command failed: paste private-caption", stderr: "private-caption" }).includes("private-caption"));
+  assert.equal(typeof phoneCommandFailure({ stderr: "toString" }), "string");
+});
+
+test("phone readiness rejects malformed geometry before coordinates can become desktop input", async () => {
+  const { parsePhoneWindow } = await import("../lib/phone");
+  const valid = "id=12 x=-400 y=20 w=350 h=700 frontmost=true trusted=true";
+  assert.equal(parsePhoneWindow(valid).x, -400, "a monitor may have negative desktop coordinates");
+  assert.equal(parsePhoneWindow(valid.replace("trusted=true", "trusted=false")).trusted, false);
+  for (const invalid of [valid.replace("w=350", "w=NaN"), valid.replace("h=700", "h=0"), valid.replace("id=12", "id=-1"), "unrecognized protocol"]) assert.throws(() => parsePhoneWindow(invalid), /invalid window information/);
+});

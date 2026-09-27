@@ -2,8 +2,10 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
+import os from "node:os";
 import { ROOT, WORKSPACE } from "../../../../common/server/config";
 import type { PhoneAction, PhoneWindow } from "../../types";
+import { parsePhoneWindow, phoneCommandFailure } from "../../lib/phone";
 import { settings } from "../store";
 
 const exec = promisify(execFile);
@@ -18,14 +20,31 @@ export async function buildPhoneTool() {
 async function command(args: string[]) {
   if (process.platform !== "darwin") throw new Error("iPhone Mirroring requires macOS");
   try { const { stdout } = await exec(phoneBinary(), args, { timeout: 30_000, maxBuffer: 1024 * 1024 }); return stdout.trim(); }
-  catch { throw new Error("Phone action failed. Check the Mirroring window, Accessibility permission and phone-tool configuration."); }
+  catch (error) { throw new Error(phoneCommandFailure(error)); }
 }
 export async function phoneInfo(): Promise<PhoneWindow> {
-  const raw = await command(["info"]), pairs = Object.fromEntries(raw.split(/\s+/).map(k => k.split("=")));
-  if (!pairs.id) throw new Error("Open iPhone Mirroring and unlock its connection");
-  return { id: Number(pairs.id), x: Number(pairs.x), y: Number(pairs.y), w: Number(pairs.w), h: Number(pairs.h), frontmost: pairs.frontmost === "true", trusted: pairs.trusted === "true" };
+  return parsePhoneWindow(await command(["info"]));
 }
-export async function phoneReadiness() { try { const window = await phoneInfo(); return { ready: window.trusted, window, message: window.trusted ? "Ready. Keep the connected phone locked and nearby." : "Grant Accessibility to the application running Agentcut in macOS settings." }; } catch (error) { return { ready: false, window: null, message: (error as Error).message }; } }
+async function captureWindow(window: PhoneWindow, screenshot: string) {
+  await fs.mkdir(path.dirname(screenshot), { recursive: true });
+  try {
+    await exec("/usr/sbin/screencapture", ["-x", "-o", "-l", String(window.id), screenshot], { timeout: 15_000 });
+    if (!(await fs.stat(screenshot)).size) throw new Error("Empty capture");
+  } catch {
+    throw new Error("Could not capture the Mirroring window. Keep it open, grant Screen Recording to the application running Agentcut, then restart that application and check again.");
+  }
+}
+export async function phoneReadiness() {
+  let directory: string | undefined;
+  try {
+    const window = await phoneInfo();
+    if (!window.trusted) return { ready: false, window, message: "Grant Accessibility to the application running Agentcut in macOS settings." };
+    directory = await fs.mkdtemp(path.join(os.tmpdir(), "agentcut-phone-check-"));
+    await captureWindow(window, path.join(directory, "check.png"));
+    return { ready: true, window, message: "Mac input and screen capture are ready. Verify the iPhone connection and account in the attended session." };
+  } catch (error) { return { ready: false, window: null, message: (error as Error).message }; }
+  finally { if (directory) await fs.rm(directory, { recursive: true, force: true }); }
+}
 export async function act(action: PhoneAction, screenshot: string) {
   await command(["focus"]);
   const window = await phoneInfo();
@@ -40,8 +59,6 @@ export async function act(action: PhoneAction, screenshot: string) {
     await command(["key", action.key, ...(action.modifier ? [action.modifier] : [])]);
   } else if (action.kind === "paste") await command(["paste", action.text ?? "", "3000"]);
   else if (action.kind === "home") await command(["key", "1", "cmd"]);
-  await fs.mkdir(path.dirname(screenshot), { recursive: true });
-  await exec("/usr/sbin/screencapture", ["-x", "-o", "-l", String(window.id), screenshot], { timeout: 15_000 });
-  if (!(await fs.stat(screenshot)).size) throw new Error("Screen capture failed. Grant Screen Recording and restart the terminal.");
+  await captureWindow(window, screenshot);
   return window;
 }
