@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ComponentProps, type PointerEvent } from "react";
-import { EyeOff, Eye, VolumeX, Volume2, Play, Pause, Plus, Film, Gauge, Music2, Layers, Magnet, Minus, Copy, Scissors, Trash2, ArrowUp, ArrowDown, MousePointerClick, MessageSquare, Blend, Timer } from "lucide-react";
+import { Captions, EyeOff, Eye, VolumeX, Volume2, Play, Pause, Plus, Film, Gauge, Music2, Layers, Magnet, Minus, Copy, Scissors, Trash2, ArrowUp, ArrowDown, MousePointerClick, MessageSquare, Blend, Timer } from "lucide-react";
+import { captionCues } from "../lib/caption-track";
 import { Transition } from "@/modules/editor/types";
 import type { MediaSource, VideoSequence } from "@/modules/editor/types";
 import type { EditorOperation } from "@/modules/editor/lib/operations";
@@ -122,6 +123,8 @@ type Props = {
   sequence: VideoSequence; selectedId?: string; dispatch: (ops: EditorOperation[]) => boolean | void;
   /** Pick a clip and park the playhead there. `null` picks it without moving the playhead. */
   onSelect: (id: string, seconds: number | null) => void;
+  onSelectCaption?: (itemId: string, word: number, seconds: number) => void;
+  selectedCaption?: number | null;
   onSeek: (seconds: number) => void;
   /** Transport lives here because the preview has no controls of its own. */
   playing?: boolean; onPlayToggle?: () => void;
@@ -216,7 +219,7 @@ function Waveform({ src }: { src: string }) {
   return <WaveShape peaks={peaks} className="pointer-events-none absolute inset-x-0 bottom-0 h-7 w-full fill-emerald-300/70 opacity-60" />;
 }
 
-export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, onSelect, onSeek, mediaUrls = {}, assetUrls = {}, media = EMPTY_MEDIA, selectedEdit, onSelectEdit, onDropMedia, onDropAsset, onDropFiles, onDropLocalFile, onDropSearchHit, onReplaceMedia, onReplaceAsset, onSplit, onDuplicate, onDetachAudio, onAskAgent, onNotify, playing = false, onPlayToggle, rate = 1, onRateChange, chat }: Props) {
+export function SequenceTimeline({ projectId, sequence, selectedId, selectedCaption, onSelectCaption, dispatch, onSelect, onSeek, mediaUrls = {}, assetUrls = {}, media = EMPTY_MEDIA, selectedEdit, onSelectEdit, onDropMedia, onDropAsset, onDropFiles, onDropLocalFile, onDropSearchHit, onReplaceMedia, onReplaceAsset, onSplit, onDuplicate, onDetachAudio, onAskAgent, onNotify, playing = false, onPlayToggle, rate = 1, onRateChange, chat }: Props) {
   // Reading the playhead here never re-renders the timeline; the parts that draw it
   // subscribe on their own, so a playing preview repaints a marker, not every clip.
   const playhead = usePlayheadStore();
@@ -815,6 +818,16 @@ export function SequenceTimeline({ projectId, sequence, selectedId, dispatch, on
             <PlayheadMark span={span} scale={scale} className="pointer-events-none absolute bottom-0 h-3 w-3 -translate-x-1/2 rounded-t-sm bg-primary [clip-path:polygon(0_0,100%_0,100%_55%,50%_100%,0_55%)]" />
           </Ruler>
         </div>
+        {onSelectCaption && lanes.filter(lane => layout.items.some(({ item }) => (item.layer ?? 0) === lane.layer && item.clip.words.length && !item.hidden)).map(lane => (
+          <div key={`captions-${lane.layer}`} className="flex border-b border-white/5" aria-label={`Captions for ${laneName(lane.layer)}`}>
+            <span className="sticky left-0 z-20 flex w-[76px] shrink-0 items-center gap-1 bg-card px-1 text-[10px] text-muted-foreground"><Captions aria-hidden className="size-3 shrink-0" />Captions</span>
+            <div className="relative h-10 shrink-0" style={{ width }}>
+              {layout.items.filter(({ item }) => (item.layer ?? 0) === lane.layer && !item.hidden).flatMap(({ item, from }) => captionCues(item.clip).filter(cue => cue.end > cue.start).map(cue => <button key={`${item.id}:${cue.indices[0]}`} type="button" title={cue.text} aria-label={`Edit caption: ${cue.text}`} aria-pressed={selectedId === item.id && selectedCaption != null && cue.indices.includes(selectedCaption)} onClick={() => onSelectCaption(item.id, cue.indices[0], from / fps + cue.start)}
+                className={`absolute top-1 h-8 overflow-hidden rounded-md border px-1 text-left text-[10px] whitespace-nowrap focus-visible:z-30 focus-visible:outline-2 focus-visible:outline-ring ${selectedId === item.id && selectedCaption != null && cue.indices.includes(selectedCaption) ? "border-primary bg-primary/25" : "border-primary/25 bg-primary/10 hover:bg-primary/20"} ${item.clip.captions.preset === "none" ? "opacity-40" : ""}`}
+                style={{ left: (from / fps + cue.start) * scale, width: Math.max(2, (cue.end - cue.start) * scale) }}>{cue.text}</button>))}
+            </div>
+          </div>
+        ))}
         {newTrackRow({ layer: newLayer, kind: "video" }, "Drop a clip here for a new track", "border-b")}
         {lanes.map((lane, position) => { const layer = lane.layer, first = lane.kind === "audio" && lanes[position - 1]?.kind !== "audio";
           const boxes = laneBoxes(layout.items.filter(entry => (entry.item.layer ?? 0) === layer).map(({ item, from, duration }) => ({ id: item.id, from, duration })), scale / fps);

@@ -347,3 +347,41 @@ test("a project with no shape chosen takes the shape of its first video, and und
   await tools.executeEditorTool(chosen.id, { tool: "media.import", file: source, expectedRevision: vertical.revision, place: { sequenceId: vertical.edl.sequences[0].id, at: null, layer: 0 } });
   assert.deepEqual(store.readEditor(chosen.id).edl.sequences[0].output, { width: 1080, height: 1920, fps: 30 });
 });
+
+test("caption text and style edits hand off between the visual editor and agent without changing footage", async () => {
+  const { captionCues, replaceCaptionText } = await import("../lib/caption-track");
+  const { id } = await mediaService.createVideoProject("Caption handoff", [{ file: source }]);
+  const initial = store.readEditor(id);
+  const sequence = initial.edl.sequences[0];
+  const item = sequence.items[0];
+  const words = [{ w: "Original", t: 0.1, d: 0.4 }, { w: "caption", t: 0.6, d: 0.4 }];
+  const seeded = await tools.executeEditorTool(id, { tool: "project.edit", expectedRevision: initial.revision, operations: [{ type: "item.patch", sequenceId: sequence.id, itemId: item.id, patch: { words, captions: { preset: "boxed" } } }] }) as ReturnType<typeof store.readEditor>;
+  const clip = seeded.edl.sequences[0].items[0].clip;
+  const cue = captionCues(clip)[0];
+  const corrected = replaceCaptionText(clip, cue.indices, "Corrected caption");
+  assert.deepEqual(corrected.map(({ t, d }) => ({ t, d })), words.map(({ t, d }) => ({ t, d })));
+  const operations = [{ type: "item.patch", sequenceId: sequence.id, itemId: item.id, patch: { words: corrected } }];
+  const saved = store.editProject(id, { expectedRevision: seeded.revision, operations });
+  assert.deepEqual(saved.edl, applyOperations(seeded.edl, operations));
+  const agent = await tools.executeEditorTool(id, { tool: "project.edit", expectedRevision: saved.revision, operations: [{ type: "item.patch", sequenceId: sequence.id, itemId: item.id, patch: { captions: { color: "#ffff00" } } }] }) as ReturnType<typeof store.readEditor>;
+  assert.equal(captionCues(agent.edl.sequences[0].items[0].clip)[0].text, "Corrected caption");
+  assert.deepEqual(agent.edl.sequences[0].items[0].clip.edits, item.clip.edits);
+  assert.equal(agent.edl.sequences[0].items[0].clip.start, item.clip.start);
+  assert.equal(agent.edl.sequences[0].items[0].clip.captions.preset, "boxed");
+});
+
+test("caption blocks follow silence cuts and sync offsets; replacement preserves words outside the phrase", async () => {
+  const { captionCues, replaceCaptionText } = await import("../lib/caption-track");
+  const clip = Clip.parse({ id: "captions", title: "Captions", start: 0, end: 5, words: [{ w: "One", t: 0, d: .4 }, { w: "cut", t: 1.1, d: .2 }, { w: "two", t: 2, d: .4 }, { w: "later", t: 4, d: .4 }], edits: [{ type: "silence", t: 1, d: 1 }], captions: { syncOffsetMs: 100, maxWordsPerLine: 1 } });
+  const cues = captionCues(clip);
+  assert.ok(!cues.some(cue => cue.indices.includes(1)));
+  assert.equal(cues.find(cue => cue.indices.includes(2))!.start, 1.1);
+  const words = replaceCaptionText(clip, [2], "two new words");
+  assert.equal(words.length, 6);
+  assert.deepEqual(words[0], clip.words[0]);
+  assert.deepEqual(words.at(-1), clip.words.at(-1));
+  assert.ok(words.slice(2, 5).every(word => word.t >= 2 && word.t + word.d <= 2.4 + 1e-9));
+  assert.equal(replaceCaptionText(clip, [2], "").length, 3);
+  const acrossCut = replaceCaptionText(clip, [0, 2], "A new phrase");
+  assert.equal(captionCues({ ...clip, words: acrossCut }).map(cue => cue.text).join(" "), "A new phrase later");
+});

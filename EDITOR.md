@@ -636,3 +636,17 @@ picture already had `x`/`y`, and the caption block has `captions.positionY`. The
 writes those fields when a title, picture or the captions are dragged, through the shared
 `moveOverlay` in `src/modules/editor/lib/canvas.ts`; the agent sets the same fields directly, and
 the Selected panel shows them as sliders either way.
+
+## Caption track
+
+The timeline exposes caption phrases above the picture tracks. Clicking a phrase
+selects its owning item, seeks to it, and opens the caption editor at the top of the
+properties column. Text corrections preserve word timing when the word count is
+unchanged; adding or removing words redistributes timing inside that phrase. Empty
+text removes the selected phrase. Style controls affect the selected clip; **Apply
+style to all captions** applies the same style to every item with words in the video.
+
+The track is a view of existing `clip.words` and `clip.captions`, not a second subtitle
+store or an independent compositing layer. Its phrase grouping and silence-cut mapping
+call the renderer's `toLines` and `mapWords`. Changes use `item.patch`, including
+revision checks, undo/redo and the same agent tool handoff as other item edits.

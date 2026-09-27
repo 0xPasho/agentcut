@@ -27,6 +27,7 @@ import { ScrollArea } from "../../common/ui/scroll-area";
 import { Separator } from "../../common/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../common/ui/tabs";
 import { ClipInspector } from "./components/clip-inspector";
+import { CaptionEditor } from "./components/caption-editor";
 import { CaptionControls } from "./components/caption-controls";
 import { OverlayEditor } from "./components/overlay-editor";
 import { EditorStatus } from "./components/editor-status";
@@ -123,6 +124,11 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
   const browseAssets = (kind: "image" | "audio") => { setAssetPanelOpen(true); setAssetFocus({ kind, nonce: Date.now() }); };
   const addGroupId = useId(), clipGroupId = useId();
   const [propertiesOpen, setPropertiesOpen] = useState(false);
+  const [selectedCaption, setSelectedCaption] = useState<number | null>(null);
+  const propertiesPanel = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (selectedCaption !== null) propertiesPanel.current?.scrollTo({ top: 0 });
+  }, [selectedCaption, item?.id]);
   const [selected, setSelected] = useState<number | null>(null);
   // The playhead is not state: see src/modules/editor/hooks/playhead.ts for why the editor must
   // not re-render thirty times a second while the preview plays.
@@ -227,7 +233,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
     return [op];
   });
   const update = (next: Clip) => { if (hasContent) dispatch(mapOperations([patchFromClip(clip,next)])); };
-  const resetSelection = () => { setSelected(null); setPropertiesOpen(false); setTab("captions"); };
+  const resetSelection = () => { setSelectedCaption(null); setSelected(null); setPropertiesOpen(false); setTab("captions"); };
   const newSequence = () => {
     const id = uid("s"); dispatch([{ type: "sequence.add", sequence: { id, title: `Video ${edl.sequences.length+1}`, output: { ...edl.output }, items: [], plan: emptySequencePlan() } }]);
     setActiveSequenceId(id); setActiveItemId(""); seek(0); resetSelection();
@@ -732,7 +738,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
               <span className="absolute inset-x-0 bottom-4 text-center text-xs font-medium text-white">Drop to place it here</span>
             </div>}
             {previewProps ? <Player ref={player} component={SequenceComposition} inputProps={previewProps} playbackRate={rate} durationInFrames={allocation!.duration} fps={output.fps} compositionWidth={output.width} compositionHeight={output.height} spaceKeyToPlayOrPause={false} clickToPlay={false} acknowledgeRemotionLicense className="overflow-hidden rounded-2xl border border-border bg-black" style={{width:"100%",height:"100%"}} /> : null}
-            {canvasSelected && !playing && item && sequence && (item.mediaId || clip.edits.some(e=>e.type==="text"||e.type==="image") || (clip.words.length>0&&clip.captions.preset!=="none")) && <CanvasSelection key={item.id} item={item} sequence={sequence} dispatch={dispatch} onPreview={setCanvasPreview} selectedEdit={selected} onSelectEdit={index=>{setSelected(index);setTab("edit");}} onSelectCaptions={()=>setTab("captions")} />}
+            {canvasSelected && !playing && item && sequence && (item.mediaId || clip.edits.some(e=>e.type==="text"||e.type==="image") || (clip.words.length>0&&clip.captions.preset!=="none")) && <CanvasSelection key={item.id} item={item} sequence={sequence} dispatch={dispatch} onPreview={setCanvasPreview} selectedEdit={selected} onSelectEdit={index=>{setSelected(index);setTab("edit");}} onSelectCaptions={()=>{setTab("captions");setSelectedCaption(0);}} />}
           </div>}
         </div>
         {/* The selected clip's controls, under the frame rather than over it: the picture is
@@ -750,7 +756,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
             : <p className="px-2 text-xs text-muted-foreground">Pick a clip on the frame or the timeline to edit it.</p>}
         </div>}
         <Card className="min-h-0 max-h-[45dvh] min-w-0 shrink-0 overflow-hidden py-3"><CardContent className="flex min-h-0 flex-col gap-3 overflow-hidden px-4">
-          {sequence && <SequenceTimeline projectId={projectId} sequence={sequence} selectedId={item?.id} dispatch={dispatch} onSeek={seek} playing={playing} onPlayToggle={()=>{if(playing)player.current?.pause();else player.current?.play();}} rate={rate} onRateChange={setRate} media={edl.media} mediaUrls={mediaUrls} assetUrls={assetUrls} selectedEdit={selected} onSelectEdit={index=>{setSelected(index);setTab("edit");}} onDropMedia={(id,at,layer)=>appendVideo(id,layer>0,{at,layer})} onDropAsset={(id,at,layer)=>void dropAsset(id,at,layer)} onDropFiles={(files,at,layer)=>dropFiles(files,{at,layer})} onDropLocalFile={(file,kind,at,layer)=>dropLocalFile(file,kind,{at,layer})} onDropSearchHit={(hit,at,layer)=>dropSearchHit(hit,{at,layer})} onReplaceMedia={replaceMedia} onReplaceAsset={(itemId,assetId,editIndex)=>void replaceAsset(itemId,assetId,editIndex)} onSplit={splitAtPlayhead} onDuplicate={duplicateSelected} onDetachAudio={detachAudio} chat={chat} onAskAgent={id=>{setActiveItemId(id);setCanvasSelected(true);}} onNotify={notify} onSelect={(id,t)=>{setActiveItemId(id);setCanvasSelected(true);player.current?.pause();if(t!==null)seek(t);resetSelection();}} />}
+          {sequence && <SequenceTimeline selectedCaption={selectedCaption} onSelectCaption={(id,word,time)=>{setActiveItemId(id);setCanvasSelected(true);setSelected(null);setSelectedCaption(word);player.current?.pause();seek(time);}} projectId={projectId} sequence={sequence} selectedId={item?.id} dispatch={dispatch} onSeek={seek} playing={playing} onPlayToggle={()=>{if(playing)player.current?.pause();else player.current?.play();}} rate={rate} onRateChange={setRate} media={edl.media} mediaUrls={mediaUrls} assetUrls={assetUrls} selectedEdit={selected} onSelectEdit={index=>{setSelected(index);setTab("edit");}} onDropMedia={(id,at,layer)=>appendVideo(id,layer>0,{at,layer})} onDropAsset={(id,at,layer)=>void dropAsset(id,at,layer)} onDropFiles={(files,at,layer)=>dropFiles(files,{at,layer})} onDropLocalFile={(file,kind,at,layer)=>dropLocalFile(file,kind,{at,layer})} onDropSearchHit={(hit,at,layer)=>dropSearchHit(hit,{at,layer})} onReplaceMedia={replaceMedia} onReplaceAsset={(itemId,assetId,editIndex)=>void replaceAsset(itemId,assetId,editIndex)} onSplit={splitAtPlayhead} onDuplicate={duplicateSelected} onDetachAudio={detachAudio} chat={chat} onAskAgent={id=>{setActiveItemId(id);setCanvasSelected(true);}} onNotify={notify} onSelect={(id,t)=>{setActiveItemId(id);setCanvasSelected(true);player.current?.pause();if(t!==null)seek(t);resetSelection();}} />}
           {/* Everything a video can be given, in one row under the timeline it lands on.
               Split and duplicate are not here: they act on the selection, so they live with
               the selection in the bar under the frame. The second group does act on the
@@ -773,7 +779,8 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
           </div>
         </CardContent></Card>
       </section>
-      <aside aria-label="Editing properties" className="flex w-full min-h-0 shrink-0 flex-col gap-3 lg:w-[340px] lg:overflow-y-auto lg:pr-1">
+      <aside ref={propertiesPanel} aria-label="Editing properties" className="flex w-full min-h-0 shrink-0 flex-col gap-3 lg:w-[340px] lg:overflow-y-auto lg:pr-1">
+        {picked && selectedCaption !== null && <CaptionEditor clip={clip} selectedWord={selectedCaption} onSelect={(word,time)=>{setSelectedCaption(word);seek(itemOffset+time);}} onChange={update} onClose={()=>setSelectedCaption(null)} onApplyStyle={captions=>{if(sequence)dispatch(sequence.items.filter(entry=>entry.clip.words.length).map(entry=>({type:"item.patch" as const,sequenceId:sequence.id,itemId:entry.id,patch:{captions}})));}} />}
         <Card className="shrink-0 p-4"><EditorStatus editor={editor} />{actionError&&<p role="alert" className="text-sm text-destructive">{actionError}</p>}<AgentEditor projectId={projectId} controller={chat} selection={item?{id:item.id,title:clip.title}:null} />
           {picked&&<><Button variant="outline" aria-expanded={propertiesOpen} onClick={()=>setPropertiesOpen(!propertiesOpen)}>{propertiesOpen?"Close properties":"All item properties"}</Button>{propertiesOpen&&<EditorProperties key={clip.id} clip={clip} edl={inspectEdl} validationEdl={edl} joint={joint} motion={motion} mapOperations={mapOperations} dispatch={dispatch} onApplied={()=>setPropertiesOpen(false)} />}</>}
         </Card>
@@ -790,7 +797,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
               try { const ops=buildTimelineSlip(sequence,item.id,delta,edl.media); if(ops.length)dispatch(ops); }
               catch(error){ notify((error as Error).message,"error"); }
             }} /></Disclosure>}
-          <Card className="shrink-0 p-4"><Tabs value={tab} onValueChange={v=>setTab(v as typeof tab)}><TabsList className="w-full"><TabsTrigger value="captions" className="flex-1">Captions</TabsTrigger><TabsTrigger value="overlays" className="flex-1">Add</TabsTrigger><TabsTrigger value="edit" className="flex-1" disabled={selected===null}>Selected</TabsTrigger></TabsList>
+          <Card className="shrink-0 p-4"><Tabs value={tab} onValueChange={v=>setTab(v as typeof tab)}><TabsList className="w-full"><TabsTrigger value="captions" onClick={()=>setSelectedCaption(0)} className="flex-1">Captions</TabsTrigger><TabsTrigger value="overlays" className="flex-1">Add</TabsTrigger><TabsTrigger value="edit" className="flex-1" disabled={selected===null}>Selected</TabsTrigger></TabsList>
             <TabsContent value="captions" className="pt-4"><CaptionControls value={clip.captions} onChange={captions=>update({...clip,captions})} /></TabsContent>
             <TabsContent value="overlays" className="pt-4"><OverlayEditor key={clip.id} onPlaceBed={placeMusicBed} onAddText={addText} projectId={projectId} mediaId={savedEdl.media.some(m=>m.id===item?.mediaId) ? item?.mediaId ?? undefined : undefined} canCapture={!!source} clip={clip} atSec={playheadInSource} onChange={edits=>update({...clip,edits})} /></TabsContent>
             <TabsContent value="edit" className="pt-4">{selected!==null&&clip.edits[selected]?<ClipInspector projectId={projectId} edit={clip.edits[selected]} onChange={edit=>update({...clip,edits:clip.edits.map((e,i)=>i===selected?edit:e)})} onRemove={()=>{update({...clip,edits:clip.edits.filter((_,i)=>i!==selected)});setSelected(null);setTab("captions");}} />:<p className="text-xs text-muted-foreground">Pick a block on the timeline.</p>}</TabsContent>

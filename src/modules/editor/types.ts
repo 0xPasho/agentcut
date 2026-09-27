@@ -579,3 +579,5 @@ export type Imported = { kind: DragKind; media?: MediaSource; asset?: AssetSumma
  * cached here for the same reason the decoded ones are.
  */
 export type MediaPeaks = { rate: number; peaks: number[] };
+
+export type CaptionCue = { start: number; end: number; indices: number[]; text: string };
