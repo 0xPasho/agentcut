@@ -1,55 +1,47 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { Loader2, Pause, Play, Trash2, Upload } from "lucide-react";
+import { useRef, useState, useTransition } from "react";
+import { Loader2, Search, Upload, X } from "lucide-react";
 import { Button } from "@/common/ui/button";
+import { Input } from "@/common/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/common/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose, DialogTrigger } from "@/common/ui/dialog";
-import { api, assetFileUrl, type AssetSummary } from "@/common/api/client";
+import { api } from "@/common/api/client";
 import { ingestFiles } from "@/common/api/ingest";
 import { classifyFile, hasFileDrag } from "@/modules/editor/lib/dnd";
 import type { InstalledPack } from "@/modules/packs/types";
 import { Empty, ErrorLine, Loading, SectionHeader } from "@/modules/settings/components/section-header";
-import { assetOrigin, seconds } from "@/modules/settings/lib";
-import type { LibraryKind as Kind } from "./types";
-import { LIBRARY_KINDS as KINDS } from "./data";
+import { assetOrigin } from "@/modules/settings/lib";
+import type { LibraryKind } from "./types";
+import { LIBRARY_KINDS } from "./data";
+import { useLibraryAssets } from "./hooks";
+import { LibraryAssetCard } from "./components/library-asset-card";
 
-
-/**
- * The library: the media that belongs to every project. It lives in the workspace
- * shell beside the rules and packs that name its files (decision 130), and keeps
- * its media and nothing else. Anything the button adds can be dropped in instead,
- * and anything dropped into the folder by hand is picked up on the next look.
- */
+/** Workspace media: inspect a file here; place it from the same library in the editor. */
 export function LibraryView({ packs, onChanged }: { packs: InstalledPack[]; onChanged?: () => void }) {
-  const [kind, setKind] = useState<Kind>("image");
-  const [assets, setAssets] = useState<AssetSummary[] | null>(null);
+  const [kind, setKind] = useState<LibraryKind>("image");
+  const [query, setQuery] = useState("");
+  const { assets, setAssets, error: loadError, loading, reload } = useLibraryAssets();
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [pending, start] = useTransition();
   const fileInput = useRef<HTMLInputElement>(null);
-
-  const load = useCallback((k: Kind) => {
-    start(async () => {
-      try { setAssets((await api.listAssets(k, "")).assets); }
-      catch (e) { setError((e as Error).message); }
-    });
-  }, []);
-
-  useEffect(() => load(kind), [kind, load]);
+  const searchInput = useRef<HTMLInputElement>(null);
+  const needle = query.trim().toLocaleLowerCase();
+  const matchingKind = (assets ?? []).filter((asset) => asset.kind === kind);
+  const shown = matchingKind.filter((asset) =>
+    `${asset.name} ${asset.tags ?? ""} ${assetOrigin(asset.source, packs)}`.toLocaleLowerCase().includes(needle));
 
   const upload = (chosen: File[] | FileList | null) => {
     const files = Array.from(chosen ?? []).filter((file) => classifyFile(file.name) !== null);
     if (!files.length) {
-      setError("The library holds images, sounds and reusable video: intros, outros, stings, b-roll.");
+      setError("Choose images, sounds or video to add to the library.");
       return;
     }
     setError(null);
     start(async () => {
       try {
         await ingestFiles(files, { library: true });
-        setAssets((await api.listAssets(kind, "")).assets);
-        // The count in the rail, and the assets a rule can name.
+        await reload();
         onChanged?.();
       } catch (e) {
         setError((e as Error).message);
@@ -57,23 +49,24 @@ export function LibraryView({ packs, onChanged }: { packs: InstalledPack[]; onCh
     });
   };
 
-  /** Throws on refusal, so the dialog that asked stays open and says why. */
   const remove = async (id: string) => {
     await api.deleteAsset(id);
     setError(null);
-    setAssets((prev) => (prev ?? []).filter((a) => a.id !== id));
+    setAssets((previous) => (previous ?? []).filter((asset) => asset.id !== id));
     onChanged?.();
   };
 
+  const clearSearch = () => { setQuery(""); searchInput.current?.focus(); };
   const uploadButton = (
-    <Button size="sm" disabled={pending} onClick={() => fileInput.current?.click()}>
-      {pending ? <Loader2 className="size-4 motion-safe:animate-spin" /> : <Upload className="size-4" />}Upload
+    <Button disabled={pending} onClick={() => fileInput.current?.click()}>
+      {pending ? <Loader2 aria-hidden className="motion-safe:animate-spin" /> : <Upload aria-hidden />}
+      {pending ? "Uploading…" : "Upload files"}
     </Button>
   );
 
   return (
     <section
-      className="flex flex-col gap-5"
+      className="flex min-w-0 flex-col gap-6"
       onDragEnter={(e) => { if (hasFileDrag(Array.from(e.dataTransfer.types))) setDragging(true); }}
       onDragOver={(e) => {
         if (!hasFileDrag(Array.from(e.dataTransfer.types))) return;
@@ -82,202 +75,70 @@ export function LibraryView({ packs, onChanged }: { packs: InstalledPack[]; onCh
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false); }}
       onDrop={(e) => {
         if (!hasFileDrag(Array.from(e.dataTransfer.types))) return;
-        e.preventDefault(); setDragging(false); upload(Array.from(e.dataTransfer.files));
+        e.preventDefault(); setDragging(false);
+        if (!pending) upload(Array.from(e.dataTransfer.files));
       }}
     >
       {dragging && (
         <div aria-hidden className="pointer-events-none fixed inset-0 z-50 flex justify-center p-4">
           <div className="absolute inset-2 rounded-3xl border-2 border-dashed border-primary/70 bg-primary/5" />
-          <p className="relative mt-3 h-fit rounded-full bg-black/85 px-4 py-2 text-sm text-white shadow-lg">Drop images, sounds or video to add them to your library</p>
+          <p className="relative mt-3 h-fit rounded-full bg-black/85 px-4 py-2 text-sm text-white shadow-lg">Drop files to add them to your library</p>
         </div>
       )}
 
-      <SectionHeader title="Library" action={assets?.length ? uploadButton : undefined}>
-        Images, sounds and reusable video for every project: logos, end cards, stings, b-roll.
+      <SectionHeader title="Library" action={uploadButton}>
+        Your reusable media, across every project. Open a file to preview it.
       </SectionHeader>
+      <input ref={fileInput} type="file" multiple accept="image/*,audio/*,video/*" className="hidden"
+        onChange={(e) => { if (e.target.files?.length) upload(e.target.files); e.target.value = ""; }} />
 
-      <input ref={fileInput} type="file" multiple accept="image/*,audio/*,video/*" className="hidden" onChange={(e) => upload(e.target.files)} />
+      <Tabs value={kind} onValueChange={(value) => setKind(value as LibraryKind)} className="min-w-0 gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <TabsList aria-label="Kind of file">
+            {LIBRARY_KINDS.map((tab) => (
+              <TabsTrigger key={tab.kind} value={tab.kind} className="gap-2">
+                {tab.label}
+                {assets && <span className="text-xs text-muted-foreground tabular-nums">{assets.filter((asset) => asset.kind === tab.kind).length}</span>}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          <div className="relative w-full sm:max-w-xs">
+            <Search aria-hidden className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input ref={searchInput} type="search" aria-label="Search library" placeholder="Search files…"
+              value={query} onChange={(e) => setQuery(e.target.value)} className="ps-9 pe-10" />
+            {query && <Button type="button" size="icon-sm" variant="ghost" aria-label="Clear search"
+              className="absolute end-1 top-1/2 -translate-y-1/2" onClick={clearSearch}><X aria-hidden /></Button>}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+          <p role="status">{assets && `${shown.length} ${shown.length === 1 ? "file" : "files"}${needle ? ` matching “${query.trim()}”` : ""}`}</p>
+          <p>Open to preview · Use in any project</p>
+        </div>
 
-      <Tabs value={kind} onValueChange={(v) => setKind(v as Kind)}>
-        <TabsList aria-label="Kind of file">
-          {KINDS.map((k) => <TabsTrigger key={k.kind} value={k.kind}>{k.label}</TabsTrigger>)}
-        </TabsList>
-
-        {KINDS.map((k) => (
-          <TabsContent key={k.kind} value={k.kind} className="pt-5">
-            {assets === null && <Loading label={`Loading your ${k.plural}`} />}
-            {assets !== null && assets.length > 0 && <Grid kind={k.kind} assets={assets} origin={(a) => assetOrigin(a.source, packs)} onRemove={remove} />}
-            {assets !== null && assets.length === 0 && (
-              <Empty title={`No ${k.plural} yet`} action={uploadButton}>
-                {k.kind === "image" && "Logos, end cards, the pictures a template can hold full-frame. Drop them here or choose Upload."}
-                {k.kind === "audio" && "Stings, beds and the sounds a template cues. Drop them here or choose Upload."}
-                {k.kind === "video" && "Intros, outros and b-roll that end up in more than one video. Drop them here or choose Upload."}
+        {LIBRARY_KINDS.map((tab) => (
+          <TabsContent key={tab.kind} value={tab.kind}>
+            {assets === null && loading && <Loading label="Loading your library" />}
+            {assets !== null && shown.length > 0 && (
+              <ul className="grid grid-cols-1 gap-4 min-[420px]:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                {shown.map((asset) => <LibraryAssetCard key={asset.id} asset={asset} origin={assetOrigin(asset.source, packs)} onRemove={remove} />)}
+              </ul>
+            )}
+            {assets !== null && shown.length === 0 && needle && (
+              <Empty title={`No ${tab.plural} match “${query.trim()}”`} action={<Button variant="outline" onClick={clearSearch}>Clear search</Button>}>
+                Try another name, or switch to a different file type.
+              </Empty>
+            )}
+            {assets !== null && matchingKind.length === 0 && !needle && (
+              <Empty title={`No ${tab.plural} yet`} action={<Button variant="outline" disabled={pending} onClick={() => fileInput.current?.click()}><Upload aria-hidden />Choose files</Button>}>
+                Drop {tab.plural} here to reuse them in any project.
               </Empty>
             )}
           </TabsContent>
         ))}
       </Tabs>
-
-      <ErrorLine>{error}</ErrorLine>
-
-      <p className="max-w-prose text-xs text-muted-foreground">
-        Anything dropped into <code className="font-mono">workspace/library/</code> is picked up automatically.
-        Deleting a file here deletes it from that folder.
-      </p>
+      <ErrorLine>{error || loadError}</ErrorLine>
+      {loadError && <Button variant="outline" className="self-start" disabled={loading} onClick={() => void reload()}>Retry loading library</Button>}
+      <p className="max-w-prose text-xs text-muted-foreground">To add a file to a video, open Library in the editor’s media panel.</p>
     </section>
-  );
-}
-
-function Grid({ kind, assets, origin, onRemove }: { kind: Kind; assets: AssetSummary[]; origin: (a: AssetSummary) => string; onRemove: (id: string) => Promise<void> }) {
-  if (kind === "image") return (
-    <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-      {assets.map((a) => (
-        <li key={a.id} className="flex flex-col overflow-hidden rounded-3xl bg-card ring-1 ring-foreground/10">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={assetFileUrl(a.id)} alt="" loading="lazy" className="aspect-square w-full bg-black/30 object-cover outline-1 -outline-offset-1 outline-white/10" />
-          <div className="flex items-center gap-2 px-3 py-2">
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-xs" title={a.name}>{a.name}</span>
-              <Meta asset={a} origin={origin(a)} />
-            </span>
-            <DeleteAsset asset={a} onRemove={onRemove} />
-          </div>
-        </li>
-      ))}
-    </ul>
-  );
-
-  if (kind === "audio") return (
-    <ul className="flex flex-col gap-2">
-      {assets.map((a) => (
-        <li key={a.id} className="flex flex-row flex-wrap items-center gap-3 rounded-3xl bg-card px-4 py-3 ring-1 ring-foreground/10">
-          <PlayButton src={assetFileUrl(a.id)} name={a.name} kind="audio" />
-          <div className="min-w-0 flex-1">
-            <p className="break-words text-sm font-medium">{a.name}</p>
-            <Meta asset={a} origin={origin(a)} />
-          </div>
-          <DeleteAsset asset={a} onRemove={onRemove} />
-        </li>
-      ))}
-    </ul>
-  );
-
-  return (
-    <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-      {assets.map((a) => (
-        <li key={a.id} className="flex flex-col gap-2 rounded-3xl bg-card p-3 ring-1 ring-foreground/10">
-          <VideoPreview src={assetFileUrl(a.id)} name={a.name} />
-          <div className="flex items-center gap-2 px-1">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium" title={a.name}>{a.name}</p>
-              <Meta asset={a} origin={origin(a)} />
-            </div>
-            <DeleteAsset asset={a} onRemove={onRemove} />
-          </div>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/**
- * Our own play control, because the platform's media chrome is a light-mode strip no
- * dark card can absorb (DESIGN.md: no raw browser controls; the player draws none).
- * One button, the word beside the icon changing with the state; the element itself
- * has no controls and is only the sound.
- */
-function PlayButton({ src, name, kind }: { src: string; name: string; kind: "audio" }) {
-  const media = useRef<HTMLAudioElement>(null);
-  const [playing, setPlaying] = useState(false);
-  void kind;
-  const toggle = () => {
-    const el = media.current;
-    if (!el) return;
-    if (el.paused) void el.play(); else el.pause();
-  };
-  return (
-    <>
-      <audio ref={media} preload="none" src={src} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} />
-      <Button size="icon-sm" variant="outline" aria-label={`${playing ? "Pause" : "Play"} ${name}`} aria-pressed={playing} onClick={toggle}>
-        {playing ? <Pause aria-hidden className="size-4" /> : <Play aria-hidden className="size-4" />}
-      </Button>
-    </>
-  );
-}
-
-/** The frame with a play button over it; a click anywhere on the picture plays or pauses. */
-function VideoPreview({ src, name }: { src: string; name: string }) {
-  const media = useRef<HTMLVideoElement>(null);
-  const [playing, setPlaying] = useState(false);
-  const toggle = () => {
-    const el = media.current;
-    if (!el) return;
-    if (el.paused) void el.play(); else el.pause();
-  };
-  return (
-    <div className="relative overflow-hidden rounded-xl bg-black">
-      <video ref={media} preload="metadata" src={src} playsInline className="aspect-video w-full object-contain" onClick={toggle}
-        onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} />
-      <Button size="icon" variant="outline" className={playing ? "absolute bottom-2 left-2 opacity-0 transition-opacity hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none" : "absolute bottom-2 left-2"}
-        aria-label={`${playing ? "Pause" : "Play"} ${name}`} aria-pressed={playing} onClick={toggle}>
-        {playing ? <Pause aria-hidden className="size-4" /> : <Play aria-hidden className="size-4" />}
-      </Button>
-    </div>
-  );
-}
-
-/** One muted line: where it came from, how big, how long, and its licence when it has one. */
-function Meta({ asset, origin }: { asset: AssetSummary; origin: string }) {
-  const parts = [
-    origin,
-    asset.width && asset.height ? `${asset.width}×${asset.height}` : "",
-    asset.duration_sec ? seconds(asset.duration_sec) : "",
-    asset.license ?? "",
-  ].filter(Boolean);
-  if (!parts.length) return null;
-  return <span className="block truncate font-mono text-xs text-muted-foreground" title={parts.join(" · ")}>{parts.join(" · ")}</span>;
-}
-
-function DeleteAsset({ asset, onRemove }: { asset: AssetSummary; onRemove: (id: string) => Promise<void> }) {
-  const [open, setOpen] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const remove = async () => {
-    setPending(true);
-    setError(null);
-    try {
-      await onRemove(asset.id);
-      setOpen(false);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setPending(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={(next) => { if (!pending) { setOpen(next); setError(null); } }}>
-      <DialogTrigger render={<Button size="icon-sm" variant="ghost" aria-label={`Delete ${asset.name}`} />}>
-        <Trash2 aria-hidden className="size-4" />
-      </DialogTrigger>
-      <DialogContent showCloseButton={!pending}>
-        <DialogHeader>
-          <DialogTitle>Delete this file?</DialogTitle>
-          <DialogDescription className="break-words">
-            “{asset.name}” is removed from the library and its file is deleted from the workspace folder.
-            A template or a rule that still names it stops this, and says which.
-          </DialogDescription>
-        </DialogHeader>
-        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-        <DialogFooter>
-          <DialogClose render={<Button variant="outline" disabled={pending} />}>Cancel</DialogClose>
-          <Button variant="destructive" disabled={pending} onClick={remove}>
-            {pending && <Loader2 aria-hidden className="motion-safe:animate-spin" />}
-            {pending ? "Deleting…" : "Delete file"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }

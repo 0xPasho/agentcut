@@ -230,3 +230,20 @@ gallery with overlaid names, floating previews anchored above the selected card,
 selection metadata and placement actions. Keep the yellow product accent for the
 primary action. Desktop/mobile browser checks cover preview, placement, Cancel,
 Escape focus restoration, overflow, and axe accessibility.
+
+## Workspace library inspection
+
+The workspace Library is a searchable gallery with counted image, sound, and video
+filters. A card is one keyboard-accessible preview target; it shows the whole media
+thumbnail without cropping and up to two lines of its name. Opening it shows the
+full filename, uncropped preview, provenance, dimensions, duration, and available
+license/attribution. Audio and video only play on request, with visible transport,
+seek, and mute controls. Closing restores focus to the card and stops playback.
+Deletion lives in the detail, alongside access to the original file. The existing
+server refusal for referenced files remains authoritative.
+
+Static thumbnails previously offered no way to inspect an individual file. This
+gallery makes inspection explicit. Adding files to a timeline continues through
+Library in the shared editor; workspace browsing does not invent a second
+placement flow. Search has a clear action and an explicit
+no-results state. Mobile layouts keep the same controls and full file details.
