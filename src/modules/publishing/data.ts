@@ -1,4 +1,4 @@
-import type { Format, Network, PublicationStatus } from "./types";
+import type { DeliveryState, Format, Network, PublicationStatus } from "./types";
 
 export const STATUS_LABELS: Record<PublicationStatus, string> = { draft: "Draft", approved: "Approved", pending: "Pending publication", publishing: "Publishing", scheduled: "Scheduled", published: "Published", partial: "Partially published", attention: "Needs attention", cancelled: "Cancelled" };
 export const FORMATS: Record<Format, { network: Network; label: string }> = { "youtube-video": { network: "youtube", label: "YouTube video" }, "youtube-short": { network: "youtube", label: "YouTube Short" }, "instagram-reel": { network: "instagram", label: "Instagram Reel" }, "tiktok-video": { network: "tiktok", label: "TikTok video" } };
@@ -16,3 +16,17 @@ export const PHONE_GUIDE = {
   tiktok: "Verify the account in TikTok Studio. Upload → select exactly the approved video → Next. Verify it did not restore another draft. Paste description once, wait and inspect. Set approved options and Schedule post if requested. Read back the exact date/time. Submit with Publish/Schedule only after inspecting the approved payload. Verify in Manage after upload completes and capture evidence.",
   youtube: "Verify the channel. Upload video → choose approved video → inspect full-length trim → Next. Caption your Short is the title; Show more → Add description holds the caption and hashtags. Paste once, wait at least three seconds and verify no duplicate text. Set audience and visibility; for scheduling inspect date/time in local phone zone and read it back. Submit Upload Short only after verifying approved payload. Verify Scheduled or live on the channel after upload completes. Never treat uploading as published.",
 };
+
+export const DELIVERY_PRESENTATION: Record<DeliveryState, { status: PublicationStatus; label: string }> = {
+  not_sent: { status: "draft", label: "Not sent" },
+  queued: { status: "pending", label: "Waiting to publish" },
+  sending: { status: "publishing", label: "Publishing" },
+  scheduled: { status: "scheduled", label: "Scheduled" },
+  published: { status: "published", label: "Published" },
+  failed: { status: "attention", label: "Failed — review needed" },
+  unknown: { status: "attention", label: "Needs verification" },
+  cancel_pending: { status: "pending", label: "Cancelling" },
+  cancelled: { status: "cancelled", label: "Cancelled" },
+};
+
+export const NETWORK_LABELS: Record<Network, string> = { youtube: "YouTube", instagram: "Instagram", tiktok: "TikTok" };

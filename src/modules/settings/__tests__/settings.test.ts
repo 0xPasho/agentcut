@@ -313,11 +313,12 @@ test("every control on the settings page has a tool behind it", () => {
 });
 
 test("every section of the rail is a page, and the old addresses still land somewhere", async () => {
-  // Decision 130: one shell. A rail entry that points nowhere is a dead link on every page.
+  // Decision 130: rail links stay reachable. Decision 148 gives Calendar its own full-width shell.
   const { WORKSPACE_SECTIONS } = await import("../data");
   const app = path.resolve(__dirname, "../../../app/(workspace)");
   for (const section of WORKSPACE_SECTIONS) {
-    const page = path.join(app, section.href.replace(/^\//, ""), "page.tsx");
+    const pageRoot = section.id === "calendar" ? path.dirname(app) : app;
+    const page = path.join(pageRoot, section.href.replace(/^\//, ""), "page.tsx");
     await assert.doesNotReject(() => fs.access(page), `${section.label} points at ${section.href}, which has no page`);
   }
   for (const old of ["settings/preferences", "settings/subjects"]) {

@@ -346,7 +346,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                     </SelectTrigger>
                     <SelectContent align="start" alignItemWithTrigger={false}>
                       {FILTERS.map(({ value, label }) => (
-                        <SelectItem key={value} value={value} disabled={value !== "all" && counts[value] === 0}>
+                        <SelectItem key={value} value={value}>
                           {value !== "all" && <StatusIcon status={value} />}
                           {value === "all" ? "All statuses" : label}
                           <span className="ms-auto text-muted-foreground tabular-nums">{counts[value]}</span>

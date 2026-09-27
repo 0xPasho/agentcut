@@ -6,6 +6,7 @@ export async function loadCalendar() {
   const { dayInZone } = await import("../lib/resolve");
   const { settings } = await import("./store");
   const from = dayInZone(new Date().toISOString(), settings().timezone);
-  const to = new Date(Date.parse(`${from}T12:00:00Z`) + 6 * 86400_000).toISOString().slice(0, 10);
-  return calendar({ from, to });
+  const { calendarDates } = await import("../lib/calendar");
+  const dates = calendarDates(from, "month");
+  return calendar({ from: dates[0], to: dates.at(-1)! });
 }

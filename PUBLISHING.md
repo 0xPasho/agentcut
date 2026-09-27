@@ -36,6 +36,47 @@ separate from hashtags. Unsupported route options fail before queueing and use t
 same contract function as serialization. AI proposes from the saved video, brief,
 glossary and writing guidance. It does not silently replace manual changes.
 
+## Interface and design decisions
+
+The owner requested `grill-me` and `better-ui`, then delegated the remaining design
+choices. Calendar is a primary `/calendar` destination, alongside Library, rather
+than content constrained by the workspace settings rail. The default is a complete
+calendar month, with week and agenda alternatives, account/status filters, selected-day
+detail and an unscheduled inbox. Empty days retain their calendar geometry. Small
+screens show publication counts in the month grid and the selected day's cards below.
+The calendar and detail panels share an alignment edge below the controls; month
+rows adapt to the viewport and empty weeks keep their column height. Week and agenda
+headings show the actual date range, including month/year boundaries. Agenda omits
+empty days and offers a next action when the range or filters have no results.
+Calendar counts exclude the unscheduled inbox.
+
+The editor, Calendar and project batch review reuse the same wide publication form.
+A pinned video preview sits beside account selection and shared/per-account text tabs;
+Delivery holds destination outcomes and attended iPhone controls. Scheduling stays
+visible beneath the content and save/review/send actions stay together. Audience,
+visibility, priority, expiration and manual verification remain available through
+explicit disclosures. Native menus and checkboxes are replaced with the established
+workspace controls, and delivery states have readable labels and matching icons.
+
+Publishing settings use Accounts, Schedule and Advanced tabs. iPhone setup remains
+prominent; provider credentials, equivalent-account links, evidence retention and
+Cadence import are disclosed where needed. Glass belongs to navigation and floating
+menus; content uses the existing solid panels. Applying glass to every card was
+rejected because it would erase the established foreground/content hierarchy.
+
+Browser review used an isolated workspace with local accounts and pinned video
+fixtures. It covered month/week/agenda navigation, keyboard-operated menus and focus
+return, saved shared and YouTube-specific text/settings, connection setup, weekly
+schedule controls, and layouts down to 320px. The shared publication form was opened
+from the editor with the keyboard and its pinned preview loaded without page errors.
+These checks did not dispatch a live social publication.
+
+Validation on 2026-09-27: TypeScript, the full unit suite (540 tests) and the render
+suite (36 tests) passed. Earlier runs under concurrent machine load hit harness
+timeouts in the picture-pool and stream-edge fixtures; no timeouts were changed.
+Six test fixtures now seed a valid local brand cache instead of an empty cache that
+triggers a CDN request.
+
 ## Exports and approval
 
 Render and pin captures a managed MP4 under the render lock, records the saved

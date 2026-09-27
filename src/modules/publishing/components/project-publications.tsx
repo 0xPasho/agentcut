@@ -89,7 +89,7 @@ export function ProjectPublications({ projectId, sequenceIds, beforeRun, disable
           {sequenceIds.length === 1 ? "Prepare publication" : "Prepare publications"}
         </Button>
       } />
-      <DialogContent showCloseButton={!busy && !preparing && !dirty} className="flex max-h-[90dvh] w-[min(44rem,94vw)] flex-col gap-0 overflow-hidden rounded-3xl p-0 sm:max-w-[44rem]">
+      <DialogContent showCloseButton={!busy && !preparing && !dirty} className="flex max-h-[90dvh] w-[min(70rem,96vw)] flex-col gap-0 overflow-hidden rounded-3xl p-0 sm:max-w-[70rem]">
         <DialogHeader className="shrink-0 px-5 pt-5 pb-4 pe-14">
           <DialogTitle>Prepare {count(targets.length, "publication", "publications")}</DialogTitle>
           <DialogDescription>Review each video, its text, accounts and time before sending.</DialogDescription>

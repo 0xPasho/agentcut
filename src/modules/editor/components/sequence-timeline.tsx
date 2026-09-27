@@ -741,11 +741,11 @@ export function SequenceTimeline({ projectId, sequence, selectedId, selectedCapt
    * sound, so "somewhere new" is a place you can aim at for either kind rather than a
    * rule you have to know.
    */
-  const newTrackRow = (lane: Lane, hint: string, edge: string) => {
+  const newTrackRow = (lane: Lane, edge: string) => {
     const aimed = ghost?.layer === lane.layer || externalDrop?.layer === lane.layer;
     return <div data-timeline-layer={lane.layer} data-timeline-kind={lane.kind} className={`flex h-8 ${aimed ? "bg-primary/10" : ""}`} {...dropHandlers(lane)}>
       <span className="sticky left-0 z-20 flex w-[76px] shrink-0 items-center justify-center bg-card text-muted-foreground">{lane.kind === "audio" ? <Music2 className="size-3" aria-hidden /> : <Plus className="size-3" aria-hidden />}</span>
-      <div className={`relative flex-1 ${edge} border-dashed border-white/10 px-2 pt-1 text-[11px] text-muted-foreground`} onPointerDown={event => { if (event.button === 0 && event.target === event.currentTarget) seekAt(event.clientX); }}>{hint}
+      <div className={`relative flex-1 ${edge} border-dashed border-white/10 px-2 pt-1 text-[11px] text-muted-foreground`} onPointerDown={event => { if (event.button === 0 && event.target === event.currentTarget) seekAt(event.clientX); }}>
         {aimed && <span aria-hidden className="pointer-events-none absolute inset-y-0 w-0.5 bg-primary" style={{ left: (ghost?.layer === lane.layer ? ghost.at : externalDrop?.at ?? 0) * scale }} />}
       </div>
     </div>;
@@ -828,7 +828,7 @@ export function SequenceTimeline({ projectId, sequence, selectedId, selectedCapt
             </div>
           </div>
         ))}
-        {newTrackRow({ layer: newLayer, kind: "video" }, "Drop a clip here for a new track", "border-b")}
+        {newTrackRow({ layer: newLayer, kind: "video" }, "border-b")}
         {lanes.map((lane, position) => { const layer = lane.layer, first = lane.kind === "audio" && lanes[position - 1]?.kind !== "audio";
           const boxes = laneBoxes(layout.items.filter(entry => (entry.item.layer ?? 0) === layer).map(({ item, from, duration }) => ({ id: item.id, from, duration })), scale / fps);
           return <div key={layer} data-timeline-layer={layer} data-timeline-kind={lane.kind} className={`flex border-b border-white/5 ${first ? "border-t border-t-white/15" : ""}`} {...dropHandlers(lane)}>
@@ -988,7 +988,7 @@ export function SequenceTimeline({ projectId, sequence, selectedId, selectedCapt
             {externalDrop?.layer === layer && !externalDrop.replace && <div aria-hidden className={`pointer-events-none absolute inset-y-1 z-30 rounded-md border-2 border-dashed border-primary ${dropClash ? "" : "bg-primary/15"}`} style={{ left: externalDrop.at * scale, width: externalDrop.payload ? Math.max(3, dropDuration(externalDrop.payload) * scale) : 3, ...(dropClash ? HATCH : {}) }}><span className="absolute left-1 top-0 max-w-40 truncate whitespace-nowrap rounded bg-black/85 px-1 text-[10px] text-white">{externalDrop.files ? "Import here" : dropClash ? `Stacks on ${externalDrop.payload?.name ?? "this track"}` : externalDrop.payload?.name ?? (layer === 0 ? "Insert here" : "Add here")}</span></div>}
           </div>
         </div>; })}
-        {newTrackRow({ layer: newAudioLayer, kind: "audio" }, "Drop a sound here for a new audio track", "border-t")}
+        {newTrackRow({ layer: newAudioLayer, kind: "audio" }, "border-t")}
         {selected && selectedMap && effectTypes.map(type => <div key={type} className="flex border-b border-white/5">
           <span className="sticky left-0 z-20 flex w-[76px] shrink-0 items-center bg-card px-2 text-[10px] text-muted-foreground">{({ silence: "Cuts", punch: "Punch-ins", blur: "Blur", emphasis: "Emphasis", text: "Titles", image: "Images", music: "Music", sfx: "Sounds" })[type]}</span>
           <div className="relative h-8" style={{ width }} onPointerDown={event => { if (event.button === 0 && event.target === event.currentTarget) seekAt(event.clientX); }}>

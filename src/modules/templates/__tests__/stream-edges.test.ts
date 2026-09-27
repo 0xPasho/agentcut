@@ -54,7 +54,8 @@ before(async () => {
   const { resetBrandIndex, brandIndex } = await import("../../media/server/search/brand");
   resetBrandIndex();
   await fs.mkdir(path.join(workspace, "cache"), { recursive: true });
-  await fs.writeFile(path.join(workspace, "cache", "brands.json"), JSON.stringify([]));
+  // An empty cache is a miss; seed one valid entry so this fixture never needs the CDN.
+  await fs.writeFile(path.join(workspace, "cache", "brands.json"), JSON.stringify([{ title: "Google", slug: "google", hex: "4285F4", aliases: [] }]));
   await brandIndex();
   source = video(path.join(workspace, "stream.mp4"), "1728x1116", 20);
 });

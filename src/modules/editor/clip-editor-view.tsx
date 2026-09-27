@@ -810,7 +810,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
     </fieldset>
 
     <Dialog open={panel !== null} onOpenChange={open=>{if(!open)setPanel(null);}}>
-      <DialogContent className={panel === "publication" ? "max-h-[85dvh] w-[min(42rem,94vw)] sm:max-w-[42rem] overflow-y-auto" : "max-h-[85dvh] w-[min(38rem,92vw)] overflow-y-auto"}>
+      <DialogContent className={panel === "publication" ? "max-h-[92dvh] w-[min(70rem,96vw)] sm:max-w-[70rem] overflow-y-auto rounded-3xl" : "max-h-[85dvh] w-[min(38rem,92vw)] overflow-y-auto"}>
         <DialogHeader>
           <DialogTitle>{panel ? VIDEO_PANELS[panel] : ""}</DialogTitle>
         </DialogHeader>

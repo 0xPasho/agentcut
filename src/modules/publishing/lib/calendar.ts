@@ -18,3 +18,17 @@ export function adjacentPeriod(anchor: string, view: string, step: number): stri
   else date.setUTCDate(date.getUTCDate() + step * 7);
   return date.toISOString().slice(0, 10);
 }
+
+/** Use the same civil range as the calendar, including weeks spanning months or years. */
+export function calendarPeriodLabel(anchor: string, view: string, locale?: string): string {
+  const date = new Date(`${anchor}T12:00:00Z`);
+  if (view === "month") {
+    return new Intl.DateTimeFormat(locale, {
+      month: "long", year: "numeric", timeZone: "UTC",
+    }).format(date);
+  }
+  const dates = calendarDates(anchor, view);
+  return new Intl.DateTimeFormat(locale, {
+    month: "short", day: "numeric", year: "numeric", timeZone: "UTC",
+  }).formatRange(date, new Date(`${dates.at(-1)}T12:00:00Z`));
+}
