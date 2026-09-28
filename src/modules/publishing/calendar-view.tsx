@@ -22,7 +22,7 @@ import { Button } from "../../common/ui/button";
 import { Checkbox } from "../../common/ui/checkbox";
 import { Disclosure } from "../../common/ui/disclosure";
 import { Glass } from "../../common/ui/glass";
-import { Input } from "../../common/ui/input";
+import { DatePicker } from "../../common/ui/date-picker";
 import { Tabs, TabsList, TabsTrigger } from "../../common/ui/tabs";
 import {
   Dialog,
@@ -340,23 +340,23 @@ export function CalendarView({ initial, project }: CalendarPageData) {
                 Clear filters
               </Button>
             )}
-            <label className="flex w-full items-center justify-between gap-2 text-xs text-muted-foreground sm:ms-auto sm:w-auto">
-              Go to
-              <Input
-                aria-label="Go to date"
-                className="w-auto max-w-40"
-                type="date"
+            <div className="flex w-full items-center justify-between gap-2 text-xs text-muted-foreground sm:ms-auto sm:w-auto">
+              <label htmlFor="calendar-go-to">Go to</label>
+              <DatePicker
+                id="calendar-go-to"
+                label="Go to date"
+                className="w-auto text-foreground"
+                align="end"
+                today={today}
                 value={anchor}
-                onChange={(e) => {
-                  if (e.target.value) {
-                    setAnchor(e.target.value);
-                    setDay(e.target.value);
-                    setOffset(0);
-                    setSelected([]);
-                  }
+                onChange={(date) => {
+                  setAnchor(date);
+                  setDay(date);
+                  setOffset(0);
+                  setSelected([]);
                 }}
               />
-            </label>
+            </div>
           </div>
         </div>
         <section

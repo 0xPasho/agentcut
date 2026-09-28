@@ -1,6 +1,7 @@
 "use client";
 import { NetworkIcon } from "./network-icon";
 import { PublishingSelect } from "./publishing-select";
+import { PublicationTimeField } from "./publication-time-field";
 import { Checkbox } from "../../../common/ui/checkbox";
 import { CalendarTransfer } from "./calendar-transfer";
 import { Disclosure } from "../../../common/ui/disclosure";
@@ -42,7 +43,6 @@ import { usePublishing } from "../hooks";
 import { NETWORK_LABELS, FORMATS } from "../data";
 import { caption, intendedTime, resolveCopy } from "../lib/resolve";
 import { calendarHref } from "../lib/calendar";
-import { localInstant } from "../lib/schedule";
 import { DeliveryStatusBadge, PublicationStatusBadge } from "./status";
 import { PhonePanel } from "./phone-panel";
 export function PublicationPanel({
@@ -150,7 +150,6 @@ export function PublicationForm({
   const [draft, setDraft] = useState(p),
     [dirty, setDirty] = useState(false),
     [proposal, setProposal] = useState<AgentCopyProposal | null>(null),
-    [localTime, setLocalTime] = useState(""),
     [formError, setFormError] = useState(""),
     [confirm, setConfirm] = useState(false);
   useEffect(() => {
@@ -185,23 +184,13 @@ export function PublicationForm({
     });
   const save = async () => {
     setFormError("");
-    let at = draft.scheduledAt;
-    if (localTime) {
-      try {
-        const [day, time] = localTime.split("T");
-        at = localInstant(day, time, draft.timezone);
-      } catch (e) {
-        setFormError((e as Error).message);
-        return;
-      }
-    }
     const result = await run<PublicationDetail>({
       tool: "publication.patch",
       id: p.id,
       revision: draft.revision,
       patch: {
         copy: draft.copy,
-        scheduledAt: at,
+        scheduledAt: draft.scheduledAt,
         timezone: draft.timezone,
         phoneSource: draft.phoneSource,
         priority: draft.priority,
@@ -212,7 +201,6 @@ export function PublicationForm({
     if (result) {
       setDraft(result);
       setDirty(false);
-      setLocalTime("");
     }
     return result;
   };
@@ -656,6 +644,7 @@ export function PublicationForm({
                       )?.provider
                     }
                     publication={draft}
+                    disabled={busy || locked || !["not_sent", "failed"].includes(d.state)}
                     onChange={updateDestination}
                   />
                 </fieldset>
@@ -723,17 +712,13 @@ export function PublicationForm({
                     }
                   />
                 </label>
-                <label className="space-y-1 text-sm">
-                  Default publication time
-                  <Input
-                    type="datetime-local"
-                    value={localTime}
-                    onChange={(e) => {
-                      setLocalTime(e.target.value);
-                      setDirty(true);
-                    }}
-                  />
-                </label>
+                <PublicationTimeField
+                  label="Default publication time"
+                  value={draft.scheduledAt}
+                  timezone={draft.timezone}
+                  disabled={busy || locked}
+                  onChange={(scheduledAt) => update({ ...draft, scheduledAt })}
+                />
               </div>
               <p className="text-xs text-muted-foreground">
                 {draft.scheduledAt
@@ -755,7 +740,6 @@ export function PublicationForm({
                   variant="outline"
                   onClick={() => {
                     update({ ...draft, scheduledAt: null });
-                    setLocalTime("");
                   }}
                 >
                   Clear default reservation
@@ -789,15 +773,13 @@ export function PublicationForm({
                       }
                     />
                   </label>
-                  <label className="text-sm">
-                    Expires at (ISO with offset)
-                    <Input
-                      value={draft.expiresAt ?? ""}
-                      onChange={(e) =>
-                        update({ ...draft, expiresAt: e.target.value || null })
-                      }
-                    />
-                  </label>
+                  <PublicationTimeField
+                    label="Expires at"
+                    value={draft.expiresAt}
+                    timezone={draft.timezone}
+                    disabled={busy || locked}
+                    onChange={(expiresAt) => update({ ...draft, expiresAt })}
+                  />
                 </div>
               </Disclosure>
             </fieldset>
@@ -821,7 +803,6 @@ export function PublicationForm({
                 onClick={() => {
                   setDraft(p);
                   setDirty(false);
-                  setLocalTime("");
                   setFormError("");
                 }}
               >
@@ -912,12 +893,14 @@ function DestinationFields({
   provider,
   publication,
   onChange,
+  disabled,
 }: {
   destination: Destination;
   account?: Account;
   provider?: ProviderId;
   publication: PublicationDetail;
   onChange: (d: Destination) => void;
+  disabled?: boolean;
 }) {
   const copy = resolveCopy(publication.copy, d);
   return (
@@ -1001,16 +984,13 @@ function DestinationFields({
           Reset to shared text
         </Button>
         <Disclosure summary="Audience, visibility and more">
-          <label className="block space-y-1 text-sm">
-            Own schedule (ISO time with offset, optional)
-            <Input
-              placeholder="2026-10-01T18:00:00-06:00"
-              value={d.scheduledAt ?? ""}
-              onChange={(e) =>
-                onChange({ ...d, scheduledAt: e.target.value || null })
-              }
-            />
-          </label>
+          <PublicationTimeField
+            label="Own schedule (optional)"
+            value={d.scheduledAt}
+            timezone={publication.timezone}
+            disabled={disabled}
+            onChange={(scheduledAt) => onChange({ ...d, scheduledAt })}
+          />
           {provider === "postbridge" && account?.network === "youtube" && (
             <Checkbox
               className="flex items-start gap-2 text-sm"
@@ -1213,13 +1193,14 @@ function DestinationResult({
               Current confirmed time: {d.confirmedAt}. This changes the provider
               schedule. For iPhone, cancel and verify the old schedule first.
             </p>
-            <label className="block text-sm">
-              New time (ISO with offset)
-              <Input
-                value={moveAt}
-                onChange={(e) => setMoveAt(e.target.value)}
-              />
-            </label>
+            <PublicationTimeField
+              label="New time"
+              value={moveAt || null}
+              timezone={p.timezone}
+              disabled={busy}
+              clearable={false}
+              onChange={(value) => setMoveAt(value ?? "")}
+            />
             <Button
               variant="outline"
               disabled={busy || !moveAt}
@@ -1254,10 +1235,13 @@ function DestinationResult({
                 <option value="not_sent">Verified not sent</option>
               </PublishingSelect>
             </label>
-            <label className="block text-sm">
-              Observed time (ISO with offset)
-              <Input value={at} onChange={(e) => setAt(e.target.value)} />
-            </label>
+            <PublicationTimeField
+              label="Observed time"
+              value={at || null}
+              timezone={p.timezone}
+              disabled={busy}
+              onChange={(value) => setAt(value ?? "")}
+            />
             <label className="block text-sm">
               Post link
               <Input value={url} onChange={(e) => setUrl(e.target.value)} />

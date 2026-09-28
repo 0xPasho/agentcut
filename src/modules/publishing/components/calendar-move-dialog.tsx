@@ -1,6 +1,7 @@
 "use client";
 import { Button } from "../../../common/ui/button";
 import { Input } from "../../../common/ui/input";
+import { DatePicker } from "../../../common/ui/date-picker";
 import {
   Dialog,
   DialogContent,
@@ -14,6 +15,7 @@ import type {
   PublishingOverview,
 } from "../types";
 import { NETWORK_LABELS } from "../data";
+import { dayInZone } from "../lib/resolve";
 
 export function CalendarMoveDialog({
   move,
@@ -89,16 +91,17 @@ export function CalendarMoveDialog({
                 })
                 .join(", ")}
             </p>
-            <label className="block space-y-1.5 text-sm">
-              Day
-              <Input
-                type="date"
-                required
+            <div className="space-y-1.5 text-sm">
+              <label htmlFor="calendar-move-day">Day</label>
+              <DatePicker
+                id="calendar-move-day"
+                label="Day"
                 value={move.day}
+                today={dayInZone(new Date().toISOString(), data.settings.timezone)}
                 disabled={busy || phone}
-                onChange={(e) => setMove({ ...move, day: e.target.value })}
+                onChange={(day) => setMove({ ...move, day })}
               />
-            </label>
+            </div>
             <label className="block space-y-1.5 text-sm">
               Time
               <Input

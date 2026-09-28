@@ -142,6 +142,7 @@ watched on TikTok, not inside the app.
 
 - Buttons are capsules at every size. Primary actions use a yellow tint; secondary actions use neutral fills with a subtle top highlight. `static` disables press scaling for frequent or precision interactions.
 - Fields are recessed, using `--field-shadow`; selected tabs and buttons use `--control-highlight`. Floating menus share the glass tint and elevation tokens; dialogs stay solid for reading.
+- Date selection uses the shadcn `Calendar` and shared `DatePicker`, never a native date or datetime popup. The floating panel uses the existing Liquid Glass `PopoverContent`; days use neutral hover fills, a ring for today and the yellow tint for the selected date. Weeks start on Monday. Publishing time fields pair that calendar with a time input and an explicit Apply action, using the publication timezone and shared scheduling validation. Saved seconds and explicit UTC offsets survive reopening; exact timestamps remain available for ambiguous local times.
 - `--glass-shadow` and `--glass-shadow-raised` define elevation. Thick glass also uses the stronger tint, not just more blur.
 - Sliders forward accessible names and value text to their thumbs. Keyboard focus is visible on the thumb, and the track has a generous interaction area.
 - Motion is optional: press scaling and loading animation run only with no motion preference. Reduced-motion states retain their labels and icons.
