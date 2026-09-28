@@ -71,11 +71,19 @@ schedule controls, and layouts down to 320px. The shared publication form was op
 from the editor with the keyboard and its pinned preview loaded without page errors.
 These checks did not dispatch a live social publication.
 
-Validation on 2026-09-27: TypeScript, the full unit suite (540 tests) and the render
+Validation on 2026-09-27: TypeScript, the full unit suite (544 tests) and the render
 suite (36 tests) passed. Earlier runs under concurrent machine load hit harness
 timeouts in the picture-pool and stream-edge fixtures; no timeouts were changed.
 Six test fixtures now seed a valid local brand cache instead of an empty cache that
 triggers a CDN request.
+
+Calendar verification additionally covered drag/undo, keyboard and touch forms,
+account-filtered moves, atomic collision rejection, unscheduled placement, invalid
+files, repeated import, a downloaded complete backup and transfer from the editor.
+Browser layouts were inspected from 320px to 1440px. A fresh-workspace round trip
+restored more than 100 records, retained published history and made no delivery
+requests. Running unit tests alongside renders triggered two existing harness idle
+timeouts; the subsequent unit-only run passed without changing their timing limits.
 
 ## Exports and approval
 
@@ -98,8 +106,16 @@ Week, calendar month and agenda use the workspace timezone. The range command an
 SQLite candidate filter avoid loading editor state for the entire publication
 history; pages hold up to 100 publications by default (200 maximum). Per-destination
 times appear on their respective days. Account/status filters, unscheduled selection,
-attention state and phone preparation due are visible. Dragging a timed destination
-opens an explicit change review; the destination form offers the keyboard equivalent.
+attention state and phone preparation due are visible. Dragging a local publication
+card moves its visible destinations together, keeping each account's wall-clock time
+in the workspace timezone. The shared `publication.reschedule` command validates the
+whole move in one transaction. A persistent Undo action restores the previous date
+reservations with a revision check; intervening changes are never overwritten. Move
+buttons expose a day/time form for keyboard and touch, including the unscheduled inbox.
+Dragging an unscheduled card opens that form to choose a time. Confirmed provider
+schedules keep explicit review and per-account rescheduling; phone schedules link
+back to the publication for attended cancellation and verification. Published records
+appear on their actual publication day, including posts sent without a reservation.
 
 The deterministic planner considers weekly slots, minimum spacing, preparation lead,
 priority, expiry, account equivalence and other publications in the same batch. It
@@ -113,6 +129,33 @@ before a cached external schedule is replaced. Cached external occupancy partici
 in reservations and shows its last-checked timestamp; it is not a live guarantee.
 Native app schedules require inspection. Link equivalent accounts across routes to
 avoid treating one real account as independent capacity twice.
+
+### Moving calendar records between computers
+
+Calendar has **Export calendar** and **Import calendar** actions. The editor's
+publication panel exposes the same transfer controls. The versioned
+`agentcut-calendar` JSON file contains the entire publication history, including
+unscheduled and archived records outside the current page, copy, destination options,
+timestamps, timezones and delivery outcomes. Account names and identities travel with
+the records. It is a calendar backup, not a project or media pack: videos, editor
+projects, credentials, custom provider endpoints, phone file paths, payload grants,
+session evidence and running jobs are excluded.
+
+Import accepts a file selected in the browser, validates it and previews new/existing
+record counts, missing videos, account setup and interrupted deliveries. Applying is
+atomic and append-only: stable publication IDs prevent duplicates and local edits
+win over repeated imports. Malformed or unsupported files write nothing. New accounts
+need confirmation/reconnection; API connections start without credentials. Queued,
+sending and cancellation-in-progress records become Needs verification and never
+resume delivery automatically. Scheduled/published history and original timestamps
+remain intact. The worker skips unconfigured or unconfirmed accounts. Workspace
+settings remain local; imported dates display in the receiving workspace's timezone.
+
+`publication.calendar.export`, `publication.calendar.import.preview` and
+`publication.calendar.import.apply` expose the identical transfer to workspace
+agents. Project-scoped agents cannot import or export the entire workspace. Imported
+records without their original project still support date and copy editing in the
+shared publication form; rendering requires the original project and media.
 
 ## Durable delivery
 

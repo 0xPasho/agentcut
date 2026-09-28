@@ -9,11 +9,12 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
-  Film,
   Inbox,
   Library,
   Settings2,
   Smartphone,
+  Undo2,
+  X,
 } from "lucide-react";
 import { cn } from "cn";
 import { AgentcutIcon } from "../../common/components/agentcut-mark";
@@ -31,17 +32,16 @@ import {
   DialogDescription,
 } from "../../common/ui/dialog";
 import { usePublishing } from "./hooks";
+import { useCalendarMove } from "./hooks/calendar-move";
+import { CalendarMoveDialog } from "./components/calendar-move-dialog";
+import { CalendarEntry } from "./components/calendar-entry";
+import { CalendarTransfer } from "./components/calendar-transfer";
 import type {
-  CalendarMove,
-  PublicationDetail,
   PublishingOverview,
 } from "./types";
-import { localInstant } from "./lib/schedule";
-import { calendarDates, adjacentPeriod, calendarPeriodLabel } from "./lib/calendar";
-import { NETWORK_LABELS, STATUS_LABELS } from "./data";
+import { calendarDates, adjacentPeriod, calendarPeriodLabel, calendarDestinations } from "./lib/calendar";
+import { CALENDAR_DRAG_TYPE, NETWORK_LABELS, STATUS_LABELS } from "./data";
 import { dayInZone, intendedTime } from "./lib/resolve";
-import { NetworkIcon } from "./components/network-icon";
-import { PublicationStatusBadge } from "./components/status";
 import { PublicationForm } from "./components/publication-panel";
 import { PublishingSelect } from "./components/publishing-select";
 
@@ -56,8 +56,6 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
   const [open, setOpen] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [offset, setOffset] = useState(0);
-  const [move, setMove] = useState<CalendarMove | null>(null);
-  const [moveError, setMoveError] = useState("");
   const dates = calendarDates(anchor, view);
   const {
     data = initial,
@@ -69,6 +67,14 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
     to: dates.at(-1)!,
     offset,
   });
+  const revealDay = (date: string) => {
+    setDay(date);
+    if (!dates.includes(date)) {
+      setOffset(0);
+      setAnchor(date);
+    }
+  };
+  const moving = useCalendarMove(run, data.settings.timezone, revealDay);
   const publications = data.publications.filter(
     (p) =>
       (!account || p.destinations.some((d) => d.accountId === account)) &&
@@ -95,7 +101,7 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
     }),
   );
   const unscheduled = publications.filter(
-    (p) => !p.destinations.some((d) => intendedTime(p, d) || d.confirmedAt),
+    (p) => calendarDestinations(p, null, data.settings.timezone, account).length > 0 || !p.destinations.length,
   );
   const current = data.publications.find((p) => p.id === open);
   const revisions = Object.fromEntries(
@@ -107,13 +113,9 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
     setAnchor(next);
     setDay(next);
   };
-  const onDay = (date: string) =>
-    publications.filter((p) =>
-      p.destinations.some((d) => {
-        const at = d.confirmedAt ?? intendedTime(p, d);
-        return at && dayInZone(at, data.settings.timezone) === date;
-      }),
-    );
+  const onDay = (date: string) => publications.filter(p =>
+    calendarDestinations(p, date, data.settings.timezone, account).length > 0,
+  );
   const showPublication = (id: string) => {
     setDirty(false);
     setOpen(id);
@@ -186,6 +188,8 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
             Plan your releases. See what’s ready, scheduled and live.
           </p>
         </div>
+        <div className="flex flex-col items-start gap-2 sm:items-end">
+        <CalendarTransfer run={run} busy={busy} error={error} onImported={date => { clearFilters(); if (date) revealDay(date); }} />
         <span
           title={data.settings.timezone}
           className="flex items-center gap-1.5 text-xs text-muted-foreground"
@@ -193,6 +197,7 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
           <Clock3 className="size-3.5" aria-hidden />
           All times in {data.settings.timezone.split("/").at(-1)!.replaceAll("_", " ")}
         </span>
+        </div>
       </header>
       {error && (
         <p
@@ -202,6 +207,14 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
           {error}
         </p>
       )}
+      <p className="text-xs text-muted-foreground">Drag a publication to another day to keep its time, or choose Move.</p>
+      <p role="status" className="sr-only">{moving.undo ? `Moved ${moving.undo.label}. Undo is available.` : ""}</p>
+      {moving.undo && <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-card p-3 ring-1 ring-foreground/10">
+        <p className="min-w-0 flex-1 break-words text-sm">Moved “{moving.undo.label}”.</p>
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => void moving.undoMove()}><Undo2 className="size-4" aria-hidden />Undo move</Button>
+        <Button size="icon-sm" variant="ghost" aria-label="Dismiss move notification" onClick={() => moving.setUndo(null)}><X className="size-4" aria-hidden /></Button>
+      </div>}
+      {moving.moveError && !moving.move && <p role="alert" className="text-sm text-destructive">{moving.moveError}</p>}
       {!!attention.length && (
         <div
           role="status"
@@ -381,53 +394,25 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
                         "border-e border-b border-foreground/10 p-1 sm:p-2 [&:nth-child(7n)]:border-e-0",
                       view === "month" && "min-h-16 sm:min-h-20",
                       view === "week" && "min-h-32 sm:min-h-96",
+                      moving.over === date && "outline-2 -outline-offset-2 outline-primary bg-primary/10",
                       isSelected && "bg-primary/[0.045] ring-1 ring-inset ring-primary/40",
                       date.slice(0, 7) !== anchor.slice(0, 7) &&
                         view === "month" &&
                         !isSelected &&
                         "bg-black/10",
                     )}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => {
+                    onDragOver={e => {
+                      if (busy || !moving.drag || !e.dataTransfer.types.includes(CALENDAR_DRAG_TYPE)) return;
+                      e.preventDefault(); e.dataTransfer.dropEffect = "move"; moving.setOver(date);
+                    }}
+                    onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) moving.setOver(null); }}
+                    onDrop={e => {
+                      if (busy || !moving.drag) return;
                       e.preventDefault();
-                      try {
-                        const [publicationId, destinationId] = e.dataTransfer
-                          .getData("text/plain")
-                          .split("/");
-                        const p = data.publications.find(
-                            (p) => p.id === publicationId,
-                          ),
-                          d = p?.destinations.find(
-                            (d) => d.id === destinationId,
-                          );
-                        if (
-                          !p ||
-                          !d ||
-                          !["not_sent", "failed", "scheduled"].includes(d.state)
-                        )
-                          return;
-                        const before = d.confirmedAt ?? intendedTime(p, d);
-                        if (!before) return;
-                        const time = new Intl.DateTimeFormat("en-GB", {
-                          timeZone: data.settings.timezone,
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          hourCycle: "h23",
-                        }).format(new Date(before));
-                        setMove({
-                          publicationId,
-                          destinationId,
-                          before,
-                          after: localInstant(
-                            date,
-                            time,
-                            data.settings.timezone,
-                          ),
-                        });
-                        setMoveError("");
-                      } catch (error) {
-                        setMoveError((error as Error).message);
-                      }
+                      const p = data.publications.find(p => p.id === moving.drag!.publicationId);
+                      const drag = moving.drag;
+                      moving.setDrag(null); moving.setOver(null);
+                      if (p) void moving.drop({ ...p, revision: drag.revision }, drag.destinationIds, date);
                     }}
                   >
                     <button
@@ -465,6 +450,10 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
                           publication={p}
                           date={date}
                           data={data}
+                          account={account}
+                          busy={busy}
+                          onMove={ids => moving.startMove(p, ids, date)}
+                          onDrag={drag => { moving.setDrag(drag); if (!drag) moving.setOver(null); }}
                           onOpen={() => showPublication(p.id)}
                         />
                       ))}
@@ -560,6 +549,10 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
                   publication={p}
                   date={day}
                   data={data}
+                  account={account}
+                  busy={busy}
+                  onMove={ids => moving.startMove(p, ids, day)}
+                  onDrag={drag => { moving.setDrag(drag); if (!drag) moving.setOver(null); }}
                   onOpen={() => showPublication(p.id)}
                 />
               ))}
@@ -627,27 +620,11 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
                     }
                   />
                   <div className="min-w-0 flex-1">
-                    <button
-                      className="min-h-9 w-full break-words text-left text-sm font-medium hover:underline focus-visible:outline-2 focus-visible:outline-ring"
-                      onClick={() => showPublication(p.id)}
-                    >
-                      {p.label}
-                    </button>
-                    <PublicationStatusBadge status={p.status} />
+                    <CalendarEntry publication={p} date={null} data={data} account={account} busy={busy}
+                      onOpen={() => showPublication(p.id)}
+                      onMove={ids => moving.startMove(p, ids, day)}
+                      onDrag={drag => { moving.setDrag(drag); if (!drag) moving.setOver(null); }} />
                   </div>
-                  <Button
-                    size="icon-sm"
-                    variant="ghost"
-                    aria-label={`Edit ${p.label}`}
-                    nativeButton={false}
-                    render={
-                      <Link
-                        href={`/p/${p.projectId}/edit?sequence=${p.sequenceId}`}
-                      />
-                    }
-                  >
-                    <ArrowUpRight className="size-4" />
-                  </Button>
                 </div>
               ))}
             </div>
@@ -742,75 +719,7 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
           )}
         </aside>
       </div>
-      {moveError && (
-        <p role="alert" className="text-sm text-destructive">
-          {moveError}
-        </p>
-      )}
-      <Dialog
-        open={!!move}
-        onOpenChange={(open) => {
-          if (!open) setMove(null);
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Change publication time?</DialogTitle>
-            <DialogDescription>
-              This updates the selected destination. For an iPhone schedule,
-              cancel and verify the old time first.
-            </DialogDescription>
-          </DialogHeader>
-          <p className="text-sm">
-            From{" "}
-            {move &&
-              new Date(move.before).toLocaleString(undefined, {
-                timeZone: data.settings.timezone,
-              })}
-            <br />
-            To{" "}
-            {move &&
-              new Date(move.after).toLocaleString(undefined, {
-                timeZone: data.settings.timezone,
-              })}
-          </p>
-          <Button
-            disabled={busy}
-            onClick={async () => {
-              if (!move) return;
-              const p = data.publications.find(
-                  (p) => p.id === move.publicationId,
-                ),
-                d = p?.destinations.find((d) => d.id === move.destinationId);
-              if (!p || !d) return;
-              const result = await run(
-                d.state === "scheduled"
-                  ? {
-                      tool: "publication.move",
-                      id: p.id,
-                      revision: p.revision,
-                      destinationId: d.id,
-                      at: move.after,
-                    }
-                  : {
-                      tool: "publication.patch",
-                      id: p.id,
-                      revision: p.revision,
-                      patch: {},
-                      destinations: p.destinations.map((dest) =>
-                        dest.id === d.id
-                          ? { ...dest, scheduledAt: move.after }
-                          : dest,
-                      ),
-                    },
-              );
-              if (result) setMove(null);
-            }}
-          >
-            Confirm time change
-          </Button>
-        </DialogContent>
-      </Dialog>
+      <CalendarMoveDialog move={moving.move} setMove={moving.setMove} data={data} busy={busy} error={moving.moveError || error} onMove={moving.applyMove} onOpenPublication={showPublication} />
       <Dialog
         open={!!current}
         onOpenChange={(value) => {
@@ -840,121 +749,5 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
         </DialogContent>
       </Dialog>
     </main>
-  );
-}
-
-function CalendarEntry({
-  publication: p,
-  date,
-  data,
-  onOpen,
-  compact = false,
-}: {
-  compact?: boolean;
-  publication: PublicationDetail;
-  date: string;
-  data: PublishingOverview;
-  onOpen: () => void;
-}) {
-  const destinations = p.destinations.filter((d) => {
-    const at = d.confirmedAt ?? intendedTime(p, d);
-    return at && dayInZone(at, data.settings.timezone) === date;
-  });
-  return (
-    <article className="min-w-0 rounded-[12px] bg-foreground/[0.055] p-2 ring-1 ring-foreground/5">
-      <button
-        className="flex w-full items-start gap-2 rounded-lg text-left focus-visible:outline-2 focus-visible:outline-ring"
-        onClick={onOpen}
-      >
-        <span className={cn(
-          "flex shrink-0 items-center justify-center overflow-hidden rounded-[6px] bg-black/30",
-          compact ? "size-6" : "size-8",
-        )}>
-          {p.artifact ? (
-            <video
-              src={`/api/publishing/artifact/${p.artifact.id}#t=0.1`}
-              preload="metadata"
-              muted
-              playsInline
-              aria-hidden
-              className="size-full object-cover"
-            />
-          ) : (
-            <Film className="size-4 text-muted-foreground" aria-hidden />
-          )}
-        </span>
-        <span
-          title={p.label}
-          className={cn(
-            "min-w-0 break-words text-xs font-medium leading-snug",
-            compact && "line-clamp-2",
-          )}
-        >
-          {p.label}
-        </span>
-      </button>
-      <div className="mt-2">
-        <PublicationStatusBadge status={p.status} />
-      </div>
-      {compact && destinations[0] && (
-        <p className="mt-2 text-[11px] text-muted-foreground tabular-nums">
-          {new Date(
-            (destinations[0].confirmedAt ?? intendedTime(p, destinations[0]))!,
-          ).toLocaleTimeString(undefined, {
-            timeZone: data.settings.timezone,
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
-        </p>
-      )}
-      <div className={compact ? "mt-1 flex flex-wrap gap-2" : "space-y-1"}>
-        {destinations.map((d) => (
-          <p
-            key={d.id}
-            draggable={["not_sent", "failed", "scheduled"].includes(d.state)}
-            onDragStart={(e) =>
-              e.dataTransfer.setData("text/plain", `${p.id}/${d.id}`)
-            }
-            className="mt-1 break-words text-xs leading-relaxed text-muted-foreground"
-          >
-            {compact ? (
-              <span
-                title={data.accounts.find((a) => a.id === d.accountId)?.name}
-              >
-                {data.accounts.find((a) => a.id === d.accountId) && (
-                  <NetworkIcon
-                    network={
-                      data.accounts.find((a) => a.id === d.accountId)!.network
-                    }
-                    className="size-3.5"
-                  />
-                )}
-                <span className="sr-only">
-                  {data.accounts.find((a) => a.id === d.accountId)?.network}
-                </span>
-              </span>
-            ) : (
-              <>
-                {data.accounts.find((a) => a.id === d.accountId) &&
-                  NETWORK_LABELS[
-                    data.accounts.find((a) => a.id === d.accountId)!.network
-                  ]}{" "}
-                ·{" "}
-                {new Date(
-                  (d.confirmedAt ?? intendedTime(p, d))!,
-                ).toLocaleTimeString(undefined, {
-                  timeZone: data.settings.timezone,
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-                {!d.confirmedAt && (
-                  <span className="block text-[11px]">Time reserved</span>
-                )}
-              </>
-            )}
-          </p>
-        ))}
-      </div>
-    </article>
   );
 }

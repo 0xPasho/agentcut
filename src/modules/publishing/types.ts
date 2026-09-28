@@ -45,7 +45,11 @@ export type PhoneWindow = z.infer<typeof PhoneWindow>;
 export type PhoneAction = { kind: "screen" | "tap" | "scroll" | "key" | "paste" | "home"; x?: number; y?: number; amount?: number; key?: string; modifier?: string; text?: string };
 export type ToolContext = { actor: "human" | "agent" | "system"; projectId?: string };
 export const CalendarQuery = z.object({ from: z.iso.date(), to: z.iso.date(), accountId: z.string().optional(), offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(200).default(100) });
-export type CalendarMove = { publicationId: string; destinationId: string; before: string; after: string };
+export const CalendarPlacement = z.object({ destinationId: z.string(), at: z.iso.datetime({ offset: true }).nullable() });
+export type CalendarPlacement = z.infer<typeof CalendarPlacement>;
+export type CalendarMove = { publication: PublicationDetail; destinationIds: string[]; day: string; time: string };
+export type CalendarUndo = { id: string; revision: number; placements: CalendarPlacement[]; label: string; day: string | null };
+export type CalendarDrag = { publicationId: string; revision: number; destinationIds: string[] };
 export type CalendarQuery = z.infer<typeof CalendarQuery>;
 export type PublishingOverview = { publications: PublicationDetail[]; accounts: Account[]; connections: Connection[]; settings: PublishingSettings; sessions: PhoneSession[]; externalCalendars: Array<{ connectionId: string; checkedAt: number }>; nextOffset?: number | null };
 export const ImportSourceMap = z.record(z.string(), z.object({ projectId: z.string(), sequenceId: z.string() }));
@@ -59,12 +63,27 @@ export const CadenceRow = z.object({
 export type ImportPreview = { source: string; entries: Publication[]; issues: Array<{ id: string; message: string }>; existing: number; artifacts: Array<{ publicationId: string; path: string; sha256: string }>; provenance: Array<{ publicationId: string; sourcePost: z.infer<typeof CadenceRow> }> };
 export type AgentCopyProposal = { revision: number; copy: Copy; reason: string };
 
+// Calendar backups carry records, never credentials, delivery grants or local media paths.
+export const CalendarArchive = z.object({
+  format: z.literal("agentcut-calendar"), version: z.literal(1),
+  exportedAt: z.iso.datetime(), timezone: z.string(),
+  publications: z.array(Publication).max(50_000),
+  accounts: z.array(Account.pick({ id: true, connectionId: true, remoteId: true, network: true, name: true, equivalentTo: true })),
+  connections: z.array(Connection.pick({ id: true, provider: true, name: true })),
+}).strict();
+export type CalendarArchive = z.infer<typeof CalendarArchive>;
+export type CalendarImportPreview = { total: number; added: number; skipped: number; reconnect: number; missingVideos: number; uncertain: number; timezone: string; firstDay: string | null };
+
 export const PublicationCommand = z.discriminatedUnion("tool", [
   z.object({ tool: z.literal("publication.calendar"), query: CalendarQuery }),
+  z.object({ tool: z.literal("publication.calendar.export") }),
+  z.object({ tool: z.literal("publication.calendar.import.preview"), archive: CalendarArchive }),
+  z.object({ tool: z.literal("publication.calendar.import.apply"), archive: CalendarArchive }),
   z.object({ tool: z.literal("publication.overview"), projectId: z.string().optional() }),
   z.object({ tool: z.literal("publication.prepare"), projectId: z.string(), sequenceIds: z.array(z.string()).min(1), accountIds: z.array(z.string()).optional(), repeat: z.boolean().default(false) }),
   z.object({ tool: z.literal("publication.read"), id: z.string() }),
   z.object({ tool: z.literal("publication.patch"), id: z.string(), revision: z.number().int(), patch: Publication.pick({ label: true, copy: true, scheduledAt: true, timezone: true, priority: true, expiresAt: true, phoneSource: true }).partial(), destinations: z.array(Destination).optional() }),
+  z.object({ tool: z.literal("publication.reschedule"), id: z.string(), revision: z.number().int(), placements: z.array(CalendarPlacement).min(1) }),
   z.object({ tool: z.literal("publication.approveVideo"), id: z.string(), projectRevision: z.number().int() }),
   z.object({ tool: z.literal("publication.pin"), id: z.string(), revision: z.number().int(), render: z.boolean().default(false) }),
   z.object({ tool: z.literal("publication.validate"), id: z.string() }),

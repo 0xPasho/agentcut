@@ -11,6 +11,7 @@ import { buildPhoneTool, phoneReadiness } from "./phone/control";
 import { startPhone, resumePhone, phoneAction, recordPhone, abortPhone } from "./phone/sessions";
 import { proposeCopy } from "./copy";
 import { applyImport, previewImport, rollbackImport } from "./import-cadence";
+import { exportCalendar, importCalendar, previewCalendarImport } from "./calendar-transfer";
 
 export async function executePublicationCommand(raw: unknown, context: ToolContext = { actor: "agent" }): Promise<unknown> {
   const call = PublicationCommand.parse(raw);
@@ -20,13 +21,18 @@ export async function executePublicationCommand(raw: unknown, context: ToolConte
     const ids = "ids" in call ? call.ids : "id" in call && call.tool.startsWith("publication.") ? [call.id] : "sessionId" in call ? [store.session(call.sessionId).publicationId] : [];
     for (const id of ids) if (id && store.publication(id).projectId !== context.projectId) throw new Error("This publication belongs to another project");
     if (call.tool.startsWith("publication.import.")) throw new Error("Import is a workspace command. Use the workspace publishing tools.");
+    if (call.tool.startsWith("publication.calendar.")) throw new Error("Calendar transfer is a workspace command. Use the workspace publishing tools.");
   }
   switch (call.tool) {
     case "publication.calendar": return calendar(call.query);
+    case "publication.calendar.export": return exportCalendar();
+    case "publication.calendar.import.preview": return previewCalendarImport(call.archive);
+    case "publication.calendar.import.apply": return importCalendar(call.archive);
     case "publication.overview": return service.overview(call.projectId);
     case "publication.prepare": return call.sequenceIds.map(id => service.prepare(call.projectId, id, call.accountIds, call.repeat));
     case "publication.read": return service.detail(store.publication(call.id));
     case "publication.patch": return service.patch(call.id, call.revision, call.patch, call.destinations);
+    case "publication.reschedule": return service.reschedule(call.id, call.revision, call.placements);
     case "publication.approveVideo": return service.approveVideo(call.id, call.projectRevision, context.actor);
     case "publication.pin": return service.pin(call.id, call.revision, call.render);
     case "publication.validate": return service.validate(call.id);

@@ -328,3 +328,115 @@ test("phone readiness rejects malformed geometry before coordinates can become d
   assert.equal(parsePhoneWindow(valid.replace("trusted=true", "trusted=false")).trusted, false);
   for (const invalid of [valid.replace("w=350", "w=NaN"), valid.replace("h=700", "h=0"), valid.replace("id=12", "id=-1"), "unrecognized protocol"]) assert.throws(() => parsePhoneWindow(invalid), /invalid window information/);
 });
+
+test("calendar moves preserve local account times across DST and support atomic undo through both interfaces", async () => {
+  const { calendarPlacements, calendarDestinations } = await import("../lib/calendar");
+  const { executePublicationCommand } = await import("../server/tools");
+  const c = providers.saveConnection({ provider: "iphone", name: "Move calendar" });
+  const a = providers.addPhoneAccount(c.id, "instagram", "First", "move-first");
+  const b = providers.addPhoneAccount(c.id, "tiktok", "Second", "move-second");
+  const p = model(); p.id = "calendar-move";
+  p.scheduledAt = "2030-03-09T17:00:00.000Z";
+  p.destinations = [Destination.parse({ id: "move-first", accountId: a.id, format: "instagram-reel" }), Destination.parse({ id: "move-second", accountId: b.id, format: "tiktok-video", scheduledAt: "2030-03-09T19:00:00.000Z" })];
+  store.savePublication(p);
+  const ids = p.destinations.map(d => d.id);
+  const placements = calendarPlacements(p, ids, "2030-03-10", "America/New_York");
+  assert.deepEqual(placements.map(item => item.at), ["2030-03-10T16:00:00.000Z", "2030-03-10T18:00:00.000Z"]);
+  assert.equal(calendarDestinations(p, "2030-03-09", "America/New_York", a.id).length, 1);
+  const move = await executePublicationCommand({ tool: "publication.reschedule", id: p.id, revision: p.revision, placements }, { actor: "human" }) as Publication;
+  assert.deepEqual(move.destinations.map(d => d.scheduledAt), placements.map(item => item.at));
+  await assert.rejects(executePublicationCommand({ tool: "publication.reschedule", id: p.id, revision: p.revision, placements }), /changed elsewhere/);
+  const undo = await executePublicationCommand({ tool: "publication.reschedule", id: p.id, revision: move.revision, placements: p.destinations.map(d => ({ destinationId: d.id, at: d.scheduledAt })) }, { actor: "agent" }) as Publication;
+  assert.deepEqual(undo.destinations, p.destinations);
+  assert.equal(undo.scheduledAt, p.scheduledAt);
+  const again = await executePublicationCommand({ tool: "publication.reschedule", id: p.id, revision: undo.revision, placements }, { actor: "agent" }) as Publication;
+  assert.deepEqual(again.destinations, move.destinations);
+  assert.throws(() => calendarPlacements(p, ids, "2030-03-10", "America/New_York", "02:30"), /does not exist/);
+  const partial = structuredClone(p); partial.id = "partly-unscheduled"; partial.scheduledAt = null; store.savePublication(partial);
+  const { calendar } = await import("../server/calendar");
+  assert.ok(calendar({ from: "2041-01-01", to: "2041-01-02" }).publications.some(p => p.id === partial.id), "unscheduled accounts stay reachable even when a sibling is outside the month");
+});
+
+test("calendar rejects collisions and stale undo without moving siblings or changing delivery history", async () => {
+  const c = providers.saveConnection({ provider: "iphone", name: "Move conflicts" });
+  const a = providers.addPhoneAccount(c.id, "instagram", "Conflict account", "move-conflict");
+  const b = providers.addPhoneAccount(c.id, "tiktok", "Published account", "move-published");
+  const p = model(); p.id = "calendar-conflict"; p.destinations[0].accountId = a.id;
+  p.destinations.push({ ...p.destinations[0], id: "published-sibling", accountId: b.id, format: "tiktok-video", state: "published", publishedAt: "2025-01-01T12:00:00Z" });
+  store.savePublication(p);
+  const occupied = structuredClone(p); occupied.id = "occupied-day"; occupied.destinations = [Destination.parse({ id: "occupied", accountId: a.id, format: "instagram-reel", scheduledAt: "2033-01-02T12:00:00Z" })]; store.savePublication(occupied);
+  assert.throws(() => service.reschedule(p.id, p.revision, [{ destinationId: "d", at: "2033-01-02T12:00:00Z" }]), /conflicts/);
+  assert.deepEqual(store.publication(p.id), p);
+  assert.throws(() => service.reschedule(p.id, p.revision, [{ destinationId: "d", at: "2033-01-03T12:00:00Z" }, { destinationId: "published-sibling", at: "2033-01-03T12:00:00Z" }]), /already been submitted/);
+  assert.deepEqual(store.publication(p.id), p);
+  const moved = service.reschedule(p.id, p.revision, [{ destinationId: "d", at: "2033-01-03T12:00:00Z" }]);
+  assert.deepEqual(moved.destinations[1], p.destinations[1]);
+  const edited = service.patch(p.id, moved.revision, {}, moved.destinations.map(d => d.id === "d" ? { ...d, overrides: { ...d.overrides, title: "New text" } } : d));
+  assert.throws(() => service.reschedule(p.id, moved.revision, [{ destinationId: "d", at: null }]), /changed elsewhere/);
+  assert.equal(store.publication(p.id).revision, edited.revision);
+});
+
+test("calendar backup includes the entire history and restores independently without credentials, queues or duplicate records", async () => {
+  const transfer = await import("../server/calendar-transfer");
+  const c = providers.saveConnection({ provider: "postgun", name: "Portable connection", key: "calendar-secret-must-stay-local" });
+  const a = Account.parse({ id: "portable-account", connectionId: c.id, remoteId: "12345", network: "instagram", name: "Portable account" }); store.put("account", a.id, a);
+  const p = await fixture(a.id);
+  const queued = await service.dispatch(p.id, p.revision);
+  store.transaction(() => {
+    for (let n = 0; n < 105; n++) store.savePublication({ ...model(), id: `portable-${n}`, projectId: "other-computer-project", archived: n === 104, destinations: [Destination.parse({ id: `portable-dest-${n}`, accountId: a.id, format: "instagram-reel", state: n === 0 ? "published" : "not_sent", publishedAt: n === 0 ? "2021-05-04T12:00:00Z" : null, scheduledAt: n > 0 ? "2040-05-04T12:00:00Z" : null })] });
+  });
+  const archive = transfer.exportCalendar();
+  assert.equal(archive.publications.filter(p => p.id.startsWith("portable-")).length, 105);
+  const json = JSON.stringify(archive);
+  assert.ok(!json.includes("calendar-secret-must-stay-local"));
+  assert.ok(!json.includes("approved.mp4"));
+  const exported = archive.publications.find(p => p.id === queued.id)!;
+  assert.equal(exported.artifactId, null); assert.equal(exported.phoneSource, null); assert.equal(exported.destinations[0].payload, null);
+  const file = path.join(workspace, "calendar.json"); await fs.writeFile(file, json);
+  const repo = path.resolve(import.meta.dirname, "../../../..");
+  const script = `(async () => {
+    const fs = await import("node:fs");
+    const transfer = await import(${JSON.stringify(path.join(repo, "src/modules/publishing/server/calendar-transfer.ts"))});
+    const store = await import(${JSON.stringify(path.join(repo, "src/modules/publishing/server/store.ts"))});
+    const { calendar } = await import(${JSON.stringify(path.join(repo, "src/modules/publishing/server/calendar.ts"))});
+    const archive = JSON.parse(fs.readFileSync(${JSON.stringify(file)}, "utf8"));
+    const before = transfer.previewCalendarImport(archive);
+    const first = transfer.importCalendar(archive);
+    const p = store.publication(${JSON.stringify(queued.id)});
+    const second = transfer.importCalendar(JSON.parse(JSON.stringify(archive)));
+    const runner = await import(${JSON.stringify(path.join(repo, "src/modules/publishing/server/runner.ts"))});
+    let requests = 0;
+    globalThis.fetch = async () => { requests++; throw new Error("An imported account must be reconnected first"); };
+    const tick = await runner.tick();
+    console.log("::" + JSON.stringify({ before, first, second, p, requests, tick, connection: store.connection(${JSON.stringify(c.id)}), secret: store.secret(${JSON.stringify(c.id)}), account: store.account("portable-account"), historical: calendar({ from: "2021-05-04", to: "2021-05-04" }).publications.some(p => p.id === "portable-0"), approvals: store.documents("approval"), sessions: store.sessions(), again: transfer.exportCalendar().publications.length }));
+  })();`;
+  const restored = spawnSync(path.join(repo, "node_modules/.bin/tsx"), ["-e", script], { cwd: repo, env: { ...process.env, AGENTCUT_WORKSPACE: path.join(workspace, "other-computer") }, encoding: "utf8" });
+  assert.equal(restored.status, 0, restored.stderr);
+  const result = JSON.parse(restored.stdout.split("\n").find(line => line.startsWith("::"))!.slice(2));
+  assert.equal(result.first.added, archive.publications.length);
+  assert.equal(result.second.added, 0); assert.equal(result.second.skipped, archive.publications.length);
+  assert.equal(result.again, archive.publications.length);
+  assert.equal(result.p.destinations[0].state, "unknown"); assert.equal(result.p.destinations[0].payload, null);
+  assert.equal(result.connection.configured, false); assert.ok(!result.secret); assert.equal(result.account.needsReconnect, true);
+  assert.equal(result.historical, true); assert.deepEqual(result.approvals, []); assert.deepEqual(result.sessions, []);
+  assert.equal(result.requests, 0); assert.equal(result.tick.pending, false);
+});
+
+test("calendar import validates the whole file before writing and never replaces a newer local record", async () => {
+  const { exportCalendar, importCalendar } = await import("../server/calendar-transfer");
+  const { executePublicationCommand } = await import("../server/tools");
+  const archive = exportCalendar();
+  const p = archive.publications.find(p => p.id === "portable-1")!;
+  const changed = store.change(p.id, p.revision, value => { value.copy.title = "Keep local work"; });
+  importCalendar(archive);
+  assert.equal(store.publication(p.id).copy.title, changed.copy.title);
+  const malformed = structuredClone(archive);
+  malformed.publications[0].id = "must-not-be-imported";
+  malformed.publications.at(-1)!.destinations[0].accountId = "missing-account";
+  assert.throws(() => importCalendar(malformed), /missing an account/);
+  assert.equal(store.document("publication", "must-not-be-imported"), null);
+  assert.throws(() => importCalendar({ ...archive, version: 999 }), /supported version/);
+  assert.throws(() => importCalendar({ ...archive, publications: [p, p] }), /duplicate publications/);
+  await assert.rejects(executePublicationCommand({ tool: "publication.calendar.export" }, { actor: "agent", projectId: p.projectId }), /workspace command/);
+  await assert.rejects(executePublicationCommand({ tool: "publication.calendar.import.apply", archive }, { actor: "agent", projectId: p.projectId }), /workspace command/);
+});

@@ -34,7 +34,7 @@ export async function tick(owner: string = randomUUID()) {
     }
     for (const p of store.publications()) for (const d of p.destinations) {
       const account = store.account(d.accountId), c = store.connection(account.connectionId);
-      if (c.provider === "iphone") continue;
+      if (c.provider === "iphone" || !c.configured || account.disabled || account.needsReconnect) continue;
       if (d.state === "queued" && d.payload) {
         const retry = store.document("retry", d.id) as { hash: string; count: number; after: number } | null;
         if (retry?.hash === d.payloadHash && retry.after > Date.now()) continue;
@@ -66,7 +66,10 @@ export async function tick(owner: string = randomUUID()) {
         catch (error) { recordResult(p.id, d.id, { state: d.state, error: (error as Error).message }, d); }
       }
     }
-    return { busy: false, pending: store.publications().some(p => p.destinations.some(d => store.connection(store.account(d.accountId).connectionId).provider !== "iphone" && (["queued", "sending", "scheduled", "cancel_pending"].includes(d.state) || (d.state === "unknown" && !!d.remoteId)))) };
+    return { busy: false, pending: store.publications().some(p => p.destinations.some(d => {
+      const account = store.account(d.accountId), connection = store.connection(account.connectionId);
+      return connection.configured && !account.disabled && !account.needsReconnect && connection.provider !== "iphone" && (["queued", "sending", "scheduled", "cancel_pending"].includes(d.state) || (d.state === "unknown" && !!d.remoteId));
+    })) };
   } finally { clearInterval(heartbeat); store.releaseLease("runner", owner); }
 }
 async function observedRemote(connectionId: string, destination: Destination): Promise<ProviderResult> {

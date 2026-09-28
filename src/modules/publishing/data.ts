@@ -30,3 +30,4 @@ export const DELIVERY_PRESENTATION: Record<DeliveryState, { status: PublicationS
 };
 
 export const NETWORK_LABELS: Record<Network, string> = { youtube: "YouTube", instagram: "Instagram", tiktok: "TikTok" };
+export const CALENDAR_DRAG_TYPE = "application/x-agentcut-publication";

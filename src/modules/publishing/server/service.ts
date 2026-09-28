@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readEditor, editProject } from "../../editor/server/store";
 import { projectVideos } from "../../project/lib/overview";
 import { Publication, Destination, PublishingSettings } from "../types";
-import type { PublicationDetail, Copy, Occupancy, PublishingOverview } from "../types";
+import type { CalendarPlacement, PublicationDetail, Copy, Occupancy, PublishingOverview } from "../types";
 import { FORMATS } from "../data";
 import { caption, intendedTime, publicationStatus, resolveCopy } from "../lib/resolve";
 import { planSlots } from "../lib/schedule";
@@ -37,6 +37,23 @@ export function makeDestination(accountId: string) {
   return Destination.parse({ id: randomUUID(), accountId, format });
 }
 export function assertEditable(p: Publication) { if (p.destinations.some(d => !["not_sent", "failed"].includes(d.state))) throw new Error("This publication has submitted or queued destinations. Cancel/reconcile them before changing its approved payload, or create a repeat publication."); }
+function resetDestination(publicationId: string, input: Destination, existing?: Destination): Destination {
+  if (existing?.payload) store.put("delivery-history", randomUUID(), { publicationId, destination: structuredClone(existing), at: Date.now() });
+  return Destination.parse({ id: input.id, accountId: input.accountId, format: input.format, overrides: input.overrides, options: input.options, scheduledAt: input.scheduledAt });
+}
+export function reschedule(id: string, revision: number, placements: CalendarPlacement[]) {
+  return detail(store.change(id, revision, p => {
+    if (new Set(placements.map(item => item.destinationId)).size !== placements.length) throw new Error("Choose each destination only once");
+    for (const { destinationId, at } of placements) {
+      const d = p.destinations.find(d => d.id === destinationId);
+      if (!d) throw new Error("Destination not found");
+      if (!["not_sent", "failed"].includes(d.state)) throw new Error("This destination has already been submitted. Review its delivery before changing its time.");
+      if (at && p.expiresAt && Date.parse(at) >= Date.parse(p.expiresAt)) throw new Error("Choose a time before this publication expires");
+      Object.assign(d, resetDestination(p.id, { ...d, scheduledAt: at }, d));
+    }
+    checkReservations(p);
+  }));
+}
 export function patch(id: string, revision: number, patch: Partial<Pick<Publication, "label" | "copy" | "scheduledAt" | "timezone" | "priority" | "expiresAt" | "phoneSource">>, destinations?: Destination[]) {
   return detail(store.change(id, revision, p => {
     const mutable = (d: Destination) => ["not_sent", "failed"].includes(d.state);
@@ -57,8 +74,7 @@ export function patch(id: string, revision: number, patch: Partial<Pick<Publicat
           for (const [key, value] of Object.entries(fields)) if (JSON.stringify(existing[key as keyof Destination]) !== JSON.stringify(value)) throw new Error("This destination is already submitted. Cancel or reconcile it before changing delivery details.");
           return existing;
         }
-        if (existing?.payload) store.put("delivery-history", randomUUID(), { publicationId: p.id, destination: existing, at: Date.now() });
-        return Destination.parse({ id: input.id, accountId: input.accountId, ...fields });
+        return resetDestination(p.id, input, existing);
       });
     }
     for (const d of p.destinations) if (mutable(d)) { d.payload = null; d.payloadHash = null; }

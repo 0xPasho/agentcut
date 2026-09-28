@@ -2,6 +2,7 @@
 import { NetworkIcon } from "./network-icon";
 import { PublishingSelect } from "./publishing-select";
 import { Checkbox } from "../../../common/ui/checkbox";
+import { CalendarTransfer } from "./calendar-transfer";
 import { Disclosure } from "../../../common/ui/disclosure";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -37,7 +38,7 @@ import type {
 } from "../types";
 import { usePublishing } from "../hooks";
 import { NETWORK_LABELS, FORMATS } from "../data";
-import { caption, resolveCopy } from "../lib/resolve";
+import { caption, intendedTime, resolveCopy } from "../lib/resolve";
 import { localInstant } from "../lib/schedule";
 import { DeliveryStatusBadge, PublicationStatusBadge } from "./status";
 import { PhonePanel } from "./phone-panel";
@@ -104,6 +105,10 @@ export function PublicationPanel({
           afterChange={afterChange}
         />
       )}
+      {data && <Disclosure summary="Transfer calendar records">
+        <p className="mb-3 text-xs text-muted-foreground">Export the workspace calendar or import its records from another computer.</p>
+        <CalendarTransfer run={run} busy={busy} error={error} />
+      </Disclosure>}
     </section>
   );
 }
@@ -239,7 +244,7 @@ export function PublicationForm({
             {!p.artifact && (
               <div className="flex aspect-[4/3] flex-col items-center justify-center gap-3 rounded-xl bg-black/25 text-muted-foreground">
                 <Film className="size-8" strokeWidth={1.5} aria-hidden />
-                <p className="text-xs">Render your video to preview it here.</p>
+                <p className="px-3 text-center text-xs">{p.projectRevision === null ? "This calendar record’s video is on another computer. Its text and dates are available here." : "Render your video to preview it here."}</p>
               </div>
             )}
             {!p.videoApproved && (
@@ -297,7 +302,7 @@ export function PublicationForm({
             )}
             <Button
               variant="outline"
-              disabled={busy || dirty || locked}
+              disabled={busy || dirty || locked || p.projectRevision === null}
               onClick={async () => {
                 if (beforeRun && !(await beforeRun())) return;
                 await run({
@@ -698,7 +703,7 @@ export function PublicationForm({
                   />
                 </label>
                 <label className="space-y-1 text-sm">
-                  Local publication time
+                  Default publication time
                   <Input
                     type="datetime-local"
                     value={localTime}
@@ -711,9 +716,19 @@ export function PublicationForm({
               </div>
               <p className="text-xs text-muted-foreground">
                 {draft.scheduledAt
-                  ? `Reserved: ${new Date(draft.scheduledAt).toLocaleString(undefined, { timeZone: draft.timezone })} (${draft.timezone})`
-                  : "No time reserved. Publish sends immediately."}
+                  ? `Default: ${new Date(draft.scheduledAt).toLocaleString(undefined, { timeZone: draft.timezone })} (${draft.timezone})`
+                  : "No default time. Accounts without their own time send immediately."}
               </p>
+              {draft.destinations.some(d => d.scheduledAt) && <div className="space-y-2 rounded-xl bg-foreground/5 p-3 text-xs">
+                <p className="font-medium">Account times</p>
+                <ul className="space-y-1 text-muted-foreground">
+                  {draft.destinations.map(d => {
+                    const at = d.confirmedAt ?? intendedTime(draft, d);
+                    return <li key={d.id}>{data.accounts.find(a => a.id === d.accountId)?.name}: {at ? new Date(at).toLocaleString(undefined, { timeZone: draft.timezone }) : "No time reserved"}</li>;
+                  })}
+                </ul>
+                <p className="text-muted-foreground">Account times take priority. Open an account tab to change or clear its time.</p>
+              </div>}
               <div className="flex flex-wrap gap-2">
                 <Button
                   variant="outline"
@@ -722,7 +737,7 @@ export function PublicationForm({
                     setLocalTime("");
                   }}
                 >
-                  Clear local reservation
+                  Clear default reservation
                 </Button>
                 <Button
                   variant="outline"

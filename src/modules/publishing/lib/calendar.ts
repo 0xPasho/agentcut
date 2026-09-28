@@ -1,3 +1,33 @@
+import type { CalendarPlacement, Destination, Publication } from "../types";
+import { dayInZone, intendedTime } from "./resolve";
+import { localInstant } from "./schedule";
+
+export function calendarInstant(p: Publication, d: Destination): string | null {
+  return d.publishedAt ?? d.confirmedAt ?? intendedTime(p, d);
+}
+
+export function calendarTime(at: string, timezone: string): string {
+  return new Intl.DateTimeFormat("en-GB", { timeZone: timezone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(at));
+}
+
+export function calendarDestinations(p: Publication, date: string | null, timezone: string, accountId = ""): Destination[] {
+  return p.destinations.filter(d => {
+    if (accountId && d.accountId !== accountId) return false;
+    const at = calendarInstant(p, d);
+    return date ? !!at && dayInZone(at, timezone) === date : !at;
+  });
+}
+
+export function calendarPlacements(p: Publication, destinationIds: string[], day: string, timezone: string, time?: string): CalendarPlacement[] {
+  return destinationIds.map(destinationId => {
+    const d = p.destinations.find(d => d.id === destinationId);
+    if (!d) throw new Error("Destination not found");
+    const before = d.confirmedAt ?? intendedTime(p, d);
+    if (!before && !time) throw new Error("Choose a publication time");
+    return { destinationId, at: localInstant(day, time || calendarTime(before!, timezone), timezone) };
+  });
+}
+
 /** Calendar arithmetic uses civil dates; the caller chooses the workspace timezone. */
 export function calendarDates(anchor: string, view: string): string[] {
   const date = new Date(`${anchor}T12:00:00Z`);
