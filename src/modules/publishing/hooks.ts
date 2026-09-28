@@ -4,7 +4,14 @@ import type { CalendarQuery, PublishingOverview, PublishingRun } from "./types";
 
 export function usePublishing(projectId?: string, initial?: PublishingOverview, range?: Pick<CalendarQuery, "from" | "to" | "offset">) {
   const [data, setData] = useState<PublishingOverview | undefined>(initial), [error, setError] = useState(""), [busy, setBusy] = useState(false);
-  const query = range ? `?from=${range.from}&to=${range.to}&offset=${range.offset}` : projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
+  const params = new URLSearchParams();
+  if (projectId) params.set("projectId", projectId);
+  if (range) {
+    params.set("from", range.from);
+    params.set("to", range.to);
+    params.set("offset", String(range.offset));
+  }
+  const query = params.size ? `?${params}` : "";
   const loading = useRef(0), running = useRef(false);
   const reload = useCallback(async () => {
     const request = ++loading.current;

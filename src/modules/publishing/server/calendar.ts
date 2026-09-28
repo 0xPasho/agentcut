@@ -11,12 +11,13 @@ export function calendar(raw: unknown) {
   // SQLite filters the candidate range before loading project state or rendering details.
   const rows = db.prepare(`SELECT document FROM publishing_records p WHERE kind='publication'
     AND COALESCE(json_extract(document,'$.archived'),0)=0
+    AND (? IS NULL OR json_extract(document,'$.projectId')=?)
     AND (EXISTS(SELECT 1 FROM json_each(p.document,'$.destinations') d
       WHERE julianday(COALESCE(json_extract(d.value,'$.publishedAt'),json_extract(d.value,'$.confirmedAt'),json_extract(d.value,'$.scheduledAt'),json_extract(p.document,'$.scheduledAt')))
       BETWEEN julianday(?) - 1 AND julianday(?) + 2)
     OR (json_extract(document,'$.scheduledAt') IS NULL AND (json_array_length(p.document,'$.destinations')=0 OR EXISTS(
       SELECT 1 FROM json_each(p.document,'$.destinations') d WHERE COALESCE(json_extract(d.value,'$.publishedAt'),json_extract(d.value,'$.confirmedAt'),json_extract(d.value,'$.scheduledAt')) IS NULL))))
-    ORDER BY json_extract(document,'$.createdAt'), id`).all(query.from, query.to) as Array<{ document: string }>;
+    ORDER BY json_extract(document,'$.createdAt'), id`).all(query.projectId ?? null, query.projectId ?? null, query.from, query.to) as Array<{ document: string }>;
   const candidates = rows.map(row => Publication.parse(JSON.parse(row.document))).filter(p => {
     if (query.accountId && !p.destinations.some(d => d.accountId === query.accountId)) return false;
     const times = p.destinations.map(d => calendarInstant(p, d)).filter((at): at is string => !!at);

@@ -234,6 +234,55 @@ test("calendar range includes each destination day and import identity survives 
   assert.ok(!store.publications().some(p => p.id === imported.id));
 });
 
+test("project calendars filter before pagination through the browser API and project agent", async () => {
+  const c = providers.saveConnection({ provider: "iphone", name: "Project calendar" });
+  const a = providers.addPhoneAccount(c.id, "instagram", "Project calendar", "project-calendar");
+  const other = await fixture(a.id), first = await fixture(a.id);
+  const second = service.prepare(first.projectId, first.sequenceId, [a.id], true);
+  const query = { from: "2034-06-01", to: "2034-06-30", projectId: first.projectId, accountId: a.id, limit: 1 };
+  const { calendar } = await import("../server/calendar");
+  const page = calendar(query);
+  assert.deepEqual(page.publications.map(p => p.id), [first.id]);
+  assert.equal(page.nextOffset, 1);
+  const next = calendar({ ...query, offset: page.nextOffset });
+  assert.deepEqual(next.publications.map(p => p.id), [second.id]);
+  assert.equal(next.nextOffset, null);
+  const { GET } = await import("../../../app/api/publishing/route");
+  const response = await GET(new Request(`http://localhost/api/publishing?from=${query.from}&to=${query.to}&projectId=${first.projectId}`));
+  const data = await response.json();
+  assert.deepEqual(data.publications.map((p: { id: string }) => p.id), [first.id, second.id]);
+  const { executePublicationCommand } = await import("../server/tools");
+  const scoped = await executePublicationCommand({ tool: "publication.calendar", query: { from: query.from, to: query.to } }, { actor: "agent", projectId: first.projectId }) as typeof data;
+  assert.deepEqual(scoped.publications.map((p: { id: string }) => p.id), [first.id, second.id]);
+  await assert.rejects(executePublicationCommand({ tool: "publication.calendar", query: { ...query, projectId: other.projectId } }, { actor: "agent", projectId: first.projectId }), /another project/);
+  const { loadCalendar } = await import("../server/pages");
+  const loaded = await loadCalendar({ projectId: first.projectId });
+  assert.equal(loaded?.project?.id, first.projectId);
+  assert.deepEqual(loaded?.initial.publications.map(p => p.id), [first.id, second.id]);
+  assert.equal(await loadCalendar({ projectId: "missing-project" }), null);
+});
+
+test("calendar publications link to their saved video and missing videos have no editor link", async () => {
+  const c = providers.saveConnection({ provider: "iphone", name: "Calendar editor" });
+  const a = providers.addPhoneAccount(c.id, "instagram", "Calendar editor", "calendar-editor");
+  const p = await fixture(a.id);
+  assert.equal(service.detail(p).editorHref, `/p/${p.projectId}/edit?sequence=${p.sequenceId}`);
+  assert.equal(service.detail({ ...p, sequenceId: "removed-video" }).editorHref, null);
+  assert.equal(service.detail({ ...p, projectId: "missing-project" }).editorHref, null);
+  const { Clip } = await import("../../editor/types");
+  const { id } = await create.createVideoProject("Calendar clip", [{ file: source }], { transcribe: false });
+  const snapshot = editor.readEditor(id);
+  editor.editProject(id, { expectedRevision: snapshot.revision, operations: [{ type: "clip.add", clip: Clip.parse({ id: "legacy-calendar-clip", title: "Legacy clip", start: 0, end: 1 }) }] });
+  const legacy = service.prepare(id, "legacy-calendar-clip", [a.id]);
+  assert.equal(legacy.editorHref, `/p/${id}/c/legacy-calendar-clip`);
+  const before = editor.readEditor(id);
+  const { loadCalendar } = await import("../server/pages");
+  await loadCalendar({ projectId: id });
+  assert.deepEqual(editor.readEditor(id), before, "opening the calendar never promotes or migrates the saved video");
+  editor.editProject(id, { expectedRevision: before.revision, operations: [{ type: "clip.promote", clipId: legacy.sequenceId }] });
+  assert.equal(service.detail(legacy).editorHref, `/p/${id}/edit?sequence=legacy-calendar-clip`);
+});
+
 test("API contracts upload, schedule, move and cancel per destination without leaking signed-upload credentials", async () => {
   const requests: Array<{ url: string; method: string; body: Record<string, unknown> }> = [];
   let scheduled = "2035-01-01T12:00:00.000Z", uploadedWithoutKey = false;

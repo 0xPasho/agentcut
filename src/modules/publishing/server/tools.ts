@@ -18,6 +18,10 @@ export async function executePublicationCommand(raw: unknown, context: ToolConte
   if (context.projectId) {
     if ("projectId" in call && call.projectId && call.projectId !== context.projectId) throw new Error("This editor command belongs to another project");
     if (call.tool === "publication.overview") call.projectId = context.projectId;
+    if (call.tool === "publication.calendar") {
+      if (call.query.projectId && call.query.projectId !== context.projectId) throw new Error("This calendar belongs to another project");
+      call.query.projectId = context.projectId;
+    }
     const ids = "ids" in call ? call.ids : "id" in call && call.tool.startsWith("publication.") ? [call.id] : "sessionId" in call ? [store.session(call.sessionId).publicationId] : [];
     for (const id of ids) if (id && store.publication(id).projectId !== context.projectId) throw new Error("This publication belongs to another project");
     if (call.tool.startsWith("publication.import.")) throw new Error("Import is a workspace command. Use the workspace publishing tools.");

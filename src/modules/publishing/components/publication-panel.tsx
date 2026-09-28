@@ -5,6 +5,7 @@ import { Checkbox } from "../../../common/ui/checkbox";
 import { CalendarTransfer } from "./calendar-transfer";
 import { Disclosure } from "../../../common/ui/disclosure";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   CalendarDays,
@@ -12,10 +13,11 @@ import {
   Download,
   Film,
   Plus,
+  Pencil,
   Send,
   Sparkles,
 } from "lucide-react";
-import { Button } from "../../../common/ui/button";
+import { Button, buttonVariants } from "../../../common/ui/button";
 import {
   Tabs,
   TabsList,
@@ -39,6 +41,7 @@ import type {
 import { usePublishing } from "../hooks";
 import { NETWORK_LABELS, FORMATS } from "../data";
 import { caption, intendedTime, resolveCopy } from "../lib/resolve";
+import { calendarHref } from "../lib/calendar";
 import { localInstant } from "../lib/schedule";
 import { DeliveryStatusBadge, PublicationStatusBadge } from "./status";
 import { PhonePanel } from "./phone-panel";
@@ -53,6 +56,8 @@ export function PublicationPanel({
   beforeRun?: () => Promise<boolean>;
   afterChange?: () => void;
 }) {
+  const router = useRouter();
+  const [dirty, setDirty] = useState(false);
   const { data, error, busy, run } = usePublishing(projectId);
   const p = data?.publications
     .filter((p) => p.sequenceId === sequenceId)
@@ -64,8 +69,15 @@ export function PublicationPanel({
           Prepare once. Publish to every selected account.
         </p>
         <Link
-          href="/calendar"
-          className="inline-flex items-center gap-2 text-sm underline underline-offset-4"
+          href={calendarHref(projectId)}
+          className="inline-flex items-center gap-2 text-sm underline underline-offset-4 aria-disabled:opacity-50"
+          aria-disabled={dirty || busy || undefined}
+          onNavigate={async event => {
+            event.preventDefault();
+            if (dirty || busy) return;
+            if (beforeRun && !await beforeRun()) return;
+            router.push(calendarHref(projectId));
+          }}
         >
           <CalendarDays className="size-4" aria-hidden />
           Calendar
@@ -103,6 +115,7 @@ export function PublicationPanel({
           busy={busy}
           beforeRun={beforeRun}
           afterChange={afterChange}
+          onDirtyChange={setDirty}
         />
       )}
       {data && <Disclosure summary="Transfer calendar records">
@@ -241,6 +254,14 @@ export function PublicationForm({
               <Film className="size-4" aria-hidden />
               Video preview
             </h3>
+            {p.editorHref && !beforeRun && <Link
+              href={p.editorHref}
+              className={`${buttonVariants({ variant: "outline" })} aria-disabled:opacity-50`}
+              aria-disabled={busy || dirty || undefined}
+              onClick={event => { if (busy || dirty) event.preventDefault(); }}
+            >
+              <Pencil className="size-4" aria-hidden />Edit video
+            </Link>}
             {!p.artifact && (
               <div className="flex aspect-[4/3] flex-col items-center justify-center gap-3 rounded-xl bg-black/25 text-muted-foreground">
                 <Film className="size-8" strokeWidth={1.5} aria-hidden />

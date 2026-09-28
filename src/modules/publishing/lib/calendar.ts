@@ -2,6 +2,10 @@ import type { CalendarPlacement, Destination, Publication } from "../types";
 import { dayInZone, intendedTime } from "./resolve";
 import { localInstant } from "./schedule";
 
+export function calendarHref(projectId: string): string {
+  return `/calendar?${new URLSearchParams({ projectId })}`;
+}
+
 export function calendarInstant(p: Publication, d: Destination): string | null {
   return d.publishedAt ?? d.confirmedAt ?? intendedTime(p, d);
 }

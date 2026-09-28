@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readEditor, editProject } from "../../editor/server/store";
 import { projectVideos } from "../../project/lib/overview";
+import { editHref } from "../../project/lib/project-view";
 import { Publication, Destination, PublishingSettings } from "../types";
 import type { CalendarPlacement, PublicationDetail, Copy, Occupancy, PublishingOverview } from "../types";
 import { FORMATS } from "../data";
@@ -12,12 +13,17 @@ import * as store from "./store";
 import { externalOccupancy } from "./providers/occupancy";
 
 export function videoFacts(p: Publication) {
-  try { const { edl } = readEditor(p.projectId); const video = projectVideos(edl).find(v => v.id === p.sequenceId); return { approved: video?.status === "approved" || video?.status === "rendered", signature: contentSignature(edl, p.sequenceId) }; }
-  catch { return { approved: false, signature: null }; }
+  try {
+    const { edl, revision } = readEditor(p.projectId);
+    const video = projectVideos(edl).find(v => v.id === p.sequenceId);
+    if (!video) return { approved: false, signature: null, revision, editorHref: null };
+    return { approved: video.status === "approved" || video.status === "rendered", signature: contentSignature(edl, p.sequenceId), revision, editorHref: editHref(p.projectId, video) };
+  }
+  catch { return { approved: false, signature: null, revision: null, editorHref: null }; }
 }
 export function detail(p: Publication): PublicationDetail {
   const facts = videoFacts(p), artifact = p.artifactId ? store.artifact(p.artifactId) : null;
-    return { ...p, status: publicationStatus(p, facts.approved), videoApproved: facts.approved, projectRevision: (() => { try { return readEditor(p.projectId).revision; } catch { return null; } })(), newerEdit: !!artifact && facts.signature !== artifact.signature, artifact };
+  return { ...p, status: publicationStatus(p, facts.approved), videoApproved: facts.approved, projectRevision: facts.revision, editorHref: facts.editorHref, newerEdit: !!artifact && facts.signature !== artifact.signature, artifact };
 }
 export function overview(projectId?: string): PublishingOverview { return { publications: store.publications().filter(p => !p.archived && (!projectId || p.projectId === projectId)).map(detail), accounts: store.accounts(), connections: store.connections(), settings: store.settings(), sessions: store.sessions(), externalCalendars: store.documents("external-calendar").map(raw => { const snapshot = raw as { connectionId: string; checkedAt: number }; return { connectionId: snapshot.connectionId, checkedAt: snapshot.checkedAt }; }) }; }
 export function prepare(projectId: string, sequenceId: string, accountIds?: string[], repeat = false) {

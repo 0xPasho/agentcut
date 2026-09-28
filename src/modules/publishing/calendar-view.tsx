@@ -37,7 +37,7 @@ import { CalendarMoveDialog } from "./components/calendar-move-dialog";
 import { CalendarEntry } from "./components/calendar-entry";
 import { CalendarTransfer } from "./components/calendar-transfer";
 import type {
-  PublishingOverview,
+  CalendarPageData,
 } from "./types";
 import { calendarDates, adjacentPeriod, calendarPeriodLabel, calendarDestinations } from "./lib/calendar";
 import { CALENDAR_DRAG_TYPE, NETWORK_LABELS, STATUS_LABELS } from "./data";
@@ -45,7 +45,7 @@ import { dayInZone, intendedTime } from "./lib/resolve";
 import { PublicationForm } from "./components/publication-panel";
 import { PublishingSelect } from "./components/publishing-select";
 
-export function CalendarView({ initial }: { initial: PublishingOverview }) {
+export function CalendarView({ initial, project }: CalendarPageData) {
   const today = dayInZone(new Date().toISOString(), initial.settings.timezone);
   const [anchor, setAnchor] = useState(today);
   const [view, setView] = useState("month");
@@ -62,7 +62,7 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
     error,
     busy,
     run,
-  } = usePublishing(undefined, initial, {
+  } = usePublishing(project?.id, initial, {
     from: dates[0],
     to: dates.at(-1)!,
     offset,
@@ -103,6 +103,7 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
   const unscheduled = publications.filter(
     (p) => calendarDestinations(p, null, data.settings.timezone, account).length > 0 || !p.destinations.length,
   );
+  const selectedIds = selected.filter(id => unscheduled.some(p => p.id === id));
   const current = data.publications.find((p) => p.id === open);
   const revisions = Object.fromEntries(
     data.publications.map((p) => [p.id, p.revision]),
@@ -112,6 +113,7 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
     setOffset(0);
     setAnchor(next);
     setDay(next);
+    setSelected([]);
   };
   const onDay = (date: string) => publications.filter(p =>
     calendarDestinations(p, date, data.settings.timezone, account).length > 0,
@@ -133,6 +135,7 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
     setAccount("");
     setStatus("");
     setOffset(0);
+    setSelected([]);
   };
   return (
     <main className="mx-auto min-h-screen w-full max-w-[1600px] space-y-6 px-4 pt-4 pb-12 sm:px-8">
@@ -149,9 +152,9 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
         <Button
           variant="ghost"
           size="icon"
-          aria-label="Back to projects"
+          aria-label={project ? `Back to ${project.name}` : "Back to projects"}
           nativeButton={false}
-          render={<Link href="/" />}
+          render={<Link href={project ? `/p/${project.id}` : "/"} />}
         >
           <ArrowLeft className="size-4" />
         </Button>
@@ -185,10 +188,14 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
             Publication calendar
           </h1>
           <p className="mt-2 text-sm text-pretty text-muted-foreground">
-            Plan your releases. See what’s ready, scheduled and live.
+            {project ? `Plan releases for ${project.name}.` : "Plan your releases. See what’s ready, scheduled and live."}
           </p>
+          {project && <Link href="/calendar" className="mt-2 inline-flex min-h-8 items-center gap-1.5 rounded-lg text-sm underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-ring">
+            All projects <ArrowUpRight className="size-3.5" aria-hidden />
+          </Link>}
         </div>
         <div className="flex flex-col items-start gap-2 sm:items-end">
+        {project && <p className="text-xs text-muted-foreground">Import and export include all projects.</p>}
         <CalendarTransfer run={run} busy={busy} error={error} onImported={date => { clearFilters(); if (date) revealDay(date); }} />
         <span
           title={data.settings.timezone}
@@ -266,6 +273,7 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
                   setAnchor(today);
                   setDay(today);
                   setOffset(0);
+                  setSelected([]);
                 }}
               >
                 Today
@@ -278,6 +286,7 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
                 setView(String(value));
                 setAnchor(day);
                 setOffset(0);
+                setSelected([]);
               }}
             >
               <TabsList aria-label="Calendar view" className="w-full sm:w-fit">
@@ -295,6 +304,7 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
               onValueChange={(value) => {
                 setAccount(value);
                 setOffset(0);
+                setSelected([]);
               }}
             >
               <option value="">All accounts</option>
@@ -311,6 +321,7 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
               onValueChange={(value) => {
                 setStatus(value);
                 setOffset(0);
+                setSelected([]);
               }}
             >
               <option value="">All statuses</option>
@@ -341,6 +352,7 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
                     setAnchor(e.target.value);
                     setDay(e.target.value);
                     setOffset(0);
+                    setSelected([]);
                   }
                 }}
               />
@@ -490,8 +502,8 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
                       Clear filters
                     </Button>
                   ) : (
-                    <Button className="mt-5" variant="outline" nativeButton={false} render={<Link href="/" />}>
-                      Open projects
+                    <Button className="mt-5" variant="outline" nativeButton={false} render={<Link href={project ? `/p/${project.id}` : "/"} />}>
+                      {project ? "Open project" : "Open projects"}
                       <ArrowUpRight className="size-4" aria-hidden />
                     </Button>
                   )}
@@ -509,7 +521,7 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
             {offset > 0 && (
               <Button
                 variant="outline"
-                onClick={() => setOffset(Math.max(0, offset - 100))}
+                onClick={() => { setOffset(Math.max(0, offset - 100)); setSelected([]); }}
               >
                 Previous publications
               </Button>
@@ -517,7 +529,7 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
             {data.nextOffset != null && (
               <Button
                 variant="outline"
-                onClick={() => setOffset(data.nextOffset!)}
+                onClick={() => { setOffset(data.nextOffset!); setSelected([]); }}
               >
                 More publications
               </Button>
@@ -597,9 +609,9 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
                     className="mt-4"
                     size="sm"
                     nativeButton={false}
-                    render={<Link href="/" />}
+                    render={<Link href={project ? `/p/${project.id}` : "/"} />}
                   >
-                    Open projects
+                    {project ? "Open project" : "Open projects"}
                     <ArrowUpRight className="size-3.5" aria-hidden />
                   </Button>
                 )}
@@ -610,12 +622,12 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
                 <div key={p.id} className="flex items-start gap-2">
                   <Checkbox
                     aria-label={`Select ${p.label}`}
-                    checked={selected.includes(p.id)}
+                    checked={selectedIds.includes(p.id)}
                     onCheckedChange={(checked) =>
                       setSelected(
                         checked
-                          ? [...selected, p.id]
-                          : selected.filter((id) => id !== p.id),
+                          ? [...selectedIds, p.id]
+                          : selectedIds.filter((id) => id !== p.id),
                       )
                     }
                   />
@@ -628,10 +640,10 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
                 </div>
               ))}
             </div>
-            {selected.length > 0 && (
+            {selectedIds.length > 0 && (
               <div className="mt-4 space-y-2 border-t border-foreground/10 pt-4">
                 <p className="text-xs text-muted-foreground">
-                  {selected.length} selected
+                  {selectedIds.length} selected
                 </p>
                 <Button
                   size="sm"
@@ -639,7 +651,7 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
                   onClick={() =>
                     void run({
                       tool: "publication.slots",
-                      ids: selected,
+                      ids: selectedIds,
                       from: anchor,
                       days: 30,
                       reserve: true,
@@ -744,6 +756,7 @@ export function CalendarView({ initial }: { initial: PublishingOverview }) {
               run={run}
               busy={busy}
               onDirtyChange={setDirty}
+              onPublicationChange={p => showPublication(p.id)}
             />
           )}
         </DialogContent>

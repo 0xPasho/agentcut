@@ -21,6 +21,7 @@ import { Button, buttonVariants } from "@/common/ui/button";
 import { ProjectStatus } from "./components/project-status";
 import { ProjectActions } from "./components/project-actions";
 import { ProjectPublications } from "../publishing/components/project-publications";
+import { calendarHref } from "../publishing/lib/calendar";
 import { VideoSelectionBar } from "./components/video-selection-bar";
 import { VideoViewOptions } from "./components/video-view-options";
 import { useVideoSelection } from "./hooks/use-video-selection";
@@ -288,7 +289,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                 <Video aria-hidden className="size-4" />
                 New video
               </Button>
-              <Link href="/calendar" aria-label="Calendar" title="Calendar" className={cn(buttonVariants({ size: "sm", variant: "ghost" }), "min-h-9")}>
+              <Link href={calendarHref(initial.id)} aria-label="Calendar" title="Calendar" className={cn(buttonVariants({ size: "sm", variant: "ghost" }), "min-h-9")}>
                 <CalendarDays aria-hidden className="size-4" />
                 <span className="hidden sm:inline">Calendar</span>
               </Link>

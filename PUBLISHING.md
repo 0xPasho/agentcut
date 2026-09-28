@@ -26,7 +26,15 @@ or sending stay in that dialog. Background refreshes preserve the reviewed publi
 IDs; explicitly preparing a new release replaces that video's entry in the review.
 Changing a publication revision requires reviewing it again. Unsaved copy must
 be saved or explicitly discarded before moving to another publication or closing.
-Calendar remains a persistent project navigation link. The always-visible
+Calendar remains a persistent project navigation link. Project and editor links open
+`/calendar?projectId=…`; the server applies the project scope before pagination and
+keeps it through refreshes and period changes. The page names the project, links back
+to it and offers All projects for the workspace calendar. Each local publication can
+open its saved video in the shared editor; missing videos do not get a broken link.
+Project agents use the same scoped calendar query and cannot override their project.
+Unscheduled bulk actions include only visible selections, which clear when filters,
+periods or pages change. Calendar transfers still cover the complete workspace.
+The always-visible
 preparation/reservation/review toolbar was removed because it displaced the videos
 and presented unavailable actions before a selection existed.
 
@@ -70,6 +78,14 @@ return, saved shared and YouTube-specific text/settings, connection setup, weekl
 schedule controls, and layouts down to 320px. The shared publication form was opened
 from the editor with the keyboard and its pinned preview loaded without page errors.
 These checks did not dispatch a live social publication.
+
+Project-calendar acceptance covers project filtering before pagination through the
+API, page loader and project agent, including rejection of another project scope.
+Video links follow both legacy clips and promoted timelines without changing the
+saved editor state on page load. An isolated browser round trip saved publication
+copy, preserved its date and reopened that copy in the editor. Desktop, mobile and
+keyboard checks also covered project return links, the workspace calendar and
+clearing hidden selections. No delivery was submitted.
 
 Validation on 2026-09-27: TypeScript, the full unit suite (544 tests) and the render
 suite (36 tests) passed. Earlier runs under concurrent machine load hit harness
