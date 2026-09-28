@@ -10,7 +10,6 @@ import {
   Download,
   Film,
   Loader2,
-  MoreHorizontal,
   Video,
   Search,
   SlidersHorizontal,
@@ -20,6 +19,7 @@ import {
 import { cn } from "cn";
 import { Button, buttonVariants } from "@/common/ui/button";
 import { ProjectStatus } from "./components/project-status";
+import { ProjectActions } from "./components/project-actions";
 import { ProjectPublications } from "../publishing/components/project-publications";
 import { VideoSelectionBar } from "./components/video-selection-bar";
 import { VideoViewOptions } from "./components/video-view-options";
@@ -28,7 +28,7 @@ import { videoActions } from "../editor/lib/video-actions";
 import { Card } from "@/common/ui/card";
 import { Input } from "@/common/ui/input";
 import { Label } from "@/common/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/common/ui/popover";
+import { ContextMenuItem } from "@/common/ui/context-menu";
 import { Progress } from "@/common/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/common/ui/select";
 import { Textarea } from "@/common/ui/textarea";
@@ -64,7 +64,6 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
   const [make, setMake] = useState<MakeChoice>({ mode: "clips", templateId: "", count: 6, minutes: 0 });
   const [brief, setBrief] = useState("");
   const [finding, setFinding] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [layout, setLayout] = useState<VideoLayout>("grid");
   const [sort, setSort] = useState<VideoSort>("score");
   const [filter, setFilter] = useState<SequenceStatus | "all">("all");
@@ -117,7 +116,8 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
 
   // One stream for the whole page: the chat's own progress panel reads the same
   // lines, in the same order, from the same connection.
-  const { status, error: streamError, revision: streamRevision, job } = useProjectStream(initial.id);
+  const { name: streamName, status, error: streamError, revision: streamRevision, job } = useProjectStream(initial.id);
+  useEffect(() => { if (streamName !== null) setProject(p => p.name === streamName ? p : { ...p, name: streamName }); }, [streamName]);
   useEffect(() => {
     if (status === null) return;
     setProject((p) => (p.status === status && p.error === streamError && p.job === job ? p : { ...p, status, error: streamError, job }));
@@ -131,7 +131,6 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
     if (busy) return;
     setActionPending(true);
     setError(null);
-    setMenuOpen(false);
     try {
       if (!(await editor.save())) return;
       await fn();
@@ -228,6 +227,24 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
         <div role="status" className="max-w-full sm:max-w-64">
           <ProjectStatus status={project.status} running={project.job?.status === "running"} stage={project.job?.stage} />
         </div>
+        <ProjectActions project={project} returnToProjects onRenamed={name => setProject(p => ({ ...p, name }))}>
+          {edl && <>
+            <ContextMenuItem className="min-h-10" disabled={busy || !hasSource} title="Analyze the source again for more highlights" onClick={() => setFinding(true)}>
+              <Search aria-hidden strokeWidth={1.5} className="size-4" />Find more
+            </ContextMenuItem>
+            <ContextMenuItem className="min-h-10" disabled={busy || !pending} title="Transcribe, plan and edit every pending video under the shared plan" onClick={() => run(() => api.runBatch(initial.id, { brief }))}>
+              <Sparkles aria-hidden strokeWidth={1.5} className="size-4" />Edit pending videos
+            </ContextMenuItem>
+            <ContextMenuItem className="min-h-10" disabled={busy || !hasSource} title="Transcribe the source again and refresh the captions on every video, keeping your edits" onClick={() => run(() => api.resyncTranscript(initial.id, { userBrief: brief }))}>
+              <Captions aria-hidden strokeWidth={1.5} className="size-4" />Re-sync captions
+            </ContextMenuItem>
+            <ContextMenuItem className="min-h-10" disabled={busy || !hasSource} title="Start a 30-second cut you trim yourself" onClick={() => {
+              editor.dispatch([{ type: "clip.add", clip: Clip.parse({ id: crypto.randomUUID().slice(0, 8), title: "New clip", start: 0, end: Math.min(30, edl.source?.durationSec ?? 0) }) }]);
+            }}>
+              <Film aria-hidden strokeWidth={1.5} className="size-4" />Add a cut from the source
+            </ContextMenuItem>
+          </>}
+        </ProjectActions>
       </Glass>
 
       {busy && project.job ? <Progress value={project.job.progress * 100} className="h-1.5" /> : null}
@@ -275,52 +292,6 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                 <CalendarDays aria-hidden className="size-4" />
                 <span className="hidden sm:inline">Calendar</span>
               </Link>
-              <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-                <PopoverTrigger
-                  render={
-                    <Button size="icon" variant="ghost" aria-label="More project actions" title="More project actions">
-                      <MoreHorizontal aria-hidden className="size-4" />
-                    </Button>
-                  }
-                />
-                <PopoverContent side="bottom" align="end" className="w-64 rounded-2xl p-1.5">
-                  <MenuItem
-                    disabled={busy || !hasSource}
-                    hint="Analyze the source again for more highlights"
-                    onClick={() => { setMenuOpen(false); setFinding(true); }}
-                  >
-                    <Search aria-hidden className="size-4" />
-                    Find more
-                  </MenuItem>
-                  <MenuItem
-                    disabled={busy || !pending}
-                    hint="Transcribe, plan and edit every pending video under the shared plan"
-                    onClick={() => run(() => api.runBatch(initial.id, { brief }))}
-                  >
-                    <Sparkles aria-hidden />
-                    Edit pending videos
-                  </MenuItem>
-                  <MenuItem
-                    disabled={busy || !hasSource}
-                    hint="Transcribe the source again and refresh the captions on every video, keeping your edits"
-                    onClick={() => run(() => api.resyncTranscript(initial.id, { userBrief: brief }))}
-                  >
-                    <Captions aria-hidden />
-                    Re-sync captions
-                  </MenuItem>
-                  <MenuItem
-                    disabled={busy || !hasSource}
-                    hint="Start a 30-second cut you trim yourself"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      editor.dispatch([{ type: "clip.add", clip: Clip.parse({ id: crypto.randomUUID().slice(0, 8), title: "New clip", start: 0, end: Math.min(30, edl.source?.durationSec ?? 0) }) }]);
-                    }}
-                  >
-                    <Film aria-hidden />
-                    Add a cut from the source
-                  </MenuItem>
-                </PopoverContent>
-              </Popover>
             </div>
           </div>
 
@@ -508,30 +479,6 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
         </div>
       ) : null}
     </main>
-  );
-}
-
-function MenuItem({
-  children,
-  hint,
-  disabled,
-  onClick,
-}: {
-  children: React.ReactNode;
-  hint?: string;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      title={hint}
-      onClick={onClick}
-      className="flex w-full cursor-pointer items-center gap-2 rounded-xl px-2.5 py-2 text-left text-sm outline-none transition-colors duration-150 ease-out hover:bg-white/8 focus-visible:bg-white/8 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-muted-foreground"
-    >
-      {children}
-    </button>
   );
 }
 

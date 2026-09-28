@@ -23,6 +23,8 @@ import { Input } from "../../common/ui/input";
 import { Card, CardContent } from "../../common/ui/card";
 import { Disclosure } from "../../common/ui/disclosure";
 import { Glass } from "../../common/ui/glass";
+import { useProjectStream } from "../../common/hooks/use-project-stream";
+import { ProjectActions } from "../project/components/project-actions";
 import { ScrollArea } from "../../common/ui/scroll-area";
 import { Separator } from "../../common/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../common/ui/tabs";
@@ -68,10 +70,13 @@ import { type TemplateOption } from "./types";
 import { EMPTY, MIN_PREVIEW_PX, NEW_EDIT, PLAYBACK_RATES, VIDEO_PANELS } from "./data";
 
 /** A single editor for generated clips, imported footage, and source-free canvases. */
-export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, clipId, sequenceId }: {
+export function ClipEditor({ projectId, projectName: initialProjectName, edl: initialEdl, revision, clipId, sequenceId }: {
   projectId: string; projectName: string; edl: Edl; revision: number; clipId?: string; sequenceId?: string;
 }) {
   const router = useRouter();
+  const [projectName, setProjectName] = useState(initialProjectName);
+  const { name: streamName } = useProjectStream(projectId);
+  useEffect(() => { if (streamName !== null) setProjectName(streamName); }, [streamName]);
   const editor = useEditor(projectId, { edl: initialEdl, revision });
   const savedEdl = editor.snapshot!.edl;
   const [activeSequenceId, setActiveSequenceId] = useState(sequenceId ?? clipId ?? initialEdl.sequences[0]?.id ?? initialEdl.clips[0]?.id ?? "");
@@ -704,6 +709,7 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
     <Glass shape="panel" className="mx-4 mt-4 flex shrink-0 flex-wrap items-center gap-3 px-4 py-2.5 lg:rounded-full">
       <Link aria-label="Back to project" href={`/p/${projectId}`} className={cn(buttonVariants({ variant: "ghost", size: "icon" }))} onClick={async e=>{if(e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;e.preventDefault();if(await save())router.push(`/p/${projectId}`);}}><ArrowLeft /></Link>
       <div className="min-w-0 flex-1"><h1 className="break-words text-sm font-medium">{sequence?.title ?? projectName}</h1><p className="truncate text-xs text-muted-foreground">{projectName} · {sequence?.items.length ?? 0} {(sequence?.items.length ?? 0)===1?"clip":"clips"}</p></div>
+      <div className="order-last flex w-full flex-wrap items-center gap-2 lg:order-none lg:w-auto">
       {/* Everything about the video as a whole lives behind one menu, so the column beside
           the frame can be about whatever is selected. */}
       <Menu>
@@ -724,6 +730,8 @@ export function ClipEditor({ projectId, projectName, edl: initialEdl, revision, 
       <Button variant="outline" size="sm" disabled={!dirty||saving} onClick={()=>void save()}>{saving ? <Loader2 className="motion-safe:animate-spin" /> : <Check />}{dirty ? "Save" : "Saved"}</Button>
       {download && !dirty && targetId && <a download href={clipUrl(projectId,targetId)} className={cn(buttonVariants({ variant: "outline", size: "sm" }))}><Download />Download</a>}
       <Button size="sm" disabled={rendering||assetBusy||!hasContent} onClick={render}>{rendering ? <Loader2 className="motion-safe:animate-spin" /> : <Wand2 />}{rendering ? "Rendering…" : "Render"}</Button>
+      </div>
+      <ProjectActions project={{ id: projectId, name: projectName }} onRenamed={setProjectName} returnToProjects />
     </Glass>
     <Button className="mx-4 mt-3 self-start xl:hidden" variant="outline" size="sm" aria-expanded={assetPanelOpen} onClick={()=>setAssetPanelOpen(!assetPanelOpen)}><FolderOpen />{assetPanelOpen ? "Hide assets" : "Browse assets"}</Button>
     <fieldset disabled={assetBusy} aria-busy={assetBusy} className={`flex min-h-0 min-w-0 flex-1 flex-col gap-5 px-4 pt-4 pb-5 lg:flex-row ${assetBusy ? "cursor-progress" : ""}`}>

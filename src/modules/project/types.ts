@@ -1,4 +1,7 @@
+import { z } from "zod";
 import type { ProjectVideo } from "./lib/overview";
+
+export const ProjectName = z.string().trim().min(1, "Enter a project name.");
 
 export type ClipListHandlers = {
   onSelect: (id: string) => void;

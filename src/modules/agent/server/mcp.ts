@@ -21,6 +21,7 @@ const PROTOCOL = "2024-11-05";
 
 const DESCRIPTIONS: Record<string, string> = {
   "project.read": "Read the project's current EDL and revision (clips, media, sequences, plans).",
+  "project.rename": "Rename the project in the workspace. Changes only its display name; videos, edits and revision are preserved.",
   "project.status": "What the project is doing right now: its status, the running job with its stage and progress, and every activity line logged since `since`. Poll it while a job or an edit runs and relay the new lines to the human — it is the only way they see progress. Pass the returned `cursor` back as `since` for just what is new.",
   "project.edit": "Apply editing operations against expectedRevision. Same operations as the UI.",
   "project.render": "Render the current revision to mp4.",

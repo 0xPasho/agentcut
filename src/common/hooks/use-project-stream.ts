@@ -3,7 +3,7 @@ import { useSyncExternalStore } from "react";
 import type { JobState } from "../api/client";
 import { type ProjectStream, type ProjectEvents, type Entry } from "../api/types";
 
-const EMPTY: ProjectStream = { events: [], status: null, error: null, revision: 0, job: null, connected: false };
+const EMPTY: ProjectStream = { events: [], name: null, status: null, error: null, revision: 0, job: null, connected: false };
 /** Enough to scroll back through a long run without growing without bound. */
 const MAX_EVENTS = 400;
 /** A remount (React's strict double-render, a tab switch) should not restart the feed. */
@@ -42,9 +42,9 @@ function open(projectId: string): Entry {
       const fresh = data.events.filter((e) => !seen.has(e.id));
       const events = fresh.length ? [...entry.snapshot.events, ...fresh].slice(-MAX_EVENTS) : entry.snapshot.events;
       const s = entry.snapshot;
-      const { status, revision, error, job } = data.status;
-      const same = s.connected && !fresh.length && s.status === status && s.revision === revision && s.error === error && sameJob(s.job, job);
-      if (!same) publish(entry, { events, status, revision, error, job, connected: true });
+      const { name, status, revision, error, job } = data.status;
+      const same = s.connected && !fresh.length && s.name === name && s.status === status && s.revision === revision && s.error === error && sameJob(s.job, job);
+      if (!same) publish(entry, { events, name, status, revision, error, job, connected: true });
     } catch {
       if (!stopped && entry.snapshot.connected) publish(entry, { connected: false });
     } finally {

@@ -1,32 +1,15 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Film, MoreHorizontal, Trash2 } from "lucide-react";
-import { Button } from "@/common/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/common/ui/popover";
-import { api, type ProjectSummary } from "@/common/api/client";
+import { Film } from "lucide-react";
+import type { ProjectSummary } from "@/common/api/client";
 import { ProjectStatus } from "./project-status";
+import { ProjectActions } from "./project-actions";
 
-export function ProjectRow({ project }: { project: ProjectSummary }) {
-  const router = useRouter();
-  const [confirming, setConfirming] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+export function ProjectRow({ project, fallbackFocus }: { project: ProjectSummary; fallbackFocus?: React.RefObject<HTMLElement | null> }) {
   const [failedThumbnail, setFailedThumbnail] = useState<string | null>(null);
-  const [pending, start] = useTransition();
   const videos = project.sequenceCount ?? 0;
-
-  const remove = () => start(async () => {
-    setError(null);
-    try {
-      await api.deleteProject(project.id);
-      setConfirming(false);
-      router.refresh();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to delete this project. Try again.");
-    }
-  });
 
   return (
     <li className="group flex items-center gap-2 py-2 hover:bg-muted/30 focus-within:bg-muted/30 sm:gap-4">
@@ -49,18 +32,7 @@ export function ProjectRow({ project }: { project: ProjectSummary }) {
           </div>
         </div>
       </Link>
-      <Popover open={confirming} onOpenChange={open => { if (!pending) { setConfirming(open); setError(null); } }}>
-        <PopoverTrigger render={<Button variant="ghost" size="icon" className="mr-1 size-10 text-muted-foreground" aria-label={`Actions for ${project.name}`}><MoreHorizontal aria-hidden /></Button>} />
-        <PopoverContent side="bottom" align="end" className="w-72 max-w-[calc(100vw-2rem)] rounded-xl p-4">
-          <p className="text-sm font-medium">Delete project?</p>
-          <p className="mt-1 break-words text-xs leading-relaxed text-muted-foreground">“{project.name}” will be removed from your workspace.</p>
-          {error && <p role="alert" className="mt-2 text-xs text-destructive">{error}</p>}
-          <div className="mt-4 flex justify-end gap-2">
-            <Button size="sm" variant="ghost" disabled={pending} onClick={() => setConfirming(false)}>Cancel</Button>
-            <Button size="sm" variant="destructive" disabled={pending} onClick={remove}><Trash2 aria-hidden />{pending ? "Deleting…" : "Delete project"}</Button>
-          </div>
-        </PopoverContent>
-      </Popover>
+      <ProjectActions project={project} fallbackFocus={fallbackFocus} />
     </li>
   );
 }

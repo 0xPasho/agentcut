@@ -25,6 +25,7 @@ const value = (v: unknown): string => {
 
 /** Which argument identifies the call, per tool. The first one present is shown. */
 const SUBJECT: Record<string, string[]> = {
+  "project.rename": ["name"],
   "media.import": ["file"],
   "media.upload": ["name"],
   "assets.search": ["query"],

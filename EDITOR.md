@@ -24,6 +24,14 @@ then select visible. A compact Liquid Glass toolbar keeps New video and Calendar
 available, moves Find more into the project menu, and shows the video count once.
 Deletion names its targets in a confirmation dialog and keeps source media.
 
+Project actions live in the three-dot menu on the home list, the project title banner,
+and the editor header. Rename opens a prefilled name dialog; Delete opens a separate
+confirmation. The overview's Find more, Edit pending videos, Re-sync captions and
+Add a cut actions share the banner menu. `project.rename` is the common UI/agent/MCP
+operation: it validates the display name and updates project metadata without changing
+the EDL or its revision. The existing activity poll carries the name so an agent's
+rename appears in open project and editor headers without disturbing pending edits.
+
 `src/modules/editor/lib/operations.ts` owns the operation schemas, validation, immutable reducer,
 trim behavior, and UI adapter. Both interfaces use these operations:
 

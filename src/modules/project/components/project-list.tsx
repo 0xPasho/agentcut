@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { Search, Video } from "lucide-react";
 import type { ProjectSummary } from "@/common/api/client";
 import { Button } from "@/common/ui/button";
@@ -9,6 +9,7 @@ import { ProjectRow } from "./project-row";
 
 export function ProjectList({ projects }: { projects: ProjectSummary[] }) {
   const id = useId();
+  const search = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const shown = projects.filter(project => project.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
 
@@ -24,14 +25,14 @@ export function ProjectList({ projects }: { projects: ProjectSummary[] }) {
             <label htmlFor={`${id}-search`} className="sr-only">Search projects</label>
             <div className="relative">
               <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input id={`${id}-search`} type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search projects" className="pl-9" />
+              <Input ref={search} id={`${id}-search`} type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search projects" className="pl-9" />
             </div>
           </div>
         )}
       </div>
       {shown.length > 0 && (
         <ul aria-label="Projects" className="divide-y divide-border/50 border-y border-border/70">
-          {shown.map(project => <ProjectRow key={project.id} project={project} />)}
+          {shown.map(project => <ProjectRow key={project.id} project={project} fallbackFocus={search} />)}
         </ul>
       )}
       {projects.length > 0 && shown.length === 0 && (

@@ -11,6 +11,7 @@ import type { LogEvent, JobState } from "./client";
 
 export type ProjectStream = {
   events: LogEvent[];
+  name: string | null;
   status: string | null;
   error: string | null;
   revision: number;
@@ -23,7 +24,7 @@ export type ProjectStream = {
 export type ProjectEvents = {
   events: LogEvent[];
   cursor: number;
-  status: { revision: number; status: string; error: string | null; job: JobState | null };
+  status: { name: string | null; revision: number; status: string; error: string | null; job: JobState | null };
 };
 
 export type Entry = {

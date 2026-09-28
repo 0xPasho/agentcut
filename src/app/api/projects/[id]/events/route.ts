@@ -31,6 +31,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     events,
     cursor: rows.at(-1)?.id ?? since,
     status: {
+      name: project?.name ?? null,
       revision: project?.revision ?? 0,
       status: project?.status ?? "unknown",
       error: project?.error ?? null,

@@ -18,6 +18,8 @@ import { editProject, readEditor } from "./store";
 import { jobState, JOB_ACTIVE } from "../../project/lib/job-state";
 import { transcriptionState } from "../../transcription/server/media";
 import { reapDeadJobs } from "../../project/server/reaper";
+import { ProjectName } from "../../project/types";
+import { renameProject } from "../../project/server/metadata";
 
 /** What a found sound is for. A sting and a bed are the same search with different ranking. */
 const AudioKindSchema = z.enum(["sfx", "music"]).default("sfx");
@@ -25,6 +27,7 @@ const AudioKindSchema = z.enum(["sfx", "music"]).default("sfx");
 export const EditorToolCall = z.discriminatedUnion("tool", [
   z.object({ tool: z.literal("publishing"), request: PublicationCommand }),
   z.object({ tool: z.literal("project.read") }),
+  z.object({ tool: z.literal("project.rename"), name: ProjectName }),
   // What is happening right now, for any interface that has to wait: the running
   // job and everything logged since `since`. Read-only, and safe to poll.
   z.object({ tool: z.literal("project.status"), since: z.number().int().nonnegative().default(0), limit: z.number().int().positive().max(500).default(50) }),
@@ -247,6 +250,7 @@ export async function executeEditorTool(projectId: string, raw: unknown, onActiv
       return executePublicationCommand(call.request, { actor: "agent", projectId });
     }
     case "project.read": return readEditor(projectId);
+    case "project.rename": return renameProject(projectId, call.name);
     case "project.status": return projectStatus(projectId, call.since, call.limit);
     case "project.unlock": {
       const { reapDeadJobs, unlockProject } = await import("../../project/server/reaper");
@@ -600,6 +604,7 @@ export function projectStatus(projectId: string, since = 0, limit = 50) {
   let revision = project.revision;
   try { revision = readEditor(projectId).revision; } catch { /* a project without an EDL still has a status */ }
   return {
+    name: project.name,
     status: project.status,
     error: project.error,
     revision,
