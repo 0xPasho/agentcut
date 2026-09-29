@@ -10,6 +10,7 @@ import type { ProviderKeyInfo } from "../../common/server/secrets";
 import type { selectionOverview } from "../agent/server/selection";
 import type { TranscribeMode } from "../transcription/server/settings";
 import type { chatSource } from "../stream-comments/server/comments";
+import { z } from "zod";
 
 
 /**
@@ -125,3 +126,30 @@ export type ExportDraft = {
   /** The installed pack whose style guide, references and criteria travel with it. */
   stylePack: string;
 };
+
+export const SnapshotColumn = z.object({ name: z.string().regex(/^[a-z_][a-z0-9_]*$/), type: z.enum(["", "TEXT", "INTEGER", "REAL", "BLOB", "NUMERIC"]), notNull: z.boolean(), primaryKey: z.number().int().min(0) }).strict();
+export const SnapshotTable = z.object({ name: z.string(), columns: z.array(SnapshotColumn).min(1).max(100), rows: z.array(z.array(z.union([z.string(), z.number().finite(), z.null()]))) }).strict();
+export type SnapshotTable = z.infer<typeof SnapshotTable>;
+export const SnapshotHeader = z.object({
+  format: z.literal("agentcut-workspace"), version: z.literal(1), createdAt: z.iso.datetime(),
+  sourceWorkspace: z.string().min(1), sourceRoot: z.string().min(1),
+  files: z.number().int().nonnegative(), tables: z.number().int().nonnegative(),
+  omitted: z.array(z.object({ path: z.string(), bytes: z.number().nonnegative() }).strict()),
+}).strict();
+export type SnapshotHeader = z.infer<typeof SnapshotHeader>;
+export const SnapshotFile = z.object({ path: z.string().min(1), sha256: z.string().regex(/^[a-f0-9]{64}$/), data: z.string() }).strict();
+export type SnapshotFile = z.infer<typeof SnapshotFile>;
+export type SnapshotInventory = { files: Array<{ path: string; bytes: number; modifiedAt: number }>; omitted: SnapshotHeader["omitted"] };
+export type SnapshotRead = { header: SnapshotHeader; tables: SnapshotTable[]; files: Array<{ path: string; sha256: string }>; fingerprint: string };
+export type SnapshotPreview = {
+  createdAt: string; projects: number; packs: number; files: number; publications: number;
+  omittedMedia: number; includesCredentials: boolean; fingerprint: string;
+};
+export type SnapshotExport = SnapshotPreview & { id: string; file: string; bytes: number; downloadUrl: string };
+export type SnapshotImport = { backup: SnapshotExport; restored: SnapshotPreview };
+export const SnapshotCommand = z.discriminatedUnion("tool", [
+  z.object({ tool: z.literal("workspace.snapshot.export"), destination: z.string().optional() }).strict(),
+  z.object({ tool: z.literal("workspace.snapshot.preview"), file: z.string().min(1) }).strict(),
+  z.object({ tool: z.literal("workspace.snapshot.restore"), file: z.string().min(1), fingerprint: z.string().regex(/^[a-f0-9]{64}$/), confirm: z.literal("replace-workspace-data") }).strict(),
+]);
+export type SnapshotCommand = z.infer<typeof SnapshotCommand>;

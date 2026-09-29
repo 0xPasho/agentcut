@@ -11,6 +11,7 @@ import { ErrorLine, Loading, Panel, PanelHeading, SectionHeader } from "./compon
 import { useWorkspaceSettings } from "./hooks";
 import { TRANSCRIBE_LABELS } from "./data";
 import type { MachineSettings as Machine } from "./types";
+import { WorkspaceTransfer } from "./components/workspace-transfer";
 
 /**
  * This machine (decision 135): what is true of the computer rather than of the
@@ -32,7 +33,7 @@ export function MachineSettings() {
         <>
           <Panel className="flex flex-col gap-3">
             <PanelHeading title="Where the workspace is" icon={<HardDrive className="size-4" />}>
-              Every project, the library, your rules, names and preferences, and every installed pack are folders and files here. Back this folder up and you have everything.
+              Projects, the library, your preferences and installed packs are kept here. Media linked from other folders needs its own copy.
             </PanelHeading>
             <dl className="grid gap-x-4 gap-y-1 text-xs sm:grid-cols-[auto_minmax(0,1fr)]">
               <dt className="text-muted-foreground">Workspace</dt>
@@ -42,6 +43,8 @@ export function MachineSettings() {
             </dl>
             <p className="text-xs text-muted-foreground">Set <code className="font-mono">AGENTCUT_WORKSPACE</code> before starting agentcut to use another folder.</p>
           </Panel>
+
+          <WorkspaceTransfer />
 
           <TranscribeOnImport machine={data.machine} pending={pending === "transcribe"} onChange={(mode) => run("transcribe", () => api.workspace({ action: "transcription.set", mode }))} />
 

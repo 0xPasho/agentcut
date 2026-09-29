@@ -16,7 +16,10 @@ export function readEditor(projectId: string): EditorSnapshot {
 }
 
 /** The media index a file server needs, and the revision it was read at. */
-let mediaIndex: { key: string; files: Map<string, string> } | null = null;
+let mediaIndex: { key: string; source: string; files: Map<string, string> } | null = null;
+
+/** A workspace restore can replace files without changing a project revision. */
+export function clearMediaIndex() { mediaIndex = null; }
 
 /**
  * Where one of a project's media files lives on disk.
@@ -32,13 +35,13 @@ export function mediaFile(projectId: string, mediaId: string): string | null {
   const project = q.getProject(projectId);
   if (!project?.edl) return null;
   const key = `${projectId}:${project.revision}`;
-  if (mediaIndex?.key !== key) {
+  if (mediaIndex?.key !== key || mediaIndex.source !== project.edl) {
     const raw = JSON.parse(project.edl) as { media?: Array<{ id?: unknown; file?: unknown }> };
     const files = new Map<string, string>();
     for (const media of raw.media ?? []) {
       if (typeof media?.id === "string" && typeof media?.file === "string") files.set(media.id, media.file);
     }
-    mediaIndex = { key, files };
+    mediaIndex = { key, source: project.edl, files };
   }
   return mediaIndex.files.get(mediaId) ?? null;
 }

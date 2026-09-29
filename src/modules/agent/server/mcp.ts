@@ -2,6 +2,8 @@ import { createInterface } from "node:readline";
 import { z } from "zod";
 import { PublicationCommand } from "../../publishing/types";
 import { executePublicationCommand } from "../../publishing/server/tools";
+import { SnapshotCommand } from "../../settings/types";
+import { executeSnapshotCommand } from "../../settings/server/snapshots";
 import { q } from "../../../common/server/db";
 import { EditorToolCall } from "../../editor/server/tools";
 import { RevisionConflict } from "../../editor/server/store";
@@ -146,7 +148,16 @@ const EXTRA = [
 ];
 
 export function listMcpTools() {
-  return [...EXTRA, ...editorMcpTools().map(({ name, description, inputSchema }) => ({ name, description, inputSchema })), ...publishingMcpTools()];
+  return [...EXTRA, ...editorMcpTools().map(({ name, description, inputSchema }) => ({ name, description, inputSchema })), ...publishingMcpTools(), ...snapshotMcpTools()];
+}
+
+function snapshotMcpTools() {
+  return SnapshotCommand.options.map(variant => {
+    const tool = variant.shape.tool.value;
+    const schema = z.toJSONSchema(variant, { io: "input" }) as JsonSchema;
+    const { tool: _tool, ...properties } = schema.properties ?? {}; void _tool;
+    return { name: mcpToolName(tool), tool, description: `Workspace data transfer: ${tool}. Includes profile, packs, settings, saved credentials and project history; source recordings travel separately. Returns file paths and counts, never credentials. Restore replaces saved workspace data after preview and explicit user authorization, and keeps a recovery snapshot.`, inputSchema: { ...schema, properties, required: (schema.required ?? []).filter(k => k !== "tool") } };
+  });
 }
 
 function publishingMcpTools() {
@@ -162,6 +173,8 @@ function publishingMcpTools() {
 export type McpActivity = (e: { kind: string; name?: string; text: string }) => void;
 
 export async function callMcpTool(name: string, args: Record<string, unknown>, onActivity?: McpActivity): Promise<unknown> {
+  const snapshot = snapshotMcpTools().find(t => t.name === name);
+  if (snapshot) return executeSnapshotCommand({ ...args, tool: snapshot.tool });
   const publishing = publishingMcpTools().find(t => t.name === name);
   if (publishing) return executePublicationCommand({ ...args, tool: publishing.tool }, { actor: "agent" });
   if (name === "agentcut_projects_list") return q.listProjects().map((p) => ({ id: p.id, name: p.name, status: p.status, revision: p.revision }));

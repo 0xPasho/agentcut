@@ -82,6 +82,11 @@ export const EMPTY_EXPORT: ExportDraft = {
   templates: new Set(), rules: new Set(), glossary: true, assets: new Set(), quickActions: new Set(), stylePack: "",
 };
 
+export const SNAPSHOT_TABLES = ["projects", "jobs", "events", "messages", "assets", "project_assets", "settings", "observations", "publishing_records", "publication_attempts", "publishing_leases", "publishing_secrets", "sqlite_sequence"] as const;
+export const SNAPSHOT_LIMITS = { compressed: 512 * 1024 * 1024, expanded: 1024 * 1024 * 1024, file: 128 * 1024 * 1024, entries: 100_000 } as const;
+export const SNAPSHOT_MEDIA = /\.(mp4|mov|mkv|webm|avi|m4v|wav|mp3|m4a|aac|aiff?|flac|ogg)$/i;
+export const SNAPSHOT_EXCLUDED_ROOTS = ["exports", "bin"] as const;
+
 
 /** How a library asset got here, in a word a person recognises. */
 export const ASSET_SOURCE_LABELS: Record<string, string> = {

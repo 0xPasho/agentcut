@@ -19,6 +19,7 @@ const WIN = process.platform === "win32";
 
 const COMMANDS = {
   publishing: { kind: "tsx", entry: "scripts/publishing.ts", help: "list | call request.json | tick — shared publishing commands" },
+  workspace: { kind: "tsx", entry: "scripts/workspace.ts", help: "export [file] | preview file | restore file --replace — move your profile, packs and saved workspace data" },
   dev: { kind: "pnpm", script: "dev", help: "start the Next dev server" },
   start: { kind: "pnpm", script: "start", help: "start the built Next server" },
   edit: { kind: "tsx", entry: "scripts/edit.ts", help: "headless editor: <projectId> [read | call req.json | ask ...]" },
@@ -90,6 +91,7 @@ function plan(command, rest, root, from) {
     return arg;
   });
   if (command === "publishing" && args[0] === "call" && args[1]) args[1] = path.resolve(from, args[1]);
+  if (command === "workspace" && args[1]) args[1] = path.resolve(from, args[1].replace(/^~(?=\/)/, process.env.HOME ?? "~"));
   if (spec.kind === "tsx") {
     const tsx = localBin(root, "tsx") ?? onPath("tsx");
     if (!tsx) throw new Error(`tsx not found — run "pnpm install" in ${root}`);

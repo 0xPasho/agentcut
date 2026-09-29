@@ -6,6 +6,7 @@ import type { Message } from "../../modules/agent/server/conversation";
 import type { JobState } from "../../modules/project/lib/job-state";
 import type { FilesResponse } from "../../modules/media/server/local-assets";
 import type { ResolvedLocalFile } from "../../modules/media/types";
+import type { SnapshotExport, SnapshotImport, SnapshotPreview } from "../../modules/settings/types";
 export type { Attachment, MessageContext, Message };
 export { JOB_ACTIVE, jobState, type JobState } from "../../modules/project/lib/job-state";
 
@@ -58,6 +59,9 @@ async function json<T>(res: Response): Promise<T> {
 }
 
 export const api = {
+  exportSnapshot: () => fetch("/api/workspace/snapshot", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "export" }) }).then(json<SnapshotExport>),
+  previewSnapshot: (file: File) => fetch("/api/workspace/snapshot?action=upload", { method: "POST", headers: { "Content-Type": "application/gzip" }, body: file }).then(json<{ id: string; preview: SnapshotPreview }>),
+  restoreSnapshot: (id: string, fingerprint: string) => fetch("/api/workspace/snapshot", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "restore", id, fingerprint, confirm: "replace-workspace-data" }) }).then(json<SnapshotImport>),
   listProjects: () => fetch("/api/projects").then(json<{ projects: ProjectSummary[] }>),
 
   createProject: (source: string) =>

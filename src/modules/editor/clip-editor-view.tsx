@@ -1,5 +1,6 @@
 "use client";
 
+import { WorkspaceTransfer } from "@/modules/settings/components/workspace-transfer";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -14,7 +15,7 @@ import { CanvasGrid, CanvasSelection } from "./components/canvas-selection";
 import { type CanvasPreview } from "./types";
 import { ClipToolbar } from "./components/clip-toolbar";
 import { DEFAULT_PALETTE, TOOLBAR_ROW } from "./data";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../common/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../../common/ui/dialog";
 import { Menu, MenuContent, MenuTrigger, ContextMenuItem } from "../../common/ui/context-menu";
 import { SequenceComposition } from "@/../remotion/SequenceComposition";
 import { Button, buttonVariants } from "../../common/ui/button";
@@ -113,6 +114,7 @@ export function ClipEditor({ projectId, projectName: initialProjectName, edl: in
   const [assetBusy, setAssetBusy] = useState(false);
   const [templateOptions, setTemplateOptions] = useState<TemplateOption[]>([]);
   /** Which of the video’s own panels is open. None by default: the frame is the editor. */
+  const [transferOpen, setTransferOpen] = useState(false);
   const [panel, setPanel] = useState<null | keyof typeof VIDEO_PANELS>(null);
   useEffect(() => { api.editorTool<TemplateOption[]>(projectId, { tool: "templates.list" }).then(list => setTemplateOptions(list.map(t => ({ id: t.id, name: t.name, brand: t.brand })))).catch(() => {}); }, [projectId]);
   const [fileDrag, setFileDrag] = useState(false);
@@ -724,6 +726,7 @@ export function ClipEditor({ projectId, projectName: initialProjectName, edl: in
           <ContextMenuItem onClick={()=>setPanel("settings")}>Video settings</ContextMenuItem>
         </MenuContent>
       </Menu>
+      <Button variant="ghost" size="sm" onClick={async()=>{if(await save())setTransferOpen(true);}}>Move workspace</Button>
       <Shortcuts />
       <Button variant="ghost" size="icon-sm" aria-label="Undo" title="Undo (Cmd or Ctrl + Z)" disabled={!editor.canUndo} onClick={editor.undo}><Undo2 /></Button>
       <Button variant="ghost" size="icon-sm" aria-label="Redo" title="Redo (Shift + Cmd or Ctrl + Z)" disabled={!editor.canRedo} onClick={editor.redo}><Redo2 /></Button>
@@ -817,6 +820,12 @@ export function ClipEditor({ projectId, projectName: initialProjectName, edl: in
       </aside>
     </fieldset>
 
+    <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
+      <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-xl">
+        <DialogHeader><DialogTitle>Move workspace</DialogTitle><DialogDescription>Export your saved data or restore a copy from another computer.</DialogDescription></DialogHeader>
+        <WorkspaceTransfer />
+      </DialogContent>
+    </Dialog>
     <Dialog open={panel !== null} onOpenChange={open=>{if(!open)setPanel(null);}}>
       <DialogContent className={panel === "publication" ? "max-h-[92dvh] w-[min(70rem,96vw)] sm:max-w-[70rem] overflow-y-auto rounded-3xl" : "max-h-[85dvh] w-[min(38rem,92vw)] overflow-y-auto"}>
         <DialogHeader>

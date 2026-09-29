@@ -21,6 +21,7 @@ OpenCode, using the agent you already have installed and signed in.
 - **Make a video.** Start with an idea, your footage, or an empty project.
 - **Find clips.** Turn a stream, podcast or long recording into shorter videos.
 - **Edit together.** Ask for changes in plain language or make them on the timeline.
+- **Move computers.** [Export and restore your workspace data](WORKSPACE-TRANSFER.md), including your profile, packs and saved project history.
 - **Keep your style.** Reuse templates, save editing preferences and share them in packs.
 - **Prepare and publish.** Review the video, write captions for each social account,
   and plan when to post it on a calendar.
