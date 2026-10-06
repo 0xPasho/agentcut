@@ -147,6 +147,9 @@ export const FRAME = "mx-auto w-full overflow-hidden rounded-3xl bg-black ring-1
  */
 export const MAX_HEIGHT = 460;
 
+/** How long an autoplaying preview waits for its first load to settle before playing anyway. */
+export const AUTOPLAY_FALLBACK_MS = 1500;
+
 /** What sits behind the editor's Video menu, by the name its dialog carries. */
 export const VIDEO_PANELS = {
   publication: "Publication",

@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
-import { Player } from "@remotion/player";
+import { useEffect, useMemo, useRef } from "react";
+import { Player, type PlayerRef } from "@remotion/player";
 import { ClipComposition } from "@/../remotion/ClipComposition";
 import { SequenceComposition } from "@/../remotion/SequenceComposition";
 import { sourceUrl } from "@/common/api/client";
@@ -9,7 +9,7 @@ import { sequenceFrames } from "@/modules/editor/lib/sequences";
 import { buildTimeMap, clipFrames } from "@/modules/editor/lib/timeline";
 import type { Edl } from "@/modules/editor/types";
 import type { ProjectVideo } from "@/modules/project/lib/overview";
-import { FRAME } from "../data";
+import { AUTOPLAY_FALLBACK_MS, FRAME } from "../data";
 import { frameStyle } from "../lib/video-preview";
 
 /**
@@ -34,7 +34,29 @@ export function VideoPreview({
   maxHeight?: number | string;
   autoPlay?: boolean;
 }) {
+  const player = useRef<PlayerRef>(null);
   const assetBase = `/api/projects/${projectId}/asset/`;
+
+  // Not the Player's own `autoPlay`: that starts the clock while the footage is still
+  // loading, and the clock stays on frame 0 with the button saying "playing". Playing
+  // once the first load has settled is what pressing the button does, and that works.
+  useEffect(() => {
+    if (!autoPlay) return;
+    const ref = player.current;
+    if (!ref) return;
+    let started = false;
+    const start = () => {
+      if (started) return;
+      started = true;
+      ref.play();
+    };
+    ref.addEventListener("resume", start);
+    const fallback = window.setTimeout(start, AUTOPLAY_FALLBACK_MS);
+    return () => {
+      ref.removeEventListener("resume", start);
+      window.clearTimeout(fallback);
+    };
+  }, [autoPlay, video.id]);
   const mediaUrls = useMemo(
     () => Object.fromEntries(edl.media.map((m) => [m.id, `/api/projects/${projectId}/media/${m.id}`])),
     [edl.media, projectId],
@@ -78,7 +100,7 @@ export function VideoPreview({
         compositionHeight={output.height}
         controls
         doubleClickToFullscreen
-        autoPlay={autoPlay}
+        ref={player}
         acknowledgeRemotionLicense
         className={FRAME}
         style={frameStyle(output, maxHeight)}
@@ -98,7 +120,7 @@ export function VideoPreview({
       compositionHeight={edl.output.height}
       controls
       doubleClickToFullscreen
-      autoPlay={autoPlay}
+      ref={player}
       acknowledgeRemotionLicense
       className={FRAME}
       style={frameStyle(edl.output, maxHeight)}
