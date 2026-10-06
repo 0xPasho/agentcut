@@ -1030,6 +1030,24 @@ test("a pause the transcript reports is cut only where the sound is quiet", asyn
   assert.equal(silenceCuts(words, rhythm, 20, click).length, 1);
 });
 
+test("a pause the aligner gave to the word before it is still a pause", async () => {
+  const { silenceCuts } = await import("../lib/script");
+  const rhythm = { enabled: true, minGapSec: 0.45, keepSec: 0.12, maxGapSec: 30 };
+  const step = 0.05;
+  // Measured: "sin el certificado." then nine seconds of a muted mic before the question,
+  // and the aligner had given "certificado." 8.3 s of it. Nothing was cut.
+  const words = [
+    { t: 0, d: 0.2, w: "sin" }, { t: 0.25, d: 0.15, w: "el" }, { t: 0.45, d: 8.3, w: "certificado." },
+    { t: 9.95, d: 0.13, w: "¿Qué" }, { t: 10.1, d: 0.1, w: "es" }, { t: 10.25, d: 0.3, w: "lo" }, { t: 10.6, d: 0.3, w: "primero?" },
+  ];
+  const loud = (t: number) => words.some((w) => t >= w.t && t < w.t + Math.min(w.d, 0.6));
+  const heard = { stepSec: step, curve: Array.from({ length: 240 }, (_, i) => ({ t: i * step, db: loud(i * step) ? -22 : -60 })) };
+  const cuts = silenceCuts(words, rhythm, 12, heard);
+  const cut = cuts.reduce((total, c) => total + c.d, 0);
+  assert.ok(cut > 8, `the muted stretch goes: ${cut.toFixed(2)} s cut`);
+  for (const c of cuts) assert.ok(c.t >= 1.05 && c.t + c.d <= 9.95, `and only the quiet: ${c.t.toFixed(2)}–${(c.t + c.d).toFixed(2)}`);
+});
+
 test("one word at a time draws every word, and a sentence stays on two rows", async () => {
   const { toLines, lineAt, activeWordIndex, visibleWords, LINE_LEAD } = await import("../../editor/lib/timeline");
   const { fitRows, emWidth, WORD_GAP, WORD_ROOM } = await import("../../../common/lib/text-fit");

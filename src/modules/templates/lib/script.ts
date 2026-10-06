@@ -242,6 +242,8 @@ export type Heard = { stepSec: number; curve: Array<{ t: number; db: number }> }
 
 /** How far under the speaker's own level a reading has to sit to count as a pause. */
 export const QUIET_BELOW_DB = 10;
+/** Longer than any word is said: past it, a word's duration is a pause the aligner gave it. */
+export const LONGEST_WORD_SEC = 1.5;
 /** Less than this between the loud and the quiet end of a shot, and there is nothing to read. */
 const MIN_RANGE_DB = 6;
 
@@ -269,7 +271,10 @@ export function silenceCuts(words: Word[], rhythm: TemplateRhythm["silence"], cl
     if (d >= 0.1 && t >= 0 && t + d <= clipDuration) cuts.push({ type: "silence", t, d });
   };
   for (let i = 1; i < words.length; i++) {
-    const previousEnd = words[i - 1].t + words[i - 1].d;
+    // No word runs for seconds. An aligner that could not place a pause gives it to the
+    // word before ("certificado." measured at 8.3 s, over nine seconds of a muted mic),
+    // and taken at its word that pause was never even looked at.
+    const previousEnd = words[i - 1].t + Math.min(words[i - 1].d, LONGEST_WORD_SEC);
     const gap = words[i].t - previousEnd;
     if (gap < rhythm.minGapSec || gap > rhythm.maxGapSec) continue;
     if (!quiet) { push(previousEnd, words[i].t); continue; }
@@ -278,7 +283,11 @@ export function silenceCuts(words: Word[], rhythm: TemplateRhythm["silence"], cl
     // real quiet of `minGapSec - keepSec` is the pause it meant, and the breath it keeps
     // comes out of that quiet, not out of a word.
     const shortest = Math.max(0.4, rhythm.minGapSec - rhythm.keepSec);
-    for (const run of quietRuns(quiet, heard!.stepSec, previousEnd, words[i].t))
+    // A word given seconds it was never said for is listened to from where it starts: the
+    // sound knows where it stopped. Every other word keeps its own end, so the pauses the
+    // template's pace was measured on are the ones it cuts.
+    const from = words[i - 1].d > LONGEST_WORD_SEC ? words[i - 1].t : previousEnd;
+    for (const run of quietRuns(quiet, heard!.stepSec, from, words[i].t))
       if (run.to - run.from >= shortest) push(run.from, run.to);
   }
   return cuts;
@@ -292,7 +301,7 @@ export function silenceCuts(words: Word[], rhythm: TemplateRhythm["silence"], cl
 function quietReadings(words: Word[], heard: Heard) {
   const inWords = heard.curve.filter((reading) => {
     const middle = reading.t + heard.stepSec / 2;
-    return words.some((word) => middle >= word.t && middle <= word.t + word.d);
+    return words.some((word) => middle >= word.t && middle <= word.t + Math.min(word.d, LONGEST_WORD_SEC));
   }).map((reading) => reading.db).sort((a, b) => a - b);
   if (inWords.length < 5) return null;
   // A tone, a hold, a music bed at one level: sound with no dynamics cannot tell a pause

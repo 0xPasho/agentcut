@@ -48,6 +48,21 @@ test("a clip does not open on dead air the transcript never showed", () => {
   assert.ok(end < 33.5, `and the tail stops just after the last word: ${end}`);
 });
 
+test("a clip does not open on the end of another answer's sentence", () => {
+  // Measured: "…está difícil | sin el certificado." then the question this clip is about.
+  const words = [
+    { t: 10, d: 0.13, w: "difícil" }, { t: 10.13, d: 0.23, w: "sin" }, { t: 10.36, d: 0.17, w: "el" },
+    { t: 10.53, d: 8.29, w: "certificado." }, { t: 20.4, d: 0.13, w: "¿Qué" }, { t: 20.53, d: 0.1, w: "es" },
+    { t: 20.7, d: 0.3, w: "lo" }, { t: 21.1, d: 0.4, w: "primero?" }, { t: 21.6, d: 0.4, w: "Bajo" }, { t: 22.1, d: 0.5, w: "referencias." },
+  ];
+  const [start] = tightenBoundaries(words, 10.4, 23, { duration: 100 });
+  assert.ok(start > 18.82 && start <= 20.4, `opens on the question: ${start}`);
+  // A clip that starts on a sentence of its own, or a transcript without punctuation, stands.
+  assert.equal(tightenBoundaries(words, 20.3, 23, { duration: 100 })[0], 20.3);
+  const bare = words.map((w) => ({ ...w, w: w.w.replace(/[.?¿]/g, "") }));
+  assert.ok(tightenBoundaries(bare, 10.4, 23, { duration: 100 })[0] < 10.4);
+});
+
 test("a reaction in the dead air is why the clip starts there", () => {
   const speech = words([[32, 0.4, "Esto"], [32.5, 0.5, "funciona."]]);
   const [start] = tightenBoundaries(speech, 20, 40, { duration: 600, fps: 30, peaks: [24.5, 25.1] });

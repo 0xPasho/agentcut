@@ -73,10 +73,21 @@ export function tightenBoundaries(
   const straddlingEnd = words.find((w) => w.t < e - EPS && w.t + w.d > e);
   if (straddlingEnd) e = Math.min(ceiling, straddlingEnd.t + straddlingEnd.d);
 
-  const spoken = words.filter((w) => w.t + w.d > s + EPS && w.t < e - EPS);
+  let spoken = words.filter((w) => w.t + w.d > s + EPS && w.t < e - EPS);
   // Nothing is said inside these boundaries: this is a reaction, a demo, a piece of
   // gameplay. There is no speech to trim to, so the agent's choice stands.
   if (!spoken.length) return [round(s), round(e)];
+
+  // The tail of a sentence begun before the clip is the end of another answer: "…está
+  // difícil | sin el certificado." opened a clip about starting a project. With a full
+  // stop to go by, the clip opens on the sentence after it instead.
+  const borrowed = sentenceTail(words, spoken);
+  if (borrowed > 0) {
+    const opener = spoken[borrowed];
+    const said = spoken[borrowed - 1];
+    s = Math.max(opener.t - leadSec, said.t + Math.min(said.d, LONGEST_WORD_SEC) + 0.05, 0);
+    spoken = spoken.slice(borrowed);
+  }
 
   const first = spoken[0];
   const last = spoken[spoken.length - 1];
@@ -131,3 +142,26 @@ export function tightenBoundaries(
 }
 
 const round = (n: number) => Number(n.toFixed(3));
+
+/** Ends a sentence. A transcript without punctuation never matches, and nothing moves. */
+const SENTENCE_END = /[.!?…]["»”)]*$/;
+/** The longest tail of someone else's sentence worth dropping; past it, it is the clip's own. */
+const MAX_TAIL_WORDS = 6;
+/** A pause this long before the first word makes it a new phrase, punctuation or not. */
+const NEW_PHRASE_SEC = 1;
+/** Longer than any word is said: past it, a word's duration is a pause the aligner gave it. */
+const LONGEST_WORD_SEC = 1.5;
+
+/**
+ * How many words at the head of `spoken` finish a sentence that began before it, or 0.
+ * Only when the clip goes on to a sentence of its own after them.
+ */
+function sentenceTail(words: Word[], spoken: Word[]): number {
+  const first = spoken[0];
+  const before = [...words].reverse().find((w) => w.t < first.t - EPS);
+  if (!before || SENTENCE_END.test(before.w)) return 0;
+  if (first.t - (before.t + Math.min(before.d, LONGEST_WORD_SEC)) > NEW_PHRASE_SEC) return 0;
+  const close = spoken.findIndex((w) => SENTENCE_END.test(w.w));
+  if (close < 0 || close >= MAX_TAIL_WORDS || close >= spoken.length - 1) return 0;
+  return close + 1;
+}
