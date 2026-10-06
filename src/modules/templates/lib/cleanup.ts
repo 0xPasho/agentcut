@@ -29,6 +29,8 @@ const spoken = (word: string) =>
   word.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\p{L}\p{N}]/gu, "");
 
 const MIN_CUT_SEC = 0.08;
+/** Faster than anyone talks: a run of words this squeezed was written twice, not said twice. */
+const SPOKEN_SEC_PER_WORD = 0.12;
 /** Punctuation that ends a sentence, with a closing quote or bracket after it. */
 const TERMINAL = /[.!?\u2026]["'\u00bb)\]]?$/;
 /** A gap this long is a sentence ending, whatever the transcriber wrote. Matches `toSentences`. */
@@ -220,6 +222,8 @@ export function retakeCuts(words: Word[], rhythm: TemplateRhythm["retake"], clip
       if (before.slice(opening).some((token) => !HANGING.has(token))) continue;
 
       const t = sentences[i].t;
+      // The same guard as a restatement's: a take squeezed faster than speech was written twice, not said twice.
+      if (window[j].t - t < SPOKEN_SEC_PER_WORD * j) continue;
       const breath = Math.min(rhythm.keepSec, Math.max(0, gap));
       const d = window[j].t - breath - t;
       if (d < MIN_CUT_SEC || t < 0 || t + d > clipDuration) continue;
@@ -227,6 +231,47 @@ export function retakeCuts(words: Word[], rhythm: TemplateRhythm["retake"], clip
       cutUntil = t + d;
       break;
     }
+  }
+  return [...cuts, ...restatedCuts(words, rhythm, clipDuration)];
+}
+
+/**
+ * Cuts for a passage said once and then said again, better.
+ *
+ * Not an abandoned take: the first one finishes — "¿qué es mejor, Opus 5.5 o Fable 5.1?
+ * Me quedé… Me queda la duda aún, dice mango boy." — and then the same words come again
+ * because the first reading came out badly. Every rule `retakeCuts` relies on rejects it
+ * (the first take ended its sentence, and the second is no longer than it), so it is its
+ * own shape: a long run of words said word for word twice, close together, where the
+ * repeated run is most of what was said in between. The first take goes, with whatever
+ * was said between the two; the second is the one that was meant.
+ *
+ * Measured on 64 clips of a stream, a run of seven words and a share of 0.4 kept the four
+ * real restatements and none of the three passages that only shared a phrase ("no se meta
+ * en la pata" forty words apart, "te pueden banear por eso" around a new point).
+ */
+function restatedCuts(words: Word[], rhythm: TemplateRhythm["retake"], clipDuration: number): Cut[] {
+  const cuts: Cut[] = [];
+  const text = words.map((word) => spoken(word.w));
+  for (let i = 0; i < words.length;) {
+    let taken = 0;
+    for (let j = i + rhythm.restatedWords; j < words.length && words[j].t - words[i].t <= rhythm.restatedWithinSec; j++) {
+      let same = 0;
+      while (i + same < j && j + same < words.length && text[i + same] && text[i + same] === text[j + same]) same++;
+      if (same < rhythm.restatedWords || same / (j - i) < rhythm.restatedShare) continue;
+      // Thirteen words in half a second were never said: a transcript that wrote a line
+      // twice has its second copy squeezed in by the aligner, and cutting the audio under
+      // it takes out what was really said there.
+      if (words[j].t - words[i].t < SPOKEN_SEC_PER_WORD * (j - i)) { taken = j + same - i; break; }
+      const before = words[j - 1];
+      const breath = Math.min(rhythm.keepSec, Math.max(0, words[j].t - (before.t + before.d)));
+      const t = words[i].t;
+      const d = words[j].t - breath - t;
+      if (d >= MIN_CUT_SEC && t >= 0 && t + d <= clipDuration) cuts.push({ type: "silence", t, d });
+      taken = j + same - i;
+      break;
+    }
+    i += taken || 1;
   }
   return cuts;
 }

@@ -189,6 +189,16 @@ export const TemplateRhythm = z.object({
     keepSec: z.number().min(0).default(0.1),
     /** The longest abandoned take worth dropping whole; past it, a restatement is deliberate. */
     maxWords: z.number().int().min(3).max(60).default(30),
+    /**
+     * A whole passage said again to say it better — a viewer's comment read twice, a
+     * sentence started over once it was finished. The repeated run has to be at least
+     * this long...
+     */
+    restatedWords: z.number().int().min(4).max(20).default(7),
+    /** ...and this much of everything said before the second take began... */
+    restatedShare: z.number().min(0.1).max(1).default(0.4),
+    /** ...within this many seconds of the first. */
+    restatedWithinSec: z.number().min(1).default(20),
   }).prefault({}),
   punch: z.object({
     enabled: z.boolean().default(true),

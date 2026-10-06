@@ -51,6 +51,24 @@ test("a stall pass nobody asked for cuts nothing", () => {
   assert.equal(fillerCuts(said, filler, 2).length, 1);
 });
 
+test("a passage read once badly and then again loses the first reading, and a phrase that only comes back stays", () => {
+  const spaced = (text: string, from = 0) => text.split(" ").map((w, i) => ({ t: from + i * 0.3, d: 0.25, w }));
+  // Measured: a viewer's comment read out twice, the first time stumbling.
+  const twice = spaced("Bro entonces, ¿qué es mejor, Opus 5.5 o Fable 5.1? Me quedé... Me queda la duda aún, dice mango boy. Bro entonces, ¿qué es mejor, Opus 5.5 o Fable 5.1? Me queda la duda aún. Para mí, ahorita te conviene más el Opus.");
+  const cuts = retakeCuts(twice, retake, 20);
+  assert.equal(cuts.length, 1);
+  assert.ok(cuts[0].t === 0 && Math.abs(cuts[0].t + cuts[0].d - 20 * 0.3) < 0.11, `the first reading and "dice mango boy" go: ${cuts[0].t}+${cuts[0].d}`);
+  // Measured: one phrase that comes back forty words later around a new point is not a restatement.
+  const phrase = spaced("para que no se meta en la pata. Ese es el concepto, de hecho, por eso existen. Pero, por lo general, yo ahorita estoy trabajando nada más con main y trabajo en cosas separadas, pero en el mismo branch para que no se meta en la pata. Por ejemplo, le pido otra cosa.");
+  assert.deepEqual(retakeCuts(phrase, retake, 30), []);
+  // A line the transcript wrote twice, squeezed into half a second, was said once: no cut.
+  const written = [...spaced("cualquiera de los 2 modelos que, perdón, cualquiera de las 2 suscripciones que").map((w, i) => ({ ...w, t: i * 0.04, d: 0.03 })),
+    ...spaced("cualquiera de los 2 modelos que, perdón, cualquiera de las 2 suscripciones que pagues va a estar bueno.", 0.6)];
+  assert.deepEqual(retakeCuts(written, retake, 10), []);
+  // And a sentence said again with a word of its own kept on the first take, "más minimalista", stays.
+  assert.deepEqual(retakeCuts(spaced("me gusta trabajar de una forma más minimalista. Me gusta trabajar de una forma en la que todo sea simple."), retake, 10), []);
+});
+
 test("a sentence started, given up on and started again loses the first attempt", () => {
   // "como dije antes, el— como dije antes, este modelo es el bueno"
   const said = words([
