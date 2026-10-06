@@ -4,19 +4,14 @@ import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { WORKSPACE, projectDir } from "../../../common/server/config";
 import { readEditor } from "../../editor/server/store";
+import { contentSignature, sameContent } from "../../editor/server/signature";
+export { contentSignature };
 import { claimPidLock, renderProject } from "../../render/server/render-project";
 import { probe } from "../../media/server/ffmpeg";
 import type { Edl } from "../../editor/types";
 import type { Artifact } from "../types";
 import { artifact, put } from "./store";
 
-export function contentSignature(edl: Edl, sequenceId: string): string {
-  const video = edl.sequences.find(s => s.id === sequenceId) ?? edl.clips.find(c => c.id === sequenceId);
-  if (!video) throw new Error("Video no longer exists");
-  const value = { ...video, ...("plan" in video ? { plan: undefined } : {}) };
-  const media = "items" in video ? edl.media.filter(m => video.items.some(i => i.mediaId === m.id)) : [];
-  return createHash("sha256").update(JSON.stringify({ video: value, media, source: edl.source, output: "output" in video ? video.output : edl.output })).digest("hex");
-}
 export function artifactFile(id: string) { if (!/^[a-f0-9-]{36}$/.test(id)) throw new Error("Invalid artifact"); return path.join(WORKSPACE, "publishing", "artifacts", `${id}.mp4`); }
 export async function fileHash(file: string) { const hash = createHash("sha256"); for await (const chunk of createReadStream(file)) hash.update(chunk); return hash.digest("hex"); }
 export async function captureArtifact(projectId: string, sequenceId: string, revision: number, signature: string, source: string): Promise<Artifact> {
@@ -45,8 +40,9 @@ export async function pinExport(projectId: string, sequenceId: string, render: b
   const lock = await claimPidLock(lockPath, "Wait for the current export to finish");
   try {
     const manifest = JSON.parse(await fs.readFile(path.join(dir, "rendered.json"), "utf8"));
-    const entry = manifest[sequenceId] as { revision: number; file: string } | undefined;
-    if (!entry || entry.revision !== snapshot.revision) throw new Error("Export the current revision before pinning it, or choose Render and pin");
+    const entry = manifest[sequenceId] as { revision: number; file: string; signature?: string } | undefined;
+    const current = entry && (entry.signature ? sameContent(snapshot.edl, sequenceId, entry.signature) : entry.revision === snapshot.revision);
+    if (!entry || !current) throw new Error("Export the current revision before pinning it, or choose Render and pin");
     return await captureArtifact(projectId, sequenceId, snapshot.revision, signature, path.join(dir, "clips", path.basename(entry.file)));
   } finally { await lock.close(); await fs.rm(lockPath, { force: true }); }
 }

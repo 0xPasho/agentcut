@@ -119,6 +119,18 @@ test("rendering without a list covers approved videos only, once anything is app
   store.editProject(id, { expectedRevision: next.revision, operations: [{ type: "sequence.plan.patch", sequenceId: a, patch: { status: "edited" } }] });
   await batch.markRendered(id, [a], next.revision);
   assert.equal(store.readEditor(id).edl.sequences[0].plan.status, "edited", "a render finishing after another edit cannot mark the newer work rendered");
+
+  // An export signed with its own video's content outlives edits to the project's other videos.
+  const { contentSignature } = await import("../../editor/server/signature");
+  const signedAt = store.readEditor(id);
+  await fs.writeFile(path.join(dir, "rendered.json"), JSON.stringify({
+    [a]: { revision: signedAt.revision, file: "current.mp4", signature: contentSignature(signedAt.edl, a) },
+  }));
+  store.editProject(id, { expectedRevision: signedAt.revision, operations: [{ type: "sequence.patch", sequenceId: b, title: "Renamed elsewhere" }] });
+  assert.deepEqual(Object.keys(await renderedClips(id)), [a], "editing another video leaves this export downloadable");
+  const later = store.readEditor(id);
+  store.editProject(id, { expectedRevision: later.revision, operations: [{ type: "sequence.patch", sequenceId: a, title: "Renamed itself" }] });
+  assert.deepEqual(Object.keys(await renderedClips(id)), [], "editing this video makes its export stale");
 });
 
 test("transcribing imported media puts words on its shots and a missing recogniser is reported, not thrown", async () => {

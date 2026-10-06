@@ -51,8 +51,11 @@ export async function renderProject(projectId: string, options: { only?: string[
     // Capture immutable downstream deliverables before another render can replace files.
     await options.capture?.(outputs, snapshot.revision);
     const file = path.join(dir, "rendered.json");
-    const manifest: Record<string, { revision: number; file: string }> = await fs.readFile(file, "utf8").then(JSON.parse).catch(() => ({}));
-    for (const output of outputs) manifest[output.clip.id] = { revision: snapshot.revision, file: path.basename(output.file) };
+    const manifest: Record<string, { revision: number; file: string; signature?: string }> = await fs.readFile(file, "utf8").then(JSON.parse).catch(() => ({}));
+    // Each export carries what its own video was made of, so editing another video in the
+    // project leaves it downloadable; editing this one is what makes it stale.
+    const { contentSignature } = await import("../../editor/server/signature");
+    for (const output of outputs) manifest[output.clip.id] = { revision: snapshot.revision, file: path.basename(output.file), signature: contentSignature(snapshot.edl, output.clip.id) };
     await fs.writeFile(`${file}.tmp`, JSON.stringify(manifest));
     await fs.rename(`${file}.tmp`, file);
     return { revision: snapshot.revision, outputs };
