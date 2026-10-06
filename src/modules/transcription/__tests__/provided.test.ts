@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { parseClock, parseTranscript, segmentsFromWords, wordsAcross } from "../lib/import";
-import { spreadOverSpeech } from "../server/align";
+import { pairWords, spreadOverSpeech, timeFromHeard } from "../server/align";
 import { Transcript } from "../lib/transcript";
 import type { Recogniser } from "../server/transcribe";
 
@@ -141,6 +141,37 @@ test("words that arrived without lines are grouped at pauses and full stops", ()
   assert.deepEqual(lines.map((s) => s.text), ["Hola a todos otra.", "Nueva", "tras pausa"]);
 });
 
+test("words a line placed by their length take the times they are heard at, and one heard differently keeps its place between", () => {
+  // Measured on a real stream: spread by length over a line with a pause in it, "funciona"
+  // was put two seconds before it is said, and its caption sat on screen waiting for it.
+  const said = [
+    { t: 10, d: 0.3, w: "de" }, { t: 10.3, d: 0.4, w: "cómo" }, { t: 10.7, d: 0.6, w: "funciona" },
+    { t: 11.3, d: 0.2, w: "mi" }, { t: 11.5, d: 0.2, w: "1º" }, { t: 11.7, d: 0.4, w: "chamba." },
+  ];
+  const heard = [
+    { t: 10.1, d: 0.2, w: "de" }, { t: 10.4, d: 0.3, w: "como" }, { t: 12.7, d: 0.5, w: "funciona" },
+    { t: 13.3, d: 0.15, w: "mi" }, { t: 13.5, d: 0.3, w: "primer" }, { t: 13.85, d: 0.4, w: "chamba" },
+  ];
+  const timed = timeFromHeard(said, heard);
+  assert.deepEqual(timed.map((w) => w.w), said.map((w) => w.w), "what was said stays as it was written");
+  assert.deepEqual(timed.filter((w) => w.w !== "1º").map((w) => w.t), [10.1, 10.4, 12.7, 13.3, 13.85]);
+  const ordinal = timed[4];
+  assert.ok(ordinal.t >= 13.45 && ordinal.t + ordinal.d <= 13.85 + 1e-9, `"1º" is where "primer" was said: ${ordinal.t}`);
+});
+
+test("a word pairs with the one heard near it, a name spelled two ways is one word, and nothing heard moves nothing", () => {
+  const said = [{ t: 0, d: 0.3, w: "que" }, { t: 0.3, d: 0.3, w: "sí" }];
+  const heard = [{ t: 0.2, d: 0.2, w: "no" }, { t: 30, d: 0.2, w: "que" }, { t: 30.2, d: 0.2, w: "sí" }];
+  assert.deepEqual(pairWords(said, heard), [-1, -1], "a \"que\" half a minute away is a different one");
+  assert.deepEqual(timeFromHeard(said, heard), said);
+  assert.deepEqual(pairWords([{ t: 5, d: 0.5, w: "Pashoai" }], [{ t: 5.4, d: 0.5, w: "Pachoyay" }]), [0]);
+  assert.deepEqual(pairWords([{ t: 5, d: 0.2, w: "de" }], [{ t: 5, d: 0.2, w: "da" }]), [-1], "short words agree exactly or not at all");
+  // A recogniser that heard music with one word in it that happens to match moves nothing.
+  const line = "y luego vamos a ver qué pasa con esto".split(" ").map((w, i) => ({ t: 20 + i * 0.3, d: 0.3, w }));
+  const music = [{ t: 21.5, d: 0.4, w: "oh" }, { t: 22.4, d: 0.4, w: "esto" }, { t: 23, d: 0.4, w: "baby" }];
+  assert.deepEqual(timeFromHeard(line, music), line);
+});
+
 // ─── the project ─────────────────────────────────────────────────────────────
 
 let workspace: string;
@@ -181,6 +212,8 @@ before(async () => {
     "-f", "lavfi", "-i", "aevalsrc='if(between(t,1,2)+between(t,3,4),0.4*sin(2*PI*300*t),0)':s=16000:d=5",
     "-pix_fmt", "yuv420p", "-shortest", talking], { encoding: "utf8" });
   assert.equal(made.status, 0, made.stderr);
+  // Words timed per line are heard where the clips use them; a test never runs a model to do it.
+  transcribeIndex.setDefaultRecogniser(fakeRecogniser().recognise);
 });
 after(async () => {
   transcribeIndex.setDefaultRecogniser(undefined);
@@ -358,5 +391,73 @@ test("re-importing keeps a clip's words corrected by hand, and still gives it th
     assert.deepEqual(after, ["uno", "doce", "tres", "Claude"], "the hand fix stays, and the glossary still reaches it");
   } finally {
     await saveGlossary({ terms: [] }, "workspace");
+  }
+});
+
+/** The recogniser hearing `talking`: each line's words, a little later than the line spreads them. */
+function hearing() {
+  let calls = 0;
+  const recognise: Recogniser = async () => {
+    calls += 1;
+    return Transcript.parse({
+      engine: "heard", segments: [{ start: 1.2, end: 3.9, text: "uno dos tres cuatro" }],
+      words: [{ t: 1.2, d: 0.3, w: "uno" }, { t: 1.6, d: 0.3, w: "dos" }, { t: 3.3, d: 0.3, w: "tres" }, { t: 3.6, d: 0.3, w: "cuatro" }],
+    });
+  };
+  return { recognise, get calls() { return calls; } };
+}
+
+test("a clip's words timed per line are heard where the clip is, take the times they are said at, and are heard once", async () => {
+  await sourceProject("heard");
+  const ear = hearing();
+  transcribeIndex.setDefaultRecogniser(ear.recognise);
+  try {
+    await provided.importTranscript("heard", { text: SRT, name: "vod.srt" });
+    const cut = store.readEditor("heard").edl.clips[0];
+    // Clip-relative: the clip starts at 0.5 s.
+    assert.deepEqual(cut.words.map((w) => [w.w, +w.t.toFixed(2)]), [["uno", 0.7], ["dos", 1.1], ["tres", 2.8], ["cuatro", 3.1]]);
+    assert.equal(ear.calls, 1);
+    const state = mediaTranscribe.transcriptionState("heard").source;
+    assert.deepEqual(state.status === "provided" && state.timed, [{ start: 0.5, end: 4.5 }], "the record says which stretch was heard");
+
+    await (await import("../server/resync")).resyncTranscript("heard", { reuse: true });
+    assert.equal(ear.calls, 1, "a stretch already heard is not heard again");
+  } finally {
+    transcribeIndex.setDefaultRecogniser(fakeRecogniser().recognise);
+  }
+});
+
+test("a clip cut from a transcript timed per line is settled on the words as they are heard", async () => {
+  const ear = hearing();
+  transcribeIndex.setDefaultRecogniser(ear.recognise);
+  const dir = await fs.mkdtemp(path.join(workspace, "select-"));
+  try {
+    const { transcript } = await provided.writeProvidedTranscript({ text: SRT, name: "vod.srt", file: talking, dir });
+    await fs.writeFile(path.join(dir, "clips.json"), JSON.stringify({ clips: [{ title: "Cut", score: 80, start: 0.5, end: 4.5, tags: [], rules: [] }] }));
+    const { buildEdl } = await import("../../clipping/server/select");
+    const edl = await buildEdl({
+      projectId: "selected", videoPath: talking, dir, minSec: 1, transcript,
+      probe: { width: 160, height: 90, fps: 10, durationSec: 5 } as never,
+    });
+    const clip = edl.clips[0];
+    assert.deepEqual(clip.words.map((w) => +(clip.start + w.t).toFixed(2)), [1.2, 1.6, 3.3, 3.6], "the words are where the recogniser heard them");
+    assert.equal(ear.calls, 1);
+  } finally {
+    transcribeIndex.setDefaultRecogniser(fakeRecogniser().recognise);
+  }
+});
+
+test("when nothing can hear a stretch, its words keep the times their line gave them", async () => {
+  await sourceProject("deaf");
+  transcribeIndex.setDefaultRecogniser(async () => { throw new Error("no model here"); });
+  try {
+    const result = await provided.importTranscript("deaf", { text: SRT, name: "vod.srt" });
+    assert.equal(result.patched, 1);
+    const cut = store.readEditor("deaf").edl.clips[0];
+    assert.ok(Math.abs(cut.words[0].t - 0.5) < 0.06, `uno at ${cut.words[0].t}`);
+    const state = mediaTranscribe.transcriptionState("deaf").source;
+    assert.equal(state.status === "provided" && state.timed, undefined, "and nothing claims it was heard");
+  } finally {
+    transcribeIndex.setDefaultRecogniser(fakeRecogniser().recognise);
   }
 });

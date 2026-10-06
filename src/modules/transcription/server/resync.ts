@@ -6,6 +6,8 @@ import { isUrl } from "../../project/server/ingest";
 import { editProject, readEditor } from "../../editor/server/store";
 import type { EditorOperation } from "../../editor/lib/operations";
 import { ensureTranscript, type TranscribeRunOptions } from "./transcribe";
+import { timeProvidedWords } from "./provided";
+import type { Clip } from "../../editor/types";
 
 export type ResyncOptions = Pick<TranscribeRunOptions, "brief" | "provider" | "model" | "onLog" | "onEvent"> & {
   expectedRevision?: number;
@@ -56,7 +58,7 @@ export async function resyncTranscript(projectId: string, o: ResyncOptions = {})
     throw new Error("This project has no downloaded source to transcribe");
   }
 
-  const { transcript } = await ensureTranscript({
+  const { transcript: recognised } = await ensureTranscript({
     dir: projectDir(projectId),
     sourcePath: project.source_path,
     projectId,
@@ -66,6 +68,12 @@ export async function resyncTranscript(projectId: string, o: ResyncOptions = {})
     model: o.model,
     onLog: o.onLog,
     onEvent: o.onEvent,
+  });
+  // A transcript timed per line has its words heard where the timeline uses them, so the
+  // captions they become are lit when the words are said rather than where a line put them.
+  const transcript = await timeProvidedWords({
+    dir: projectDir(projectId), file: project.source_path, transcript: recognised, projectId, onLog: o.onLog,
+    spans: cutFrom(readEditor(projectId).edl, project.source_path).map(({ clip }) => ({ start: clip.start, end: clip.end })),
   });
 
   const { revision, edl } = readEditor(projectId);
@@ -84,7 +92,22 @@ export async function resyncTranscript(projectId: string, o: ResyncOptions = {})
   return { transcript, patched: operations.length, revision: saved.revision };
 }
 
-/** Everything on the timeline that is cut from the transcribed source. */
+/** Everything on the timeline that is cut from this source, with the operation that gives it words. */
+function cutFrom(edl: ReturnType<typeof readEditor>["edl"], sourceFile: string) {
+  const cut: Array<{ clip: Clip; words: (words: Word[]) => EditorOperation }> = edl.clips.map((clip) => ({
+    clip, words: (words) => ({ type: "clip.patch", clipId: clip.id, patch: { words } }),
+  }));
+  for (const sequence of edl.sequences) {
+    for (const item of sequence.items) {
+      // Imported media and canvas scenes have no words from this transcript.
+      const media = item.mediaId ? edl.media.find((m) => m.id === item.mediaId) : null;
+      if (!media || media.file !== sourceFile) continue;
+      cut.push({ clip: item.clip, words: (words) => ({ type: "item.patch", sequenceId: sequence.id, itemId: item.id, patch: { words } }) });
+    }
+  }
+  return cut;
+}
+
 function wordOperations(
   edl: ReturnType<typeof readEditor>["edl"],
   transcript: Transcript,
@@ -92,19 +115,8 @@ function wordOperations(
   previous: Transcript | null | undefined = null,
   glossary: Glossary | null = null,
 ): EditorOperation[] {
-  const operations: EditorOperation[] = [];
-  for (const clip of edl.clips) {
+  return cutFrom(edl, sourceFile).flatMap(({ clip, words: give }) => {
     const words = freshWords(clip.words, clip.start, clip.end, transcript, previous, glossary);
-    if (words) operations.push({ type: "clip.patch", clipId: clip.id, patch: { words } });
-  }
-  for (const sequence of edl.sequences) {
-    for (const item of sequence.items) {
-      // Imported media and canvas scenes have no words from this transcript.
-      const media = item.mediaId ? edl.media.find((m) => m.id === item.mediaId) : null;
-      if (!media || media.file !== sourceFile) continue;
-      const words = freshWords(item.clip.words, item.clip.start, item.clip.end, transcript, previous, glossary);
-      if (words) operations.push({ type: "item.patch", sequenceId: sequence.id, itemId: item.id, patch: { words } });
-    }
-  }
-  return operations;
+    return words ? [give(words)] : [];
+  });
 }

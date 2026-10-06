@@ -35,3 +35,14 @@ export const MS_THRESHOLD = 36_000;
  */
 export const LINE_SEC_PER_WORD = 0.6;
 export const LINE_MIN_SEC = 2.5;
+
+/**
+ * Hearing a stretch of a line-timed transcript to time its words (`timeProvidedWords`):
+ * the recogniser listens this far past either end, for the words their line placed just
+ * outside it...
+ */
+export const HEAR_PAD_SEC = 3;
+/** ...at most this much at once, so a failed run loses little and the pairing stays small... */
+export const HEAR_MAX_SEC = 180;
+/** ...and not a sliver shorter than this, which the runs either side already heard. */
+export const HEAR_MIN_SEC = 1;

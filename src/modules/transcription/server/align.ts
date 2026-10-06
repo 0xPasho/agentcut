@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import type { Word } from "../lib/transcript";
+import { fold, type Word } from "../lib/transcript";
 
 /** A stretch of audio that actually contains speech, in seconds. */
 export type SpeechRun = { start: number; end: number };
@@ -243,4 +243,126 @@ export function spreadOverSpeech(words: Word[], seg: { start: number; end: numbe
     }
     return { ...w, t, d: Math.max(0.01, stop - t) };
   });
+}
+
+/**
+ * How far from where a transcript timed per line places a word the recogniser may hear
+ * it and still be hearing that word. Spreading a line's words by their length puts them
+ * up to a couple of seconds from where they are said, inside a long line with a pause.
+ */
+const PAIR_WITHIN_SEC = 5;
+
+function editDistance(a: string, b: string): number {
+  let row = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const next = [i];
+    for (let j = 1; j <= b.length; j++) {
+      next[j] = Math.min(row[j] + 1, next[j - 1] + 1, row[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    row = next;
+  }
+  return row[b.length];
+}
+
+/**
+ * How alike two folded words are, 0..1: 1 for the same word, the share of letters they
+ * agree on for one name spelled two ways ("pashoai", "pachoyay"), 0 for two words.
+ * Short words have to agree exactly: "de" and "da" are different words.
+ */
+function likeness(a: string, b: string): number {
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (Math.min(a.length, b.length) < 4) return 0;
+  const score = 1 - editDistance(a, b) / Math.max(a.length, b.length);
+  return score >= 0.6 ? score : 0;
+}
+
+/**
+ * Which heard word each said word is, or -1.
+ *
+ * A transcript and the recogniser rarely write every word alike — a number as a digit
+ * in one and spelled out in the other, a name spelled two ways, a stammer only one of
+ * them kept — so this is the in-order pairing that agrees on the most, not a walk word
+ * by word that one disagreement would throw off for the rest of the line. A word is
+ * only paired with one heard near where the transcript places it: "que" said here is
+ * not the "que" heard half a minute later.
+ */
+export function pairWords(said: Word[], heard: Word[], withinSec = PAIR_WITHIN_SEC): number[] {
+  const a = said.map((w) => fold(w.w));
+  const b = heard.map((w) => fold(w.w));
+  const like = (i: number, j: number) => (Math.abs(said[i].t - heard[j].t) <= withinSec ? likeness(a[i], b[j]) : 0);
+  // best[i][j]: the most the words from said[i] and heard[j] on can agree.
+  const best = Array.from({ length: said.length + 1 }, () => new Float64Array(heard.length + 1));
+  for (let i = said.length - 1; i >= 0; i--) {
+    for (let j = heard.length - 1; j >= 0; j--) {
+      const pair = like(i, j);
+      best[i][j] = Math.max(best[i + 1][j], best[i][j + 1], pair > 0 ? pair + best[i + 1][j + 1] : 0);
+    }
+  }
+  const pairs = new Array<number>(said.length).fill(-1);
+  for (let i = 0, j = 0; i < said.length && j < heard.length;) {
+    const pair = like(i, j);
+    if (pair > 0 && best[i][j] === pair + best[i + 1][j + 1]) pairs[i++] = j++;
+    else if (best[i + 1][j] >= best[i][j + 1]) i++;
+    else j++;
+  }
+  return pairs;
+}
+
+/**
+ * Words whose text is the transcript's and whose times are what the recogniser heard.
+ *
+ * A said word the recogniser also heard takes that word's start and length. One it did
+ * not hear keeps its place between the paired words either side: its own time is carried
+ * along with theirs, so a "1º" the recogniser wrote as "primer" lands where "primer" was
+ * said, and a word before the first pair or after the last moves as far as that pair
+ * did. Unless a third of the words pair, nothing moves: the recogniser heard something
+ * else — music, another voice — and a word or two that happen to match are no evidence.
+ */
+export function timeFromHeard(said: Word[], heard: Word[]): Word[] {
+  const pairs = pairWords(said, heard);
+  if (pairs.filter((j) => j >= 0).length < Math.max(1, said.length / 3)) return said;
+  // Each pair pins a start and an end of the transcript's clock to the recogniser's.
+  const pins: Array<[number, number]> = [];
+  pairs.forEach((j, i) => {
+    if (j >= 0) pins.push([said[i].t, heard[j].t], [said[i].t + said[i].d, heard[j].t + heard[j].d]);
+  });
+  const warp = (x: number) => {
+    const first = pins[0];
+    const last = pins[pins.length - 1];
+    if (x <= first[0]) return x + first[1] - first[0];
+    if (x >= last[0]) return x + last[1] - last[0];
+    let lo = 0;
+    let hi = pins.length - 1;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (pins[mid][0] <= x) lo = mid;
+      else hi = mid;
+    }
+    const [x0, y0] = pins[lo];
+    const [x1, y1] = pins[hi];
+    return x1 > x0 ? y0 + ((x - x0) / (x1 - x0)) * (y1 - y0) : y0;
+  };
+  const timed = said.map((w, i) => {
+    const j = pairs[i];
+    if (j >= 0) return { ...w, t: heard[j].t, d: heard[j].d };
+    const t = warp(w.t);
+    return { ...w, t, d: warp(w.t + w.d) - t };
+  });
+  return inOrder(timed);
+}
+
+/**
+ * Words one after another, whatever placed them: each starts after the one before it and
+ * ends by the time the next one starts. Words timed in separate passes meet here.
+ */
+export function inOrder(words: Word[]): Word[] {
+  const out = words.map((w) => ({ ...w }));
+  for (let i = 1; i < out.length; i++) out[i].t = Math.max(out[i].t, out[i - 1].t + 0.01);
+  for (let i = 0; i < out.length; i++) {
+    const next = out[i + 1];
+    const end = next ? Math.min(out[i].t + out[i].d, next.t) : out[i].t + out[i].d;
+    out[i].d = Math.max(0.01, end - out[i].t);
+  }
+  return out;
 }

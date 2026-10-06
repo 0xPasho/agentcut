@@ -67,10 +67,12 @@ function recordedAt(stamp: string | undefined, file: string): number | null {
   return new Date(y, mo - 1, d, h, mi, se).getTime();
 }
 
-/** 16kHz mono WAV — what every whisper implementation wants. */
-export async function extractAudio(src: string, dest: string) {
+/** 16kHz mono WAV — what every whisper implementation wants. Of the whole file, or of `span` seconds of it. */
+export async function extractAudio(src: string, dest: string, span?: { start: number; duration: number }) {
   await run(FFMPEG, [
-    "-y", "-i", src,
+    "-y",
+    ...(span ? ["-ss", String(span.start), "-t", String(span.duration)] : []),
+    "-i", src,
     "-vn", "-ac", "1", "-ar", "16000",
     "-c:a", "pcm_s16le",
     dest,

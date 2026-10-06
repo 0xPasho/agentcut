@@ -123,10 +123,16 @@ async function transcribeOne(projectId: string, media: { id: string; name: strin
   }
   const dir = mediaTranscriptDir(projectId, media.id);
   await fs.mkdir(dir, { recursive: true });
-  const { transcript } = await ensureTranscript({
+  const { transcript: recognised } = await ensureTranscript({
     dir, sourcePath: media.file, projectId,
     brief: o.brief, provider: o.provider, model: o.model, force: o.force, recognise: o.recognise,
     onLog: o.onLog, onEvent: o.onEvent,
+  });
+  // A transcript timed per line has its words heard where the shots play this media.
+  const { timeProvidedWords } = await import("./provided");
+  const transcript = await timeProvidedWords({
+    dir, file: media.file, transcript: recognised, projectId, recognise: o.recognise, onLog: o.onLog,
+    spans: readEditor(projectId).edl.sequences.flatMap((s) => s.items.filter((item) => item.mediaId === media.id).map((item) => ({ start: item.clip.start, end: item.clip.end }))),
   });
   const current = readEditor(projectId);
   const operations: EditorOperation[] = [];

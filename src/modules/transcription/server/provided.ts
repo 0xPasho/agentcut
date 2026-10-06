@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import { existsSync, openSync, readSync, closeSync, readFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { q } from "../../../common/server/db";
 import { projectDir } from "../../../common/server/config";
@@ -7,11 +8,11 @@ import { extractAudio, probe } from "../../media/server/ffmpeg";
 import { isUrl } from "../../../common/lib/urls";
 import { readEditor } from "../../editor/server/store";
 import { Transcript, fmt, type Segment, type Word } from "../lib/transcript";
-import { parseTranscript, providedEngine, wordsAcross } from "../lib/import";
-import { PROVIDED_RECORD } from "../data";
+import { isProvided, parseTranscript, providedEngine, wordsAcross } from "../lib/import";
+import { HEAR_MAX_SEC, HEAR_MIN_SEC, HEAR_PAD_SEC, PROVIDED_RECORD } from "../data";
 import type { ProvidedTranscript, SourceTranscriptState } from "../types";
-import { speechRunsFromWav, spreadOverSpeech, type SpeechRun } from "./align";
-import { writeTranscript } from "./transcribe";
+import { inOrder, speechRunsFromWav, spreadOverSpeech, timeFromHeard, type SpeechRun } from "./align";
+import { recogniserFor, vocabularyOf, writeTranscript, type Recogniser } from "./transcribe";
 
 /**
  * A transcript the person already has, made the project's words.
@@ -79,6 +80,123 @@ async function fitWords(segments: Segment[], file: string | null, dir: string, o
     words.push(...spreadOverSpeech(wordsAcross(seg.text, seg.end - seg.start), seg, runs.slice(from, to)));
   }
   return words;
+}
+
+type Span = { start: number; end: number };
+
+/** Spans in order, with any that overlap — or sit within `gap` of each other — made one. */
+function joined(spans: Span[], gap = 0): Span[] {
+  const out: Span[] = [];
+  for (const span of spans.filter((s) => s.end > s.start).sort((a, b) => a.start - b.start)) {
+    const last = out[out.length - 1];
+    if (last && span.start <= last.end + gap) last.end = Math.max(last.end, span.end);
+    else out.push({ start: span.start, end: span.end });
+  }
+  return out;
+}
+
+/** What of `spans` lies outside `covered`, which is in order. */
+function uncovered(spans: Span[], covered: Span[]): Span[] {
+  const out: Span[] = [];
+  for (const span of spans) {
+    let from = span.start;
+    for (const c of covered) {
+      if (c.end <= from || c.start >= span.end) continue;
+      if (c.start > from) out.push({ start: from, end: c.start });
+      from = Math.max(from, c.end);
+    }
+    if (from < span.end) out.push({ start: from, end: span.end });
+  }
+  return out;
+}
+
+/** A span cut into pieces of at most `max` seconds. */
+const pieces = (span: Span, max: number): Span[] => {
+  const count = Math.ceil((span.end - span.start) / max);
+  const size = (span.end - span.start) / count;
+  return Array.from({ length: count }, (_, i) => ({ start: span.start + i * size, end: i === count - 1 ? span.end : span.start + (i + 1) * size }));
+};
+
+async function readRecord(dir: string): Promise<ProvidedTranscript | null> {
+  return fs.readFile(path.join(dir, PROVIDED_RECORD), "utf8").then((text) => JSON.parse(text) as ProvidedTranscript, () => null);
+}
+
+/**
+ * The words of the stretches a timeline uses, at the times they are heard.
+ *
+ * A file timed per line only says when each line starts — Restream's to the second — and
+ * `fitWords` spreads the line's words over the speech inside it by their length. Inside a
+ * long line with a pause in it, that puts words a second or two from where they are said,
+ * and a karaoke caption shows it: the phrase is up and waiting long before it is spoken.
+ * So wherever the words are used, the recogniser listens to that stretch and every word it
+ * also heard takes the time it heard it at (`timeFromHeard`). What was said stays the
+ * person's; only when it was said is taken from the sound.
+ *
+ * Listening costs a recogniser run, so only the stretches asked for are heard, and the
+ * record remembers them so none is heard twice. A file that timed every word, and a
+ * transcript the recogniser made, come back as they are. Best effort: without whisper, or
+ * when a run fails, the words not heard keep the times their lines gave them.
+ */
+export async function timeProvidedWords(o: {
+  dir: string;
+  file: string | null;
+  transcript: Transcript;
+  spans: Span[];
+  projectId?: string;
+  recognise?: Recogniser;
+  onLog?: (text: string) => void;
+}): Promise<Transcript> {
+  if (!o.file || isUrl(o.file) || !isProvided(o.transcript.engine)) return o.transcript;
+  const record = await readRecord(o.dir);
+  if (record?.timing !== "segments") return o.transcript;
+  const before = joined(record.timed ?? []);
+  // Stretches a few seconds apart are heard as one; a stretch already heard is never in one.
+  const pending = uncovered(joined(o.spans, 2 * HEAR_PAD_SEC), before)
+    .filter((span) => span.end - span.start >= HEAR_MIN_SEC)
+    .flatMap((span) => pieces(span, HEAR_MAX_SEC));
+  if (!pending.length) return o.transcript;
+
+  let recognise: Recogniser;
+  try { recognise = await recogniserFor(o.recognise); }
+  catch (error) {
+    o.onLog?.(`${(error as Error).message}; the words keep the times their lines gave them`);
+    return o.transcript;
+  }
+  const { readGlossary } = await import("../../rules/server/glossary");
+  const prompt = vocabularyOf(await readGlossary(o.projectId));
+
+  let words = o.transcript.words;
+  const heard = [...before];
+  const scratch = await fs.mkdtemp(path.join(os.tmpdir(), "agentcut-heard-"));
+  try {
+    for (const span of pending) {
+      // Listen a little past either end, for the words their line placed just outside —
+      // but never into a stretch already heard, whose words are where they belong.
+      const from = Math.max(span.start - HEAR_PAD_SEC, ...heard.filter((h) => h.end <= span.start).map((h) => h.end), 0);
+      const to = Math.min(span.end + HEAR_PAD_SEC, ...heard.filter((h) => h.start >= span.end).map((h) => h.start));
+      const wav = await extractAudio(o.file, path.join(scratch, "heard.wav"), { start: from, duration: to - from });
+      const listened = (await recognise(wav, { outDir: scratch, prompt })).words
+        .map((w) => ({ ...w, t: w.t + from }))
+        .filter((w) => w.t >= from && w.t < to);
+      const at = words.flatMap((w, i) => (w.t >= from && w.t < to ? [i] : []));
+      const timed = timeFromHeard(at.map((i) => words[i]), listened);
+      const placed = new Map(at.map((i, k) => [i, timed[k]]));
+      words = words.map((w, i) => placed.get(i) ?? w);
+      heard.push(span);
+    }
+  } catch (error) {
+    o.onLog?.(`could not hear every stretch (${(error as Error).message}); the words not heard keep the times their lines gave them`);
+  } finally {
+    await fs.rm(scratch, { recursive: true, force: true });
+  }
+  if (heard.length === before.length) return o.transcript;
+
+  const transcript = { ...o.transcript, words: inOrder(words) };
+  await writeTranscript(path.join(o.dir, "transcript.json"), transcript);
+  await fs.writeFile(path.join(o.dir, PROVIDED_RECORD), JSON.stringify({ ...record, timed: joined(heard) } satisfies ProvidedTranscript));
+  const count = heard.length - before.length;
+  o.onLog?.(`timed the words of ${count} stretch${count === 1 ? "" : "es"} against the audio`);
+  return transcript;
 }
 
 /**

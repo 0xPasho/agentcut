@@ -586,6 +586,19 @@ test("how wide a line is, decided without measuring it", async () => {
   assert.equal(fitScaleAll([], box), 1);
 });
 
+test("the spoken word grows only into its own room, so a long one never meets the word beside it", async () => {
+  const { emWidth, litScale, WORD_ROOM } = await import("../../../common/lib/text-fit");
+  // Measured in an export: scaled 8% over the bare gap, "básicamente referenciando" and
+  // "internacionalización de" were drawn as one word each, the outlines touching.
+  for (const word of ["a", "el", "branch", "referenciando", "internacionalización", "PRINCIPAL"]) {
+    const grows = ((litScale(word) - 1) * emWidth(word)) / 2;
+    assert.ok(grows <= WORD_ROOM + 1e-9, `${word} grows ${grows.toFixed(3)}em into a ${WORD_ROOM}em room`);
+    assert.ok(litScale(word) > 1, `${word} still grows when it is said`);
+  }
+  assert.equal(litScale("el"), 1.08, "a short word gets the whole pop");
+  assert.ok(litScale("internacionalización") < litScale("branch"), "a long one grows less");
+});
+
 test("three hundred transcripts, and nothing a template writes lands inside a word", async () => {
   // Real recordings are not tidy. These are: long pauses, none at all, words that touch,
   // a gap at the very start, a gap at the very end, a phrase said twice, a stumble. The
@@ -1019,7 +1032,7 @@ test("a pause the transcript reports is cut only where the sound is quiet", asyn
 
 test("one word at a time draws every word, and a sentence stays on two rows", async () => {
   const { toLines, lineAt, activeWordIndex, visibleWords, LINE_LEAD } = await import("../../editor/lib/timeline");
-  const { fitRows, emWidth } = await import("../../../common/lib/text-fit");
+  const { fitRows, emWidth, WORD_GAP, WORD_ROOM } = await import("../../../common/lib/text-fit");
   // Fast speech: words a tenth of a second long, as a stream is full of.
   const words = Array.from({ length: 30 }, (_, i) => ({ t: i * 0.12, d: 0.1, w: `w${i}` }));
   const lines = toLines(words, 1);
@@ -1049,7 +1062,7 @@ test("one word at a time draws every word, and a sentence stays on two rows", as
   const scale = fitRows(long, band, 2);
   assert.ok(scale < 1 && scale >= 0.4);
   let rows = 1, used = 0;
-  for (const w of long) { const width = emWidth(w) * scale; if (used && used + 0.28 * scale + width > band * 0.97) { rows++; used = width; } else used += (used ? 0.28 * scale : 0) + width; }
+  for (const w of long) { const width = (emWidth(w) + 2 * WORD_ROOM) * scale; if (used && used + WORD_GAP * scale + width > band * 0.97) { rows++; used = width; } else used += (used ? WORD_GAP * scale : 0) + width; }
   assert.ok(rows <= 2, `${rows} rows`);
   assert.equal(fitRows(["hola", "a", "todos"], band, 2), 1);
 });

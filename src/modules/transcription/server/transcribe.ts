@@ -7,6 +7,7 @@ import type { AgentEvent } from "../../agent/server/providers";
 import { available as whisperAvailable, engineId, transcribe } from "./whispercpp";
 import { polishTranscript } from "./polish";
 import { readGlossary, glossaryWhisperPrompt, glossaryBrief, applyGlossary } from "../../rules/server/glossary";
+import type { Glossary } from "../../rules/types";
 
 export type TranscribeRunOptions = {
   dir: string;
@@ -49,6 +50,17 @@ export function setDefaultRecogniser(recogniser: Recogniser | undefined) {
   globalThis.__agentcutRecogniser = recogniser;
 }
 
+/** The recogniser a run uses: the caller's, the test seam's, or whisper.cpp — which has to be installed. */
+export async function recogniserFor(given?: Recogniser): Promise<Recogniser> {
+  const recognise = given ?? globalThis.__agentcutRecogniser ?? transcribe;
+  if (recognise === transcribe && !(await whisperAvailable())) throw new Error("whisper-cli not found — run: brew install whisper-cpp");
+  return recognise;
+}
+
+/** The names the recogniser is told to listen for. AGENTCUT_WHISPER_PROMPT stays the deliberate override. */
+export const vocabularyOf = (glossary: Glossary) =>
+  process.env.AGENTCUT_WHISPER_PROMPT ? undefined : glossaryWhisperPrompt(glossary) || undefined;
+
 /**
  * The project's transcript: the one the person provided, or cached, recognised, proofread.
  *
@@ -73,15 +85,13 @@ export async function ensureTranscript(o: TranscribeRunOptions): Promise<{ trans
     o.onLog?.("cached transcript came from an older recogniser — re-running");
   }
 
-  const recognise: Recogniser = o.recognise ?? globalThis.__agentcutRecogniser ?? transcribe;
-  if (recognise === transcribe && !(await whisperAvailable())) throw new Error("whisper-cli not found — run: brew install whisper-cpp");
+  const recognise = await recogniserFor(o.recognise);
   const wav = await extractAudio(o.sourcePath, path.join(o.dir, "audio.wav"));
   // The glossary reaches all three stages: the recogniser hears the names, the
   // proofreader is told how to spell them, and a last deterministic pass fixes what
-  // both still got wrong. AGENTCUT_WHISPER_PROMPT stays the deliberate override.
+  // both still got wrong.
   const glossary = await readGlossary(o.projectId);
-  const vocabulary = process.env.AGENTCUT_WHISPER_PROMPT ? undefined : glossaryWhisperPrompt(glossary) || undefined;
-  let transcript = await recognise(wav, { outDir: o.dir, onLog: o.onLog, prompt: vocabulary });
+  let transcript = await recognise(wav, { outDir: o.dir, onLog: o.onLog, prompt: vocabularyOf(glossary) });
 
   const polished = await polishTranscript(transcript, {
     dir: o.dir,

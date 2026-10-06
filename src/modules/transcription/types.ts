@@ -27,6 +27,12 @@ export type ProvidedTranscript = {
   format: TranscriptFormat;
   /** `words` when the file timed every word; `segments` when the words were fitted to the speech. */
   timing: "words" | "segments";
+  /**
+   * For a file timed per line: the stretches of the source, in seconds, whose words have
+   * since been given the times the recogniser hears them at. Those are the stretches a
+   * timeline uses; everywhere else the words keep the place their line gave them.
+   */
+  timed?: Array<{ start: number; end: number }>;
   words: number;
   segments: number;
   /** When it was imported, epoch ms. */

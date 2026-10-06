@@ -160,7 +160,9 @@ playhead marks, the ruler's slider value and the lit transcript word follow it.
   progress, and every activity line since a cursor — read-only and safe to poll)
 - `project.unlock` (stop the running job and release the project; the same escape hatch as
   the panel's **Stop** button — see "Jobs and the project lock")
-- `transcript.resync` (re-recognise the source and refresh every clip's words)
+- `transcript.resync` (re-recognise the source and refresh every clip's words; a transcript
+  the person provided is kept, and if it is timed per line its words are heard where the
+  timeline uses them — **Re-sync captions** is the same call)
 - `transcript.import` (a transcript the person already has — SRT, VTT, JSON or timestamped
   lines, as a path or as text — made the words of the source or of one media, and put on
   everything cut from it; the recogniser never replaces it) and `transcript.discard` (let
@@ -401,6 +403,19 @@ overrides the stored setting; a test run is `off` unless it asks otherwise, and
   correct wording but never timing: corrected words inherit the times of the words they
   replace, and a rewrite that keeps too little is refused. `AGENTCUT_TRANSCRIPT_POLISH=0`
   turns it off.
+- A transcript the person provided that is timed only per line — Restream's, one
+  whole-second time per line — has its words spread over the speech inside each line by
+  their length (`spreadOverSpeech`), which inside a long line with a pause puts a word up
+  to two seconds from where it is said: the caption is up, waiting, before anyone speaks.
+  So `timeProvidedWords` (`provided.ts`) has the recogniser listen to every stretch a
+  timeline uses — at clip selection before the boundaries are settled, on
+  `transcript.resync`, and when imported media takes its words — and `timeFromHeard`
+  (`align.ts`) gives each word the time it was heard at. Words are paired by text, in
+  order, near where their line put them; one the recogniser wrote differently ("1º" for
+  "primer") keeps its place between its paired neighbours; a stretch where under a third of
+  the words pair — music, another voice — does not move; the text never changes. The
+  record beside the transcript keeps the stretches heard (`timed`), so none is heard
+  twice; without whisper, or when a run fails, the words keep their line's times.
 
 Legacy word times are repaired on the way in and on the way out: `repairWordTimes`
 (`src/modules/editor/lib/operations.ts`) runs when the store reads an EDL and again when
@@ -414,6 +429,12 @@ started, held until the next begins — highlighting only inside `[start, end]` 
 gaps between whisper's words. `remotion/Captions.tsx` samples at frame centre,
 `(frame + 0.5) / fps`, so a word beginning mid-frame lights on that frame, and when two
 lines' windows overlap `lineAt` picks the newer one.
+The lit word grows, but only into room of its own: every word keeps `WORD_ROOM` (0.08 em)
+either side inside its box, the column gap between boxes is `WORD_GAP` (0.2 em), and
+`litScale` grows a word at most 8 % and never past that room, so a long word grows less
+(`src/common/lib/text-fit.ts`, which `fitRows` counts too). Nothing moves when the lit word
+changes. Scaled 8 % over a bare 0.28 em gap, "básicamente referenciando" was drawn as one
+word.
 
 `template.apply` is not a second mutation path. It plans against the transcript, resolves
 each picture to an asset, and then submits ordinary `EditorOperation[]` through

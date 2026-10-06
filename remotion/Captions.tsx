@@ -3,7 +3,7 @@ import { interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 import type { CaptionStyle, Edit } from "../src/modules/editor/types";
 import type { Word } from "../src/modules/transcription/lib/transcript";
 import { activeWordIndex, LINE_LEAD, lineAt, toLines, visibleWords } from "../src/modules/editor/lib/timeline";
-import { fitRows, fitScaleAll } from "../src/common/lib/text-fit";
+import { fitRows, fitScaleAll, litScale, WORD_GAP, WORD_ROOM } from "../src/common/lib/text-fit";
 import { loadFont } from "@remotion/google-fonts/Inter";
 
 const { fontFamily: inter } = loadFont("normal", {
@@ -58,7 +58,8 @@ export const Captions: React.FC<Props> = ({ words, style, emphasis }) => {
   const band = (width * 0.86) / asked - (boxed ? 0.9 : 0);
   // And a whole sentence is held to two rows: the block grows down from its top edge,
   // and a third row is the one that lands across the seam onto the speaker's face.
-  const fontSize = asked * Math.min(fitScaleAll(labels, band), fitRows(labels, band, CAPTION_ROWS));
+  // A word's box is the word and the room either side of it that it grows into when lit.
+  const fontSize = asked * Math.min(fitScaleAll(labels, band - 2 * WORD_ROOM), fitRows(labels, band, CAPTION_ROWS));
   // The stroke is written in pixels of a 1080x1920 frame, which is what every short is,
   // and scaled with the frame everywhere else: the letters are a share of the height, so
   // a stroke that is not would double in weight on a square derive and vanish on a wall.
@@ -80,11 +81,12 @@ export const Captions: React.FC<Props> = ({ words, style, emphasis }) => {
       <div
         data-canvas-captions
         className={
-          "flex flex-wrap items-start justify-center gap-x-[0.28em] gap-y-[0.05em] text-center" +
+          "flex flex-wrap items-start justify-center gap-y-[0.05em] text-center" +
           // The plate is what makes a boxed caption readable, so it carries the
           // padding and the rounding instead of every word carrying an outline.
           (boxed ? " rounded-[0.35em] bg-black/70 px-[0.45em] py-[0.12em]" : "")
         }
+        style={{ columnGap: `${WORD_GAP}em` }}
       >
         {shown.map((w, i) => {
           const active = popline || line.words.indexOf(w) === activeIndex;
@@ -98,17 +100,17 @@ export const Captions: React.FC<Props> = ({ words, style, emphasis }) => {
           // One word at a time has nothing around it to give it rhythm, so it pops
           // in on its own start. Frame-driven only: CSS transitions depend on render
           // wall time and produce different frames across preview and export workers.
-          const scale = popline
-            ? interpolate(t - w.t, [0, 0.12], [0.82, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" })
-            : active
-              ? 1.08
-              : 1;
+          let scale = 1;
+          if (popline) scale = interpolate(t - w.t, [0, 0.12], [0.82, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+          // The lit word grows only into its own room, so it never meets the word beside it.
+          else if (active) scale = litScale(label);
 
           return (
             <span
               key={`${i}-${w.t}`}
               className="inline-block leading-[1.15] [overflow-wrap:anywhere]"
               style={{
+                marginInline: `${WORD_ROOM}em`,
                 fontFamily: style.fontFamily === "Inter" ? inter : style.fontFamily,
                 fontWeight: style.fontWeight,
                 fontSize,

@@ -56,8 +56,25 @@ export function fitScale(text: string, boxEm: number): number {
 export const fitScaleAll = (texts: string[], boxEm: number): number =>
   texts.reduce((smallest, text) => Math.min(smallest, fitScale(text, boxEm)), 1);
 
-/** Space between two words of a caption, in ems — the `gap-x` the renderer draws. */
-const WORD_GAP = 0.28;
+/** Space between two words of a caption, in ems — the column gap the renderer draws between them... */
+export const WORD_GAP = 0.2;
+
+/**
+ * ...and the room kept either side of every word, inside its own box, for the spoken word
+ * to grow into when it is lit. It is kept whether the word is lit or not, so lighting one
+ * moves nothing, and a long word that grows never grows into the word beside it — which
+ * is what a scale over the bare gap did: "básicamente" and "referenciando" read as one.
+ */
+export const WORD_ROOM = 0.08;
+
+/** The most a lit word grows. A longer word grows less, so it stays inside its room. */
+const LIT_SCALE = 1.08;
+
+/** How much a caption word is scaled while it is the one being said. */
+export function litScale(word: string): number {
+  const width = emWidth(word);
+  return width > 0 ? Math.min(LIT_SCALE, 1 + (2 * WORD_ROOM) / width) : LIT_SCALE;
+}
 
 /**
  * The factor that keeps a line of words to `rows` rows of `boxEm` ems, wrapping between
@@ -72,7 +89,7 @@ export function fitRows(words: string[], boxEm: number, rows: number): number {
     let used = 0;
     let taken = 1;
     for (const word of words) {
-      const width = emWidth(word) * scale;
+      const width = (emWidth(word) + 2 * WORD_ROOM) * scale;
       if (used > 0 && used + WORD_GAP * scale + width > room) { taken += 1; used = width; }
       else used += (used > 0 ? WORD_GAP * scale : 0) + width;
     }

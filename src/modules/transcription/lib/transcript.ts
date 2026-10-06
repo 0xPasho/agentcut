@@ -51,6 +51,10 @@ export function wordsForClip(t: Transcript, start: number, end: number): Word[] 
     .filter((w) => w.d > 0);
 }
 
+/** A word as it sounds: lower case, accents folded, letters and digits only. "Cómo," and "como" are one word. */
+export const fold = (word: string) =>
+  word.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\p{L}\p{N}]/gu, "");
+
 /** Compact, line-numbered view with timestamps — what the agent reads. */
 export function toAgentText(t: Transcript): string {
   return t.segments

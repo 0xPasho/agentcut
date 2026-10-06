@@ -128,8 +128,19 @@ export async function selectClips(o: SelectOptions): Promise<Edl> {
     throw new Error(`agent did not write ${answerName}. Last message: ${result.text.slice(0, 500)}`);
   });
 
-  if (spec.mode === "section") return buildSection({ projectId: o.projectId, videoPath, dir, probe, transcript, spec, signals });
-  return buildEdl({ projectId: o.projectId, videoPath, dir, probe, transcript, spec, signals });
+  const onLog = (text: string) => o.onEvent?.({ kind: "tool", name: "captions", text, at: Date.now() });
+  if (spec.mode === "section") return buildSection({ projectId: o.projectId, videoPath, dir, probe, transcript, spec, signals, onLog });
+  return buildEdl({ projectId: o.projectId, videoPath, dir, probe, transcript, spec, signals, onLog });
+}
+
+/**
+ * The transcript with the words of these stretches at the times they are heard. A file
+ * timed per line only places its words by guess; they are heard where the clips are,
+ * before the boundaries are settled on them and they become the clips' captions.
+ */
+async function heardWords(o: { projectId: string; dir: string; videoPath: string; transcript: Transcript; onLog?: (text: string) => void }, spans: Array<{ start: number; end: number }>) {
+  const { timeProvidedWords } = await import("../../transcription/server/provided");
+  return timeProvidedWords({ dir: o.dir, file: o.videoPath, transcript: o.transcript, projectId: o.projectId, spans, onLog: o.onLog });
 }
 
 /**
@@ -148,12 +159,14 @@ export async function buildSection(o: {
   transcript: Transcript;
   spec: SelectionSpec;
   signals?: Signals;
+  onLog?: (text: string) => void;
 }): Promise<Edl> {
-  const { dir, probe, transcript, videoPath, spec } = o;
+  const { dir, probe, videoPath, spec } = o;
   const peaks = (o.signals ?? (await readSignals(dir))).peaks.map((p) => p.t);
   const speech = await speechOf(dir, videoPath);
   const raw = await fs.readFile(path.join(dir, "video.json"), "utf8");
   const { video } = AgentSectionProposals.parse(JSON.parse(raw));
+  const transcript = await heardWords(o, video.segments);
 
   const mediaId = "original-source";
   const sequenceId = randomUUID().slice(0, 8);
@@ -212,14 +225,16 @@ export async function buildEdl(o: {
   minSec?: number;
   /** Loudness peaks, so a boundary is never tightened past a reaction. Read from the run when absent. */
   signals?: Signals;
+  onLog?: (text: string) => void;
 }): Promise<Edl> {
-  const { dir, probe, transcript, videoPath } = o;
+  const { dir, probe, videoPath } = o;
   const minSec = o.spec?.minSec ?? o.minSec ?? 20;
   const output = o.spec?.output ?? { width: 1080, height: 1920, fps: probe.fps };
   const peaks = (o.signals ?? (await readSignals(dir))).peaks.map((p) => p.t);
   const speech = await speechOf(dir, videoPath);
   const raw = await fs.readFile(path.join(dir, "clips.json"), "utf8");
   const proposals = AgentClipProposals.parse(JSON.parse(raw));
+  const transcript = await heardWords(o, proposals.clips);
   const fallbackCrop = centerCrop(probe.width, probe.height, output.width, output.height);
 
   const matches: Record<string, string[]> = {};
