@@ -63,6 +63,21 @@ test("a clip does not open on the end of another answer's sentence", () => {
   assert.ok(tightenBoundaries(bare, 10.4, 23, { duration: 100 })[0] < 10.4);
 });
 
+test("a clip that stops a few words short of its full stop runs on to it", () => {
+  // Measured: "…es la referencia para que te | construya cosas buenas." — the clip ended on "te".
+  const words = "porque de ahí es la referencia para que te construya cosas buenas. Esa es la base".split(" ")
+    .map((w, i) => ({ t: 50 + i * 0.3, d: 0.25, w }));
+  const [, end] = tightenBoundaries(words, 49.9, 52.75, { duration: 100 });
+  assert.ok(end >= 53.55 && end < 53.9, `ends after "buenas.": ${end}`);
+  // A clip that already ends on a full stop, a full stop too far away, or a pause on the
+  // way to it, ends where it was told.
+  assert.ok(tightenBoundaries(words, 49.9, 53.6, { duration: 100 })[1] < 53.9);
+  const far = words.map((w) => ({ ...w, w: w.w.replace(".", "") }));
+  assert.ok(tightenBoundaries(far, 49.9, 52.75, { duration: 100 })[1] < 52.9);
+  const paused = words.map((w, i) => (i >= 9 ? { ...w, t: w.t + 2 } : w));
+  assert.ok(tightenBoundaries(paused, 49.9, 52.75, { duration: 100 })[1] < 52.9);
+});
+
 test("a reaction in the dead air is why the clip starts there", () => {
   const speech = words([[32, 0.4, "Esto"], [32.5, 0.5, "funciona."]]);
   const [start] = tightenBoundaries(speech, 20, 40, { duration: 600, fps: 30, peaks: [24.5, 25.1] });

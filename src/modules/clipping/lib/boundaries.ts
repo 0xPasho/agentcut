@@ -90,8 +90,18 @@ export function tightenBoundaries(
   }
 
   const first = spoken[0];
+  // And the other end: a clip that stops a few words short of a full stop stops before
+  // the point lands ("…la referencia para que te | construya cosas buenas."). It runs on
+  // to the full stop.
+  const unfinished = sentenceRest(words, spoken[spoken.length - 1]);
+  if (unfinished.length) {
+    spoken = [...spoken, ...unfinished];
+    const closing = unfinished[unfinished.length - 1];
+    e = Math.min(ceiling, Math.max(e, closing.t + Math.min(closing.d, LONGEST_WORD_SEC)));
+  }
+
   const last = spoken[spoken.length - 1];
-  const lastEnd = Math.min(ceiling, last.t + last.d);
+  const lastEnd = Math.min(ceiling, last.t + Math.min(last.d, LONGEST_WORD_SEC));
 
   // Dead air at the head. A peak inside it is a reaction worth opening on, so the
   // clip starts just before the earliest one instead of at the first word.
@@ -151,6 +161,24 @@ const MAX_TAIL_WORDS = 6;
 const NEW_PHRASE_SEC = 1;
 /** Longer than any word is said: past it, a word's duration is a pause the aligner gave it. */
 const LONGEST_WORD_SEC = 1.5;
+
+/**
+ * The words after `last` that finish its sentence, or none: only up to a full stop a few
+ * words away with no pause on the way, and never when `last` already ends one.
+ */
+function sentenceRest(words: Word[], last: Word): Word[] {
+  if (SENTENCE_END.test(last.w)) return [];
+  const after = words.filter((w) => w.t > last.t + EPS).slice(0, MAX_TAIL_WORDS);
+  const rest: Word[] = [];
+  let previous = last;
+  for (const word of after) {
+    if (word.t - (previous.t + Math.min(previous.d, LONGEST_WORD_SEC)) > NEW_PHRASE_SEC) return [];
+    rest.push(word);
+    if (SENTENCE_END.test(word.w)) return rest;
+    previous = word;
+  }
+  return [];
+}
 
 /**
  * How many words at the head of `spoken` finish a sentence that began before it, or 0.
