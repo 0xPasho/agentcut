@@ -251,6 +251,8 @@ export function spreadOverSpeech(words: Word[], seg: { start: number; end: numbe
  * up to a couple of seconds from where they are said, inside a long line with a pause.
  */
 const PAIR_WITHIN_SEC = 5;
+/** How much nearer in time weighs between pairings that agree on as many words. */
+const NEARER = 0.01;
 
 function editDistance(a: string, b: string): number {
   let row = Array.from({ length: b.length + 1 }, (_, j) => j);
@@ -290,7 +292,16 @@ function likeness(a: string, b: string): number {
 export function pairWords(said: Word[], heard: Word[], withinSec = PAIR_WITHIN_SEC): number[] {
   const a = said.map((w) => fold(w.w));
   const b = heard.map((w) => fold(w.w));
-  const like = (i: number, j: number) => (Math.abs(said[i].t - heard[j].t) <= withinSec ? likeness(a[i], b[j]) : 0);
+  // Between two pairings that agree on as many words, the nearer one: "lo que se le…
+  // lo que yo le llamo" heard as one "lo que" is the second one, said right where it was
+  // heard, not the first one, a second and a half away. The nudge is far smaller than
+  // any word's worth, so it only ever breaks ties.
+  const like = (i: number, j: number) => {
+    const apart = Math.abs(said[i].t - heard[j].t);
+    if (apart > withinSec) return 0;
+    const alike = likeness(a[i], b[j]);
+    return alike > 0 ? alike - NEARER * (apart / withinSec) : 0;
+  };
   // best[i][j]: the most the words from said[i] and heard[j] on can agree.
   const best = Array.from({ length: said.length + 1 }, () => new Float64Array(heard.length + 1));
   for (let i = said.length - 1; i >= 0; i--) {

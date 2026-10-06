@@ -33,6 +33,11 @@ export type ProvidedTranscript = {
    * timeline uses; everywhere else the words keep the place their line gave them.
    */
   timed?: Array<{ start: number; end: number }>;
+  /**
+   * How `timed` was heard. A stretch heard another way is heard again: the way it was
+   * heard is what put its words where they are.
+   */
+  heardWith?: string;
   words: number;
   segments: number;
   /** When it was imported, epoch ms. */

@@ -9,7 +9,7 @@ import { isUrl } from "../../../common/lib/urls";
 import { readEditor } from "../../editor/server/store";
 import { Transcript, fmt, type Segment, type Word } from "../lib/transcript";
 import { isProvided, parseTranscript, providedEngine, wordsAcross } from "../lib/import";
-import { HEAR_MAX_SEC, HEAR_MIN_SEC, HEAR_PAD_SEC, PROVIDED_RECORD } from "../data";
+import { HEAR_MAX_SEC, HEAR_MIN_SEC, HEAR_PAD_SEC, HEARD_WITH, PROVIDED_RECORD } from "../data";
 import type { ProvidedTranscript, SourceTranscriptState } from "../types";
 import { inOrder, speechRunsFromWav, spreadOverSpeech, timeFromHeard, type SpeechRun } from "./align";
 import { recogniserFor, vocabularyOf, writeTranscript, type Recogniser } from "./transcribe";
@@ -149,7 +149,7 @@ export async function timeProvidedWords(o: {
   if (!o.file || isUrl(o.file) || !isProvided(o.transcript.engine)) return o.transcript;
   const record = await readRecord(o.dir);
   if (record?.timing !== "segments") return o.transcript;
-  const before = joined(record.timed ?? []);
+  const before = record.heardWith === HEARD_WITH ? joined(record.timed ?? []) : [];
   // Stretches a few seconds apart are heard as one; a stretch already heard is never in one.
   const pending = uncovered(joined(o.spans, 2 * HEAR_PAD_SEC), before)
     .filter((span) => span.end - span.start >= HEAR_MIN_SEC)
@@ -175,7 +175,9 @@ export async function timeProvidedWords(o: {
       const from = Math.max(span.start - HEAR_PAD_SEC, ...heard.filter((h) => h.end <= span.start).map((h) => h.end), 0);
       const to = Math.min(span.end + HEAR_PAD_SEC, ...heard.filter((h) => h.start >= span.end).map((h) => h.start));
       const wav = await extractAudio(o.file, path.join(scratch, "heard.wav"), { start: from, duration: to - from });
-      const listened = (await recognise(wav, { outDir: scratch, prompt })).words
+      // Heard whole: a clip's stretch is talking, not the hours of nothing VAD is for,
+      // and whole, the recogniser's times are the source's own and need no estimate.
+      const listened = (await recognise(wav, { outDir: scratch, prompt, vad: false })).words
         .map((w) => ({ ...w, t: w.t + from }))
         .filter((w) => w.t >= from && w.t < to);
       const at = words.flatMap((w, i) => (w.t >= from && w.t < to ? [i] : []));
@@ -193,7 +195,7 @@ export async function timeProvidedWords(o: {
 
   const transcript = { ...o.transcript, words: inOrder(words) };
   await writeTranscript(path.join(o.dir, "transcript.json"), transcript);
-  await fs.writeFile(path.join(o.dir, PROVIDED_RECORD), JSON.stringify({ ...record, timed: joined(heard) } satisfies ProvidedTranscript));
+  await fs.writeFile(path.join(o.dir, PROVIDED_RECORD), JSON.stringify({ ...record, timed: joined(heard), heardWith: HEARD_WITH } satisfies ProvidedTranscript));
   const count = heard.length - before.length;
   o.onLog?.(`timed the words of ${count} stretch${count === 1 ? "" : "es"} against the audio`);
   return transcript;

@@ -46,3 +46,11 @@ export const HEAR_PAD_SEC = 3;
 export const HEAR_MAX_SEC = 180;
 /** ...and not a sliver shorter than this, which the runs either side already heard. */
 export const HEAR_MIN_SEC = 1;
+/**
+ * How a stretch is heard, recorded beside the stretches. "whole" listens without VAD:
+ * with it, word times came back on the speech stitched together and were laid back onto
+ * the source by estimate, and next to a pause that estimate moved words across it — one
+ * clip's "MVP" was put 1.5 s late, on the far side of a silence, with the rest of the
+ * sentence after it. Stretches recorded under any other name are heard again.
+ */
+export const HEARD_WITH = "whole-1";

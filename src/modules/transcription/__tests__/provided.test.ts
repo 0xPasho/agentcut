@@ -172,6 +172,16 @@ test("a word pairs with the one heard near it, a name spelled two ways is one wo
   assert.deepEqual(timeFromHeard(line, music), line);
 });
 
+test("a phrase said twice and heard once is the one said where it was heard", () => {
+  // Measured: "hacer lo que se le… lo que yo le llamo", heard as one "lo que". Paired with
+  // the first, the restart was squeezed into 0.4 s after a pause it was said before.
+  const said = "hacer lo que se le... Lo que yo le llamo".split(" ").map((w, i) => ({ t: 888.8 + [0, 0.3, 0.45, 0.75, 0.9, 1.65, 1.8, 2, 2.15, 2.3][i], d: 0.15, w }));
+  const heard = [{ t: 889.3, d: 0.3, w: "hacer" }, { t: 890.45, d: 0.2, w: "lo" }, { t: 890.69, d: 0.1, w: "que" }, { t: 890.79, d: 0.1, w: "yo" }, { t: 890.93, d: 0.15, w: "le" }, { t: 891.11, d: 0.3, w: "llamo" }];
+  assert.deepEqual(pairWords(said, heard), [0, -1, -1, -1, -1, 1, 2, 3, 4, 5]);
+  const timed = timeFromHeard(said, heard);
+  assert.ok(timed[1].t < 890.2 && timed[4].t + timed[4].d <= 890.45 + 1e-9, `the restart stays before the pause: ${timed.slice(1, 5).map((w) => w.t.toFixed(2))}`);
+});
+
 // ─── the project ─────────────────────────────────────────────────────────────
 
 let workspace: string;
@@ -397,14 +407,16 @@ test("re-importing keeps a clip's words corrected by hand, and still gives it th
 /** The recogniser hearing `talking`: each line's words, a little later than the line spreads them. */
 function hearing() {
   let calls = 0;
-  const recognise: Recogniser = async () => {
+  const vad: Array<boolean | undefined> = [];
+  const recognise: Recogniser = async (_wav, options) => {
     calls += 1;
+    vad.push(options.vad);
     return Transcript.parse({
       engine: "heard", segments: [{ start: 1.2, end: 3.9, text: "uno dos tres cuatro" }],
       words: [{ t: 1.2, d: 0.3, w: "uno" }, { t: 1.6, d: 0.3, w: "dos" }, { t: 3.3, d: 0.3, w: "tres" }, { t: 3.6, d: 0.3, w: "cuatro" }],
     });
   };
-  return { recognise, get calls() { return calls; } };
+  return { recognise, vad, get calls() { return calls; } };
 }
 
 test("a clip's words timed per line are heard where the clip is, take the times they are said at, and are heard once", async () => {
@@ -420,8 +432,20 @@ test("a clip's words timed per line are heard where the clip is, take the times 
     const state = mediaTranscribe.transcriptionState("heard").source;
     assert.deepEqual(state.status === "provided" && state.timed, [{ start: 0.5, end: 4.5 }], "the record says which stretch was heard");
 
-    await (await import("../server/resync")).resyncTranscript("heard", { reuse: true });
+    assert.deepEqual(ear.vad, [false], "a clip's stretch is heard whole, without VAD estimating its times");
+
+    const { resyncTranscript } = await import("../server/resync");
+    await resyncTranscript("heard", { reuse: true });
     assert.equal(ear.calls, 1, "a stretch already heard is not heard again");
+
+    // A stretch heard the old way — VAD on, times laid back by estimate — is heard again.
+    const { projectDir } = await import("../../../common/server/config");
+    const { PROVIDED_RECORD } = await import("../data");
+    const file = path.join(projectDir("heard"), PROVIDED_RECORD);
+    const { heardWith: _, ...old } = JSON.parse(await fs.readFile(file, "utf8"));
+    await fs.writeFile(file, JSON.stringify(old));
+    await resyncTranscript("heard", { reuse: true });
+    assert.equal(ear.calls, 2, "a stretch heard another way is heard again");
   } finally {
     transcribeIndex.setDefaultRecogniser(fakeRecogniser().recognise);
   }

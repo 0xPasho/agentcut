@@ -35,7 +35,7 @@ export type TranscribeRunOptions = {
   onEvent?: (e: AgentEvent) => void;
 };
 
-export type Recogniser = (wav: string, options: { outDir: string; onLog?: (text: string) => void; prompt?: string }) => Promise<Transcript>;
+export type Recogniser = (wav: string, options: { outDir: string; onLog?: (text: string) => void; prompt?: string; vad?: boolean }) => Promise<Transcript>;
 
 declare global {
   var __agentcutRecogniser: Recogniser | undefined;

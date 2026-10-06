@@ -127,6 +127,14 @@ export type TranscribeOptions = {
   threads?: number;
   language?: string;
   /**
+   * False hears the audio whole, without Silero cutting the silence out first. VAD keeps
+   * whisper from inventing words over minutes of nothing, which a whole recording has;
+   * the price is that token times come back on the stitched audio and have to be laid
+   * back onto the source by estimate. A short stretch somebody is talking through has
+   * no minutes of nothing, and its words are better timed where they were heard.
+   */
+  vad?: boolean;
+  /**
    * Vocabulary hint passed to the decoder — names, jargon and spellings it would
    * otherwise guess at. Truncated: a long prompt crowds out the audio context.
    *
@@ -158,7 +166,7 @@ async function runModel(wavPath: string, model: WhisperModel, opts: TranscribeOp
   await fs.rm(`${outBase}.json`, { force: true });
 
   const dtw = DTW_PRESET[model];
-  const vad = await ensureVadModel();
+  const vad = opts.vad === false ? null : await ensureVadModel();
 
   const args = [
     "-m", modelPath,
