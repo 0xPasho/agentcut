@@ -338,7 +338,7 @@ export async function planTemplate(
       silences: silenceCuts(item.clip.words, template.rhythm.silence, duration, heardUnder(envelopes, item)),
       redundancies: redundancyCuts(item.clip.words, template.rhythm.redundancy, duration),
       fillers: fillerCuts(item.clip.words, template.rhythm.filler, duration),
-      retakes: retakeCuts(item.clip.words, template.rhythm.retake, duration, template.rhythm.filler.words),
+      retakes: retakeCuts(item.clip.words, template.rhythm.retake, duration, template.rhythm.filler.words, heardUnder(envelopes, item)),
       punches: punchBeats(analyses, template.rhythm.punch, duration),
       emphasis: emphasisBeats(analyses, template.rhythm.emphasis, duration),
     });

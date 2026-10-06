@@ -61,6 +61,15 @@ test("a passage read once badly and then again loses the first reading, and a ph
   // Measured: one phrase that comes back forty words later around a new point is not a restatement.
   const phrase = spaced("para que no se meta en la pata. Ese es el concepto, de hecho, por eso existen. Pero, por lo general, yo ahorita estoy trabajando nada más con main y trabajo en cosas separadas, pero en el mismo branch para que no se meta en la pata. Por ejemplo, le pido otra cosa.");
   assert.deepEqual(retakeCuts(phrase, retake, 30), []);
+  // Measured: the second reading adds words of its own ("el Claude o el Codex… para Deska"). Still the same reading.
+  const reworded = spaced("Pasho si tuvieras que elegir entre Claude o Codex de 20 dólares, ¿cuál? Esa es muy buena pregunta. Alta frecuencia dice, Pasho, si tuvieras que elegir entre el Claude o el Codex de 20 dólares para Deska, ¿cuál elegirías? Para trabajar aquí en Deska, el Claude.");
+  const [again] = retakeCuts(reworded, retake, 20);
+  assert.ok(again && again.t === 0 && Math.abs(again.t + again.d - 21 * 0.3) < 0.11, `the first reading goes: ${again?.t}+${again?.d}`);
+  // Measured: the second reading's "Pasho," timed 80 ms after it is said. The sound says where it starts.
+  const onset = reworded.findIndex((w, i) => i > 0 && w.w === "Pasho,");
+  const sound = { stepSec: 0.05, curve: Array.from({ length: 400 }, (_, k) => ({ t: k * 0.05, db: Math.abs(k * 0.05 - (reworded[onset].t - 0.1)) < 0.03 ? -60 : -20 })) };
+  const [heardCut] = retakeCuts(reworded, retake, 20, [], sound);
+  assert.ok(heardCut.t + heardCut.d < reworded[onset].t - 0.04, `the cut stops where "Pasho" starts: ${(heardCut.t + heardCut.d).toFixed(2)} vs ${reworded[onset].t}`);
   // A line the transcript wrote twice, squeezed into half a second, was said once: no cut.
   const written = [...spaced("cualquiera de los 2 modelos que, perdón, cualquiera de las 2 suscripciones que").map((w, i) => ({ ...w, t: i * 0.04, d: 0.03 })),
     ...spaced("cualquiera de los 2 modelos que, perdón, cualquiera de las 2 suscripciones que pagues va a estar bueno.", 0.6)];

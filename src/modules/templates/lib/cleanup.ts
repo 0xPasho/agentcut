@@ -1,6 +1,6 @@
 import type { Word } from "../../transcription/lib/transcript";
 import type { TemplateRhythm } from "../types";
-import { toSentences } from "./script";
+import { toSentences, type Heard } from "./script";
 
 /**
  * The two cuts a person makes to a recording of somebody talking, and neither of them
@@ -169,7 +169,7 @@ const HANGING = new Set([
  * Only the abandoned take is removed. The run that continues is the one that was meant,
  * which is what makes this a cut rather than a choice between two versions.
  */
-export function retakeCuts(words: Word[], rhythm: TemplateRhythm["retake"], clipDuration: number, fillerWords: string[] = []): Cut[] {
+export function retakeCuts(words: Word[], rhythm: TemplateRhythm["retake"], clipDuration: number, fillerWords: string[] = [], heard?: Heard | null): Cut[] {
   const cuts: Cut[] = [];
   if (!rhythm.enabled || words.length < rhythm.minWords * 2) return cuts;
   const stalls = new Set(fillerWords.map(spoken).filter(Boolean));
@@ -232,7 +232,7 @@ export function retakeCuts(words: Word[], rhythm: TemplateRhythm["retake"], clip
       break;
     }
   }
-  return [...cuts, ...restatedCuts(words, rhythm, clipDuration)];
+  return [...cuts, ...restatedCuts(words, rhythm, clipDuration, heard)];
 }
 
 /**
@@ -250,28 +250,74 @@ export function retakeCuts(words: Word[], rhythm: TemplateRhythm["retake"], clip
  * real restatements and none of the three passages that only shared a phrase ("no se meta
  * en la pata" forty words apart, "te pueden banear por eso" around a new point).
  */
-function restatedCuts(words: Word[], rhythm: TemplateRhythm["retake"], clipDuration: number): Cut[] {
+function restatedCuts(words: Word[], rhythm: TemplateRhythm["retake"], clipDuration: number, heard?: Heard | null): Cut[] {
   const cuts: Cut[] = [];
   const text = words.map((word) => spoken(word.w));
   for (let i = 0; i < words.length;) {
     let taken = 0;
     for (let j = i + rhythm.restatedWords; j < words.length && words[j].t - words[i].t <= rhythm.restatedWithinSec; j++) {
-      let same = 0;
-      while (i + same < j && j + same < words.length && text[i + same] && text[i + same] === text[j + same]) same++;
+      const { same, span } = sharedReading(text, i, j);
       if (same < rhythm.restatedWords || same / (j - i) < rhythm.restatedShare) continue;
       // Thirteen words in half a second were never said: a transcript that wrote a line
       // twice has its second copy squeezed in by the aligner, and cutting the audio under
       // it takes out what was really said there.
-      if (words[j].t - words[i].t < SPOKEN_SEC_PER_WORD * (j - i)) { taken = j + same - i; break; }
+      if (words[j].t - words[i].t < SPOKEN_SEC_PER_WORD * (j - i)) { taken = j + span - i; break; }
       const before = words[j - 1];
       const breath = Math.min(rhythm.keepSec, Math.max(0, words[j].t - (before.t + before.d)));
       const t = words[i].t;
-      const d = words[j].t - breath - t;
+      // The second reading starts where the sound says, not where its first word is
+      // timed: "Pasho," timed 80 ms after it was said lost its first syllable to the cut.
+      const d = onsetBefore(heard, words[j].t, Math.max(t, before.t)) - breath - t;
       if (d >= MIN_CUT_SEC && t >= 0 && t + d <= clipDuration) cuts.push({ type: "silence", t, d });
-      taken = j + same - i;
+      taken = j + span - i;
       break;
     }
     i += taken || 1;
   }
   return cuts;
+}
+
+/** How far before its timed start a word may really begin. */
+const ONSET_REACH_SEC = 0.3;
+
+/**
+ * Where a word timed at `t` really starts: the quietest reading in the moment before it,
+ * which is the gap the word comes out of. Without sound, or nothing quieter, `t` stands.
+ */
+function onsetBefore(heard: Heard | null | undefined, t: number, floor: number): number {
+  if (!heard?.curve.length) return t;
+  const from = Math.max(floor, t - ONSET_REACH_SEC);
+  const window = heard.curve.filter((reading) => reading.t >= from && reading.t + heard.stepSec <= t + heard.stepSec);
+  if (!window.length) return t;
+  const quietest = window.reduce((low, reading) => (reading.db < low.db ? reading : low));
+  return Math.min(t, quietest.t + heard.stepSec);
+}
+
+/** Words the second reading may add and still be the first one said again: "entre el Claude o el Codex… para Deska". */
+const ADDED_WORDS = 3;
+
+/**
+ * How much of the first reading (from `i`) the second (from `j`) says again, in order:
+ * every word of the first that the second repeats, the second free to add a word or two
+ * of its own along the way but never to drop one of the first's. A word only the first
+ * reading has ends it — that word was its own point, not a stumble ("más minimalista").
+ * `span` is how far the second reading ran to say it.
+ */
+function sharedReading(text: string[], i: number, j: number): { same: number; span: number } {
+  // The two readings start on the same word: an added word is one in the middle.
+  if (!text[i] || text[i] !== text[j]) return { same: 0, span: 0 };
+  let same = 0;
+  let added = 0;
+  let a = i;
+  let b = j;
+  while (a < j && b < text.length && text[a]) {
+    if (text[a] === text[b]) { same++; a++; b++; continue; }
+    // The second reading put a word in: skip it, if the first reading's word follows.
+    let skip = 1;
+    while (skip <= ADDED_WORDS - added && b + skip < text.length && text[b + skip] !== text[a]) skip++;
+    if (skip > ADDED_WORDS - added || b + skip >= text.length) break;
+    added += skip;
+    b += skip;
+  }
+  return { same, span: b - j };
 }
