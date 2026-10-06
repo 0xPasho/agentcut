@@ -27,7 +27,7 @@ export const Beat = z.object({
 }).strict();
 export type Beat = z.infer<typeof Beat>;
 
-export const SequenceStatus = z.enum(["pending", "edited", "approved", "rendered"]);
+export const SequenceStatus = z.enum(["pending", "edited", "approved", "rendered", "rejected"]);
 export type SequenceStatus = z.infer<typeof SequenceStatus>;
 
 export const SequencePlan = z.object({

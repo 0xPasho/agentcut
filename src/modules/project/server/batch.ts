@@ -121,13 +121,16 @@ export async function runBatch(projectId: string, o: BatchOptions = {}): Promise
 /**
  * What a render with no explicit list covers: every generated clip, and the videos that
  * were approved (or already rendered). A project where nothing has been approved yet
- * renders every video, because there is nothing to gate.
+ * renders every video, because there is nothing to gate — except what was rejected,
+ * which is a "no" and never a "not yet".
  */
 export function renderTargets(edl: ReturnType<typeof readEditor>["edl"], only?: string[]): string[] | undefined {
   if (only) return only;
   const approved = edl.sequences.filter((s) => s.plan.status === "approved" || s.plan.status === "rendered").map((s) => s.id);
-  if (!approved.length) return undefined;
-  return [...edl.clips.map((c) => c.id), ...approved];
+  const rejected = edl.sequences.some((s) => s.plan.status === "rejected");
+  if (!approved.length && !rejected) return undefined;
+  const kept = approved.length ? approved : edl.sequences.filter((s) => s.plan.status !== "rejected").map((s) => s.id);
+  return [...edl.clips.map((c) => c.id), ...kept];
 }
 
 /** After a render: the videos that were rendered are now `rendered`. */

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { BadgeCheck, Clock3, Download, FileVideo, Film, PencilLine, SlidersHorizontal, Trash2 } from "lucide-react";
+import { BadgeCheck, CircleX, Clock3, Download, FileVideo, Film, PencilLine, SlidersHorizontal, Trash2 } from "lucide-react";
 import { cn } from "cn";
 import { Button, buttonVariants } from "@/common/ui/button";
 import { Checkbox } from "@/common/ui/checkbox";
@@ -20,6 +20,7 @@ export function StatusIcon({ status }: { status: SequenceStatus }) {
   if (status === "pending") return <Clock3 aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />;
   if (status === "edited") return <PencilLine aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />;
   if (status === "approved") return <BadgeCheck aria-hidden className="size-3.5 shrink-0 text-primary" />;
+  if (status === "rejected") return <CircleX aria-hidden className="size-3.5 shrink-0 text-destructive" />;
   return <FileVideo aria-hidden className="size-3.5 shrink-0 text-primary" />;
 }
 

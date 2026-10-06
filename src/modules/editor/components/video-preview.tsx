@@ -23,11 +23,16 @@ export function VideoPreview({
   video,
   edl,
   assetUrls,
+  maxHeight,
+  autoPlay = false,
 }: {
   projectId: string;
   video: ProjectVideo;
   edl: Edl;
   assetUrls: Record<string, string>;
+  /** How tall the frame may grow; see `frameStyle`. */
+  maxHeight?: number | string;
+  autoPlay?: boolean;
 }) {
   const assetBase = `/api/projects/${projectId}/asset/`;
   const mediaUrls = useMemo(
@@ -73,9 +78,10 @@ export function VideoPreview({
         compositionHeight={output.height}
         controls
         doubleClickToFullscreen
+        autoPlay={autoPlay}
         acknowledgeRemotionLicense
         className={FRAME}
-        style={frameStyle(output)}
+        style={frameStyle(output, maxHeight)}
       />
     );
   }
@@ -92,9 +98,10 @@ export function VideoPreview({
       compositionHeight={edl.output.height}
       controls
       doubleClickToFullscreen
+      autoPlay={autoPlay}
       acknowledgeRemotionLicense
       className={FRAME}
-      style={frameStyle(edl.output)}
+      style={frameStyle(edl.output, maxHeight)}
     />
   );
 }

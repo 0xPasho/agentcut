@@ -40,13 +40,14 @@ export const STATUS: Record<SequenceStatus, { label: string }> = {
   edited: { label: "Edited" },
   approved: { label: "Approved" },
   rendered: { label: "Rendered" },
+  rejected: { label: "Rejected" },
 };
 
 
 export const BUSY = new Set(["download", "probe", "transcribe", "signals", "agent", "rendering", "bundling"]);
 
 
-export const STATUSES: SequenceStatus[] = ["pending", "edited", "approved", "rendered"];
+export const STATUSES: SequenceStatus[] = ["pending", "edited", "approved", "rendered", "rejected"];
 
 
 export const FILTERS: Array<{ value: SequenceStatus | "all"; label: string }> = [
@@ -63,3 +64,24 @@ export const MAKES: Array<{ mode: "clips" | "section"; label: string; note: stri
   { mode: "clips", label: "A pack of clips", note: "Many short videos, one moment each" },
   { mode: "section", label: "One long video", note: "A section of the recording, kept in order" },
 ];
+
+/**
+ * How far a card has to travel before letting go of it decides it: a share of the card's
+ * width, with a floor so a narrow card on a phone still needs a deliberate throw.
+ */
+export const SWIPE = {
+  distance: 0.3,
+  minDistance: 96,
+  /** px/ms. A quick flick decides a card that has not reached the distance. */
+  velocity: 0.6,
+  /** Movement before a press becomes a drag, so a click on the player still plays it. */
+  slop: 8,
+  /** How long a decided card takes to leave. */
+  flyMs: 220,
+};
+
+/** The two verdicts a swipe gives. Skipping is not one: it leaves the status alone. */
+export const VERDICTS = {
+  approved: { label: "Approve", key: "ArrowRight" },
+  rejected: { label: "Reject", key: "ArrowLeft" },
+} as const;

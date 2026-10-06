@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ProjectVideo } from "./lib/overview";
+import type { SequenceStatus } from "../plan/types";
 
 export const ProjectName = z.string().trim().min(1, "Enter a project name.");
 
@@ -26,3 +27,14 @@ export type MakeChoice = {
 };
 
 export type VideoLayout = "list" | "grid";
+
+/** A swipe's verdict on a video. */
+export type Verdict = "approved" | "rejected";
+
+/** One decision in a review session, kept so it can be taken back. */
+export type ReviewStep = {
+  id: string;
+  /** The status the video had before, restored by undo. Null for a skip. */
+  previous: SequenceStatus | null;
+  verdict: Verdict | null;
+};

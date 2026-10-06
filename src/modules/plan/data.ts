@@ -8,7 +8,7 @@ import type { SequenceStatus, BeatKind } from "./types";
  * agent calls.
  */
 
-export const STATUS_LABELS: Record<SequenceStatus, string> = { pending: "Pending", edited: "Edited", approved: "Approved", rendered: "Rendered" };
+export const STATUS_LABELS: Record<SequenceStatus, string> = { pending: "Pending", edited: "Edited", approved: "Approved", rendered: "Rendered", rejected: "Rejected" };
 
 export const KIND_LABELS: Record<BeatKind, string> = { hook: "Hook", point: "Point", payoff: "Payoff", outro: "Outro", other: "Other" };
 

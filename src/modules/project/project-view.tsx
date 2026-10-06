@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -24,6 +24,8 @@ import { ProjectPublications } from "../publishing/components/project-publicatio
 import { calendarHref } from "../publishing/lib/calendar";
 import { VideoSelectionBar } from "./components/video-selection-bar";
 import { VideoViewOptions } from "./components/video-view-options";
+import { ReviewDeck } from "./components/review-deck";
+import { reviewQueue } from "./lib/review";
 import { useVideoSelection } from "./hooks/use-video-selection";
 import { videoActions } from "../editor/lib/video-actions";
 import { Card } from "@/common/ui/card";
@@ -69,7 +71,14 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
   const [sort, setSort] = useState<VideoSort>("score");
   const [filter, setFilter] = useState<SequenceStatus | "all">("all");
   const editor = useEditor(initial.id, initial.edl ? { edl: initial.edl, revision: initial.revision } : null);
-  const chat = useProjectChat(initial.id, { beforeRun: editor.save, afterUndo: editor.reload });
+  // The review deck's card, while it is open: a message typed beside it is about it.
+  const reviewFocus = useRef<string | null>(null);
+  const chat = useProjectChat(initial.id, {
+    beforeRun: editor.save,
+    afterUndo: editor.reload,
+    context: () => (reviewFocus.current ? { sequenceId: reviewFocus.current } : {}),
+  });
+  const [review, setReview] = useState<{ open: boolean; queue: string[]; session: number }>({ open: false, queue: [], session: 0 });
   const [error, setError] = useState<string | null>(null);
   const [actionPending, setActionPending] = useState(false);
 
@@ -202,6 +211,12 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
       if (await editor.save()) router.push(`/p/${initial.id}/edit?sequence=${id}`);
     });
 
+  const onReviewCard = useCallback((id: string | null) => {
+    reviewFocus.current = id;
+    if (id) setSelectedId(id);
+  }, []);
+  const openReview = () => setReview((r) => ({ open: true, queue: reviewQueue(shown), session: r.session + 1 }));
+
   const hasSource = !!edl?.source;
   const pending = edl?.sequences.some((s) => s.plan.status === "pending") ?? false;
 
@@ -326,7 +341,7 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
                       ))}
                     </SelectContent>
                   </Select>
-                  <VideoViewOptions layout={layout} sort={sort} onLayout={setLayout} onSort={setSort} />
+                  <VideoViewOptions layout={layout} sort={sort} onLayout={setLayout} onSort={setSort} reviewing={review.open} onReview={shown.length ? openReview : undefined} />
                 </div>
               </VideoSelectionBar>
           )}
@@ -405,7 +420,8 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
             </Card>
           </div>
 
-          {selected ? (
+          {/* One player at a time: the deck plays the same video full size. */}
+          {selected && !review.open ? (
             <aside aria-label="Selected video" className="flex flex-col gap-3 lg:sticky lg:top-24 lg:self-start">
             <VideoPreview projectId={initial.id} video={selected} edl={edl} assetUrls={assetUrls} />
             <Card className="gap-3 p-4">
@@ -478,6 +494,28 @@ export function ProjectView({ initial }: { initial: ProjectDetail }) {
             </aside>
           ) : null}
         </div>
+      ) : null}
+
+      {edl && review.session > 0 ? (
+        <ReviewDeck
+          key={review.session}
+          open={review.open}
+          onOpenChange={(open) => setReview((r) => ({ ...r, open }))}
+          queue={review.queue}
+          videos={videos}
+          edl={edl}
+          projectId={initial.id}
+          revision={revision}
+          assetUrls={assetUrls}
+          chat={chat}
+          editor={editor}
+          busy={busy || editor.conflict}
+          onCurrent={onReviewCard}
+          onVerdict={(video, status) => changeVideos([video.id], status)}
+          onRender={(ids) => { void renderVideos(ids); }}
+          href={(video) => editHref(initial.id, video)}
+          onOpenEditor={openEditor}
+        />
       ) : null}
     </main>
   );

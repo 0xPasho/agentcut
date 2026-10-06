@@ -95,6 +95,8 @@ test("rendering without a list covers approved videos only, once anything is app
   const [a, b] = start.edl.sequences.map((s) => s.id);
   assert.equal(batch.renderTargets(start.edl), undefined, "nothing approved: nothing to gate");
   assert.deepEqual(batch.renderTargets(start.edl, [b]), [b]);
+  const rejected = { ...start.edl, sequences: start.edl.sequences.map((s) => s.id === b ? { ...s, plan: { ...s.plan, status: "rejected" as const } } : s) };
+  assert.deepEqual(batch.renderTargets(rejected), [a], "nothing approved still leaves out what was rejected");
   store.editProject(id, { expectedRevision: start.revision, operations: [{ type: "sequence.plan.patch", sequenceId: a, patch: { status: "approved" } }] });
   assert.deepEqual(batch.renderTargets(store.readEditor(id).edl), [a]);
   const revision = store.readEditor(id).revision;

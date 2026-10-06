@@ -1,7 +1,7 @@
 "use client";
 
 import { useId } from "react";
-import { LayoutGrid, List, Settings2 } from "lucide-react";
+import { GalleryHorizontalEnd, LayoutGrid, List, Settings2 } from "lucide-react";
 import { Button } from "../../../common/ui/button";
 import { Label } from "../../../common/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "../../../common/ui/popover";
@@ -14,6 +14,9 @@ type VideoViewOptionsProps = {
   sort: VideoSort;
   onLayout: (layout: VideoLayout) => void;
   onSort: (sort: VideoSort) => void;
+  /** Opens the one-at-a-time review. Absent when there is nothing on screen to review. */
+  onReview?: () => void;
+  reviewing?: boolean;
 };
 
 export function VideoViewOptions(props: VideoViewOptionsProps) {
@@ -28,7 +31,7 @@ export function VideoViewOptions(props: VideoViewOptionsProps) {
   </>;
 }
 
-function ViewControls({ layout, sort, onLayout, onSort, compact }: VideoViewOptionsProps & { compact: boolean }) {
+function ViewControls({ layout, sort, onLayout, onSort, onReview, reviewing = false, compact }: VideoViewOptionsProps & { compact: boolean }) {
   const sortId = useId();
   return <div className={compact ? "flex items-center gap-2" : "flex flex-col gap-3"}>
     <Label id={sortId} className={compact ? "sr-only" : "text-xs text-muted-foreground"}>Sort videos</Label>
@@ -46,6 +49,9 @@ function ViewControls({ layout, sort, onLayout, onSort, compact }: VideoViewOpti
       </Button>
       <Button size={compact ? "icon" : "sm"} className="min-h-9" variant={layout === "grid" ? "secondary" : "ghost"} aria-label="Grid view" title="Grid view" aria-pressed={layout === "grid"} onClick={() => onLayout("grid")}>
         <LayoutGrid aria-hidden className="size-4" /><span className={compact ? "sr-only" : undefined}>Grid</span>
+      </Button>
+      <Button size={compact ? "icon" : "sm"} className="min-h-9" variant={reviewing ? "secondary" : "ghost"} aria-label="Review one at a time" title="Review one at a time" aria-pressed={reviewing} disabled={!onReview} onClick={onReview}>
+        <GalleryHorizontalEnd aria-hidden className="size-4" /><span className={compact ? "sr-only" : undefined}>Review</span>
       </Button>
     </div>
   </div>;

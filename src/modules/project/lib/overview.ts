@@ -95,7 +95,7 @@ export function sortVideos(videos: ProjectVideo[], sort: VideoSort): ProjectVide
 }
 
 export function statusCounts(videos: ProjectVideo[]): Record<SequenceStatus | "all", number> {
-  const counts = { all: videos.length, pending: 0, edited: 0, approved: 0, rendered: 0 };
+  const counts = { all: videos.length, pending: 0, edited: 0, approved: 0, rendered: 0, rejected: 0 };
   for (const v of videos) counts[v.status] += 1;
   return counts;
 }
