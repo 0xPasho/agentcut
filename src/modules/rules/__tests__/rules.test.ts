@@ -260,6 +260,20 @@ test("the glossary fixes known mishearings deterministically and feeds the recog
   };
   const fixedGuide = glossary.applyGlossary(heard as never, guide).transcript;
   assert.equal(fixedGuide.segments[0].text, "con la IA, no con una guía.");
+
+  // A phrase wins over a word inside it: "Cloud" is Claude, "Cloud Run" is Google's.
+  const cloud = { terms: [
+    { term: "Claude", aliases: ["Cloud"], note: "" },
+    { term: "Cloud Run", aliases: ["Claude Run"], note: "" },
+  ] };
+  const run = {
+    language: "es", engine: "test",
+    segments: [{ start: 0, end: 3, text: "Le pregunté a Cloud y lo subí a Cloud Run." }],
+    words: ["Le", "pregunté", "a", "Cloud", "y", "lo", "subí", "a", "Cloud", "Run."].map((w, i) => ({ w, t: i * 0.3, d: 0.25 })),
+  };
+  const ran = glossary.applyGlossary(run as never, cloud).transcript;
+  assert.equal(ran.segments[0].text, "Le pregunté a Claude y lo subí a Cloud Run.");
+  assert.deepEqual(ran.words.map((w) => w.w).slice(3), ["Claude", "y", "lo", "subí", "a", "Cloud", "Run."]);
   assert.deepEqual(fixedGuide.words.map((w) => w.w), ["con", "la", "IA,", "no", "con", "una", "guía."]);
   assert.deepEqual(fixedGuide.words.map((w) => w.t), heard.words.map((w) => w.t), "no word moves");
 

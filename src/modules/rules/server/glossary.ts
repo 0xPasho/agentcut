@@ -92,6 +92,9 @@ export function applyGlossary(transcript: Transcript, glossary: Glossary): { tra
   const segments = transcript.segments.map((s) => {
     let text = s.text;
     for (const r of rules) text = text.replace(r.pattern, (m) => { if (m === r.term) return m; changed += 1; return r.term; });
+    // A phrase wins over a word inside it: "Cloud Run" is right until "Cloud" -> "Claude"
+    // turns it into "Claude Run", so the phrases are put back last.
+    for (const r of rules) if (!r.single) text = text.replace(r.pattern, (m) => (m === r.term ? m : r.term));
     return text === s.text ? s : { ...s, text };
   });
   const bare = (word: string) => word.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
