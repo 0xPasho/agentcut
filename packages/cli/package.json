@@ -1,0 +1,24 @@
+{
+  "name": "agentcut",
+  "version": "0.1.0",
+  "description": "Edit video with your coding agent. A small CLI; the studio, the renderer and ffmpeg download the first time you need them.",
+  "license": "UNLICENSED",
+  "repository": { "type": "git", "url": "git+https://github.com/0xPasho/agentcut.git", "directory": "packages/cli" },
+  "homepage": "https://github.com/0xPasho/agentcut#readme",
+  "keywords": ["video", "editor", "agent", "mcp", "claude", "codex", "remotion"],
+  "bin": { "agentcut": "dist/agentcut.mjs" },
+  "files": ["dist", "assets"],
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "tsx --test src/__tests__/*.test.ts"
+  },
+  "devDependencies": {
+    "@agentcut/core": "workspace:*",
+    "@types/node": "^26.6.0",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.13",
+    "typescript": "^5",
+    "zod": "^4.6.5"
+  }
+}

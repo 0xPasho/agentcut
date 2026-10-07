@@ -6,7 +6,7 @@ actual phone or a deployed provider has published this feature's test batch.
 
 ## One release, independent destinations
 
-`src/modules/publishing` owns publications, account connections, immutable exports,
+`packages/core/src/modules/publishing` (UI in `apps/studio/src/modules/publishing`) owns publications, account connections, immutable exports,
 calendar reservations, delivery attempts and attended phone sessions. It does not
 add a second editor or a campaign/bundle hierarchy. One publication references one
 existing project/video; repeat releases get new publication IDs. The existing video

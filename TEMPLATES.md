@@ -368,7 +368,7 @@ A clip cut from a stream is usually an answer, and the question was typed into t
   random message.
 - **What is placed.** The message drawn the way the chat draws it — avatar with the
   platform's mark, the name, the words — on a white card, rendered once to a transparent
-  picture (`remotion/CommentCard.tsx`) and added to the project's assets. The avatar is
+  picture (`packages/render/src/CommentCard.tsx`) and added to the project's assets. The avatar is
   fetched at that moment and embedded, because TikTok's avatar links expire. It sits on a
   layer titled `Comment` over the screen, arriving with a small pop and fading as it
   leaves, drawn with ordinary keyframes; the hook's layer still spans the video but its
@@ -418,7 +418,7 @@ stop — they are the streamer's voice reading it.
   shows the message a beat in), and leaves 0.3 s after the last word, holding at least
   `seconds` and at most `maxSeconds` (2.4 s in the pack: gone by about the third second,
   the captions carrying the rest of a long message). Not read out, it holds `delaySec` to
-  `delaySec + seconds`. The math is `src/modules/templates/lib/comment.ts`, shared by the
+  `delaySec + seconds`. The math is `packages/core/src/modules/templates/lib/comment.ts`, shared by the
   template and `comments.place`.
 - **What.** `card: "chat"` draws the dark live-chat bubble — avatar beside the name and the
   words — instead of the white card. It arrives in a tenth of a second: from 8 % to the
@@ -702,7 +702,7 @@ each adopted asset and reported by `template.apply`.
   searches for the `minGapSec` and `keepSec` that reproduce it on your own material.
   It matches the pauses, not the running time: material with more thinking in it than
   the finished video had needs a shorter `minGapSec` than the fit suggests, or every bit
-  of thinking survives. `src/modules/templates/lib/pace.ts` is the same measurement as a module.
+  of thinking survives. `packages/core/src/modules/templates/lib/pace.ts` is the same measurement as a module.
 
   **The transcript proposes a cut; the sound decides it.** The words are recognised once,
   on the whole source, before anything is cut, and every cut is placed from their timings
@@ -865,12 +865,12 @@ the end card is the card itself: 0.6/255 ✓
 ## Headless
 
 ```bash
-pnpm exec tsx scripts/templates.ts list
-pnpm exec tsx scripts/templates.ts show explainer-broll
-pnpm exec tsx scripts/templates.ts plan  PROJECT_ID explainer-broll --sequence SEQUENCE_ID
-pnpm exec tsx scripts/templates.ts apply PROJECT_ID chat-story --slot screenshots=./shots --hook "The message that ended it"
-pnpm exec tsx scripts/templates.ts apply PROJECT_ID story-arc --text turn="But here is what happened" --text cta="Follow for part two"
-pnpm exec tsx scripts/templates.ts apply PROJECT_ID brand-explainer --asset logo=a_1234abcd
+pnpm exec tsx packages/cli/src/commands/templates.ts list
+pnpm exec tsx packages/cli/src/commands/templates.ts show explainer-broll
+pnpm exec tsx packages/cli/src/commands/templates.ts plan  PROJECT_ID explainer-broll --sequence SEQUENCE_ID
+pnpm exec tsx packages/cli/src/commands/templates.ts apply PROJECT_ID chat-story --slot screenshots=./shots --hook "The message that ended it"
+pnpm exec tsx packages/cli/src/commands/templates.ts apply PROJECT_ID story-arc --text turn="But here is what happened" --text cta="Follow for part two"
+pnpm exec tsx packages/cli/src/commands/templates.ts apply PROJECT_ID brand-explainer --asset logo=a_1234abcd
 ```
 
 `--slot` fills an image-pool slot from a folder, `--text` a text slot, `--asset` an image or
@@ -878,7 +878,7 @@ audio slot with an asset id — every slot kind a template can declare.
 
 The launcher exposes the same commands from any directory, resolving `--slot` folders
 against the caller: `node /path/to/agentcut/scripts/agentcut.mjs templates apply …`.
-`scripts/edit.ts PROJECT_ID call request.json` reaches every template tool directly.
+`packages/cli/src/commands/edit.ts PROJECT_ID call request.json` reaches every template tool directly.
 No web server is required for any of them.
 
 ## A shortlist, rather than one template

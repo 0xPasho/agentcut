@@ -8,33 +8,48 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
-## Architecture: domain-driven modules
+## Architecture: a workspace of apps and packages, domain modules inside
 
-The layout follows postgun's web app (`~/Projects/postgun/CLAUDE.md`): every feature lives
-in one domain module, shared code lives in `common/`, and `src/app` only routes.
+One pnpm workspace ([SPEC.md S11](./SPEC.md#decided)). What is deployed lives in `apps/`;
+what is installed on somebody's machine lives in `packages/`. Inside core and the studio,
+every feature is one domain module, as in postgun's web app (`~/Projects/postgun/CLAUDE.md`).
 
 ```
-src/
-  app/                    routes only: a page loads with a server loader and renders a view;
-                          an API route parses the request and calls a module's server code
-  common/
-    ui/                   shadcn primitives
-    components/           marks and surfaces used by 2+ modules
-    lib/                  pure helpers used by 2+ modules (cn, format, urls, text-fit)
-    hooks/                React hooks used by 2+ modules
-    api/                  the browser's API client and its response types
-    server/               node-only plumbing: config, db, bin, file server, secrets
-  modules/<module>/
-    types.ts              zod schemas and types — the module's model
-    data.ts               constants and config tables
-    lib.ts | lib/         pure functions: no React, no node — safe in the browser and in Remotion
-    hooks.ts | hooks/     React hooks
-    components/           sub-components
-    <name>-view.tsx       page-level view
-    server/               node-only services: fs, SQLite, ffmpeg, spawning agents
-    __tests__/            the module's tests (node:test through tsx)
-remotion/                 the render bundle's own entry — compositions only
+apps/
+  studio/                 @agentcut/studio — the visual editor (Next.js), local
+    src/app/              routes only: a page loads with a server loader and renders a view;
+                          an API route parses the request and calls core's server code
+    src/common/           ui/ (shadcn primitives), components/, hooks/, lib/utils.ts (cn)
+    src/modules/<module>/ the module's face: components/, <name>-view.tsx, hooks, and a
+                          data.ts for icon tables; route-level tests in __tests__/
+  web/                    @agentcut/web — the landing page and the packs marketplace
+                          (Cloudflare Workers, D1, R2); see apps/web/README.md
+packages/
+  core/                   @agentcut/core — the editor without a face, shared by everything
+    src/common/           lib/ (pure), api/ (the HTTP client and its response types),
+                          server/ (config, root, db, bin, runtime, file server, secrets)
+    src/modules/<module>/
+      types.ts            zod schemas and types — the module's model
+      data.ts             constants and config tables
+      lib.ts | lib/       pure functions: no React, no node — safe in the browser and in Remotion
+      server/             node-only services: fs, SQLite, ffmpeg, spawning agents
+      __tests__/          the module's tests (node:test through tsx)
+    assets/               files read at run time: sound effects, the phone helper's source
+  render/                 @agentcut/render — the Remotion compositions (the bundle's entry)
+  cli/                    agentcut — the npm package: launcher, commands, release bundle
+scripts/                  dev tools (pace, clip, style-audit…) and scripts/release/
 ```
+
+Core is imported as `@agentcut/core/<path under src>` (`@agentcut/core/modules/editor/lib/operations`),
+the compositions as `@agentcut/render/<file>`. Both are TypeScript source: the studio
+transpiles them, tsx runs them, esbuild bundles them into the CLI.
+
+**What ships.** `npm i -g agentcut` installs only `packages/cli` (about 2 MB). The rest is
+fetched on first use into `~/.agentcut/runtime` by `common/server/runtime.ts`: ffmpeg and
+ffprobe (any command that probes media), `@agentcut/render` with Remotion's compositor and
+browser (the first export), `@agentcut/studio` (the first `agentcut`). A source checkout
+never downloads; everything comes from node_modules and the workspace stays in `workspace/`.
+An install keeps its workspace in `~/.agentcut/workspace`. Releasing: [docs/RELEASING.md](./docs/RELEASING.md).
 
 | Module | Owns |
 |--------|------|
@@ -46,35 +61,40 @@ remotion/                 the render bundle's own entry — compositions only
 | `templates` | Templates, looks, planning and applying them |
 | `rules` | Rules, glossary, preferences and the observation bank |
 | `plan` | Project and sequence plans |
-| `packs` | Import and export of packs |
+| `packs` | Import and export of packs, and the marketplace client (`server/market.ts`) |
 | `agent` | Harness drivers, selection, the chat and editing agents, MCP |
 | `onboarding` | The setup interview |
-| `render` | Rendering, output frames, the style audit |
+| `render` | Rendering, output frames, the style audit, the one Remotion loader (`server/remotion.ts`) |
 | `review` | The standard a pack holds its videos to: criteria, the gate, waivers |
 | `stream-comments` | The stream chat and the comment a clip opens on |
 | `settings` | The workspace settings pages |
+| `publishing` | Publications, accounts, the calendar and the publishing worker |
 
 ### Rules
 
-1. **Types** go in `module/types.ts`, not inline in views, components or hooks. Component
-   `Props` are the only types allowed inline.
-2. **Constants** go in `module/data.ts`.
+1. **Types** go in core's `module/types.ts`, not inline in views, components or hooks.
+   Component `Props` are the only types allowed inline.
+2. **Constants** go in `module/data.ts` — core's, or the studio module's for tables of icons.
 3. **Pure functions** go in `module/lib.ts` (or `lib/<topic>.ts` in a large module).
-4. **Hooks** go in `module/hooks.ts` (or `hooks/<topic>.ts`).
-5. **Node-only code** goes in `module/server/`. Nothing outside `server/`, `src/app/api`,
-   scripts and tests may import from a `server/` folder at runtime; `import type` is fine.
-   `lib/`, `types.ts` and `data.ts` stay free of node, because Remotion and the browser
-   bundle them.
-6. **Shared code** (used by 2+ modules) goes in `common/`; a module reaches into another
-   module only through its `types.ts`, `lib`, `server/` entry points or components.
+4. **Hooks** go in the studio module's `hooks.ts` (or `hooks/<topic>.ts`).
+5. **Node-only code** goes in `module/server/`. Nothing outside `server/`, the studio's
+   `src/app/api`, the CLI, scripts and tests may import from a `server/` folder at runtime;
+   `import type` is fine. `lib/`, `types.ts` and `data.ts` stay free of node, because
+   Remotion and the browser bundle them.
+6. **Core has no face.** Nothing in `packages/core` is a `.tsx` or imports React, Next,
+   icons or anything in `apps/`; the CLI has no browser. The CLI imports core only.
 7. **Pages are thin.** A page calls a loader from `module/server/pages.ts` (or the module's
    own server code) and renders one view. No SQL, no parsing, no JSX layout in `src/app`.
-8. **`.ts` files in `src/modules` and `src/common`, and everything in `remotion/`, import
-   relatively**, because the Remotion bundle does not resolve `@/`. `.tsx` UI files may use `@/`.
-9. Early returns over nested `if/else`; no nested ternaries in JSX.
+8. **The heavy runtime is loaded in one place.** `@remotion/renderer`, `@remotion/bundler`
+   and the ffmpeg packages are reached only through `render/server/remotion.ts` and
+   `common/server/bin.ts`, never imported outright, so they stay out of the CLI bundle and
+   the studio's trace.
+9. **`.ts` files in core and everything in `packages/render` import core relatively or as
+   `@agentcut/core/…`**, never through `@/`, which only the studio resolves.
+10. Early returns over nested `if/else`; no nested ternaries in JSX.
 
-`src/modules/__tests__/architecture.test.ts` enforces rules 1, 5 and 7 (and that nothing
-is left in `src/lib` or `src/components`), as part of `pnpm test`.
+`packages/core/src/modules/__tests__/architecture.test.ts` enforces rules 1, 5, 6, 7 and 8
+and the layout, as part of `pnpm test`.
 
 ## Working in this repo
 
@@ -86,12 +106,13 @@ is left in `src/lib` or `src/components`), as part of `pnpm test`.
   `pnpm test:render` and `pnpm exec tsc --noEmit` green and commits before the next
   starts; a red tree blocks everyone sharing it. `package.json` pins `pnpm@11.9.0`
   (`packageManager`) and has no separate typecheck script; those three are the commands.
+  `pnpm test` runs core, the studio, the CLI and the web app's suites in turn.
 - Features land whole, not in phases. A half-shipped feature is a parity gap with a name.
 - In autonomous loops the grill-me skill's answers are the source of truth; the owner is
   not asked again.
 - Docs and ADRs are written in English, whatever language the conversation is in. ADRs
   are the numbered Decided tables: [AGENT-FIRST.md](./AGENT-FIRST.md) (1–…),
-  [SPEC.md](./SPEC.md) (S1–S10, the founding stack) and [HARNESS.md](./HARNESS.md)
+  [SPEC.md](./SPEC.md) (S1–S11, the founding stack and its distribution) and [HARNESS.md](./HARNESS.md)
   (H1–H10). There is no `docs/adr/`. A design decision updates the docs and the table in
   the same commit; a shipped feature amends the row that promised it.
 
@@ -122,8 +143,8 @@ before changing editing behavior.
 - Existing parity gaps are bugs to close, not precedents to copy. Do not claim parity
   merely because both paths use the EDL schema. Keep implementation status accurate.
 
-Implementation reference: [EDITOR.md](./EDITOR.md). Use `src/modules/editor/lib/operations.ts`
-for domain changes and `src/modules/editor/server/store.ts` for persistence. Do not write project
+Implementation reference: [EDITOR.md](./EDITOR.md). Use `packages/core/src/modules/editor/lib/operations.ts`
+for domain changes and `packages/core/src/modules/editor/server/store.ts` for persistence. Do not write project
 EDLs through `q.setProject`, exported JSON files, or a separate provider-specific path.
 Run `pnpm test` for editing changes and `pnpm test:render` when rendering/state resolution changes.
 
@@ -138,7 +159,7 @@ raw state identifiers out of primary page chrome. Inspect the result in the brow
 (polish, motion, icons, surfaces), plus `better-colors`, `better-layout`,
 `better-typography`, `better-writing`, `better-accessibility` and `interface-review`.
 Read the relevant one before building or reviewing UI, rather than inventing a house
-style per screen. Harness marks live in `src/common/components/brand-marks.tsx`: one
+style per screen. Harness marks live in `apps/studio/src/common/components/brand-marks.tsx`: one
 `currentColor` SVG per provider, states from CSS, never a second asset.
 
 ## General editing and clipping

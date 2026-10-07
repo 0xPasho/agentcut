@@ -1,0 +1,23 @@
+{
+  "name": "@agentcut/render",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The Remotion compositions every export, still and preview is drawn with.",
+  "exports": {
+    "./package.json": "./package.json",
+    "./*": "./src/*.tsx"
+  },
+  "dependencies": {
+    "@agentcut/core": "workspace:*",
+    "remotion": "^4.0.525",
+    "@remotion/google-fonts": "^4.0.525",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "tailwindcss": "^4"
+  },
+  "devDependencies": {
+    "@remotion/cli": "^4.0.525",
+    "@remotion/tailwind-v4": "^4.0.525",
+    "@types/react": "^19"
+  }
+}

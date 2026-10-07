@@ -70,21 +70,21 @@ table's pending choices with the accepted decisions and their reasons.
 - [SEQUENCES.md](./SEQUENCES.md) covers general sequences and generated clips. A
   publication references their existing stable ID; it must not create another editor
   or promote a clip merely because someone opened its publication panel.
-- `src/modules/editor/server/store.ts` owns revision-checked EDL persistence;
-  `src/modules/editor/lib/operations.ts` owns timeline edits. Publishing metadata does
+- `packages/core/src/modules/editor/server/store.ts` owns revision-checked EDL persistence;
+  `packages/core/src/modules/editor/lib/operations.ts` owns timeline edits. Publishing metadata does
   not belong in the rendering EDL.
-- `src/modules/render/server/render-project.ts` calls the review gate, renders a
+- `packages/core/src/modules/render/server/render-project.ts` calls the review gate, renders a
   saved snapshot, and records revision/file in `rendered.json`. That manifest is a
   latest-output index, not an immutable publication artifact registry.
-- `src/common/server/db.ts` provides local SQLite; jobs/reaper and activity plumbing
+- `packages/core/src/common/server/db.ts` provides local SQLite; jobs/reaper and activity plumbing
   exist under `project/server`. Keep publication work from holding the editing lock
   while waiting on network uploads or the phone.
-- `src/modules/agent/server/mcp.ts` derives tools from editor schemas and currently
+- `packages/core/src/modules/agent/server/mcp.ts` derives tools from editor schemas and currently
   assumes project context. Workspace calendar/accounts tools need explicit workspace
   scope; do not invent a dummy project to satisfy that assumption.
-- `src/modules/settings/server/workspace.ts` composes workspace settings; existing
+- `packages/core/src/modules/settings/server/workspace.ts` composes workspace settings; existing
   `common/server/secrets.ts` provides write-only provider-key plumbing.
-- `src/modules/plan/types.ts` defines current sequence states as `pending`, `edited`,
+- `packages/core/src/modules/plan/types.ts` defines current sequence states as `pending`, `edited`,
   `approved`, `rendered`; `project/data.ts` labels them and `project/lib/overview.ts`
   counts them. Those are production/review states, not real social delivery states.
   In particular, rendered does not mean published. Preserve the reviewed approval

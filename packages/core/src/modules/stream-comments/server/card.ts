@@ -1,0 +1,94 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+import { projectDir } from "../../../common/server/config";
+import { registerAsset, toAbs } from "../../media/server/assets";
+import { getBundle, loadRenderer } from "../../render/server/remotion";
+import type { AssetRow } from "../../../common/server/db";
+import { chatSource, type ChatComment } from "./comments";
+import { exportCard } from "./exports";
+
+/**
+ * The avatar as a data URL, fetched now. TikTok signs its avatar links and they expire
+ * within days, so a picture that pointed at one would render as a broken image the next
+ * time the video is exported. Failing that — a dead link, no network — the card draws
+ * the author's initials, which is what the chat itself falls back to.
+ */
+async function avatarData(url: string): Promise<string> {
+  if (!/^https?:\/\//.test(url)) return "";
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    const type = response.headers.get("content-type") ?? "";
+    if (!response.ok || !type.startsWith("image/")) return "";
+    const bytes = Buffer.from(await response.arrayBuffer());
+    return `data:${type.split(";")[0]};base64,${bytes.toString("base64")}`;
+  } catch {
+    return "";
+  }
+}
+
+/** Longer than this and the card is a wall of text; the start of a question is the question. */
+const MAX_CHARS = 180;
+
+/**
+ * Draw a comment as a transparent picture and add it to the project's assets. The same
+ * comment draws the same pixels, and the asset library keys on content, so choosing it
+ * again reuses the picture already there instead of stacking copies.
+ */
+export async function commentCardAsset(projectId: string, comment: ChatComment, look: "light" | "chat" = "light"): Promise<AssetRow> {
+  // The chat's own export drew this message already, in the channel's design: that is the card.
+  const source = chatSource().path;
+  const drawn = source ? exportCard(source, comment.id) : null;
+  if (drawn) {
+    const dir = path.join(projectDir(projectId), "assets");
+    await fs.mkdir(dir, { recursive: true });
+    const file = path.join(dir, `chat-${comment.id}${path.extname(drawn) || ".png"}`);
+    await fs.copyFile(drawn, file);
+    const asset = await registerAsset({
+      file, kind: "image", scope: "project", projectId, source: "chat",
+      name: `Comentario de ${comment.name}.png`, tags: `chat comment ${comment.platform} chat:${comment.id} look:export`,
+    });
+    if (path.resolve(toAbs(asset.path)) !== path.resolve(file)) await fs.rm(file, { force: true });
+    return asset;
+  }
+  const text = comment.text.length > MAX_CHARS ? `${comment.text.slice(0, MAX_CHARS - 1).trimEnd()}…` : comment.text;
+  const inputProps = { platform: comment.platform, name: comment.name, text, avatar: await avatarData(comment.avatar), look };
+  const { renderStill, selectComposition } = await loadRenderer();
+  const serveUrl = await getBundle();
+  const composition = await selectComposition({ serveUrl, id: "CommentCard", inputProps });
+  const dir = path.join(projectDir(projectId), "assets");
+  await fs.mkdir(dir, { recursive: true });
+  const file = path.join(dir, `${randomUUID()}.png`);
+  try {
+    await renderStill({ composition, serveUrl, output: file, inputProps, imageFormat: "png" });
+    const asset = await registerAsset({
+      file, kind: "image", scope: "project", projectId, source: "chat",
+      name: `Comentario de ${comment.name}.png`, tags: `chat comment ${comment.platform} chat:${comment.id} look:${look}`,
+    });
+    // A picture already in the library under another file keeps that one.
+    if (path.resolve(toAbs(asset.path)) !== path.resolve(file)) await fs.rm(file, { force: true });
+    return asset;
+  } catch (error) {
+    await fs.rm(file, { force: true });
+    throw error;
+  }
+}
+
+/**
+ * A card picture's height over its width, read from the PNG header — what placing it
+ * clear of the hook and the captions needs. Null when the file is not a PNG it can read.
+ */
+export async function cardAspect(asset: AssetRow): Promise<number | null> {
+  const handle = await fs.open(toAbs(asset.path), "r").catch(() => null);
+  if (!handle) return null;
+  try {
+    const head = Buffer.alloc(24);
+    await handle.read(head, 0, 24, 0);
+    if (head.toString("ascii", 1, 4) !== "PNG") return null;
+    const width = head.readUInt32BE(16);
+    const height = head.readUInt32BE(20);
+    return width > 0 ? height / width : null;
+  } finally {
+    await handle.close();
+  }
+}

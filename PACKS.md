@@ -245,12 +245,31 @@ agent judged the rule to hold on all three again.
 
 **Export** writes `workspace/exports/packs/<id>/` from what is in this workspace: chosen
 templates and rules, the glossary, chosen assets, quick actions. Serve that folder or send
-it as is. Publishing to a registry comes when a registry exists.
+it as is, or publish it to the marketplace.
 
-There is no catalogue to browse. Import is a path or a URL you type, export writes a
-folder, and nothing in the app goes looking for packs on the network — no index, no
-search, no remote discovery. A marketplace is still an open question in
-[AGENT-FIRST.md](./AGENT-FIRST.md), not a thing that exists.
+## The marketplace
+
+Packs are published to and found on the marketplace (`apps/web`, AGENT-FIRST.md row 156).
+It adds no second way in: a marketplace pack is served at `<market>/r/<name>/<version>/`,
+which is a URL `packs.inspect` and `packs.import` already read, so it gets the same
+preview, the same untrusted recipes and the same copy into the workspace as a pack typed
+by hand.
+
+- **Find** — Settings → Packs → Import a pack lists the marketplace above the folder-or-URL
+  field; *Read it* fills in the pack's URL and shows the usual preview. The agent's tool is
+  `packs.search`, which returns each pack with that URL as `source`. In a terminal,
+  `agentcut packs search [text]`.
+- **Install** — the preview's Install button, `packs.import` with the `source`, or
+  `agentcut packs install <name>[@version]`.
+- **Publish** — `agentcut login` (a code you confirm in the browser), then
+  `agentcut packs publish <folder>`: usually the folder Export wrote. The folder is checked
+  first — the manifest parses, every file it names is there, at most 2000 files and 50 MB —
+  and the marketplace checks it again with the same schema. The first person to publish a
+  name owns it; a version, once published, never changes.
+
+`AGENTCUT_MARKET` points a machine at another marketplace (a local `wrangler dev`, a
+staging deploy). Sign-ins are kept per marketplace in `~/.agentcut/credentials.json`,
+readable by you alone, never in a workspace.
 
 ## Tools
 

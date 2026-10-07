@@ -21,7 +21,7 @@ instance model. None of those exist here.
 | H3 | A **short curated fallback**, with live discovery refreshing it in the background into a disk cache (TTL 24h) plus a manual "Refresh" | Discovery spawns a process per harness and can take seconds, so it cannot sit in front of a popover. Two of the four turned out to be plain subcommands (`cursor-agent models`, `opencode models`) rather than the protocol handshakes Deska uses; `claude -p` → `initialize` and `codex app-server` → `model/list` still need one each. The curated list exists for first paint and for a machine where discovery fails — not as a hand-maintained mirror, which is wrong the week a model ships. | Pure live discovery — seconds of latency on a UI affordance. A long curated catalog — stale by the time anybody reads it. |
 | H4 | The selection is a **workspace-level default** with a remembered **per-project override** | The common case is one harness for everything; the exception is one project where you want a bigger model. | Per-prompt only — the user re-picks constantly. Project-only — no sane default for a fresh project. |
 | H5 | Headless runs inherit the selection, folded in at **`startJob`** and at the two workspace routes — never inside a runner | Every agent run is either a job or one of two workspace actions, so those are the only places that need it. Folding it inside each runner was tried first and reverted: it made `modules/agent` pull in `common/server/db` and `common/server/config`, both of which resolve the workspace path at module load, so merely importing a driver froze it — and pointed the transcript tests at the real database. The barrel now carries a comment saying so. | Per-runner folding (broke three tests). Picker scoped to the chat only (leaves the batch running something else). |
-| H6 | Persisted in the workspace SQLite db (`src/common/server/db.ts`), read server-side | The server is what spawns the CLI, and it needs the default for runs with no UI attached (batch, jobs, MCP). | `localStorage` — invisible to the server, wrong for decision 5. |
+| H6 | Persisted in the workspace SQLite db (`packages/core/src/common/server/db.ts`), read server-side | The server is what spawns the CLI, and it needs the default for runs with no UI attached (batch, jobs, MCP). | `localStorage` — invisible to the server, wrong for decision 5. |
 | H7 | One instance per harness; id **is** the provider id | Deska's N-instances-per-provider model exists because it is a multi-account IDE. Here it duplicates the data model for zero benefit. | Porting `provider-instances`. |
 | H8 | UI is a **chip + popover** with a provider rail on the left, search, and pretty model names. Favourites are starred rows kept in `localStorage` (`agentcut:favourite-models`) and listed across harnesses under one rail entry; ⌥1–9 picks the nth visible row directly (`e.code`, because macOS turns Alt+digit into a character). A row whose harness is missing or signed out is disabled with its reason, never hidden; while a run holds the harness, favourites on another harness are left out of the list rather than offered. Choosing a model also switches the harness — a pick is `(harness, model)`, never a model alone. *(amended 2026-09-24: the original row said "no favourites, no ⌥1–9 in v1"; both shipped 2026-09-21.)* | The rail is what makes "Codex is not installed" legible as distinct from "you cannot change this right now" — both render, both disabled, different reasons. | Two chained `<Select>`s — cannot express the disabled-with-a-reason state, and reads badly with ~15 rows per provider. |
 | H9 | The provider is **frozen while a run is live**; the model is free for the next turn | Deska's argv-freeze: the child process already has its flags. Changing the provider mid-run would silently apply to nothing. | Letting both change — the UI would claim a switch that did not happen. |
@@ -32,7 +32,7 @@ phase 1, an adapter later): OpenCode has a host-launched driver, and Cursor is t
 harness. This table is one of the three ADR tables named in `AGENTS.md`.
 
 Not a decision, a constraint: harness selection is **not an editing operation**. It
-does not go through `src/modules/editor/lib/operations.ts` or `store.ts`, and it does not
+does not go through `packages/core/src/modules/editor/lib/operations.ts` or `store.ts`, and it does not
 enter the EDL. The shared-editor requirement in `AGENTS.md` is about edits.
 
 ## What shipped
@@ -50,7 +50,7 @@ a commit (`AGENTS.md`, Working in this repo).
 ## Run lifecycle
 
 A harness is hung when it goes quiet, not when a wall clock runs out. `spawnStream`
-(`src/modules/agent/server/spawn.ts`) ends a run after 10 minutes of silence
+(`packages/core/src/modules/agent/server/spawn.ts`) ends a run after 10 minutes of silence
 (`idleMs`, set by every driver); every stdout line resets the clock; the clock stops
 while the host is running a tool the agent asked for (`busy()`), because a harness
 waiting 21 minutes on `media.transcribe` is waiting, not stuck; a 2 hour ceiling
@@ -59,7 +59,7 @@ write its last words, then SIGKILL after 5 s. Every job carries an `AbortControl
 and `spawnStream` defaults to the job's signal, so pressing Stop kills the harness.
 
 Confinement is one shared list. Under `--permission-mode dontAsk` the denial is the whole
-fence, so `AGENT_DENIED_TOOLS` in `src/modules/agent/data.ts` names every door — the
+fence, so `AGENT_DENIED_TOOLS` in `packages/core/src/modules/agent/data.ts` names every door — the
 network (`WebFetch`, `WebSearch`), delegation (`Task`, `Agent`, `Workflow`,
 `SlashCommand`, `Skill`), and the shell under each name it has gone by (`BashOutput`,
 `KillShell`, `KillBash`, `Monitor`) — whether or not the installed CLI has the tool yet.
@@ -69,11 +69,11 @@ flags, so `--sandbox enabled` and `--auto` plus `--dir` carry the weight there.
 
 Secrets: provider keys live in the workspace SQLite settings table and are never put into
 `process.env`, which `spawnStream` copies wholesale into every CLI it starts
-(`src/common/server/secrets.ts`).
+(`packages/core/src/common/server/secrets.ts`).
 
 ## Shape
 
-### 1 — `src/modules/agent/lib/` and `src/modules/agent/server/` (detection and catalog)
+### 1 — `packages/core/src/modules/agent/lib/` and `packages/core/src/modules/agent/server/` (detection and catalog)
 
 The module is flat: pure code in `lib/`, node code in `server/`, no `providers/` tree.
 
@@ -97,7 +97,7 @@ The module is flat: pure code in `lib/`, node code in `server/`, no `providers/`
 
 - `binary.ts` — port of Deska `drivers/binary-path.ts`: resolve a bare name to an
   absolute path against the real PATH, once, and spawn *that*. `which()` in
-  `src/common/server/bin.ts` shells out to `/usr/bin/which`, which does not see a login
+  `packages/core/src/common/server/bin.ts` shells out to `/usr/bin/which`, which does not see a login
   shell's PATH; an nvm-installed `codex` is invisible to it.
 - `auth.ts` — trimmed port of `drivers/auth-probe.ts`: filesystem-only credential
   presence per CLI, returning `authenticated | unauthenticated | unknown`.
@@ -126,7 +126,7 @@ The module is flat: pure code in `lib/`, node code in `server/`, no `providers/`
 
 `hooks/agent-store.ts` is the module-level store the picker reads.
 
-### 2 — `src/app/api/agents/route.ts`
+### 2 — `apps/studio/src/app/api/agents/route.ts`
 
 - `GET ?projectId=` → `{ harnesses, selection, override, workspaceDefault }`. The
   effective selection and the scope's own override are separate fields: a UI that
@@ -136,13 +136,13 @@ The module is flat: pure code in `lib/`, node code in `server/`, no `providers/`
   only — probing a missing CLI spends the whole timeout to learn what
   `resolveBinary` already answered).
 
-### 3 — `src/modules/agent/components/agent-picker.tsx` and `prompt-composer.tsx`
+### 3 — `apps/studio/src/modules/agent/components/agent-picker.tsx` and `prompt-composer.tsx`
 
 `<AgentPicker>` is the chip + popover: rail, search, model rows, an "inherit the
 CLI default" row at the top, disabled rows carrying their reason. It reads
-`src/modules/agent/hooks/agent-store.ts` — a module-level store rather than a context provider, so
+`apps/studio/src/modules/agent/hooks/agent-store.ts` — a module-level store rather than a context provider, so
 dropping the component anywhere is the whole integration and five composers on a
-page cost one request. `src/common/ui/popover.tsx` was added alongside it,
+page cost one request. `apps/studio/src/common/ui/popover.tsx` was added alongside it,
 matching the base-ui/glass pattern the existing `select.tsx` uses.
 
 `<PromptComposer>` is the reusable prompt surface: textarea, ⌘↩, a slot for quick
@@ -151,12 +151,12 @@ of `chat.tsx`, the single `Chat` component every conversation surface renders.
 
 ### 4 — Plumbing
 
-`agentEdit` in `src/common/api/client.ts` still sends no `provider`/`model`: the body is
+`agentEdit` in `packages/core/src/common/api/client.ts` still sends no `provider`/`model`: the body is
 `instruction`, `expectedRevision`, `sequenceId` and `context`. That is fine rather than a
-gap, because `startJob` (`src/modules/project/server/jobs.ts`) folds `effectiveSelection`
+gap, because `startJob` (`packages/core/src/modules/project/server/jobs.ts`) folds `effectiveSelection`
 over whatever the request carried (H5), so a chat turn runs on the stored selection the
 chip shows. The two workspace routes (`onboarding.run`, `observations.review`) fold it
-the same way in `src/app/api/workspace/route.ts`.
+the same way in `apps/studio/src/app/api/workspace/route.ts`.
 
 ## Where the picker is mounted
 
@@ -187,7 +187,7 @@ would be claiming a choice that has nothing to apply to at that moment.
 
 ## Tests
 
-`src/modules/agent/__tests__/agents.test.ts` — pure functions only, matching the existing `node:test`
+`packages/core/src/modules/agent/__tests__/agents.test.ts` — pure functions only, matching the existing `node:test`
 style: binary resolution against a fake PATH, auth probe against fixture dirs,
 catalog merge (curated + discovered, dedup, recommended-first ordering), row
 building and filtering, and selection resolution (project override beats

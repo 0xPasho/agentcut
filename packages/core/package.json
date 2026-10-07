@@ -1,0 +1,30 @@
+{
+  "name": "@agentcut/core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The editor without a face: model, operations, persistence, media, agents and MCP. Shared by the CLI and the studio.",
+  "exports": {
+    "./package.json": "./package.json",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "test": "tsx --test src/modules/__tests__/architecture.test.ts src/modules/clipping/__tests__/clip-quality.test.ts src/modules/clipping/__tests__/long-video.test.ts src/modules/agent/__tests__/picker.test.ts src/modules/agent/__tests__/ask-agent.test.ts src/modules/agent/__tests__/agents.test.ts src/modules/agent/__tests__/markdown.test.ts src/modules/agent/__tests__/spawn.test.ts src/modules/project/__tests__/jobs.test.ts src/modules/project/__tests__/review.test.ts src/modules/onboarding/__tests__/onboarding.test.ts src/modules/settings/__tests__/settings.test.ts src/modules/settings/__tests__/snapshot.test.ts src/modules/packs/__tests__/packs.test.ts src/modules/review/__tests__/review.test.ts src/modules/media/__tests__/library-video.test.ts src/modules/templates/__tests__/templates-m6.test.ts src/modules/project/__tests__/batch.test.ts src/modules/agent/__tests__/conversation.test.ts src/modules/plan/__tests__/plan.test.ts src/modules/rules/__tests__/rules.test.ts src/modules/templates/__tests__/cleanup.test.ts src/modules/templates/__tests__/framing.test.ts src/modules/templates/__tests__/stream-edges.test.ts src/common/server/__tests__/workspace.test.ts src/modules/editor/__tests__/tracks.test.ts src/modules/editor/__tests__/lane-boxes.test.ts src/modules/editor/__tests__/interaction.test.ts src/modules/transcription/__tests__/transcribe.test.ts src/modules/transcription/__tests__/provided.test.ts src/modules/stream-comments/__tests__/chat-comments.test.ts src/modules/publishing/__tests__/time-field.test.ts src/common/server/__tests__/runtime.test.ts src/modules/packs/__tests__/market.test.ts",
+    "test:render": "tsx --test --test-force-exit src/modules/render/__tests__/splice-render.test.ts src/modules/render/__tests__/conform-render.test.ts src/modules/render/__tests__/render-parity.test.ts src/modules/render/__tests__/sequence-render.test.ts src/modules/render/__tests__/layers-render.test.ts src/modules/templates/__tests__/templates-render.test.ts src/modules/render/__tests__/output-frames-render.test.ts src/modules/publishing/__tests__/publication-render.test.ts"
+  },
+  "dependencies": {
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@agentcut/render": "workspace:*",
+    "@remotion/bundler": "^4.0.525",
+    "@remotion/renderer": "^4.0.525",
+    "@remotion/tailwind-v4": "^4.0.525",
+    "@tailwindcss/postcss": "^4",
+    "tailwindcss": "^4",
+    "ffmpeg-static": "^5.3.0",
+    "ffprobe-static": "^3.1.0",
+    "@types/node": "^26.6.0",
+    "tsx": "^4.23.13",
+    "typescript": "^5"
+  }
+}

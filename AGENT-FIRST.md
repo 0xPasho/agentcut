@@ -93,7 +93,7 @@ produced rows 75 onward is [docs/ADR-AUDIT.md](./docs/ADR-AUDIT.md).
 
 | 75 | **The agent says *what* to show; deterministic host code decides *where it comes from*, downloads it and records the licence (2026-09-16).** The agent has no network. A picture request is a `query`; a resolver walks the sources in order, filters by licence and relevance, and may answer "nothing", in which case the overlay is dropped. | Transcripts are attacker-controlled, so WebFetch and WebSearch are denied; giving the agent the web back reopens exactly the exfiltration path that was closed. Rows 44 and 71–72 rest on this. | An agent with web tools; stock or generated images as the default (breaks the zero-key story). |
 | 76 | **SQLite `projects.edl` and `revision` are authoritative; `edl.json` is a derived mirror; every way in registers the project (2026-09-16).** CLI, HTTP and MCP all write the same row. A project on disk that the database does not know is a bug, not a mode. Edits are atomic batches with `expectedRevision`: a stale batch fails with a conflict and the UI keeps the draft. | The first CLI run wrote an EDL to disk and never appeared in the UI. Two writers on one document need one truth and one revision. | Disk as the source of truth; last write wins; a silent merge. |
-| 77 | **The codebase is domain modules, like postgun's web app (2026-09-22).** `src/modules/<domain>` with `types`, `data`, `lib`, `hooks`, `components`, a view, `server/` and `__tests__/`; `src/common` for what two modules share; `src/app` routes only; an architecture test enforces it. `.ts` files in modules import relatively because Remotion cannot resolve `@/`. | One app holds server and web, so `server/` per module replaces a separate backend. The move was a codemod on the TypeScript compiler, not a regex. See [AGENTS.md](./AGENTS.md). | Flat `src/lib` and `src/components`; a separate backend package. |
+| 77 | **The codebase is domain modules, like postgun's web app (2026-09-22).** `src/modules/<domain>` with `types`, `data`, `lib`, `hooks`, `components`, a view, `server/` and `__tests__/`; `src/common` for what two modules share; `src/app` routes only; an architecture test enforces it. `.ts` files in modules import relatively because Remotion cannot resolve `@/`. *Amended 2026-10-07: each module now lives in two halves — its model, logic and server code in `packages/core`, its face in `apps/studio` — and the architecture test also holds core free of React and the heavy runtime (SPEC S11).* | One app holds server and web, so `server/` per module replaces a separate backend. The move was a codemod on the TypeScript compiler, not a regex. See [AGENTS.md](./AGENTS.md). | Flat `src/lib` and `src/components`; a separate backend package. |
 | 78 | *(Amended 2026-09-24: a path is cloned, not copied, and a drop is resolved to its path first, decision 137.)* **A local file is named by path, never uploaded through the browser (2026-09-21).** "Choose from this computer" is a server-side file browser (`assets.browseLocal`) that returns a path; the server copies footage from that path into the project's `media/` so moving the original breaks nothing, and a library video is referenced in place; the agent hands over the same path. Drag-and-drop stays because the browser only has bytes, and it streams. | Everything runs locally; upload read the whole file into memory and hit a 2 GiB ceiling; a browser file input can never reveal the path. "Así lo agarrarán los AI agents." | Upload as the default; raising the upload limit. |
 | 79 | *(Amended 2026-09-24: the keys' page is This machine, decision 135.)* **Provider keys are write-only secrets (2026-09-21).** They live in the workspace SQLite settings table, never in `process.env`, which `spawnStream` copies into every CLI, and are never returned to page or agent; the UI shows set-or-not and the origin, with replace or clear. | Environment variables leak into every spawned harness; a masked tail is still a reveal. Parity holds because both interfaces are equally blind. | Keys as env vars; masked display; a `.env` beside run directories. |
 | 80 | **A job's lock is owned by a pid and a boot id; liveness is a fact, not a timer (2026-09-21).** `kill(pid, 0)` decides; a 15 s heartbeat is only a backstop for a recycled pid; dead owners are reaped when the project list opens, a project is read, a job starts and on the SSE tick. `render.lock` uses the same primitive. | One machine, so the exact answer exists. A timeout unlocks late after a crash and kills a healthy forty-minute render early; closing a tab kills nothing, only a dead Node process leaves a zombie. | Clearing every `running` row when the database opens (MCP is a separate process that may hold a live batch); the heartbeat as the primary signal. |
@@ -173,6 +173,7 @@ produced rows 75 onward is [docs/ADR-AUDIT.md](./docs/ADR-AUDIT.md).
 | 153 | **A clip opens on its own sentence, and a muted pause is cut however the words were timed (2026-10-06).** `tightenBoundaries` drops the tail of a sentence begun before the clip — up to six words ending in a full stop, after a word with none and less than a second of pause — and opens on the sentence after it; a transcript without punctuation never matches. The end mirrors it: a clip whose last word does not end a sentence runs on to a full stop at most six words away, with no pause over a second on the way ("…para que te | construya cosas buenas."). `silenceCuts` caps a word at `LONGEST_WORD_SEC` (1.5 s) when proposing a pause and reads the sound from the start of a word longer than that, so a pause the aligner gave to the word before it is still found and cut only where the sound is quiet. `pashoai-short` sets `rhythm.silence.maxGapSec` to 30, like the built-in stream templates: on a stream, nine seconds of a muted mic is dead air, not a scene change. | The owner: a clip opened on "el certificado." — the end of the previous answer — then held nine seconds of looking at the phone. The aligner had given "certificado." 8.3 s of it, and the template skipped any gap over 4 s. | Asking the selection agent to avoid it (a prompt is not a guarantee); cutting every quiet stretch from word starts (measured: it would have changed the pace of every clip, not just the broken ones). |
 | 154 | **A passage said again to say it better loses the first saying (2026-10-06).** The retake pass also cuts a restatement: a run of `restatedWords` (7) or more said word for word again within `restatedWithinSec` (20 s), where the repeated run is at least `restatedShare` (0.4) of everything said before the second take began. The first take goes with whatever was said between; the second is kept. A take squeezed faster than 0.12 s a word was written twice by the transcript, not said twice, and neither retake rule cuts audio under it. The second reading may add up to three words of its own ("entre el Claude o el Codex… para Deska") but never drop one of the first's, and both start on the same word; where the template has sound, the cut ends at the quietest moment in the 0.3 s before the second reading, because its first word is often timed late ("Pasho," 80 ms late lost its first syllable). | The owner reads a viewer's comment twice, the first time stumbling, "seguido"; the abandoned-take rules reject it because the first reading finishes its sentence. | A shorter run or no share (measured: it cut forty words around a phrase that only came back, and a sentence's own point, "más minimalista"). |
 | 155 | **An export is current while its own video is (2026-10-06).** `rendered.json` records each export's `signature` — `contentSignature` of that video (its timeline and media, not its plan) — and `renderedClips` and `pinExport` take an export as current while the video still signs the same. Editing another video in the project no longer makes every download stale. Entries without a signature keep the old rule, the project's revision. The check is worked out once per revision, because downloads are served range by range. | A word fixed in one video of a hundred took all 55 rendered downloads away. | Re-rendering every approved video after each review fix. |
+| 156 | **The packs marketplace is a registry with accounts, and a marketplace pack is a URL (2026-10-07).** `apps/web` on Cloudflare (Workers, D1, R2) lists, searches and serves packs at `/r/<name>/<version>/`; publishing needs an account (GitHub sign-in; the CLI signs in with a device code) and the first publisher owns a name; versions are immutable. Finding is reachable from all three places a pack is installed: Settings → Packs → Import (a Marketplace list above the URL field), the agent's `packs.search`, and `agentcut packs search | install | publish`. Installing is `packs.inspect` and `packs.import` on the pack's URL, unchanged. Free; paid packs are not built. | The owner asked for a marketplace beside the landing page (S11). Serving packs at a URL the existing importer already reads means one install path: the same preview, untrusted recipes (decision 143) and remapping, with nothing new to keep in step. | A static `index.json` with no accounts (anyone could replace a name); a separate install path for marketplace packs (a second implementation of import); a template-only store (row-6 reasoning: a template alone does not travel); paid packs before accounts exist. |
 
 ## Future, noted so the plan leaves room
 
@@ -196,8 +197,8 @@ produced rows 75 onward is [docs/ADR-AUDIT.md](./docs/ADR-AUDIT.md).
 - **Edits anchored to the words they name** rather than to seconds (noted 2026-09-21), the way beats
   reference items; done by hand once when a clip was relocated after a transcript fix.
 - **"Mix two videos" from a sentence** in the chat, and a researched template repertoire (noted 2026-09-21).
-- **Marketplaces for packs and templates**: parked 2026-09-21 because the owner has not digested them
-  yet, not because they are wrong; see Wanted.
+- **Marketplaces for packs and templates**: parked 2026-09-21; built 2026-10-07 as one marketplace for
+  packs (row 156).
 
 ## Status
 
@@ -216,10 +217,10 @@ produced rows 75 onward is [docs/ADR-AUDIT.md](./docs/ADR-AUDIT.md).
 - **M3 (conversation + MCP + SSE): implemented 2026-09-17.** `messages` table; `sendMessage` records
   the turn, runs the agent with `conversation.json` + `context.json`, records the reply; web panel is a
   thread; CLI `ask` and the brief write to the same thread. `agentcut mcp` serves every editor tool over
-  stdio (`src/modules/agent/server/mcp.ts`, no SDK dependency). The per-project SSE stream already carried revision and
+  stdio (`packages/core/src/modules/agent/server/mcp.ts`, no SDK dependency). The per-project SSE stream already carried revision and
   job status, so the web reflects agent work without new plumbing.
 - **M4 (raw-video batch, status, approval): implemented 2026-09-17.** `createVideoProject(…, { layout: "separate" })`
-  makes one video per file; `runBatch` (`src/modules/project/server/batch.ts`) records the brief, transcribes each media into
+  makes one video per file; `runBatch` (`packages/core/src/modules/project/server/batch.ts`) records the brief, transcribes each media into
   `<project>/transcripts/<mediaId>/` and puts words on its shots, writes the shared plan, then plans and applies
   each video with 2 workers, then closes the set; failures are logged, left pending with `plan.reasons.error`,
   and a re-run only touches pending videos. Rendering without a list covers approved videos once anything is
@@ -227,15 +228,15 @@ produced rows 75 onward is [docs/ADR-AUDIT.md](./docs/ADR-AUDIT.md).
   approved". CLI: `agentcut projects batch`. Tools: `project.batch`, `media.transcribe`.
 - **M5 (agentic editor: context, frames, authorship, observations): implemented 2026-09-17.** Messages carry
   the open sequence, selection and playhead; "Ask the agent about this" in the clip context menu; every edit an
-  agent creates is stamped `agent:<messageId>` (`src/modules/editor/lib/authorship.ts`) and shown as such on the
+  agent creates is stamped `agent:<messageId>` (`packages/core/src/modules/editor/lib/authorship.ts`) and shown as such on the
   timeline and in the inspector ("why is this here"). The editing agent gets `frames/`, `transcript.txt` with
   times and `signals.json` per source (cached). The observation bank
-  (`src/modules/rules/server/observations.ts`) records a person's changes to generated work and caption fixes from the HTTP
+  (`packages/core/src/modules/rules/server/observations.ts`) records a person's changes to generated work and caption fixes from the HTTP
   editor only; every agent reads it as soft context; "Review my preferences" asks an agent for proposals
   that are saved only on acceptance. Quick actions are four preset messages.
 - **Decision 29 (the agent sees rendered output, not the footage): implemented 2026-09-21.** `frames/` now
   holds stills of the *finished* video, rendered through the same `SequenceComposition` the preview and the
-  export use (`src/modules/render/server/frames.ts`): 360 on the short side — 640×360 landscape, 360×640 vertical, since
+  export use (`packages/core/src/modules/render/server/frames.ts`): 360 on the short side — 640×360 landscape, 360×640 vertical, since
   "360p" alone does not say which — every 2s, up to 32 frames, past which the cadence widens so a long video
   is covered coarsely rather than truncated. Captions, titles, images, crops, layer placement and the blend
   part-way through a transition are in the picture. Measured on this machine: 5.3s for a 17s video and 5.4s
@@ -255,13 +256,13 @@ produced rows 75 onward is [docs/ADR-AUDIT.md](./docs/ADR-AUDIT.md).
   glossary entries; skippable once. Not done: rendered thumbnails (schematic instead), transitions and SFX
   (phase 2 as decided). **Superseded 2026-09-20** by decisions 58-62: the card became the full-screen
   `/welcome` route, the skip became reversible, and the interview became a shared tool the agent asks
-  through too (`src/modules/onboarding/server/onboarding.ts`, `src/modules/onboarding/welcome-view.tsx`, `src/modules/onboarding/components/onboarding-chat.tsx`,
-  `src/modules/onboarding/__tests__/onboarding.test.ts`).
+  through too (`packages/core/src/modules/onboarding/server/onboarding.ts`, `apps/studio/src/modules/onboarding/welcome-view.tsx`, `apps/studio/src/modules/onboarding/components/onboarding-chat.tsx`,
+  `packages/core/src/modules/onboarding/__tests__/onboarding.test.ts`).
 - **Phase 1 complete**, with two rows never built and amended to say so: 35 (agent tags at import) and 47 (rendered thumbnails).
 - **Phase 2 implemented 2026-09-17:** video in the library (`workspace/library/video`, uploads, drop-in,
   `media.import` by asset id with `place`, library videos placed from the browser or by drag); template
   bookends from library video; the rule action "add an asset at start/end" was `then.overrides.intro/outro` and is `then.slots` since 2026-09-22 (row 119);
-  packs (`src/modules/packs/server/packs.ts`, `PACKS.md`: manifest, import by path or URL with an untrusted preview, export,
+  packs (`packages/core/src/modules/packs/server/packs.ts`, `PACKS.md`: manifest, import by path or URL with an untrusted preview, export,
   origin recorded, removal); quick actions from packs in the thread; sound on punch-ins
   (`rhythm.punch.sfx`); per-message undo of an agent turn (`conversation.undo`, inverse operations stored
   on the message). Deferred, and why: transitions between shots need renderer work; proposal mode as a
@@ -330,7 +331,7 @@ produced rows 75 onward is [docs/ADR-AUDIT.md](./docs/ADR-AUDIT.md).
 - **Keyframed layer transforms: implemented 2026-09-21.** The schema for these landed and then
   nothing read it: `item.keyframes` was a field the app wrote nowhere. A layer now moves, grows,
   turns, fades and changes its level across the shot it lives on, resolved in one place
-  (`src/modules/editor/lib/keyframes.ts`) that the timeline, the Player and the export all go through, with the
+  (`packages/core/src/modules/editor/lib/keyframes.ts`) that the timeline, the Player and the export all go through, with the
   schema's five named curves — `linear`, `ease`, `in`, `out`, `hold` — actually implemented,
   because a pack is data at render time and may never ship a curve (its recipes, row 143, only
   write keyframes with these). `t` stays what the schema said it was: seconds
@@ -355,7 +356,7 @@ produced rows 75 onward is [docs/ADR-AUDIT.md](./docs/ADR-AUDIT.md).
   (row 116); a stream clip opens on the chat comment it answers (row 124); rules that would do
   nothing are refused at save (row 122); `assets.delete` is shared (row 123).
 - **Domain modules: implemented 2026-09-22.** `src/lib` and `src/components` are gone; every feature
-  is a module with a `server/` folder, enforced by `src/modules/__tests__/architecture.test.ts` (row 77).
+  is a module with a `server/` folder, enforced by `packages/core/src/modules/__tests__/architecture.test.ts` (row 77).
 - **A pack carries its style guide: implemented 2026-09-22.** `STYLE.md` and `examples/` in the pack,
   edited in Settings → Packs and through `packs.style.*` / `packs.examples.*` (row 121).
 - **The run is a controlled process: implemented 2026-09-23/24.** Hang detection by silence (row 87),
@@ -446,11 +447,9 @@ Registry adapter for packs; caption translation; publish flows for videos; image
   so a standard this machine cannot take is said on the inspect page. Not done: nothing
   that ships carries a standard yet, and the questions are asked only when someone asks
   for them.
-- **One marketplace, for packs, as a client of a static index. Still open, deliberately
-  untouched by the settings home** — parked because the owner has not digested it yet ("es complicado y no lo tengo digerido"), not because it is wrong.** Decisions 6 and 8 already
-  shape it: any static host serves a pack, so v1 is an `index.json` (name, author,
-  description, version, hash, URL), a search, the existing untrusted preview and install.
-  No server, no accounts, no publishing yet — that is still the registry of phase 3.
+- **One marketplace, for packs.** Built 2026-10-07 — row 156 and [PACKS.md](./PACKS.md#the-marketplace).
+  It went past the static index this bullet sketched: accounts came first, because a name
+  nobody owns is a name anybody can replace.
 - **No separate template marketplace.** A template alone does not travel (decision 6): one
   that ends on an outro is useless without the asset. Templates are found through a filter
   inside the pack marketplace — packs that carry only templates. A second store is a second
