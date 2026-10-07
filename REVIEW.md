@@ -280,7 +280,7 @@ And it is not the agent grading its own taste. Every judged answer carries a pla
 ## Where it lives
 
 ```
-src/modules/review/
+packages/core/src/modules/review/      (its components live in apps/studio/src/modules/review/)
   types.ts                 the standard, the artifact, and what a finding is
   data.ts                  the metric catalogue and the built-in limits
   lib/metrics.ts           what a video measures, off the EDL, pure
@@ -295,7 +295,7 @@ src/modules/review/
 
 `render/server/style-check.ts` now returns its numbers alongside its own checks;
 `PackManifest` carries `review`; `ProjectPlan` and `SequencePlan` carry severities and
-waivers. Tests: `src/modules/review/__tests__/review.test.ts`, in `pnpm test`.
+waivers. Tests: `packages/core/src/modules/review/__tests__/review.test.ts`, in `pnpm test`.
 
 ## Status
 

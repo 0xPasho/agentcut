@@ -76,16 +76,16 @@ the geometry in that file, and commit what it writes.
 
 | Path | What it is |
 |---|---|
-| `src/common/components/agentcut-mark.tsx` | The three React components. Generated — edit the script, not this file. |
-| `public/brand/mark.svg` | Flat mark, `currentColor`, for anything outside React. |
-| `public/brand/mark-compact.svg` | The same at UI sizes. |
-| `public/brand/icon.svg` | The app icon, full material. |
-| `public/brand/icon-flat.svg`, `icon-flat-light.svg` | Two flat inks on the tile, for print and stickers, where gradients and shadows don't survive. |
+| `apps/studio/src/common/components/agentcut-mark.tsx` | The three React components. Generated — edit the script, not this file. |
+| `apps/studio/public/brand/mark.svg` | Flat mark, `currentColor`, for anything outside React. |
+| `apps/studio/public/brand/mark-compact.svg` | The same at UI sizes. |
+| `apps/studio/public/brand/icon.svg` | The app icon, full material. |
+| `apps/studio/public/brand/icon-flat.svg`, `icon-flat-light.svg` | Two flat inks on the tile, for print and stickers, where gradients and shadows don't survive. |
 | `public/brand/icon-{1024,512,256,128,64,32}.png` | Raster icon, store and home-screen sizes. |
-| `src/app/icon.svg` | Browser tab. Next wires it up from the filename. |
-| `src/app/apple-icon.png` | Touch icon, 180px. Same. |
+| `apps/studio/src/app/icon.svg` | Browser tab. Next wires it up from the filename. |
+| `apps/studio/src/app/apple-icon.png` | Touch icon, 180px. Same. |
 
-Not to be confused with `src/common/components/brand-marks.tsx`, which holds the *harness*
+Not to be confused with `apps/studio/src/common/components/brand-marks.tsx`, which holds the *harness*
 marks — Claude, Codex (the OpenAI mark), Cursor, opencode and Gemini — one monochrome path
 each, mapped by harness id in `HARNESS_MARKS`; an unknown id gets the terminal glyph, not a
 blank. This file is the product's own mark; that one is other people's.

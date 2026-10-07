@@ -1,0 +1,77 @@
+@import "tailwindcss";
+@source "./";
+
+/* The studio's palette (apps/studio/src/app/globals.css), so the site and the app read as one product. */
+@custom-variant reduce-transparency (@media (prefers-reduced-transparency: reduce));
+@custom-variant more-contrast (@media (prefers-contrast: more));
+
+@font-face {
+  font-family: "Figtree";
+  font-style: normal;
+  font-weight: 300 900;
+  font-display: swap;
+  src: url(/fonts/figtree-latin.woff2) format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url(/fonts/jetbrains-mono-latin.woff2) format("woff2");
+}
+
+@theme {
+  --font-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --color-background: oklch(0.145 0 0);
+  --color-foreground: oklch(0.97 0 0);
+  --color-card: oklch(0.205 0 0);
+  --color-popover: oklch(0.225 0 0);
+  --color-primary: oklch(0.879 0.168 96);
+  --color-primary-foreground: oklch(0.16 0 0);
+  --color-secondary: oklch(0.262 0 0);
+  --color-muted-foreground: oklch(0.708 0 0);
+  --color-accent: oklch(0.7 0.16 48);
+  --color-destructive: oklch(0.63 0.23 27);
+  --color-success: oklch(0.85 0.19 150);
+  --color-border: oklch(0.32 0 0);
+  --color-input: oklch(0.36 0 0);
+  --color-ring: oklch(0.879 0.168 96 / 60%);
+  --radius-4xl: 2rem;
+}
+
+:root {
+  --glass-tint: oklch(0.205 0 0 / 72%);
+  --glass-edge: oklch(1 0 0 / 22%);
+  --glass-specular: oklch(1 0 0 / 10%);
+  --control-highlight: inset 0 1px 0 rgb(255 255 255 / 18%);
+  --glass-shadow: inset 0 1px 0 var(--glass-specular), inset 0 -1px 0 rgb(0 0 0 / 12%), 0 10px 36px -12px rgb(0 0 0 / 60%);
+  --surface-shadow: inset 0 1px 0 rgb(255 255 255 / 6%), 0 1px 2px rgb(0 0 0 / 40%);
+  color-scheme: dark;
+}
+
+@layer base {
+  * { @apply border-border outline-ring/50; }
+  html { @apply bg-background text-foreground font-sans antialiased; text-rendering: optimizeLegibility; }
+  ::selection { background: oklch(0.879 0.168 96 / 35%); color: white; }
+  :where(button, summary, [role="button"]):not(:disabled) { cursor: pointer; }
+}
+
+/* The glass edge: a gradient painted into the border box while the tint fills the padding box. */
+@utility glass-surface {
+  background-image:
+    linear-gradient(var(--glass-tint), var(--glass-tint)),
+    linear-gradient(180deg, var(--glass-edge) 0%, color-mix(in oklch, var(--glass-edge), transparent 78%) 40%, transparent 100%);
+  background-origin: padding-box, border-box;
+  background-clip: padding-box, border-box;
+}
+@utility glass-flat { background-image: none; }
+
+/* The warm light behind the hero: the accent, far away. */
+@utility hero-glow {
+  background:
+    radial-gradient(60% 50% at 50% 0%, oklch(0.879 0.168 96 / 13%), transparent 70%),
+    radial-gradient(40% 40% at 85% 10%, oklch(0.7 0.16 48 / 10%), transparent 70%);
+}
+
+* { scrollbar-width: thin; scrollbar-color: rgb(255 255 255 / 22%) transparent; }

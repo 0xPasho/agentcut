@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/brand/icon-256.png" width="112" alt="agentcut">
+  <img src="apps/studio/public/brand/icon-256.png" width="112" alt="agentcut">
 </p>
 
 <h1 align="center">agentcut</h1>
@@ -35,14 +35,16 @@ been verified. See [publishing setup and status](PUBLISHING.md).
 You need Node.js 22.13+ and an installed, signed-in agent CLI.
 
 ```sh
-git clone https://github.com/0xPasho/agentcut.git
-cd agentcut
-npm install --global pnpm@11.9.0
-pnpm install --frozen-lockfile
-pnpm dev --hostname 127.0.0.1
+npm i -g agentcut
+agentcut
 ```
 
-Open [localhost:7927](http://localhost:7927) and describe what you want to make.
+`agentcut` opens the studio in your browser. The command itself is about 2 MB; the
+studio, ffmpeg and the renderer download the first time each is needed, with a progress
+bar, into `~/.agentcut/runtime` (`agentcut runtime` lists them). Your projects live in
+`~/.agentcut/workspace`.
+
+Describe what you want to make:
 
 > Make a 40-second clip about the pricing discussion. Add captions and my outro.
 
@@ -56,18 +58,47 @@ brew install whisper.cpp yt-dlp
 The first transcription downloads a model of about 1.6 GB.
 See the [setup guide](docs/SETUP.md) for more options and troubleshooting.
 
-### Use your agent from the terminal
-
-Connect agentcut through MCP, using the full path to your checkout. Run the command
-for your agent:
+### From source
 
 ```sh
-claude mcp add agentcut -- node /absolute/path/to/agentcut/scripts/agentcut.mjs mcp
-codex mcp add agentcut -- node /absolute/path/to/agentcut/scripts/agentcut.mjs mcp
+git clone https://github.com/0xPasho/agentcut.git
+cd agentcut
+npm install --global pnpm@11.9.0
+pnpm install --frozen-lockfile
+pnpm dev --hostname 127.0.0.1      # the studio on localhost:7927
+pnpm agentcut help                 # the CLI, from source
 ```
 
-Cursor and OpenCode use the same server command in their MCP settings. The browser
-editor does not need to be running for your agent to work on a project.
+A checkout keeps its projects in `workspace/` and downloads nothing. The repository is
+one workspace: `apps/studio` (the editor), `apps/web` (the website and the packs
+marketplace), and `packages/core`, `packages/render` and `packages/cli` (the `agentcut`
+package). See [AGENTS.md](AGENTS.md#architecture-a-workspace-of-apps-and-packages-domain-modules-inside).
+
+### Use your agent from the terminal
+
+Connect agentcut through MCP. Run the command for your agent:
+
+```sh
+claude mcp add agentcut -- agentcut mcp
+codex mcp add agentcut -- agentcut mcp
+```
+
+From a checkout, use `node /absolute/path/to/agentcut/scripts/agentcut.mjs mcp` as the
+command instead. Cursor and OpenCode use the same server command in their MCP settings.
+The browser editor does not need to be running for your agent to work on a project.
+
+### Packs
+
+Templates, rules and a style guide that travel together. Find them in Settings → Packs,
+or from a terminal:
+
+```sh
+agentcut packs search shorts
+agentcut packs install stream-shorts
+agentcut login && agentcut packs publish ./my-pack
+```
+
+See [PACKS.md](PACKS.md#the-marketplace).
 
 ## Your projects stay on your computer
 

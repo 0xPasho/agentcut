@@ -5,12 +5,12 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { projectDir } from "../src/common/server/config";
-import { publishClips } from "../src/modules/editor/server/store";
-import { q } from "../src/common/server/db";
-import { probe as probeFile } from "../src/modules/media/server/ffmpeg";
-import { Transcript, fmt } from "../src/modules/transcription/lib/transcript";
-import { buildEdl } from "../src/modules/clipping/server/select";
+import { projectDir } from "@agentcut/core/common/server/config";
+import { publishClips } from "@agentcut/core/modules/editor/server/store";
+import { q } from "@agentcut/core/common/server/db";
+import { probe as probeFile } from "@agentcut/core/modules/media/server/ffmpeg";
+import { Transcript, fmt } from "@agentcut/core/modules/transcription/lib/transcript";
+import { buildEdl } from "@agentcut/core/modules/clipping/server/select";
 
 async function main() {
   const id = process.argv[2];

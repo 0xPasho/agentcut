@@ -6,7 +6,7 @@ project state. Visual polish must preserve that equivalence; a UI-only editing f
 is incomplete. See [the shared-editor contract](./SPEC.md#core-requirement-one-editor-two-interfaces).
 
 agentcut follows Apple's Liquid Glass, in the dark palette we settled on. Everything is
-built from the shadcn primitives in `src/common/ui/`, so a new screen is on-style by
+built from the shadcn primitives in `apps/studio/src/common/ui/`, so a new screen is on-style by
 using `<Glass>`, `<Button>`, `<Card>`.
 
 **Rejected, and why.** Neo-brutalism — decided, built and reversed the same night
@@ -15,7 +15,7 @@ it is the material: Artlist's dark palette rendered as Apple's Liquid Glass. A l
 dark only; `globals.css` carries one `:root` token block and no light variant.
 
 **No hand-written CSS.** Tailwind utility classes only. The exceptions are the theme token
-block and the `@custom-variant` declarations in `src/app/globals.css` — shadcn's and
+block and the `@custom-variant` declarations in `apps/studio/src/app/globals.css` — shadcn's and
 Tailwind's own configuration mechanisms.
 
 The mark itself — the scissors that are also a face — lives in [BRAND.md](./BRAND.md).
@@ -116,7 +116,7 @@ Secondary grey text must still clear 4.5:1 against its own surface.
 
 ## Where it does not apply
 
-Rendered video (`remotion/`) follows the caption style in the EDL — those frames are
+Rendered video (`packages/render/src/`) follows the caption style in the EDL — those frames are
 watched on TikTok, not inside the app.
 
 
@@ -148,7 +148,7 @@ watched on TikTok, not inside the app.
 - Motion is optional: press scaling and loading animation run only with no motion preference. Reduced-motion states retain their labels and icons.
 - Ready badges stay neutral with a check icon so status does not compete with the primary action.
 - No raw browser controls. `<select>`, `<input type="color">`, `<details>`/`<summary>` and
-  native checkboxes exist only inside the primitives in `src/common/ui/` (`select.tsx`,
+  native checkboxes exist only inside the primitives in `apps/studio/src/common/ui/` (`select.tsx`,
   `color-field.tsx`, `disclosure.tsx`, `checkbox.tsx`). Twelve panels once looked broken for
   four shared causes, not twelve: fix the primitive, never the panel. `PopoverContent` is a
   panel — 12px inside a 24px corner — and the menu popovers opt into menu padding

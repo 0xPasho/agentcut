@@ -8,9 +8,9 @@
  * across every video is what `captions.syncOffsetMs` is for.
  */
 import { spawnSync } from "node:child_process";
-import { FFMPEG } from "../src/common/server/bin";
-import { readEditor } from "../src/modules/editor/server/store";
-import { readSync, speechMask } from "../src/modules/transcription/lib/sync";
+import { FFMPEG } from "@agentcut/core/common/server/bin";
+import { readEditor } from "@agentcut/core/modules/editor/server/store";
+import { readSync, speechMask } from "@agentcut/core/modules/transcription/lib/sync";
 
 const STEP = 0.02;
 

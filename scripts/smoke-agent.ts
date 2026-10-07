@@ -1,5 +1,5 @@
-import { availableProviders, resolveProvider, extractJson } from "../src/modules/agent/server/providers";
-import { ensureWorkspace, projectDir } from "../src/common/server/config";
+import { availableProviders, resolveProvider, extractJson } from "@agentcut/core/modules/agent/server/providers";
+import { ensureWorkspace, projectDir } from "@agentcut/core/common/server/config";
 
 async function main() {
   ensureWorkspace();

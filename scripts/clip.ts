@@ -13,17 +13,17 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { ensureWorkspace, projectDir } from "../src/common/server/config";
-import { publishClips } from "../src/modules/editor/server/store";
-import { q } from "../src/common/server/db";
-import { probe, extractAudio } from "../src/modules/media/server/ffmpeg";
-import { transcribe, available as whisperAvailable, DEFAULT_MODEL } from "../src/modules/transcription/server/whispercpp";
-import { computeSignals } from "../src/modules/clipping/server/signals";
-import { selectClips } from "../src/modules/clipping/server/select";
-import { resolveSelection } from "../src/modules/clipping/server/selection";
-import { Transcript } from "../src/modules/transcription/lib/transcript";
-import { writeProvidedTranscript } from "../src/modules/transcription/server/provided";
-import { fmt } from "../src/modules/transcription/lib/transcript";
+import { ensureWorkspace, projectDir } from "@agentcut/core/common/server/config";
+import { publishClips } from "@agentcut/core/modules/editor/server/store";
+import { q } from "@agentcut/core/common/server/db";
+import { probe, extractAudio } from "@agentcut/core/modules/media/server/ffmpeg";
+import { transcribe, available as whisperAvailable, DEFAULT_MODEL } from "@agentcut/core/modules/transcription/server/whispercpp";
+import { computeSignals } from "@agentcut/core/modules/clipping/server/signals";
+import { selectClips } from "@agentcut/core/modules/clipping/server/select";
+import { resolveSelection } from "@agentcut/core/modules/clipping/server/selection";
+import { Transcript } from "@agentcut/core/modules/transcription/lib/transcript";
+import { writeProvidedTranscript } from "@agentcut/core/modules/transcription/server/provided";
+import { fmt } from "@agentcut/core/modules/transcription/lib/transcript";
 
 function arg(name: string, fallback?: string) {
   const i = process.argv.indexOf(`--${name}`);
@@ -119,7 +119,7 @@ async function main() {
   });
 
   publishClips(projectId, edl);
-  const { prepareGenerated } = await import("../src/modules/publishing/server/batch");
+  const { prepareGenerated } = await import("@agentcut/core/modules/publishing/server/batch");
   await prepareGenerated(projectId, [...edl.clips, ...edl.sequences].map(video => video.id), message => console.error(message));
 
   console.log(`\nEDL → ${path.join(dir, "edl.json")}`);

@@ -92,14 +92,14 @@ No third-party audio ships — shipping someone else's sound effects means shipp
 licences. What does ship is eight synthesised starter sounds (whoosh, ding, pop, impact,
 riser, click, swipe, sparkle; made by `scripts/make-sfx.mjs`, so they carry no licence),
 installed into the library on first read by `installStarterSounds` in
-`src/modules/media/server/assets.ts`. A shipped template therefore names a starter
+`packages/core/src/modules/media/server/assets.ts`. A shipped template therefore names a starter
 (`sound.*.starter`), never an asset id — ids are per machine.
 
 - **Drop-in folder** (default): anything in `library/audio/` is scanned and registered.
   Works offline, no key, user's own licences.
 - **Freesound** (optional): good CC library, but needs an API key and OAuth for full-
   quality downloads. Behind `FREESOUND_API_KEY`, off by default. **Not built.** Sound search
-  as built is Openverse audio (`src/modules/media/server/search/audio.ts`), no key, held to
+  as built is Openverse audio (`packages/core/src/modules/media/server/search/audio.ts`), no key, held to
   the same licence and relevance filters as pictures.
 
 ---
@@ -142,7 +142,7 @@ interface means Pexels drops in for anyone who wants it.
 
 ### The live rules, as built
 
-- **Licence filter** (`licenceAllowed` in `src/modules/media/server/search/types.ts`).
+- **Licence filter** (`licenceAllowed` in `packages/core/src/modules/media/server/search/types.ts`).
   Accepted: CC0, public domain / PDM, CC-BY, CC-BY-SA. Rejected: NC, ND, and GPL/AGPL/LGPL —
   software licences that turn up on Commons for screenshots and carry copyleft obligations
   that make no sense on a video overlay.
