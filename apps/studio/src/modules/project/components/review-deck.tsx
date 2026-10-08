@@ -7,6 +7,7 @@ import {
   BadgeCheck,
   CircleX,
   Clapperboard,
+  Gauge,
   Loader2,
   Maximize2,
   MessageSquare,
@@ -29,7 +30,7 @@ import type { ChatController } from "@agentcut/core/modules/agent/types";
 import type { ProjectVideo } from "@agentcut/core/modules/project/lib/overview";
 import { reviewTally } from "@agentcut/core/modules/project/lib/review";
 import { useSwipe } from "../hooks/use-swipe";
-import { STATUS, SWIPE, VERDICTS } from "@agentcut/core/modules/project/data";
+import { REVIEW_RATES, STATUS, SWIPE, VERDICTS } from "@agentcut/core/modules/project/data";
 import type { ReviewStep, Verdict } from "@agentcut/core/modules/project/types";
 import { StatusIcon } from "./clip-list";
 
@@ -84,6 +85,8 @@ export function ReviewDeck({
   const [chatOpen, setChatOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [deciding, setDeciding] = useState(false);
+  // Kept across cards: a pass at 4× stays at 4× until it is turned down.
+  const [rate, setRate] = useState<number>(1);
   const popup = useRef<HTMLDivElement>(null);
 
   // A video the agent or another tab deleted mid-session drops out of the walk.
@@ -150,6 +153,13 @@ export function ReviewDeck({
       return;
     }
     if (key === "ArrowDown") { event.preventDefault(); void decide(null); return; }
+    // The editor's speed keys, over the deck's own speeds.
+    if (key === "<" || key === ">") {
+      event.preventDefault();
+      const order = key === ">" ? [...REVIEW_RATES] : [...REVIEW_RATES].reverse();
+      setRate((now) => order.find((value) => (key === ">" ? value > now : value < now)) ?? now);
+      return;
+    }
     if (key === "z" || key === "Backspace") { event.preventDefault(); void undo(); }
   };
 
@@ -258,6 +268,7 @@ export function ReviewDeck({
                         assetUrls={assetUrls}
                         maxHeight="100dvh - 19rem"
                         autoPlay
+                        playbackRate={rate}
                       />
                       <Stamp verdict="approved" strength={Math.max(0, lean)} />
                       <Stamp verdict="rejected" strength={Math.max(0, -lean)} />
@@ -313,6 +324,24 @@ export function ReviewDeck({
                       <SkipForward aria-hidden className="size-5" />
                     </Button>
                   </div>
+                  <div role="radiogroup" aria-label="Playback speed" title="Playback speed (< and >)" className="flex items-center gap-0.5 rounded-full bg-white/5 p-0.5 ring-1 ring-inset ring-white/10">
+                    <Gauge aria-hidden className="mx-1.5 size-3.5 text-muted-foreground" />
+                    {REVIEW_RATES.map((value) => (
+                      <button
+                        key={value}
+                        type="button"
+                        role="radio"
+                        aria-checked={rate === value}
+                        onClick={() => setRate(value)}
+                        className={cn(
+                          "h-6 min-w-9 cursor-pointer rounded-full px-2 text-xs tabular-nums transition-colors duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none",
+                          rate === value ? "bg-white/15 text-foreground" : "text-muted-foreground hover:bg-white/8 hover:text-foreground",
+                        )}
+                      >
+                        {value}×
+                      </button>
+                    ))}
+                  </div>
                   {busy && <p role="status" className="text-xs text-muted-foreground">The project is busy. Decide once the agent or render finishes.</p>}
                   <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[11px] text-muted-foreground">
                     <span className="hidden items-center gap-3 sm:flex">
@@ -320,6 +349,7 @@ export function ReviewDeck({
                       <span><Kbd>→</Kbd> approve</span>
                       <span><Kbd>↓</Kbd> skip</span>
                       <span><Kbd>Z</Kbd> undo</span>
+                      <span><Kbd>&lt;</Kbd><Kbd>&gt;</Kbd> speed</span>
                     </span>
                     <Link href={href(current)} onClick={onOpenEditor(current)} className={cn(buttonVariants({ variant: "ghost", size: "xs" }))}>
                       <SlidersHorizontal aria-hidden />
