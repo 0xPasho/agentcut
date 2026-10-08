@@ -84,7 +84,7 @@ export const SWIPE = {
  * The speeds a review plays at. Deciding on a clip is a skim, not a watch, so the deck
  * goes faster than the editor's `PLAYBACK_RATES` and never slower than the video.
  */
-export const REVIEW_RATES = [1, 2, 4, 8] as const;
+export const REVIEW_RATES = [1, 2, 3, 4, 8] as const;
 
 /** The two verdicts a swipe gives. Skipping is not one: it leaves the status alone. */
 export const VERDICTS = {
