@@ -25,6 +25,7 @@ export function VideoPreview({
   assetUrls,
   maxHeight,
   autoPlay = false,
+  playbackRate = 1,
 }: {
   projectId: string;
   video: ProjectVideo;
@@ -33,6 +34,7 @@ export function VideoPreview({
   /** How tall the frame may grow; see `frameStyle`. */
   maxHeight?: number | string;
   autoPlay?: boolean;
+  playbackRate?: number;
 }) {
   const player = useRef<PlayerRef>(null);
   const assetBase = `/api/projects/${projectId}/asset/`;
@@ -98,6 +100,7 @@ export function VideoPreview({
         fps={output.fps}
         compositionWidth={output.width}
         compositionHeight={output.height}
+        playbackRate={playbackRate}
         controls
         doubleClickToFullscreen
         ref={player}
@@ -118,6 +121,7 @@ export function VideoPreview({
       fps={edl.output.fps}
       compositionWidth={edl.output.width}
       compositionHeight={edl.output.height}
+      playbackRate={playbackRate}
       controls
       doubleClickToFullscreen
       ref={player}
