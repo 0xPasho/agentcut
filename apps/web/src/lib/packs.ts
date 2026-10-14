@@ -4,9 +4,9 @@
  * the pack's bytes. `source` is a raw.githubusercontent URL, which is what `packs.import`
  * installs from.
  */
-import type { D1Database, D1PreparedStatement } from "../cf";
 import { PackManifest } from "@agentcut/core/modules/packs/types";
 import type { User } from "../env";
+import { isUniqueViolation, type Sql } from "./db";
 import { GitHub, GitHubError, parseRepoInput } from "./github";
 import { VERSION_RE, compareVersions, highest } from "./semver";
 
@@ -53,8 +53,8 @@ type PackRow = {
   owner_avatar: string | null;
 };
 
-const PACK_SELECT = `SELECT p.name, p.title, p.description, p.author, p.latest, p.latest_sha, p.repo_owner, p.repo_name,
-  p.folder, p.branch, p.stars, p.updated_at, p.templates, p.rules, p.assets, p.recipes,
+const packSelect = (sql: Sql) => sql`SELECT p.name, p.title, p.description, p.author, p.latest, p.latest_sha, p.repo_owner,
+  p.repo_name, p.folder, p.branch, p.stars, p.updated_at, p.templates, p.rules, p.assets, p.recipes,
   u.login AS owner_login, u.avatar_url AS owner_avatar
   FROM packs p JOIN users u ON u.id = p.owner_id`;
 
@@ -94,36 +94,27 @@ function toListing(row: PackRow, gh: GitHub): PackListing {
 const likePattern = (q: string) => `%${q.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
 
 export async function listPacks(
-  db: D1Database,
+  sql: Sql,
   gh: GitHub,
   opts: { q?: string; limit?: number; ownerId?: number } = {},
 ): Promise<PackListing[]> {
-  const where: string[] = [];
-  const binds: unknown[] = [];
   const q = opts.q?.trim();
-  if (q) {
-    where.push("(p.name LIKE ?1 ESCAPE '\\' OR p.title LIKE ?1 ESCAPE '\\' OR p.description LIKE ?1 ESCAPE '\\')");
-    binds.push(likePattern(q));
-  }
-  if (opts.ownerId != null) {
-    where.push(`p.owner_id = ?${binds.length + 1}`);
-    binds.push(opts.ownerId);
-  }
+  const pattern = q ? likePattern(q) : "";
   const limit = Math.min(Math.max(Math.trunc(opts.limit ?? 50) || 50, 1), 100);
-  const sql = `${PACK_SELECT} ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+  const rows = await sql<PackRow[]>`${packSelect(sql)}
+    WHERE TRUE
+    ${q ? sql`AND (p.name ILIKE ${pattern} OR p.title ILIKE ${pattern} OR p.description ILIKE ${pattern})` : sql``}
+    ${opts.ownerId != null ? sql`AND p.owner_id = ${opts.ownerId}` : sql``}
     ORDER BY p.stars DESC, p.updated_at DESC LIMIT ${limit}`;
-  const { results } = await db.prepare(sql).bind(...binds).all<PackRow>();
-  return results.map((row) => toListing(row, gh));
+  return rows.map((row) => toListing(row, gh));
 }
 
-export async function getPack(db: D1Database, gh: GitHub, name: string): Promise<PackDetail | null> {
-  const row = await db.prepare(`${PACK_SELECT} WHERE p.name = ?`).bind(name).first<PackRow>();
+export async function getPack(sql: Sql, gh: GitHub, name: string): Promise<PackDetail | null> {
+  const [row] = await sql<PackRow[]>`${packSelect(sql)} WHERE p.name = ${name}`;
   if (!row) return null;
-  const { results } = await db
-    .prepare("SELECT version, published_at, size, sha, manifest FROM pack_versions WHERE name = ?")
-    .bind(name)
-    .all<{ version: string; published_at: number; size: number; sha: string; manifest: string }>();
-  const sorted = results.sort((a, b) => compareVersions(b.version, a.version));
+  const versions = await sql<{ version: string; published_at: number; size: number; sha: string; manifest: string }[]>`
+    SELECT version, published_at, size, sha, manifest FROM pack_versions WHERE name = ${name}`;
+  const sorted = [...versions].sort((a, b) => compareVersions(b.version, a.version));
   const latest = sorted.find((v) => v.version === row.latest) ?? sorted[0];
   const listing = toListing(row, gh);
   return {
@@ -208,7 +199,7 @@ const bad = (error: string, issues?: unknown): PackError => ({ status: 400, body
  * the repository on GitHub: a pack is theirs to update, and the owner is who we ask.
  */
 export async function registerPack(
-  db: D1Database,
+  sql: Sql,
   gh: GitHub,
   user: User,
   input: RegisterInput,
@@ -226,7 +217,7 @@ export async function registerPack(
     const branch = ref.ref ?? repo.defaultBranch;
     const read = await readPack(gh, repo.owner, repo.repo, branch, ref.folder);
     if ("status" in read) return read;
-    return await save(db, gh, user, { owner: repo.owner, name: repo.repo, folder: ref.folder, branch, url: "" }, repo.stars, read);
+    return await save(sql, gh, user, { owner: repo.owner, name: repo.repo, folder: ref.folder, branch, url: "" }, repo.stars, read);
   } catch (error) {
     if (error instanceof GitHubError) return { status: error.status === 404 ? 404 : error.status === 429 ? 429 : 502, body: { error: error.message } };
     throw error;
@@ -239,22 +230,20 @@ export async function registerPack(
  * pack.json becomes a new version here.
  */
 export async function refreshPack(
-  db: D1Database,
+  sql: Sql,
   gh: GitHub,
   user: User,
   name: string,
 ): Promise<Registered | PackError> {
-  const row = await db
-    .prepare("SELECT repo_owner, repo_name, folder, branch, owner_id FROM packs WHERE name = ?")
-    .bind(name)
-    .first<{ repo_owner: string; repo_name: string; folder: string; branch: string; owner_id: number }>();
+  const [row] = await sql<{ repo_owner: string; repo_name: string; folder: string; branch: string; owner_id: number }[]>`
+    SELECT repo_owner, repo_name, folder, branch, owner_id FROM packs WHERE name = ${name}`;
   if (!row) return { status: 404, body: { error: "pack not found" } };
   if (row.owner_id !== user.id) return { status: 403, body: { error: `${name} belongs to somebody else.` } };
   try {
     const repo = await gh.repo(row.repo_owner, row.repo_name);
     const read = await readPack(gh, row.repo_owner, row.repo_name, row.branch, row.folder);
     if ("status" in read) return read;
-    return await save(db, gh, user, { owner: row.repo_owner, name: row.repo_name, folder: row.folder, branch: row.branch, url: "" }, repo.stars, read);
+    return await save(sql, gh, user, { owner: row.repo_owner, name: row.repo_name, folder: row.folder, branch: row.branch, url: "" }, repo.stars, read);
   } catch (error) {
     if (error instanceof GitHubError) return { status: error.status === 404 ? 404 : error.status === 429 ? 429 : 502, body: { error: error.message } };
     throw error;
@@ -262,14 +251,12 @@ export async function refreshPack(
 }
 
 /** A pack its owner takes down. The versions go with it; the name stays theirs to reuse. */
-export async function removePack(db: D1Database, user: User, name: string): Promise<true | PackError> {
-  const row = await db.prepare("SELECT owner_id FROM packs WHERE name = ?").bind(name).first<{ owner_id: number }>();
+export async function removePack(sql: Sql, user: User, name: string): Promise<true | PackError> {
+  const [row] = await sql<{ owner_id: number }[]>`SELECT owner_id FROM packs WHERE name = ${name}`;
   if (!row) return { status: 404, body: { error: "pack not found" } };
   if (row.owner_id !== user.id) return { status: 403, body: { error: `${name} belongs to somebody else.` } };
-  await db.batch([
-    db.prepare("DELETE FROM pack_versions WHERE name = ?").bind(name),
-    db.prepare("DELETE FROM packs WHERE name = ?").bind(name),
-  ]);
+  // The versions go with the pack (ON DELETE CASCADE).
+  await sql`DELETE FROM packs WHERE name = ${name} AND owner_id = ${user.id}`;
   return true;
 }
 
@@ -321,7 +308,7 @@ async function readPack(
 }
 
 async function save(
-  db: D1Database,
+  sql: Sql,
   gh: GitHub,
   user: User,
   repo: PackRepo,
@@ -332,18 +319,14 @@ async function save(
   const name = manifest.id;
   const version = manifest.version;
 
-  const existing = await db
-    .prepare("SELECT owner_id, repo_owner, repo_name, folder FROM packs WHERE name = ?")
-    .bind(name)
-    .first<{ owner_id: number; repo_owner: string; repo_name: string; folder: string }>();
+  const [existing] = await sql<{ owner_id: number; repo_owner: string; repo_name: string; folder: string }[]>`
+    SELECT owner_id, repo_owner, repo_name, folder FROM packs WHERE name = ${name}`;
   if (existing && existing.owner_id !== user.id) return { status: 403, body: { error: `${name} belongs to another publisher` } };
-  const claimed = await db
-    .prepare("SELECT name FROM packs WHERE repo_owner = ? AND repo_name = ? AND folder = ? AND name <> ?")
-    .bind(repo.owner, repo.name, repo.folder, name)
-    .first<{ name: string }>();
+  const [claimed] = await sql<{ name: string }[]>`
+    SELECT name FROM packs WHERE repo_owner = ${repo.owner} AND repo_name = ${repo.name} AND folder = ${repo.folder} AND name <> ${name}`;
   if (claimed) return { status: 409, body: { error: `That folder is already registered as ${claimed.name}.` } };
 
-  const pinned = await db.prepare("SELECT sha FROM pack_versions WHERE name = ? AND version = ?").bind(name, version).first<{ sha: string }>();
+  const [pinned] = await sql<{ sha: string }[]>`SELECT sha FROM pack_versions WHERE name = ${name} AND version = ${version}`;
   if (pinned) {
     if (pinned.sha === sha) return { name, version, sha, updated: false };
     return {
@@ -354,52 +337,44 @@ async function save(
 
   const now = Date.now();
   const counts = countsOf(manifest);
-  const stmts: D1PreparedStatement[] = [];
-  if (!existing) {
-    stmts.push(
-      db
-        .prepare(
-          `INSERT INTO packs (name, owner_id, repo_owner, repo_name, folder, branch, title, description, author,
-             latest, latest_sha, stars, templates, rules, assets, recipes, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO NOTHING`,
-        )
-        .bind(name, user.id, repo.owner, repo.name, repo.folder, repo.branch, manifest.name, manifest.description,
-          manifest.author, version, sha, stars, counts.templates, counts.rules, counts.assets, counts.recipes, now, now),
-    );
-  }
-  stmts.push(
-    db
-      .prepare(
-        `INSERT INTO pack_versions (name, version, sha, manifest, size, published_at)
-         SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM packs WHERE name = ? AND owner_id = ?)`,
-      )
-      .bind(name, version, sha, JSON.stringify(manifest), read.size, now, name, user.id),
-  );
   try {
-    const results = await db.batch(stmts);
-    if (!results[results.length - 1].meta.changes) return { status: 403, body: { error: `${name} belongs to another publisher` } };
+    // The version, and the pack row that points at the highest one, land together or not at all.
+    const added = await sql.begin(async (tx) => {
+      if (!existing) {
+        await tx`
+          INSERT INTO packs (name, owner_id, repo_owner, repo_name, folder, branch, title, description, author,
+            latest, latest_sha, stars, templates, rules, assets, recipes, created_at, updated_at)
+          VALUES (${name}, ${user.id}, ${repo.owner}, ${repo.name}, ${repo.folder}, ${repo.branch}, ${manifest.name},
+            ${manifest.description}, ${manifest.author}, ${version}, ${sha}, ${stars}, ${counts.templates}, ${counts.rules},
+            ${counts.assets}, ${counts.recipes}, ${now}, ${now})
+          ON CONFLICT (name) DO NOTHING`;
+      }
+      // Only into a pack this person owns: a name claimed between our check and now is not theirs.
+      const inserted = await tx`
+        INSERT INTO pack_versions (name, version, sha, manifest, size, published_at)
+        SELECT ${name}, ${version}, ${sha}, ${JSON.stringify(manifest)}, ${read.size}, ${now}
+        WHERE EXISTS (SELECT 1 FROM packs WHERE name = ${name} AND owner_id = ${user.id})`;
+      if (!inserted.count) return false;
+
+      // The latest is the highest version, not the newest submission: a 1.0.1 after 2.0.0 stays behind it.
+      const versions = await tx<{ version: string; sha: string; manifest: string }[]>`
+        SELECT version, sha, manifest FROM pack_versions WHERE name = ${name}`;
+      const latest = highest(versions.map((r) => r.version));
+      const row = versions.find((r) => r.version === latest)!;
+      const latestManifest = PackManifest.parse(JSON.parse(row.manifest));
+      const lc = countsOf(latestManifest);
+      await tx`
+        UPDATE packs SET latest = ${latest}, latest_sha = ${row.sha}, title = ${latestManifest.name},
+          description = ${latestManifest.description}, author = ${latestManifest.author}, repo_owner = ${repo.owner},
+          repo_name = ${repo.name}, folder = ${repo.folder}, branch = ${repo.branch}, stars = ${stars},
+          templates = ${lc.templates}, rules = ${lc.rules}, assets = ${lc.assets}, recipes = ${lc.recipes}, updated_at = ${now}
+        WHERE name = ${name}`;
+      return true;
+    });
+    if (!added) return { status: 403, body: { error: `${name} belongs to another publisher` } };
   } catch (err) {
-    if (String(err).includes("UNIQUE")) return { status: 409, body: { error: "version exists" } };
+    if (isUniqueViolation(err)) return { status: 409, body: { error: "version exists" } };
     throw err;
   }
-
-  // The latest is the highest version, not the newest submission: a 1.0.1 after 2.0.0 stays behind it.
-  const { results } = await db
-    .prepare("SELECT version, sha, manifest FROM pack_versions WHERE name = ?")
-    .bind(name)
-    .all<{ version: string; sha: string; manifest: string }>();
-  const latest = highest(results.map((r) => r.version));
-  const row = results.find((r) => r.version === latest)!;
-  const latestManifest = PackManifest.parse(JSON.parse(row.manifest));
-  const lc = countsOf(latestManifest);
-  await db
-    .prepare(
-      `UPDATE packs SET latest = ?, latest_sha = ?, title = ?, description = ?, author = ?, repo_owner = ?, repo_name = ?,
-         folder = ?, branch = ?, stars = ?, templates = ?, rules = ?, assets = ?, recipes = ?, updated_at = ?
-       WHERE name = ?`,
-    )
-    .bind(latest, row.sha, latestManifest.name, latestManifest.description, latestManifest.author, repo.owner, repo.name,
-      repo.folder, repo.branch, stars, lc.templates, lc.rules, lc.assets, lc.recipes, now, name)
-    .run();
   return { name, version, sha, updated: Boolean(existing) };
 }

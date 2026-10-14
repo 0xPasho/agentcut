@@ -1,13 +1,16 @@
 -- People who sign in through Clerk, and the local identity a `pnpm dev` checkout uses.
 -- `login` is the GitHub login: a pack is a repository, and only its owner may register it.
+-- Times are milliseconds since the epoch, as everywhere else in agentcut.
 CREATE TABLE users (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   clerk_id TEXT UNIQUE,
-  login TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  login TEXT NOT NULL,
   name TEXT,
   avatar_url TEXT,
-  created_at INTEGER NOT NULL
+  created_at BIGINT NOT NULL
 );
+-- GitHub logins are case-insensitive: `Pasho` and `pasho` are one person.
+CREATE UNIQUE INDEX users_login ON users (lower(login));
 
 -- One row per pack name, pointing at the repository it lives in. The first submitter owns
 -- the name. `latest_sha` is the commit the latest version is pinned to, which is what the
@@ -33,13 +36,13 @@ CREATE TABLE packs (
   rules INTEGER NOT NULL DEFAULT 0,
   assets INTEGER NOT NULL DEFAULT 0,
   recipes INTEGER NOT NULL DEFAULT 0,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL
 );
-CREATE INDEX packs_rank ON packs(stars DESC, updated_at DESC);
-CREATE INDEX packs_owner ON packs(owner_id);
+CREATE INDEX packs_rank ON packs (stars DESC, updated_at DESC);
+CREATE INDEX packs_owner ON packs (owner_id);
 -- One pack per folder: two names cannot claim the same files.
-CREATE UNIQUE INDEX packs_repo ON packs(repo_owner, repo_name, folder);
+CREATE UNIQUE INDEX packs_repo ON packs (repo_owner, repo_name, folder);
 
 -- Every registered version, pinned to the commit it was read at, with the manifest as it
 -- was there. A version is never re-pinned: a new version means a new row.
@@ -48,7 +51,7 @@ CREATE TABLE pack_versions (
   version TEXT NOT NULL,
   sha TEXT NOT NULL,
   manifest TEXT NOT NULL,
-  size INTEGER NOT NULL,
-  published_at INTEGER NOT NULL,
+  size BIGINT NOT NULL,
+  published_at BIGINT NOT NULL,
   PRIMARY KEY (name, version)
 );

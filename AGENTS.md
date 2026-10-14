@@ -23,7 +23,7 @@ apps/
     src/modules/<module>/ the module's face: components/, <name>-view.tsx, hooks, and a
                           data.ts for icon tables; route-level tests in __tests__/
   web/                    @agentcut/web — the landing page and the packs marketplace
-                          (Cloudflare Workers, D1, R2); see apps/web/README.md
+                          (Cloudflare Workers, Postgres through Hyperdrive); see apps/web/README.md
 packages/
   core/                   @agentcut/core — the editor without a face, shared by everything
     src/common/           lib/ (pure), api/ (the HTTP client and its response types),

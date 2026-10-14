@@ -1,7 +1,9 @@
 # @agentcut/web
 
 The hosted half of agentcut: the landing page and the packs marketplace. One Cloudflare
-Worker (Hono, server-rendered `hono/jsx`, no client framework) and a D1 database.
+Worker (Hono, server-rendered `hono/jsx`, no client framework) and a Postgres database on
+the owner's server, reached through [Hyperdrive](https://developers.cloudflare.com/hyperdrive/),
+which keeps the connections open next to the database so a request pays no handshake.
 
 **A pack is a GitHub repository.** The marketplace stores no pack files: it keeps the
 repository, the folder, the branch and the commit each version is pinned to, and hands out
@@ -20,21 +22,27 @@ imports packs with.
 
 ```
 src/index.tsx        routes: API, pages, submitting, auth
-src/lib/             packs (the registry), github (reading repositories), auth (Clerk), semver, formats
+src/lib/             packs (the registry), github (reading repositories), auth (Clerk), db (Postgres), semver, formats
 src/views/           pages and components (layout, landing, packs, pack detail, submit, account)
 src/styles.css       Tailwind input: the studio's palette and glass material
-migrations/          D1 schema (wrangler d1 migrations)
+migrations/          Postgres schema, applied in name order by scripts/migrate.mjs
+scripts/migrate.mjs  the one migration runner: production, the local database and the tests
+scripts/local-db.mjs a local Postgres with nothing to install: PGlite behind a socket
+scripts/dev.mjs      `pnpm dev`: the local database, then wrangler dev pointed at it
 scripts/seed-local.mjs  submits this repository's packs/* to the local server
 test/api.test.mjs    end-to-end tests against the worker in local workerd, with GitHub stubbed
 ```
 
 ## Local development
 
-The worker and its D1 run in miniflare. Nothing needs a Cloudflare login or a Clerk key.
+The worker runs in miniflare, and its database is [PGlite](https://pglite.dev) — Postgres
+compiled to WebAssembly, an npm dependency — behind a socket on localhost. The worker
+reaches it through wrangler's local Hyperdrive, the same binding and the same driver as in
+production. Nothing needs a Cloudflare login, a Clerk key or a Postgres install.
 
 ```sh
 pnpm install                          # from the repo root
-pnpm --filter @agentcut/web dev       # builds CSS, applies migrations locally, serves :8787
+pnpm --filter @agentcut/web dev       # builds CSS, starts the local database (migrated), serves :8787
 pnpm --filter @agentcut/web seed:local   # in a second terminal: submits packs/news-desk, showcase, stream-shorts
 ```
 
@@ -44,22 +52,23 @@ per request by an `x-dev-login` header. Ownership is still checked, so the ident
 match the repository's GitHub owner — which is how `seed:local` submits as `0xPasho`.
 
 Seeding reaches GitHub, because a pack is a repository; everything else is local. Local
-state lives in `apps/web/.wrangler/`; delete it to start empty. After changing classes in
+state lives in `apps/web/.wrangler/` (the database in `.wrangler/pglite`); delete it to
+start empty. After changing classes in
 `src/`, run `pnpm build:css` (the worker reloads on its own; the CSS does not).
 
 To try the real sign-in locally, create `apps/web/.dev.vars` (gitignored) with
 `CLERK_SECRET_KEY` and `CLERK_PUBLISHABLE_KEY` from a Clerk development instance that has
-GitHub as a social connection, and drop `--var DEV_LOGIN:1` from the `dev` script.
+GitHub as a social connection, and drop `--var DEV_LOGIN:1` from `scripts/dev.mjs`.
 
 ## Scripts
 
 | Script | What |
 | --- | --- |
-| `dev` | `build:css`, `db:migrate:local`, then `wrangler dev --port 8787 --var DEV_LOGIN:1` |
+| `dev` | `build:css`, then `scripts/dev.mjs`: the local database, migrated, and `wrangler dev --port 8787 --var DEV_LOGIN:1` pointed at it |
 | `build:css` | Tailwind → `public/styles.css` |
-| `db:migrate:local` | `wrangler d1 migrations apply DB --local` |
+| `db:migrate` | Applies `migrations/*.sql` that are missing to `DATABASE_URL`, each once and in its own transaction, recorded in `schema_migrations` |
 | `seed:local` | Submits this repository's `packs/*` to `http://localhost:8787` (or the URL given as the first argument) |
-| `test` | End-to-end tests with `node:test` and wrangler's `createTestHarness` (local workerd, in-memory D1, GitHub stubbed by an http server in the test process, offline, a few seconds) |
+| `test` | End-to-end tests with `node:test` and wrangler's `createTestHarness` (local workerd, PGlite in memory through the local Hyperdrive, GitHub stubbed by an http server in the test process, offline, a few seconds) |
 | `typecheck` | `tsc --noEmit` |
 | `deploy` | `build:css` then `wrangler deploy` |
 
@@ -118,17 +127,46 @@ Form posts are checked for a same-origin `Origin` header.
 
 ## Deploy
 
-Nothing here deploys on its own. With a Cloudflare account:
+Nothing here deploys on its own.
+
+### The database
+
+Postgres on the owner's database host (the one postgun uses): database `agentcut`, owned by
+the role `agentcut_app` (`CONNECTION LIMIT 20`, so it cannot starve the other apps on that
+server), with `CONNECT` revoked from everybody else. The role's password is
+`AGENTCUT_APP_PASSWORD` in the credentials file on the deploy box, beside the other apps'
+roles; it is never committed or copied into this repository. The schema is applied with:
+
+```sh
+DATABASE_URL='postgres://agentcut_app:<password>@<db host>:5432/agentcut?sslmode=require' \
+  pnpm --filter @agentcut/web db:migrate
+```
+
+Run it before deploying a worker that needs a new migration.
+
+### Hyperdrive
+
+Hyperdrive always verifies the database's TLS certificate, and this server's is issued by
+Coolify's own CA, so Cloudflare has to be told to trust that CA. The certificate must also
+be in date: renew it in Coolify when it lapses, or Hyperdrive stops connecting while
+clients that do not verify (psql, Prisma) carry on as if nothing happened.
 
 ```sh
 cd apps/web
 npx wrangler login
-npx wrangler d1 create agentcut-web          # put the printed database_id in wrangler.jsonc
+npx wrangler cert upload certificate-authority --ca-cert coolify-ca.pem --name coolify-ca
+npx wrangler hyperdrive create agentcut \
+  --connection-string='postgres://agentcut_app:<password>@<db host>:5432/agentcut' \
+  --ca-certificate-id <id printed by the upload> --sslmode verify-ca \
+  --caching-disabled                          # put the printed id in wrangler.jsonc
 npx wrangler secret put CLERK_SECRET_KEY
 npx wrangler secret put CLERK_PUBLISHABLE_KEY
-npx wrangler d1 migrations apply DB --remote
 pnpm deploy                                   # build:css + wrangler deploy
 ```
+
+`--caching-disabled` matters: Hyperdrive caches reads for up to a minute and does not
+invalidate them on a write, so with caching on, a pack would stay listed for a minute after
+its owner removed it, and a fresh submission would be missing from `/account`.
 
 Keep `DEV_LOGIN` at `"0"` in `wrangler.jsonc`. Add a custom domain under the Worker's
 **Settings → Domains & Routes**; the API answers with URLs built from the request's origin,

@@ -1,7 +1,9 @@
-import type { D1Database, Fetcher } from "./cf";
+import type { Fetcher, Hyperdrive } from "./cf";
+import type { Sql } from "./lib/db";
 
 export type Bindings = {
-  DB: D1Database;
+  /** Postgres on the owner's server; `lib/db.ts` turns it into a client. */
+  HYPERDRIVE: Hyperdrive;
   ASSETS: Fetcher;
   /** "1" signs every visitor in as a local identity, for `pnpm dev` and the tests. Never "1" in production. */
   DEV_LOGIN?: string;
@@ -20,4 +22,4 @@ export type Bindings = {
  */
 export type User = { id: number; clerkId: string | null; login: string; name: string | null; avatarUrl: string | null };
 
-export type AppEnv = { Bindings: Bindings; Variables: { user: User | null } };
+export type AppEnv = { Bindings: Bindings; Variables: { user: User | null; sql: Sql } };

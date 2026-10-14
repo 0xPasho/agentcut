@@ -1,6 +1,7 @@
 // agentcut.dev: the landing page and the packs marketplace.
-// Local dev runs the worker and its D1 in miniflare: `pnpm dev`. A pack's files are never
-// stored here; they stay in the GitHub repository the pack is registered from.
+// The database is Postgres on the owner's server, reached through Hyperdrive. Local dev runs
+// the worker in miniflare against PGlite (scripts/dev.mjs): `pnpm dev`. A pack's files are
+// never stored here; they stay in the GitHub repository the pack is registered from.
 // Accounts are Clerk's. Set with `wrangler secret put <NAME>`, never committed:
 //   CLERK_SECRET_KEY       Clerk's backend key. Without it, nobody can sign in, and
 //                          submitting a pack is the only thing that needs an account.
@@ -21,13 +22,14 @@
     // sign in. Never "1" in production.
     "DEV_LOGIN": "0"
   },
-  "d1_databases": [
+  "hyperdrive": [
     {
-      "binding": "DB",
-      "database_name": "agentcut-web",
-      // Replace with the id `wrangler d1 create agentcut-web` prints before the first deploy.
-      "database_id": "00000000-0000-0000-0000-000000000000",
-      "migrations_dir": "migrations"
+      "binding": "HYPERDRIVE",
+      // Replace with the id `wrangler hyperdrive create agentcut` prints before the first
+      // deploy (README → Deploy). Locally the binding reads its connection string from
+      // CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE, which scripts/dev.mjs and
+      // the tests set; nothing here is used.
+      "id": "00000000000000000000000000000000"
     }
   ],
   "observability": { "enabled": true }

@@ -1,6 +1,7 @@
-// End to end against the real worker in local workerd (miniflare D1), through wrangler's
-// test harness, with GitHub stood in for by an http server in this process: the worker is
-// pointed at it with GITHUB_API_BASE and GITHUB_RAW_BASE.
+// End to end against the real worker in local workerd, through wrangler's test harness.
+// The database is Postgres (PGlite, in memory) reached through wrangler's local Hyperdrive,
+// migrated by the same runner as production; GitHub is stood in for by an http server in
+// this process, and the worker is pointed at it with GITHUB_API_BASE and GITHUB_RAW_BASE.
 //
 // Offline: nothing here reaches the network.
 import { after, before, describe, test } from "node:test";
@@ -10,6 +11,7 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createTestHarness } from "wrangler";
+import { HYPERDRIVE_ENV, startLocalDb } from "../scripts/local-db.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
@@ -113,9 +115,12 @@ function tinyPack({ id = "tiny-pack", version = "1.0.0", name = "Tiny pack", des
 
 let server;
 let base;
+let database;
 
 before(async () => {
   await startGitHub();
+  database = await startLocalDb();
+  process.env[HYPERDRIVE_ENV] = database.url;
   server = createTestHarness({
     root,
     workers: [{
@@ -124,11 +129,11 @@ before(async () => {
     }],
   });
   ({ url: base } = await server.listen());
-  await server.getWorker().applyD1Migrations("DB");
 });
 
 after(async () => {
   await server?.close();
+  await database?.stop();
   await new Promise((r) => github?.close(r));
 });
 
@@ -363,8 +368,10 @@ describe("the registry", () => {
     assert.equal((await api("/api/packs")).headers.get("access-control-allow-origin"), "*", "the studio reads it from localhost");
   });
 
-  test("q matches name, title and description, and limit caps the list", async () => {
+  test("q matches name, title and description in any case, and limit caps the list", async () => {
     assert.ok((await api("/api/packs?q=tiny")).body.packs.some((p) => p.name === "tiny-pack"));
+    assert.ok((await api("/api/packs?q=TINY")).body.packs.some((p) => p.name === "tiny-pack"), "case does not matter");
+    assert.deepEqual((await api("/api/packs?q=tiny%25")).body.packs, [], "% is a character, not a wildcard");
     assert.ok((await api("/api/packs?q=for tests")).body.packs.length >= 1, "description matches");
     assert.deepEqual((await api("/api/packs?q=zzzz")).body.packs, []);
     assert.equal((await api("/api/packs?limit=1")).body.packs.length, 1);

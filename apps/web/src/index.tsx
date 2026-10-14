@@ -7,6 +7,7 @@ import { html } from "hono/html";
 import { HTTPException } from "hono/http-exception";
 import type { AppEnv, User } from "./env";
 import { clerk, clerkEnabled, githubToken, identify, safeNext, signInUrl } from "./lib/auth";
+import { connect } from "./lib/db";
 import { GitHub } from "./lib/github";
 import { getPack, listPacks, pathProblem, refreshPack, registerPack, removePack } from "./lib/packs";
 import { Layout } from "./views/layout";
@@ -44,6 +45,17 @@ async function page(
 app.use("/api/packs", cors({ origin: "*", allowMethods: ["GET"] }));
 app.use("/api/packs/*", cors({ origin: "*", allowMethods: ["GET"] }));
 
+// One database client per request, closed once the response has gone.
+app.use("*", async (c, next) => {
+  const sql = connect(c.env.HYPERDRIVE);
+  c.set("sql", sql);
+  try {
+    await next();
+  } finally {
+    c.executionCtx.waitUntil(sql.end());
+  }
+});
+
 // Pages see who is asking; the registry's reads are anonymous and never ask Clerk.
 app.use("*", async (c, next) => {
   if (new URL(c.req.url).pathname.startsWith("/api/")) {
@@ -64,11 +76,11 @@ for (const path of ["/submit", "/logout", "/packs/*"]) app.use(path, csrf());
 app.get("/api/packs", async (c) => {
   const q = c.req.query("q") ?? "";
   const limit = Number(c.req.query("limit") ?? 50);
-  return c.json({ packs: await listPacks(c.env.DB, reader(c), { q, limit }) });
+  return c.json({ packs: await listPacks(c.var.sql, reader(c), { q, limit }) });
 });
 
 app.get("/api/packs/:name", async (c) => {
-  const pack = await getPack(c.env.DB, reader(c), c.req.param("name"));
+  const pack = await getPack(c.var.sql, reader(c), c.req.param("name"));
   if (!pack) return c.json({ error: "pack not found" }, 404);
   return c.json({ pack });
 });
@@ -78,13 +90,13 @@ app.all("/api/*", (c) => c.json({ error: "not found" }, 404));
 /* --------------------------------------------------------------- pages */
 
 app.get("/", async (c) => {
-  const packs = await listPacks(c.env.DB, reader(c), { limit: 3 });
+  const packs = await listPacks(c.var.sql, reader(c), { limit: 3 });
   return page(c, "agentcut", <Landing packs={packs} />);
 });
 
 app.get("/packs", async (c) => {
   const q = (c.req.query("q") ?? "").trim().slice(0, 100);
-  const packs = await listPacks(c.env.DB, reader(c), { q, limit: 100 });
+  const packs = await listPacks(c.var.sql, reader(c), { q, limit: 100 });
   return page(c, q ? `Packs matching “${q}”` : "Packs", <PacksPage packs={packs} q={q} />, {
     description: "Templates, rules, style guides and assets for agentcut, from the repositories the people who edit with them keep them in.",
   });
@@ -98,7 +110,7 @@ async function packPage(
   status?: number,
 ) {
   const gh = reader(c);
-  const pack = await getPack(c.env.DB, gh, name);
+  const pack = await getPack(c.var.sql, gh, name);
   if (!pack) {
     return page(
       c,
@@ -193,7 +205,7 @@ app.post("/submit", async (c) => {
   const repo = typeof form.repo === "string" ? form.repo : "";
   const folder = typeof form.folder === "string" ? form.folder : "";
   const gh = new GitHub(c.env, await githubToken(c, user));
-  const result = await registerPack(c.env.DB, gh, user, { repo, folder });
+  const result = await registerPack(c.var.sql, gh, user, { repo, folder });
   if ("status" in result) {
     return page(c, "Submit a pack", <SubmitPage user={user} repo={repo} folder={folder} error={result.body.error} issues={result.body.issues} />, {
       status: result.status,
@@ -207,7 +219,7 @@ app.post("/packs/:name/refresh", async (c) => {
   if (user instanceof Response) return user;
   const name = c.req.param("name");
   const gh = new GitHub(c.env, await githubToken(c, user));
-  const result = await refreshPack(c.env.DB, gh, user, name);
+  const result = await refreshPack(c.var.sql, gh, user, name);
   if ("status" in result) return packPage(c, name, { kind: "error", text: result.body.error }, result.status);
   if (!result.updated) {
     return packPage(c, name, {
@@ -222,7 +234,7 @@ app.post("/packs/:name/remove", async (c) => {
   const user = requireUser(c);
   if (user instanceof Response) return user;
   const name = c.req.param("name");
-  const result = await removePack(c.env.DB, user, name);
+  const result = await removePack(c.var.sql, user, name);
   if (result !== true) return packPage(c, name, { kind: "error", text: result.body.error }, result.status);
   return c.redirect("/account?removed=1", 303);
 });
@@ -254,7 +266,7 @@ app.post("/logout", async (c) => {
 app.get("/account", async (c) => {
   const user = requireUser(c);
   if (user instanceof Response) return user;
-  const packs = user.id ? await listPacks(c.env.DB, reader(c), { ownerId: user.id, limit: 100 }) : [];
+  const packs = user.id ? await listPacks(c.var.sql, reader(c), { ownerId: user.id, limit: 100 }) : [];
   const notice = c.req.query("removed") ? "That pack is no longer listed. Its repository is untouched." : undefined;
   return page(c, "Account", <AccountPage user={user} packs={packs} notice={notice} />);
 });

@@ -11,8 +11,8 @@
  */
 import { createClerkClient, type ClerkClient } from "@clerk/backend";
 import type { Context } from "hono";
-import type { D1Database } from "../cf";
 import type { AppEnv, Bindings, User } from "../env";
+import type { Sql } from "./db";
 
 export const clerkEnabled = (env: Bindings) => Boolean(env.CLERK_SECRET_KEY && env.CLERK_PUBLISHABLE_KEY);
 export const devLoginEnabled = (env: Bindings) => env.DEV_LOGIN === "1";
@@ -47,31 +47,27 @@ const toUser = (row: UserRow): User => ({
  * account; this row exists so a pack can point at an owner.
  */
 export async function upsertUser(
-  db: D1Database,
+  sql: Sql,
   input: { clerkId: string | null; login: string; name?: string | null; avatarUrl?: string | null },
 ): Promise<User> {
   const now = Date.now();
+  const name = input.name ?? null;
+  const avatarUrl = input.avatarUrl ?? null;
   if (input.clerkId) {
-    const existing = await db.prepare("SELECT id FROM users WHERE clerk_id = ?").bind(input.clerkId).first<{ id: number }>();
+    const [existing] = await sql<{ id: number }[]>`SELECT id FROM users WHERE clerk_id = ${input.clerkId}`;
     if (existing) {
-      await db
-        .prepare("UPDATE users SET login = ?, name = ?, avatar_url = ? WHERE id = ?")
-        .bind(input.login, input.name ?? null, input.avatarUrl ?? null, existing.id)
-        .run();
-      return { id: existing.id, clerkId: input.clerkId, login: input.login, name: input.name ?? null, avatarUrl: input.avatarUrl ?? null };
+      await sql`UPDATE users SET login = ${input.login}, name = ${name}, avatar_url = ${avatarUrl} WHERE id = ${existing.id}`;
+      return { id: existing.id, clerkId: input.clerkId, login: input.login, name, avatarUrl };
     }
   }
-  const row = await db
-    .prepare(
-      `INSERT INTO users (clerk_id, login, name, avatar_url, created_at) VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT(login) DO UPDATE SET
-         clerk_id = COALESCE(excluded.clerk_id, users.clerk_id),
-         name = COALESCE(excluded.name, users.name),
-         avatar_url = COALESCE(excluded.avatar_url, users.avatar_url)
-       RETURNING id, clerk_id, login, name, avatar_url`,
-    )
-    .bind(input.clerkId, input.login, input.name ?? null, input.avatarUrl ?? null, now)
-    .first<UserRow>();
+  const [row] = await sql<UserRow[]>`
+    INSERT INTO users (clerk_id, login, name, avatar_url, created_at)
+    VALUES (${input.clerkId}, ${input.login}, ${name}, ${avatarUrl}, ${now})
+    ON CONFLICT ((lower(login))) DO UPDATE SET
+      clerk_id = COALESCE(excluded.clerk_id, users.clerk_id),
+      name = COALESCE(excluded.name, users.name),
+      avatar_url = COALESCE(excluded.avatar_url, users.avatar_url)
+    RETURNING id, clerk_id, login, name, avatar_url`;
   if (!row) throw new Error("could not save user");
   return toUser(row);
 }
@@ -83,7 +79,7 @@ export async function upsertUser(
 async function devUser(c: Context<AppEnv>): Promise<User> {
   const asked = c.req.header("x-dev-login") ?? c.req.query("dev_login") ?? c.env.DEV_GITHUB_LOGIN ?? "local";
   const login = LOGIN_RE.test(asked) ? asked : "local";
-  return upsertUser(c.env.DB, { clerkId: null, login, name: login });
+  return upsertUser(c.var.sql, { clerkId: null, login, name: login });
 }
 
 /**
@@ -107,7 +103,7 @@ export async function identify(c: Context<AppEnv>): Promise<Identified> {
   const login = githubLogin(account);
   // No GitHub account on the Clerk user: they are signed in, but own no repositories here.
   if (!login) return { user: { id: 0, clerkId: account.id, login: "", name: account.firstName, avatarUrl: account.imageUrl || null } };
-  const user = await upsertUser(c.env.DB, {
+  const user = await upsertUser(c.var.sql, {
     clerkId: account.id,
     login,
     name: [account.firstName, account.lastName].filter(Boolean).join(" ") || login,
