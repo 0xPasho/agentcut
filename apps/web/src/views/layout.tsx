@@ -59,6 +59,7 @@ export function Layout({ title, description, user, path, children, canonical }: 
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <link rel="preload" href="/fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin="" />
         <link rel="stylesheet" href={asset("/styles.css")} />
+        <script defer src="https://analytics.pasho.dev/script.js" data-website-id="219d9a40-0141-4513-9838-73014139515a"></script>
       </head>
       <body class="min-h-dvh bg-background">
         <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-full focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground">Skip to content</a>
