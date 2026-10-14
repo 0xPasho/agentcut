@@ -33,11 +33,11 @@ app in local workerd. It is not what production serves.
 4. DNS: `agentcut.studio` and `www` are proxied A records on the box's address, like
    `postgun.ai`. The zone's SSL mode is **Full**, because the origin certificate is
    self-signed.
-5. Clerk, when there is a production instance: `CLERK_SECRET_KEY` and
-   `CLERK_PUBLISHABLE_KEY` into `.env`, then `pm2 restart agentcut-web --update-env`.
-   Without them the site is anonymous — browsing, searching and installing work, and
-   `/login` says so. GitHub must be the instance's social connection, and
-   `agentcut.studio` one of its domains.
+5. Clerk: `CLERK_SECRET_KEY` and `CLERK_PUBLISHABLE_KEY` of the production instance into
+   `.env`, then `pm2 restart agentcut-web --update-env`. Without them the site is
+   anonymous — browsing, searching and installing work, and `/login` says so. The
+   instance's CNAMEs (`clerk`, `accounts`, `clkmail` and two DKIM) are DNS-only records in
+   the zone; see ../README.md → Clerk instance.
 
 ## Every time after
 

@@ -10,7 +10,9 @@
  * identity instead, so nothing on this machine ever asks anybody to sign in.
  */
 import { createClerkClient, type ClerkClient } from "@clerk/backend";
+import { createRedirect } from "@clerk/backend/internal";
 import type { Context } from "hono";
+import { getCookie } from "hono/cookie";
 import type { AppEnv, Bindings, User } from "../env";
 import type { Sql } from "./db";
 
@@ -134,15 +136,21 @@ export async function githubToken(c: Context<AppEnv>, user: User): Promise<strin
   }
 }
 
-/** Where Clerk hosts sign-in for this instance, with somewhere to come back to. */
-export async function signInUrl(c: Context<AppEnv>, next: string): Promise<string | null> {
-  const client = clerk(c.env);
-  if (!client) return null;
-  const state = await client.authenticateRequest(c.req.raw);
-  if (!state.signInUrl) return null;
-  const url = new URL(state.signInUrl);
-  url.searchParams.set("redirect_url", new URL(next, c.req.url).toString());
-  return url.toString();
+/**
+ * Where Clerk hosts sign-in for this instance — its Account Portal, `accounts.<domain>` in
+ * production — with somewhere to come back to. Clerk's own redirect builds it from the
+ * publishable key; a request's auth state only carries a sign-in URL when one was passed
+ * in, so asking it returned nothing and sign-in never started.
+ */
+export function signInUrl(c: Context<AppEnv>, next: string): string | null {
+  if (!clerkEnabled(c.env)) return null;
+  return createRedirect({
+    publishableKey: c.env.CLERK_PUBLISHABLE_KEY!,
+    baseUrl: c.req.url,
+    // A development instance keeps its session in a dev browser token instead of a cookie.
+    devBrowserToken: getCookie(c, "__clerk_db_jwt"),
+    redirectAdapter: (url) => url,
+  }).redirectToSignIn({ returnBackUrl: new URL(next, c.req.url).toString() });
 }
 
 /** Only same-site paths survive as a post-sign-in destination. */

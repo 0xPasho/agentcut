@@ -164,13 +164,21 @@ DATABASE_URL='postgres://agentcut_app:<password>@<db host>:5432/agentcut?sslmode
 
 ### Clerk instance
 
-In Clerk's dashboard, for the production instance:
+The production instance is the Clerk application **agentcut**, on `agentcut.studio`: its
+Frontend API is `clerk.agentcut.studio` and its sign-in page, Clerk's Account Portal,
+`accounts.agentcut.studio` — CNAMEs in the Cloudflare zone, DNS only, beside the two for
+email (`clkmail`, `clk._domainkey`, `clk2._domainkey`). `/login` sends a visitor there with
+Clerk's own redirect (`createRedirect` from `@clerk/backend/internal`), and the session
+comes back to this domain through Clerk's handshake, with no script on our pages.
 
-- Turn on **GitHub** as a social connection, and nothing else: a pack is a repository, and
-  the GitHub login is how ownership is checked. An account with no GitHub connected can
-  sign in but is told to connect it before submitting.
-- Add `agentcut.studio` to **Domains**, so the session cookie is set on it.
-- Put the secret and publishable keys in `~/agentcut/.env` and
+- Sign-in is by **email** (a one-time code) for now. GitHub is a social connection with
+  sign-in turned off, so it can only be linked to an account — and it cannot even be
+  linked until its production credentials are set (Clerk → SSO connections → GitHub: the
+  OAuth App `agentcut` under 0xPasho, callback `https://clerk.agentcut.studio/v1/oauth_callback`,
+  needs a client secret generated). A pack is a repository and the GitHub login is how
+  ownership is checked, so until then a signed-in account is told to connect GitHub
+  before submitting.
+- The secret and publishable keys live in `~/agentcut/.env`; after changing them,
   `pm2 restart agentcut-web --update-env`.
 
 Until they are there the site is anonymous: browsing, searching, installing and every pack

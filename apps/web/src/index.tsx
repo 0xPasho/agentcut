@@ -244,7 +244,7 @@ app.post("/packs/:name/remove", async (c) => {
 app.get("/login", async (c) => {
   const next = safeNext(c.req.query("next"));
   if (c.get("user")) return c.redirect(next);
-  const url = await signInUrl(c, next);
+  const url = signInUrl(c, next);
   if (url) return c.redirect(url);
   return page(c, "Sign in", <SignInPage configured={clerkEnabled(c.env)} />);
 });
