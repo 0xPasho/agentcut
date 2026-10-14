@@ -1,63 +1,53 @@
-// Publishes the example packs in <repo>/packs into the LOCAL dev server through the real API.
-// usage: pnpm seed:local [baseUrl]   (default http://localhost:8787; needs `pnpm dev` running)
-// The dev server must run with DEV_LOGIN=1, which `pnpm dev` sets: the token comes from
-// POST /api/dev/token, which does not exist otherwise.
-import { readdir, readFile } from "node:fs/promises";
+// Registers the example packs in this repository with the LOCAL dev server, through the
+// real submit form, so a `pnpm dev` marketplace has something in it.
+//
+// usage: pnpm seed:local [baseUrl] [owner/repo]
+//   baseUrl    default http://localhost:8787; needs `pnpm dev` running
+//   owner/repo default 0xPasho/agentcut — any public repository with packs/<name>/pack.json
+//
+// This one reaches GitHub: a pack is a repository, and the server reads it to list it.
+// The dev server must run with DEV_LOGIN=1 (which `pnpm dev` sets), because the submitter
+// has to be the repository's owner and `x-dev-login` is how we say who that is locally.
+import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const base = (process.argv[2] ?? process.env.AGENTCUT_WEB ?? "http://localhost:8787").replace(/\/$/, "");
-const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
-const packsDir = path.join(repo, "packs");
-
-async function walk(dir, prefix = "") {
-  const out = [];
-  for (const entry of await readdir(dir, { withFileTypes: true })) {
-    if (entry.name === ".DS_Store") continue;
-    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
-    if (entry.isDirectory()) out.push(...(await walk(path.join(dir, entry.name), rel)));
-    else out.push(rel);
-  }
-  return out;
-}
-
-async function json(res) {
-  const text = await res.text();
-  try { return JSON.parse(text); } catch { return { error: text.slice(0, 200) }; }
-}
-
-const tokenRes = await fetch(`${base}/api/dev/token`, {
-  method: "POST",
-  headers: { "content-type": "application/json" },
-  body: JSON.stringify({ login: "pasho" }),
-}).catch((err) => {
-  console.error(`Cannot reach ${base}. Start it first: pnpm --filter @agentcut/web dev\n${err.message}`);
-  process.exit(1);
-});
-if (!tokenRes.ok) {
-  console.error(`POST /api/dev/token → ${tokenRes.status}. Is the dev server running with DEV_LOGIN=1?`, await json(tokenRes));
+const slug = process.argv[3] ?? process.env.AGENTCUT_PACKS_REPO ?? "0xPasho/agentcut";
+const [owner, repo] = slug.split("/");
+if (!owner || !repo) {
+  console.error(`Not a repository: ${slug}. Use owner/repo.`);
   process.exit(1);
 }
-const { token, user } = await tokenRes.json();
-console.log(`Publishing as ${user.login} to ${base}`);
+const packsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../packs");
+
+const names = (await readdir(packsDir, { withFileTypes: true })).filter((d) => d.isDirectory()).map((d) => d.name).sort();
+console.log(`Submitting ${names.length} packs from github.com/${slug} as ${owner} to ${base}`);
 
 let failed = 0;
-for (const name of (await readdir(packsDir, { withFileTypes: true })).filter((d) => d.isDirectory()).map((d) => d.name).sort()) {
-  const dir = path.join(packsDir, name);
-  const files = await Promise.all(
-    (await walk(dir)).map(async (rel) => ({ path: rel, base64: (await readFile(path.join(dir, rel))).toString("base64") })),
-  );
-  const res = await fetch(`${base}/api/packs`, {
+for (const name of names) {
+  const res = await fetch(`${base}/submit`, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-    body: JSON.stringify({ files }),
+    redirect: "manual",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      // The submit form is same-origin only, and this stands in for the browser's own header.
+      origin: base,
+      "x-dev-login": owner,
+    },
+    body: new URLSearchParams({ repo: `${owner}/${repo}`, folder: `packs/${name}` }),
+  }).catch((err) => {
+    console.error(`Cannot reach ${base}. Start it first: pnpm --filter @agentcut/web dev\n${err.message}`);
+    process.exit(1);
   });
-  const body = await json(res);
-  if (res.status === 201) console.log(`  published ${body.name}@${body.version} (${files.length} files) → ${body.url}`);
-  else if (res.status === 409) console.log(`  ${name}: this version is already published`);
-  else {
-    failed++;
-    console.error(`  ${name}: ${res.status}`, body);
+  if (res.status === 303) {
+    console.log(`  listed packs/${name} → ${res.headers.get("location")}`);
+    continue;
   }
+  // The form answers with its own page and the reason in it; show the first alert.
+  const text = await res.text();
+  const reason = /role="alert"[^>]*>([\s\S]*?)<\/p>/.exec(text)?.[1]?.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  failed++;
+  console.error(`  packs/${name}: ${res.status} ${reason ?? ""}`);
 }
 process.exit(failed ? 1 : 0);

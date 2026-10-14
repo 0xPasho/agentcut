@@ -1,7 +1,11 @@
-// End to end against the real worker in local workerd (miniflare D1 + R2), through wrangler's test harness.
+// End to end against the real worker in local workerd (miniflare D1), through wrangler's
+// test harness, with GitHub stood in for by an http server in this process: the worker is
+// pointed at it with GITHUB_API_BASE and GITHUB_RAW_BASE.
+//
 // Offline: nothing here reaches the network.
 import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
+import http from "node:http";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,48 +15,75 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
 const packsDir = path.resolve(root, "../../packs");
 
-let server;
-let base;
+/* ------------------------------------------------------------------ GitHub */
 
-before(async () => {
-  server = createTestHarness({ root, workers: [{ configPath: "./wrangler.jsonc", vars: { DEV_LOGIN: "1" } }] });
-  ({ url: base } = await server.listen());
-  await server.getWorker().applyD1Migrations("DB");
-});
+/** Every repository the stub knows: `owner/name` → what GitHub would answer about it. */
+const repos = new Map();
 
-after(async () => {
-  await server?.close();
-});
-
-const url = (p) => new URL(p, base).toString();
-const b64 = (text) => Buffer.from(text).toString("base64");
-
-async function api(p, init = {}) {
-  const res = await fetch(url(p), init);
-  const text = await res.text();
-  let body;
-  try { body = JSON.parse(text); } catch { body = text; }
-  return { status: res.status, body, headers: res.headers };
+function putRepo(slug, { files, sha = "a".repeat(40), stars = 0, isPrivate = false, defaultBranch = "main" }) {
+  const [owner, name] = slug.split("/");
+  repos.set(slug.toLowerCase(), { owner, name, files: new Map(Object.entries(files)), sha, stars, isPrivate, defaultBranch });
 }
 
-async function devToken(login) {
-  const { status, body } = await api("/api/dev/token", {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ login }),
+let github;
+let githubBase;
+
+function startGitHub() {
+  github = http.createServer((req, res) => {
+    const url = new URL(req.url, "http://x");
+    const json = (status, value) => res.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify(value));
+    const parts = url.pathname.split("/").filter(Boolean);
+
+    // GET /repos/:owner/:repo …
+    if (parts[0] === "repos") {
+      const repo = repos.get(`${parts[1]}/${parts[2]}`.toLowerCase());
+      if (!repo) return json(404, { message: "Not Found" });
+      const tail = parts.slice(3);
+      if (!tail.length) {
+        return json(200, {
+          name: repo.name, default_branch: repo.defaultBranch, stargazers_count: repo.stars, private: repo.isPrivate,
+          html_url: `https://github.com/${repo.owner}/${repo.name}`,
+          owner: { login: repo.owner, avatar_url: null },
+        });
+      }
+      if (tail[0] === "commits") {
+        const ref = decodeURIComponent(tail[1] ?? "");
+        if (ref !== repo.defaultBranch && ref !== repo.sha) return json(404, { message: "No commit found" });
+        return json(200, { sha: repo.sha });
+      }
+      if (tail[0] === "git" && tail[1] === "trees") {
+        if (tail[2] !== repo.sha) return json(404, { message: "Not Found" });
+        return json(200, {
+          sha: repo.sha,
+          truncated: false,
+          tree: [...repo.files].map(([p, text]) => ({ path: p, type: "blob", size: Buffer.byteLength(text) })),
+        });
+      }
+      return json(404, { message: "Not Found" });
+    }
+
+    // raw: /raw/:owner/:repo/:sha/<path>
+    if (parts[0] === "raw") {
+      const repo = repos.get(`${parts[1]}/${parts[2]}`.toLowerCase());
+      const file = repo && parts[3] === repo.sha ? repo.files.get(parts.slice(4).map(decodeURIComponent).join("/")) : undefined;
+      if (file === undefined) return res.writeHead(404).end();
+      if (req.method === "HEAD") return res.writeHead(200, { "content-length": String(Buffer.byteLength(file)) }).end();
+      return res.writeHead(200, { "content-type": "text/plain" }).end(file);
+    }
+    json(404, { message: "Not Found" });
   });
-  assert.equal(status, 200);
-  return body.token;
-}
-
-function publish(token, files) {
-  return api("/api/packs", {
-    method: "POST",
-    headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
-    body: JSON.stringify({ files }),
+  return new Promise((resolve) => {
+    github.listen(0, "127.0.0.1", () => {
+      githubBase = `http://127.0.0.1:${github.address().port}`;
+      resolve();
+    });
   });
 }
+
+/* ------------------------------------------------------------------- packs */
 
 /** A small pack with a template, a rule with a prompt file, an asset, a style guide and a recipe. */
-function tinyPack({ id = "tiny-pack", version = "1.0.0", name = "Tiny pack", description = "A pack for tests.", drop = [] } = {}) {
+function tinyPack({ id = "tiny-pack", version = "1.0.0", name = "Tiny pack", description = "A pack for tests.", drop = [], folder = "" } = {}) {
   const manifest = {
     schema: 1, id, name, version, author: "tester", description,
     templates: ["tiny-look"],
@@ -72,333 +103,306 @@ function tinyPack({ id = "tiny-pack", version = "1.0.0", name = "Tiny pack", des
     "recipes/intro.mjs": "export default async () => ({ ok: true });",
     "recipes/lib/util.mjs": "export const x = 1;",
   };
-  return Object.entries(files).filter(([p]) => !drop.includes(p)).map(([p, text]) => ({ path: p, base64: b64(text) }));
+  const prefix = folder ? `${folder}/` : "";
+  return Object.fromEntries(
+    Object.entries(files).filter(([p]) => !drop.includes(p)).map(([p, text]) => [`${prefix}${p}`, text]),
+  );
 }
 
-describe("publish", () => {
-  let alice;
-  let bob;
-  before(async () => {
-    alice = await devToken("alice");
-    bob = await devToken("bob");
-  });
+/* ------------------------------------------------------------------ server */
 
-  test("401 without a token", async () => {
-    const res = await publish(null, tinyPack());
-    assert.equal(res.status, 401);
-    assert.ok(res.body.error);
-  });
+let server;
+let base;
 
-  test("happy path stores the pack and answers with its URLs", async () => {
-    const res = await publish(alice, tinyPack());
-    assert.equal(res.status, 201, JSON.stringify(res.body));
-    assert.deepEqual(res.body, {
-      name: "tiny-pack",
-      version: "1.0.0",
-      url: url("/packs/tiny-pack"),
-      source: url("/r/tiny-pack/1.0.0"),
-    });
+before(async () => {
+  await startGitHub();
+  server = createTestHarness({
+    root,
+    workers: [{
+      configPath: "./wrangler.jsonc",
+      vars: { DEV_LOGIN: "1", GITHUB_API_BASE: githubBase, GITHUB_RAW_BASE: `${githubBase}/raw` },
+    }],
   });
-
-  test("a file the manifest names must be in the upload", async () => {
-    const res = await publish(alice, tinyPack({ id: "missing-pack", drop: ["recipes/lib/util.mjs"] }));
-    assert.equal(res.status, 400);
-    assert.match(res.body.error, /recipes\/lib\/util\.mjs/);
-  });
-
-  test("a rule's prompt file counts as referenced", async () => {
-    const res = await publish(alice, tinyPack({ id: "missing-prompt", drop: ["rules/tiny-rule.md"] }));
-    assert.equal(res.status, 400);
-    assert.match(res.body.error, /rules\/tiny-rule\.md/);
-  });
-
-  test("paths may not leave the pack or be absolute", async () => {
-    for (const bad of ["../escape.txt", "assets/../../x", "/etc/passwd", "assets\\win.txt", "a//b", "./x"]) {
-      const files = [...tinyPack({ id: "traversal" }), { path: bad, base64: b64("x") }];
-      const res = await publish(alice, files);
-      assert.equal(res.status, 400, `${bad}: ${JSON.stringify(res.body)}`);
-    }
-  });
-
-  test("pack.json must parse against the schema", async () => {
-    const files = tinyPack({ id: "bad-schema" }).map((f) =>
-      f.path === "pack.json" ? { path: f.path, base64: b64(JSON.stringify({ id: "Bad Id", name: "" })) } : f);
-    const res = await publish(alice, files);
-    assert.equal(res.status, 400);
-    assert.ok(Array.isArray(res.body.issues));
-  });
-
-  test("version must look like semver", async () => {
-    const res = await publish(alice, tinyPack({ id: "bad-version", version: "v1" }));
-    assert.equal(res.status, 400);
-  });
-
-  test("another publisher cannot take the name", async () => {
-    const res = await publish(bob, tinyPack({ version: "9.9.9" }));
-    assert.equal(res.status, 403);
-  });
-
-  test("the same version cannot be published twice", async () => {
-    const res = await publish(alice, tinyPack());
-    assert.equal(res.status, 409);
-    assert.deepEqual(res.body, { error: "version exists" });
-  });
-
-  test("latest is the highest version, not the newest upload", async () => {
-    assert.equal((await publish(alice, tinyPack({ version: "2.0.0", description: "Second." }))).status, 201);
-    assert.equal((await publish(alice, tinyPack({ version: "1.5.0" }))).status, 201);
-    assert.equal((await publish(alice, tinyPack({ version: "2.0.0-beta.1" }))).status, 201);
-    const { body } = await api("/api/packs/tiny-pack");
-    assert.equal(body.pack.latest, "2.0.0");
-    assert.equal(body.pack.description, "Second.");
-    assert.deepEqual(body.pack.versions.map((v) => v.version), ["2.0.0", "2.0.0-beta.1", "1.5.0", "1.0.0"]);
-  });
+  ({ url: base } = await server.listen());
+  await server.getWorker().applyD1Migrations("DB");
 });
 
-describe("the example packs", () => {
-  test("all three publish as they are in the repository", async () => {
-    const token = await devToken("pasho");
-    for (const name of ["news-desk", "showcase", "stream-shorts"]) {
-      const dir = path.join(packsDir, name);
-      const rels = (await readdir(dir, { recursive: true, withFileTypes: true }))
-        .filter((e) => e.isFile() && e.name !== ".DS_Store")
-        .map((e) => path.relative(dir, path.join(e.parentPath, e.name)).split(path.sep).join("/"));
-      const files = await Promise.all(rels.map(async (p) => ({ path: p, base64: (await readFile(path.join(dir, p))).toString("base64") })));
-      const res = await publish(token, files);
-      assert.equal(res.status, 201, `${name}: ${JSON.stringify(res.body)}`);
-    }
-  });
+after(async () => {
+  await server?.close();
+  await new Promise((r) => github?.close(r));
 });
 
-describe("list and search", () => {
-  test("lists every pack with its listing shape", async () => {
-    const { status, body, headers } = await api("/api/packs");
+const url = (p) => new URL(p, base).toString();
+
+async function api(p, init = {}) {
+  const res = await fetch(url(p), init);
+  const text = await res.text();
+  let body;
+  try { body = JSON.parse(text); } catch { body = text; }
+  return { status: res.status, body, headers: res.headers };
+}
+
+/** Submit a repository as `login`, the way the form does. */
+async function submit(login, { repo, folder = "" }) {
+  const res = await fetch(url("/submit"), {
+    method: "POST",
+    redirect: "manual",
+    headers: { "content-type": "application/x-www-form-urlencoded", origin: new URL(base).origin, "x-dev-login": login },
+    body: new URLSearchParams({ repo, folder }),
+  });
+  const text = res.status === 303 ? "" : await res.text();
+  return { status: res.status, location: res.headers.get("location"), text, error: firstAlert(text) };
+}
+
+async function post(p, login) {
+  const res = await fetch(url(p), {
+    method: "POST",
+    redirect: "manual",
+    headers: { origin: new URL(base).origin, "x-dev-login": login },
+  });
+  const text = res.status === 303 ? "" : await res.text();
+  return { status: res.status, location: res.headers.get("location"), text, notice: firstAlert(text) };
+}
+
+/** What the page says went wrong (or right), without its markup. */
+function firstAlert(html) {
+  const found = /role="(?:alert|status)"[^>]*>([\s\S]*?)<\/p>/.exec(html ?? "");
+  return found ? found[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "";
+}
+
+/* -------------------------------------------------------------------------- */
+
+describe("submitting a repository", () => {
+  before(() => {
+    putRepo("alice/tiny", { files: tinyPack(), stars: 7 });
+    putRepo("alice/monorepo", { files: tinyPack({ id: "folder-pack", folder: "packs/folder-pack" }), sha: "c".repeat(40) });
+    putRepo("alice/secret", { files: tinyPack({ id: "secret-pack" }), isPrivate: true });
+    putRepo("bob/tiny-too", { files: tinyPack({ id: "tiny-pack", version: "9.0.0" }) });
+  });
+
+  test("a repository becomes a pack whose source is GitHub at the pinned commit", async () => {
+    const posted = await submit("alice", { repo: "https://github.com/alice/tiny" });
+    assert.equal(posted.status, 303);
+    assert.equal(posted.location, "/packs/tiny-pack?submitted=1.0.0");
+
+    const { status, body } = await api("/api/packs/tiny-pack");
     assert.equal(status, 200);
-    assert.equal(headers.get("access-control-allow-origin"), "*");
-    const tiny = body.packs.find((p) => p.name === "tiny-pack");
-    assert.deepEqual(Object.keys(tiny).sort(), ["author", "counts", "description", "downloads", "latest", "name", "owner", "source", "title", "updatedAt"]);
-    assert.equal(tiny.title, "Tiny pack");
-    assert.equal(tiny.author, "tester");
-    assert.deepEqual(tiny.owner, { login: "alice", avatarUrl: null });
-    assert.deepEqual(tiny.counts, { templates: 1, rules: 1, assets: 1, recipes: 1 });
-    assert.equal(tiny.source, url("/r/tiny-pack/2.0.0"));
-    assert.equal(typeof tiny.updatedAt, "number");
+    assert.equal(body.pack.latest, "1.0.0");
+    assert.equal(body.pack.stars, 7);
+    assert.equal(body.pack.owner.login, "alice");
+    assert.deepEqual(body.pack.repo, { owner: "alice", name: "tiny", folder: "", branch: "main", url: "https://github.com/alice/tiny" });
+    assert.equal(body.pack.source, `${githubBase}/raw/alice/tiny/${"a".repeat(40)}`);
+    assert.deepEqual(body.pack.counts, { templates: 1, rules: 1, assets: 1, recipes: 1 });
+    assert.deepEqual(body.pack.versions, [{ version: "1.0.0", publishedAt: body.pack.versions[0].publishedAt, size: body.pack.versions[0].size, sha: "a".repeat(40), source: `${githubBase}/raw/alice/tiny/${"a".repeat(40)}` }]);
+    assert.ok(body.pack.versions[0].size > 0, "the size is the bytes of the files it names");
   });
 
-  test("q matches name, title and description", async () => {
-    const byName = await api("/api/packs?q=stream-sh");
-    assert.deepEqual(byName.body.packs.map((p) => p.name), ["stream-shorts"]);
-    const byTitle = await api(`/api/packs?q=${encodeURIComponent("comparativas")}`);
-    assert.deepEqual(byTitle.body.packs.map((p) => p.name), ["showcase"]);
-    const byDescription = await api("/api/packs?q=Second.");
-    assert.deepEqual(byDescription.body.packs.map((p) => p.name), ["tiny-pack"]);
-    const none = await api("/api/packs?q=nothing-matches-this");
-    assert.deepEqual(none.body.packs, []);
-    const wildcard = await api("/api/packs?q=%25");
-    assert.deepEqual(wildcard.body.packs, []);
+  test("a link to a folder registers that folder", async () => {
+    const posted = await submit("alice", { repo: "github.com/alice/monorepo/tree/main/packs/folder-pack" });
+    assert.equal(posted.status, 303);
+    const { body } = await api("/api/packs/folder-pack");
+    assert.equal(body.pack.repo.folder, "packs/folder-pack");
+    assert.equal(body.pack.source, `${githubBase}/raw/alice/monorepo/${"c".repeat(40)}/packs/folder-pack`);
+    assert.equal(body.pack.repo.url, "https://github.com/alice/monorepo/tree/main/packs/folder-pack");
   });
 
-  test("limit caps the list", async () => {
-    const { body } = await api("/api/packs?limit=2");
-    assert.equal(body.packs.length, 2);
+  test("only the GitHub account that owns the repository may submit it", async () => {
+    const posted = await submit("carol", { repo: "alice/tiny" });
+    assert.equal(posted.status, 403);
+    assert.match(posted.error, /is not yours/);
+  });
+
+  test("a name belongs to whoever submitted it first", async () => {
+    const posted = await submit("bob", { repo: "bob/tiny-too" });
+    assert.equal(posted.status, 403);
+    assert.match(posted.error, /belongs to another publisher/);
+  });
+
+  test("a private repository is refused: nobody else could install it", async () => {
+    const posted = await submit("alice", { repo: "alice/secret" });
+    assert.equal(posted.status, 400);
+    assert.match(posted.error, /private/);
+  });
+
+  test("a repository GitHub does not have is a 404, and a bad address never reaches GitHub", async () => {
+    assert.equal((await submit("alice", { repo: "alice/nothing" })).status, 404);
+    const nonsense = await submit("alice", { repo: "not a repository" });
+    assert.equal(nonsense.status, 400);
+    assert.match(nonsense.error, /github\.com\/owner\/repository/);
+  });
+
+  test("the folder has to hold a pack.json that matches the schema, with every file it names", async () => {
+    putRepo("alice/empty", { files: { "README.md": "# nothing here" } });
+    const none = await submit("alice", { repo: "alice/empty" });
+    assert.equal(none.status, 400);
+    assert.match(none.error, /No pack\.json/);
+
+    putRepo("alice/broken", { files: { "pack.json": "{ not json" } });
+    assert.match((await submit("alice", { repo: "alice/broken" })).error, /not valid JSON/);
+
+    putRepo("alice/wrong", { files: { "pack.json": JSON.stringify({ id: "wrong" }) } });
+    const wrong = await submit("alice", { repo: "alice/wrong" });
+    assert.equal(wrong.status, 400);
+    assert.match(wrong.error, /does not match the pack schema/);
+
+    putRepo("alice/incomplete", { files: tinyPack({ id: "incomplete-pack", drop: ["STYLE.md", "rules/tiny-rule.md"] }) });
+    const missing = await submit("alice", { repo: "alice/incomplete" });
+    assert.equal(missing.status, 400);
+    assert.match(missing.error, /not in the repository: .*STYLE\.md/);
+    assert.match(missing.error, /rules\/tiny-rule\.md/, "a rule's own prompt file counts as named");
+  });
+
+  test("two names cannot claim the same folder", async () => {
+    putRepo("alice/tiny", { files: tinyPack({ id: "renamed-pack" }), stars: 7 });
+    const posted = await submit("alice", { repo: "alice/tiny" });
+    assert.equal(posted.status, 409);
+    assert.match(posted.error, /already registered as tiny-pack/);
+    putRepo("alice/tiny", { files: tinyPack(), stars: 7 });
   });
 });
 
-describe("detail", () => {
-  test("returns versions and the manifest", async () => {
-    const { status, body } = await api("/api/packs/showcase");
-    assert.equal(status, 200);
-    assert.equal(body.pack.name, "showcase");
-    assert.equal(body.pack.manifest.id, "showcase");
-    assert.equal(body.pack.counts.recipes, 3);
-    assert.equal(body.pack.versions.length, 1);
-    assert.equal(typeof body.pack.versions[0].size, "number");
-    assert.equal(typeof body.pack.versions[0].publishedAt, "number");
+describe("updating a pack", () => {
+  before(() => {
+    putRepo("dave/kit", { files: tinyPack({ id: "dave-kit", version: "1.0.0" }), sha: "d".repeat(40) });
   });
 
-  test("404 for an unknown pack", async () => {
-    const res = await api("/api/packs/does-not-exist");
-    assert.equal(res.status, 404);
-    assert.ok(res.body.error);
+  test("a bumped version in pack.json becomes a new version, and the old one keeps its commit", async () => {
+    assert.equal((await submit("dave", { repo: "dave/kit" })).status, 303);
+    putRepo("dave/kit", { files: tinyPack({ id: "dave-kit", version: "1.1.0" }), sha: "e".repeat(40) });
+    const refreshed = await post("/packs/dave-kit/refresh", "dave");
+    assert.equal(refreshed.status, 200);
+    assert.match(refreshed.notice, /Version 1\.1\.0 is registered/);
+
+    const { body } = await api("/api/packs/dave-kit");
+    assert.equal(body.pack.latest, "1.1.0");
+    assert.equal(body.pack.source, `${githubBase}/raw/dave/kit/${"e".repeat(40)}`);
+    const old = body.pack.versions.find((v) => v.version === "1.0.0");
+    assert.equal(old.sha, "d".repeat(40), "a version stays pinned to the commit it was read at");
   });
 
-  test("the page escapes the style guide and warns about recipes", async () => {
-    const res = await fetch(url("/packs/tiny-pack"));
-    assert.equal(res.status, 200);
-    const html = await res.text();
-    assert.ok(!html.includes("<script>alert(1)</script>"));
-    assert.ok(html.includes("&lt;script&gt;alert(1)&lt;/script&gt;"));
-    assert.ok(html.includes("This pack carries code"));
-    assert.ok(html.includes("agentcut packs install tiny-pack"));
-    assert.ok(html.includes(url("/r/tiny-pack/2.0.0")));
+  test("the latest is the highest version, not the newest submission", async () => {
+    putRepo("dave/kit", { files: tinyPack({ id: "dave-kit", version: "1.0.5" }), sha: "f".repeat(40) });
+    await post("/packs/dave-kit/refresh", "dave");
+    const { body } = await api("/api/packs/dave-kit");
+    assert.equal(body.pack.latest, "1.1.0");
+    assert.deepEqual(body.pack.versions.map((v) => v.version), ["1.1.0", "1.0.5", "1.0.0"]);
+  });
+
+  test("nothing to do is said plainly, and a version is never re-pinned", async () => {
+    putRepo("dave/kit", { files: tinyPack({ id: "dave-kit", version: "1.1.0" }), sha: "e".repeat(40) });
+    const same = await post("/packs/dave-kit/refresh", "dave");
+    assert.match(same.notice, /No new version/);
+
+    putRepo("dave/kit", { files: tinyPack({ id: "dave-kit", version: "1.1.0" }), sha: "1".repeat(40) });
+    const moved = await post("/packs/dave-kit/refresh", "dave");
+    assert.equal(moved.status, 409);
+    assert.match(moved.notice, /already registered at another commit/);
+  });
+
+  test("only its owner updates or removes a pack", async () => {
+    const refreshed = await post("/packs/dave-kit/refresh", "eve");
+    assert.equal(refreshed.status, 403);
+    assert.match(refreshed.notice, /belongs to somebody else/);
+    const removed = await post("/packs/dave-kit/remove", "eve");
+    assert.equal(removed.status, 403);
+    assert.equal((await api("/api/packs/dave-kit")).status, 200, "and it is still listed");
+  });
+
+  test("its owner can take it down", async () => {
+    const removed = await post("/packs/dave-kit/remove", "dave");
+    assert.equal(removed.status, 303);
+    assert.equal(removed.location, "/account?removed=1");
+    assert.equal((await api("/api/packs/dave-kit")).status, 404);
   });
 });
 
-describe("registry files", () => {
-  test("serves files with a content type and counts pack.json fetches", async () => {
-    const before = (await api("/api/packs/showcase")).body.pack.downloads;
-    const manifest = await fetch(url("/r/showcase/1.0.0/pack.json"));
-    assert.equal(manifest.status, 200);
-    assert.match(manifest.headers.get("content-type"), /^application\/json/);
-    assert.equal(manifest.headers.get("cache-control"), "public, max-age=31536000, immutable");
-    assert.equal(manifest.headers.get("access-control-allow-origin"), "*");
-    assert.equal((await manifest.json()).id, "showcase");
-
-    const recipe = await fetch(url("/r/showcase/1.0.0/recipes/teaser.mjs"));
-    assert.equal(recipe.status, 200);
-    assert.match(recipe.headers.get("content-type"), /^text\/javascript/);
-    await recipe.arrayBuffer();
-
-    const audio = await fetch(url("/r/showcase/1.0.0/assets/cinematic-dramatic-buildup.mp3"));
-    assert.equal(audio.headers.get("content-type"), "audio/mpeg");
-    const bytes = Buffer.from(await audio.arrayBuffer());
-    const original = await readFile(path.join(packsDir, "showcase/assets/cinematic-dramatic-buildup.mp3"));
-    assert.ok(bytes.equals(original), "asset bytes round-trip");
-
-    const style = await fetch(url("/r/showcase/1.0.0/STYLE.md"));
-    assert.match(style.headers.get("content-type"), /^text\/markdown/);
-    await style.arrayBuffer();
-
-    // Only pack.json counts as an install.
-    await new Promise((r) => setTimeout(r, 200));
-    const after = (await api("/api/packs/showcase")).body.pack.downloads;
-    assert.equal(after, before + 1);
-  });
-
-  test("latest resolves to the latest version", async () => {
-    const res = await fetch(url("/r/tiny-pack/latest/pack.json"));
-    assert.equal(res.status, 200);
-    assert.equal((await res.json()).version, "2.0.0");
-    const old = await fetch(url("/r/tiny-pack/1.0.0/pack.json"));
-    assert.equal((await old.json()).version, "1.0.0");
-  });
-
-  test("404 for missing files, versions and packs", async () => {
-    for (const p of ["/r/tiny-pack/1.0.0/nope.json", "/r/tiny-pack/7.0.0/pack.json", "/r/nobody/latest/pack.json"]) {
-      const res = await fetch(url(p));
-      assert.equal(res.status, 404, p);
-      await res.arrayBuffer();
+describe("the packs in this repository", () => {
+  test("every pack that ships with the product can be registered as it is", async () => {
+    const names = (await readdir(packsDir, { withFileTypes: true })).filter((d) => d.isDirectory()).map((d) => d.name).sort();
+    assert.ok(names.length >= 3, "the repository ships packs");
+    const files = {};
+    for (const name of names) {
+      for (const rel of await walk(path.join(packsDir, name))) {
+        files[`packs/${name}/${rel}`] = await readFile(path.join(packsDir, name, rel), "utf8");
+      }
+    }
+    putRepo("pasho/agentcut", { files, sha: "9".repeat(40), stars: 42 });
+    for (const name of names) {
+      const posted = await submit("pasho", { repo: "pasho/agentcut", folder: `packs/${name}` });
+      assert.equal(posted.status, 303, `${name}: ${posted.error}`);
+    }
+    const { body } = await api("/api/packs?limit=100");
+    for (const name of names) {
+      const listed = body.packs.find((p) => p.repo.folder === `packs/${name}`);
+      assert.ok(listed, `${name} is listed`);
+      assert.equal(listed.source, `${githubBase}/raw/pasho/agentcut/${"9".repeat(40)}/packs/${name}`);
     }
   });
 });
 
-describe("device login", () => {
-  async function devSession(login) {
-    const res = await fetch(url("/login/dev"), {
-      method: "POST",
-      redirect: "manual",
-      headers: { "content-type": "application/x-www-form-urlencoded", origin: new URL(base).origin },
-      body: new URLSearchParams({ login, next: "/account" }),
-    });
-    assert.equal(res.status, 303);
-    const cookie = res.headers.get("set-cookie").split(";")[0];
-    assert.match(cookie, /^ac_session=/);
-    return cookie;
+async function walk(dir, prefix = "") {
+  const out = [];
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    if (entry.name === ".DS_Store") continue;
+    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) out.push(...(await walk(path.join(dir, entry.name), rel)));
+    else out.push(rel);
   }
+  return out;
+}
 
-  const poll = (deviceCode) => api("/api/auth/token", {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ deviceCode }),
+describe("the registry", () => {
+  test("lists every pack with its listing shape", async () => {
+    const { status, body } = await api("/api/packs");
+    assert.equal(status, 200);
+    const pack = body.packs.find((p) => p.name === "tiny-pack");
+    assert.deepEqual(Object.keys(pack).sort(), [
+      "author", "counts", "description", "latest", "name", "owner", "repo", "source", "stars", "title", "updatedAt",
+    ]);
+    assert.equal(body.headers, undefined);
+    assert.equal((await api("/api/packs")).headers.get("access-control-allow-origin"), "*", "the studio reads it from localhost");
   });
 
-  test("pending, then approved, then a token that works on /api/me", async () => {
-    const start = await api("/api/auth/device", { method: "POST" });
-    assert.equal(start.status, 200);
-    const { deviceCode, userCode, verificationUrl, interval, expiresIn } = start.body;
-    assert.ok(deviceCode.length >= 32);
-    assert.match(userCode, /^[A-Z]{4}-[A-Z]{4}$/);
-    assert.equal(verificationUrl, url(`/device?code=${userCode}`));
-    assert.equal(interval, 2);
-    assert.equal(expiresIn, 600);
-
-    const pending = await poll(deviceCode);
-    assert.equal(pending.status, 428);
-    assert.deepEqual(pending.body, { error: "authorization_pending" });
-
-    const cookie = await devSession("carol");
-    const page = await fetch(url(`/device?code=${userCode}`), { headers: { cookie } });
-    assert.equal(page.status, 200);
-    assert.ok((await page.text()).includes(userCode));
-
-    const approve = await fetch(url("/device"), {
-      method: "POST",
-      headers: { cookie, "content-type": "application/x-www-form-urlencoded", origin: new URL(base).origin },
-      body: new URLSearchParams({ code: userCode.toLowerCase().replace("-", ""), decision: "approve" }),
-    });
-    assert.equal(approve.status, 200);
-    await approve.arrayBuffer();
-
-    const done = await poll(deviceCode);
-    assert.equal(done.status, 200);
-    assert.match(done.body.token, /^act_/);
-    assert.deepEqual(done.body.user, { login: "carol", name: "carol", avatarUrl: null });
-
-    const me = await api("/api/me", { headers: { authorization: `Bearer ${done.body.token}` } });
-    assert.equal(me.status, 200);
-    assert.deepEqual(me.body, { user: { login: "carol", name: "carol", avatarUrl: null } });
-
-    // The approval is consumed: a second poll does not mint a second token.
-    assert.equal((await poll(deviceCode)).status, 404);
+  test("q matches name, title and description, and limit caps the list", async () => {
+    assert.ok((await api("/api/packs?q=tiny")).body.packs.some((p) => p.name === "tiny-pack"));
+    assert.ok((await api("/api/packs?q=for tests")).body.packs.length >= 1, "description matches");
+    assert.deepEqual((await api("/api/packs?q=zzzz")).body.packs, []);
+    assert.equal((await api("/api/packs?limit=1")).body.packs.length, 1);
   });
 
-  test("denied answers access_denied", async () => {
-    const { body } = await api("/api/auth/device", { method: "POST" });
-    const cookie = await devSession("dave");
-    const deny = await fetch(url("/device"), {
-      method: "POST",
-      headers: { cookie, "content-type": "application/x-www-form-urlencoded", origin: new URL(base).origin },
-      body: new URLSearchParams({ code: body.userCode, decision: "deny" }),
-    });
-    await deny.arrayBuffer();
-    const res = await poll(body.deviceCode);
-    assert.equal(res.status, 403);
-    assert.deepEqual(res.body, { error: "access_denied" });
+  test("an unknown pack is a 404, and nothing else lives under /api", async () => {
+    assert.equal((await api("/api/packs/nope")).status, 404);
+    assert.equal((await api("/api/me")).status, 404);
+    assert.equal((await api("/api/auth/device", { method: "POST" })).status, 404);
   });
 
-  test("an approval form from another origin is refused", async () => {
-    const { body } = await api("/api/auth/device", { method: "POST" });
-    const cookie = await devSession("erin");
-    const res = await fetch(url("/device"), {
-      method: "POST",
-      headers: { cookie, "content-type": "application/x-www-form-urlencoded", origin: "https://evil.example" },
-      body: new URLSearchParams({ code: body.userCode, decision: "approve" }),
-    });
-    assert.equal(res.status, 403);
-    await res.arrayBuffer();
-    assert.equal((await poll(body.deviceCode)).status, 428);
-  });
-
-  test("an expired code answers expired_token", async () => {
-    const { body } = await api("/api/auth/device", { method: "POST" });
-    const env = await server.getWorker().getEnv();
-    await env.DB.prepare("UPDATE device_codes SET expires_at = 1 WHERE user_code = ?").bind(body.userCode).run();
-    const res = await poll(body.deviceCode);
-    assert.equal(res.status, 410);
-    assert.deepEqual(res.body, { error: "expired_token" });
-  });
-
-  test("unknown device codes are 404 and bad tokens are 401", async () => {
-    assert.equal((await poll("not-a-real-code")).status, 404);
-    assert.equal((await api("/api/me")).status, 401);
-    assert.equal((await api("/api/me", { headers: { authorization: "Bearer act_nope" } })).status, 401);
-  });
-
-  test("/device asks for a sign-in first", async () => {
-    const res = await fetch(url("/device?code=ABCD-EFGH"), { redirect: "manual" });
-    assert.equal(res.status, 302);
-    assert.match(res.headers.get("location"), /^\/login\?next=%2Fdevice/);
+  test("no pack bytes are served from here any more", async () => {
+    assert.equal((await api(`/r/tiny-pack/1.0.0/pack.json`)).status, 404);
   });
 });
 
 describe("pages", () => {
-  test("landing, packs and login render", async () => {
-    for (const p of ["/", "/packs", "/packs?q=stream", "/login"]) {
-      const res = await fetch(url(p));
-      assert.equal(res.status, 200, p);
-      const html = await res.text();
-      assert.match(html, /^<!doctype html>/i, p);
+  test("landing, packs, a pack and the submit form render", async () => {
+    for (const path of ["/", "/packs", "/packs?q=tiny", "/packs/tiny-pack", "/submit"]) {
+      const res = await fetch(url(path));
+      assert.equal(res.status, 200, path);
+      assert.match(res.headers.get("content-type") ?? "", /text\/html/, path);
+      assert.match(await res.text(), /<\/html>/, path);
     }
-    const missing = await fetch(url("/packs/nope"));
-    assert.equal(missing.status, 404);
-    await missing.arrayBuffer();
+    assert.equal((await fetch(url("/nope"))).status, 404);
+  });
+
+  test("the pack's page shows its repository and escapes the style guide", async () => {
+    const html = await (await fetch(url("/packs/tiny-pack"))).text();
+    assert.match(html, /github\.com\/alice\/tiny/);
+    assert.ok(!html.includes("<script>alert(1)</script>"), "the style guide is text, never markup");
+    assert.match(html, /This pack carries code/, "a pack with recipes says so");
+    assert.ok(!/Check for updates/.test(html), "a visitor is offered none of the owner's controls");
+  });
+
+  test("its owner is offered the two things only they can do", async () => {
+    const asOwner = await (await fetch(url("/packs/tiny-pack"), { headers: { "x-dev-login": "alice" } })).text();
+    assert.match(asOwner, /Check for updates/);
+    assert.match(asOwner, /Remove from the marketplace/);
   });
 });

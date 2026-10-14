@@ -1,6 +1,6 @@
 import type { PackCounts, PackListing } from "../lib/packs";
 import { count, isoDate, plural, timeAgo } from "../lib/format";
-import { CodeIcon, DownloadIcon, ImageIcon, LayoutIcon, RuleIcon } from "./icons";
+import { CodeIcon, ImageIcon, LayoutIcon, RuleIcon, StarIcon } from "./icons";
 import { Avatar, card } from "./ui";
 
 export function CountsRow({ counts, class: className = "" }: { counts: PackCounts; class?: string }) {
@@ -45,9 +45,9 @@ export function PackCard({ pack }: { pack: PackListing }) {
           <Avatar login={pack.owner.login} url={pack.owner.avatarUrl} size="size-5" />
           <span class="truncate font-medium text-foreground/85">{pack.owner.login}</span>
         </span>
-        <span class="ml-auto inline-flex items-center gap-1.5 tabular-nums" title={`${pack.downloads} installs`}>
-          <DownloadIcon class="size-3.5" />
-          {count(pack.downloads)}
+        <span class="ml-auto inline-flex items-center gap-1.5 tabular-nums" title={`${pack.stars} stars on GitHub`}>
+          <StarIcon class="size-3.5" />
+          {count(pack.stars)}
         </span>
         <time datetime={isoDate(pack.updatedAt)} class="whitespace-nowrap">{timeAgo(pack.updatedAt)}</time>
       </div>

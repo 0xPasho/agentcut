@@ -15,7 +15,7 @@ type LayoutProps = {
   canonical?: string;
 };
 
-/** Copy buttons: the only script on the site. */
+/** Copy buttons and the one confirmation: the only script on the site. */
 const COPY_SCRIPT = `
 document.addEventListener("click", async (e) => {
   const b = e.target.closest("[data-copy]");
@@ -31,6 +31,10 @@ document.addEventListener("click", async (e) => {
   const s = b.querySelector("[data-copy-status]"); if (s) s.textContent = "Copied";
   clearTimeout(b._t);
   b._t = setTimeout(() => { b.removeAttribute("data-copied"); if (s) s.textContent = ""; }, 1600);
+});
+document.addEventListener("submit", (e) => {
+  const message = e.target.getAttribute("data-confirm");
+  if (message && !confirm(message)) e.preventDefault();
 });`;
 
 export function Layout({ title, description, user, path, children, canonical }: LayoutProps) {
@@ -87,6 +91,7 @@ function Header({ user, path }: { user: User | null; path: string }) {
         </a>
         <div class="ml-2 hidden items-center gap-1 sm:flex">
           <NavLink href="/packs" active={path.startsWith("/packs")}>Packs</NavLink>
+          <NavLink href="/submit" active={path === "/submit"}>Submit</NavLink>
         </div>
         <div class="ml-auto flex items-center gap-1">
           <a href="/packs" class="rounded-full px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-white/10 hover:text-foreground sm:hidden">Packs</a>

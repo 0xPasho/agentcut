@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useId, useState } from "react";
-import { Code2, Download, Images, LayoutTemplate, ListChecks, Loader2, Search, Store } from "lucide-react";
+import { Code2, Images, LayoutTemplate, ListChecks, Loader2, Search, Star, Store } from "lucide-react";
 import { api } from "@agentcut/core/common/api/client";
 import type { MarketPack, MarketSearchResult } from "@agentcut/core/modules/packs/types";
 import { count } from "@agentcut/core/modules/settings/lib";
@@ -44,7 +44,7 @@ export function MarketSearch({ selected, onPick }: MarketSearchProps) {
   return (
     <Panel className="flex flex-col gap-3">
       <PanelHeading title="Marketplace" icon={<Store aria-hidden className="size-4" />}>
-        Packs other people publish{host ? ` on ${host}` : ""}. Reading one installs nothing.
+        Packs other people keep in their own repositories{host ? `, listed on ${host}` : ""}. Reading one installs nothing.
       </PanelHeading>
       <div className="relative">
         <Label htmlFor={`${id}-q`} className="sr-only">Search the marketplace</Label>
@@ -53,7 +53,7 @@ export function MarketSearch({ selected, onPick }: MarketSearchProps) {
       </div>
       <ErrorLine>{error}</ErrorLine>
       {loading && !result && <p className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 aria-hidden className="size-3.5 motion-safe:animate-spin" />Looking…</p>}
-      {result && !result.packs.length && <p className="text-sm text-muted-foreground">{query ? "Nothing matches." : "Nobody has published a pack yet."}</p>}
+      {result && !result.packs.length && <p className="text-sm text-muted-foreground">{query ? "Nothing matches." : "No packs are listed yet."}</p>}
       {!!result?.packs.length && (
         <ul className="flex flex-col gap-1.5" aria-busy={loading}>
           {result.packs.map((pack) => <MarketRow key={pack.name} pack={pack} active={selected === pack.source} onPick={onPick} />)}
@@ -78,7 +78,7 @@ function MarketRow({ pack, active, onPick }: { pack: MarketPack; active: boolean
         <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
           <span>{pack.owner.login}</span>
           {parts.map(({ icon: Icon, text }) => <span key={text} className="inline-flex items-center gap-1"><Icon aria-hidden className="size-3.5" />{text}</span>)}
-          <span className="inline-flex items-center gap-1 tabular-nums"><Download aria-hidden className="size-3.5" />{pack.downloads}</span>
+          <span className="inline-flex items-center gap-1 tabular-nums" title={`${pack.stars} stars on GitHub`}><Star aria-hidden className="size-3.5" />{pack.stars}</span>
         </p>
       </div>
       <Button type="button" size="sm" variant={active ? "default" : "outline"} onClick={() => onPick(pack.source)}>{active ? "Reading" : "Read it"}</Button>

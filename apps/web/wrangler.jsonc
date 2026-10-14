@@ -1,10 +1,11 @@
 // agentcut.dev: the landing page and the packs marketplace.
-// Local dev runs everything in miniflare (D1 and R2 included): `pnpm dev`.
-// Secrets (set with `wrangler secret put <NAME>`, never committed):
-//   GITHUB_CLIENT_ID      GitHub OAuth app client id. Without it, /login offers no GitHub button.
-//   GITHUB_CLIENT_SECRET  GitHub OAuth app client secret.
-//   SESSION_SECRET        Signs the session cookie. Required when DEV_LOGIN is not "1".
-// For local dev, put them in apps/web/.dev.vars (gitignored) if you want to try GitHub login.
+// Local dev runs the worker and its D1 in miniflare: `pnpm dev`. A pack's files are never
+// stored here; they stay in the GitHub repository the pack is registered from.
+// Accounts are Clerk's. Set with `wrangler secret put <NAME>`, never committed:
+//   CLERK_SECRET_KEY       Clerk's backend key. Without it, nobody can sign in, and
+//                          submitting a pack is the only thing that needs an account.
+//   CLERK_PUBLISHABLE_KEY  Clerk's frontend key, which the session handshake needs.
+// For local dev, put them in apps/web/.dev.vars (gitignored) to try the real sign-in.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "agentcut-web",
@@ -16,7 +17,8 @@
     "binding": "ASSETS"
   },
   "vars": {
-    // "1" turns on the username-only login form and POST /api/dev/token. Never "1" in production.
+    // "1" signs every visitor in as a local identity, so a checkout never asks anybody to
+    // sign in. Never "1" in production.
     "DEV_LOGIN": "0"
   },
   "d1_databases": [
@@ -26,12 +28,6 @@
       // Replace with the id `wrangler d1 create agentcut-web` prints before the first deploy.
       "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "migrations"
-    }
-  ],
-  "r2_buckets": [
-    {
-      "binding": "PACKS",
-      "bucket_name": "agentcut-packs"
     }
   ],
   "observability": { "enabled": true }

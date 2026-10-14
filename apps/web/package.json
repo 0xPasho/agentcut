@@ -2,7 +2,7 @@
   "name": "@agentcut/web",
   "version": "0.0.0",
   "private": true,
-  "description": "agentcut.dev: the landing page and the packs marketplace, on Cloudflare Workers (D1 + R2).",
+  "description": "agentcut.dev: the landing page and the packs marketplace, on Cloudflare Workers (D1), with Clerk for accounts.",
   "type": "module",
   "scripts": {
     "build:css": "tailwindcss -i ./src/styles.css -o ./public/styles.css --minify",
@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@agentcut/core": "workspace:*",
+    "@clerk/backend": "^3.23.2",
     "hono": "^4.13.13",
     "zod": "^4.6.5"
   },

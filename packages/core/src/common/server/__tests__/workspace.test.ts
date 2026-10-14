@@ -132,7 +132,9 @@ test("the launcher absolutizes caller-relative file arguments but not ids or fla
   const { args } = JSON.parse(run.stdout);
   assert.deepEqual(args.slice(3), [path.join(elsewhere, "edl.json"), "--only", "one,two"]);
   assert.deepEqual(JSON.parse(launcher(elsewhere, ["render", "proj_1", "--dry-run"]).stdout).args.slice(3), ["proj_1"]);
-  assert.deepEqual(JSON.parse(launcher(elsewhere, ["packs", "publish", "./my-pack", "--dry-run"]).stdout).args.slice(3), ["publish", path.join(elsewhere, "my-pack")]);
+  assert.deepEqual(JSON.parse(launcher(elsewhere, ["packs", "import", "./my-pack", "--dry-run"]).stdout).args.slice(3), ["import", path.join(elsewhere, "my-pack")]);
+  // `packs submit` takes a repository, never a folder on this machine.
+  assert.deepEqual(JSON.parse(launcher(elsewhere, ["packs", "submit", "ana/my-pack", "--dry-run"]).stdout).args.slice(3), ["submit", "ana/my-pack"]);
 });
 
 test("an unknown command fails with usage instead of launching anything", () => {

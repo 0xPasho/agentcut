@@ -1,7 +1,8 @@
 import type { PackListing } from "../lib/packs";
 import { PackageIcon, SearchIcon, XIcon } from "./icons";
+import { GitHubMark } from "./marks";
 import { PackCard } from "./pack-card";
-import { Command, card } from "./ui";
+import { Command, btn, card } from "./ui";
 
 export function PacksPage({ packs, q }: { packs: PackListing[]; q: string }) {
   return (
@@ -10,8 +11,8 @@ export function PacksPage({ packs, q }: { packs: PackListing[]; q: string }) {
         <div class="max-w-2xl">
           <h1 class="text-4xl font-semibold tracking-[-0.03em] text-balance sm:text-5xl">Packs</h1>
           <p class="mt-4 text-lg leading-relaxed text-muted-foreground text-pretty">
-            Templates, rules, style guides and assets that belong together, published by the people who edit with them.
-            Install one from the terminal or paste its URL in <span class="text-foreground">Settings → Packs</span>.
+            Templates, rules, style guides and assets that belong together, each one a GitHub repository kept by the
+            person who edits with it. Install one from the terminal or paste its URL in <span class="text-foreground">Settings → Packs</span>.
           </p>
         </div>
         <form method="get" action="/packs" role="search" class="w-full lg:max-w-sm">
@@ -60,13 +61,13 @@ function EmptyState() {
       <span class="grid size-12 place-items-center rounded-2xl bg-white/6"><PackageIcon class="size-6" /></span>
       <h2 class="mt-5 text-xl font-semibold">No packs yet</h2>
       <p class="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground text-pretty">
-        A pack is a folder with a <code class="font-mono text-foreground">pack.json</code>. Sign in from the terminal
-        and publish yours; it shows up here as soon as it is accepted.
+        A pack is a public GitHub repository with a <code class="font-mono text-foreground">pack.json</code> in it.
+        Point us at yours and it is listed; the files stay where they are.
       </p>
-      <div class="mt-8 w-full max-w-md space-y-2 text-left">
-        <Command text="agentcut login" />
-        <Command text="agentcut packs publish ./my-pack" />
-      </div>
+      <a href="/submit" class={`${btn.primary} mt-8`}>
+        <GitHubMark class="size-4" />
+        Submit a pack
+      </a>
     </div>
   );
 }
@@ -75,15 +76,19 @@ function PublishHint() {
   return (
     <section class={`${card} mt-16 grid gap-6 p-7 md:grid-cols-[1fr_minmax(0,26rem)] md:items-center`}>
       <div>
-        <h2 class="text-lg font-semibold">Publish your own</h2>
+        <h2 class="text-lg font-semibold">Submit your own</h2>
         <p class="mt-2 text-sm leading-relaxed text-muted-foreground text-pretty">
-          Export a pack from <span class="text-foreground">Settings → Packs</span> in the studio, or write the folder by hand,
-          then publish it from the terminal. The first person to publish a name owns it.
+          Export a pack from <span class="text-foreground">Settings → Packs</span> in the studio, or write the folder by
+          hand, push it to a public repository, and give us the address. We pin the commit; the first person to submit a
+          name owns it.
         </p>
       </div>
-      <div class="space-y-2">
-        <Command text="agentcut login" />
-        <Command text="agentcut packs publish ./my-pack" />
+      <div class="space-y-3">
+        <Command text="agentcut packs submit" small />
+        <a href="/submit" class={`${btn.outline} w-full`}>
+          <GitHubMark class="size-4" />
+          Submit a pack
+        </a>
       </div>
     </section>
   );

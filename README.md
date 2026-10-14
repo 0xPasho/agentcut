@@ -95,7 +95,7 @@ or from a terminal:
 ```sh
 agentcut packs search shorts
 agentcut packs install stream-shorts
-agentcut login && agentcut packs publish ./my-pack
+agentcut packs submit            # opens the form: a pack is a GitHub repository
 ```
 
 See [PACKS.md](PACKS.md#the-marketplace).

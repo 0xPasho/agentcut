@@ -10,12 +10,11 @@ import { COMMANDS, usage } from "../commands-table";
 const CLI = path.resolve(import.meta.dirname, "../..");
 
 test("caller-relative paths become absolute; ids, titles and flags stay as typed", () => {
-  assert.deepEqual(planArgs("packs", ["publish", "./kit"], "/home/a"), ["publish", "/home/a/kit"]);
+  assert.deepEqual(planArgs("packs", ["submit", "ana/kit"], "/home/a"), ["submit", "ana/kit"]);
   assert.deepEqual(planArgs("packs", ["install", "streamer-kit"], "/home/a"), ["install", "streamer-kit"]);
-  assert.deepEqual(planArgs("packs", ["import", "https://x.dev/r/kit/1.0.0"], "/home/a"), ["import", "https://x.dev/r/kit/1.0.0"]);
+  assert.deepEqual(planArgs("packs", ["import", "https://raw.githubusercontent.com/ana/kit/abc"], "/home/a"), ["import", "https://raw.githubusercontent.com/ana/kit/abc"]);
   assert.deepEqual(planArgs("projects", ["create", "A / B", "v.mp4", "--brief", "short"], "/home/a"), ["create", "A / B", "/home/a/v.mp4", "--brief", "short"]);
   assert.deepEqual(planArgs("templates", ["apply", "p", "t", "--slot", "intro=./clips"], "/home/a"), ["apply", "p", "t", "--slot", "intro=/home/a/clips"]);
-  assert.deepEqual(planArgs("login", [], "/home/a"), ["login"]);
 });
 
 test("every command has a line in the help, and every command file a command", () => {

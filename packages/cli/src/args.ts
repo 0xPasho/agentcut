@@ -9,7 +9,7 @@ const home = (arg: string) => arg.replace(/^~(?=\/)/, process.env.HOME ?? "~");
  */
 export function planArgs(command: string, rest: string[], from: string): string[] {
   const args = rest.map((arg, index) => {
-    if (command === "packs" && ["inspect", "import", "publish"].includes(rest[0]) && index === 1 && !/^https?:\/\//i.test(arg)) return path.resolve(from, home(arg));
+    if (command === "packs" && ["inspect", "import"].includes(rest[0]) && index === 1 && !/^https?:\/\//i.test(arg)) return path.resolve(from, home(arg));
     if (command === "projects" && (rest[0] === "create" || rest[0] === "batch") && index >= 2 && !arg.startsWith("--") && rest[index - 1] !== "--brief") return path.resolve(from, home(arg));
     if ((command === "render" && index === 0 && /\.json$/i.test(arg)) || (command === "edit" && rest[1] === "call" && index === 2)) return path.resolve(from, arg);
     // --slot name=folder: the folder is a caller-relative path; the slot name is not.
@@ -28,6 +28,5 @@ export function planArgs(command: string, rest: string[], from: string): string[
   if (command === "publishing" && args[0] === "call" && args[1]) args[1] = path.resolve(from, args[1]);
   if (command === "workspace" && args[1]) args[1] = path.resolve(from, home(args[1]));
   // One entry serves three commands; it learns which from its first argument.
-  if (command === "login" || command === "logout" || command === "whoami") return [command, ...args];
   return args;
 }

@@ -245,15 +245,16 @@ agent judged the rule to hold on all three again.
 
 **Export** writes `workspace/exports/packs/<id>/` from what is in this workspace: chosen
 templates and rules, the glossary, chosen assets, quick actions. Serve that folder or send
-it as is, or publish it to the marketplace.
+it as is, or submit it to the marketplace.
 
 ## The marketplace
 
-Packs are published to and found on the marketplace (`apps/web`, AGENT-FIRST.md row 156).
-It adds no second way in: a marketplace pack is served at `<market>/r/<name>/<version>/`,
-which is a URL `packs.inspect` and `packs.import` already read, so it gets the same
-preview, the same untrusted recipes and the same copy into the workspace as a pack typed
-by hand.
+Packs are found on the marketplace (`apps/web`, AGENT-FIRST.md row 156), and a listed pack
+is a GitHub repository: the marketplace keeps its metadata and the commit each version is
+pinned to, never its files. The `source` it hands out is
+`raw.githubusercontent.com/<owner>/<repo>/<sha>/<folder>`, a URL `packs.inspect` and
+`packs.import` already read, so a marketplace pack gets the same preview, the same
+untrusted recipes and the same copy into the workspace as a pack typed by hand.
 
 - **Find** — Settings → Packs → Import a pack lists the marketplace above the folder-or-URL
   field; *Read it* fills in the pack's URL and shows the usual preview. The agent's tool is
@@ -261,15 +262,18 @@ by hand.
   `agentcut packs search [text]`.
 - **Install** — the preview's Install button, `packs.import` with the `source`, or
   `agentcut packs install <name>[@version]`.
-- **Publish** — `agentcut login` (a code you confirm in the browser), then
-  `agentcut packs publish <folder>`: usually the folder Export wrote. The folder is checked
-  first — the manifest parses, every file it names is there, at most 2000 files and 50 MB —
-  and the marketplace checks it again with the same schema. The first person to publish a
-  name owns it; a version, once published, never changes.
+- **Submit** — push the folder Export wrote to a public GitHub repository, then give the
+  marketplace its address at `<market>/submit` (`agentcut packs submit` opens that page).
+  Submitting is the one thing that needs an account, and the account has to be the GitHub
+  one that owns the repository. The marketplace reads `pack.json` at the head of the
+  branch, checks it against the same schema the app imports with and that every file it
+  names is in the repository, and pins the commit. The first person to submit a name owns
+  it; a version, once registered, keeps its commit — a new version is a bumped `version`
+  in pack.json and *Check for updates* on the pack's page.
 
-`AGENTCUT_MARKET` points a machine at another marketplace (a local `wrangler dev`, a
-staging deploy). Sign-ins are kept per marketplace in `~/.agentcut/credentials.json`,
-readable by you alone, never in a workspace.
+Nothing on your machine holds a marketplace credential: installing is anonymous, and
+submitting happens in a browser. `AGENTCUT_MARKET` points a machine at another marketplace
+(a local `wrangler dev`, a staging deploy).
 
 ## Tools
 

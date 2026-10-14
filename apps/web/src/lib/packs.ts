@@ -1,13 +1,18 @@
-import type { D1Database, D1PreparedStatement, R2Bucket } from "../cf";
+/**
+ * The registry. A pack is a public GitHub repository, or a folder in one, pinned to a
+ * commit: the rows here are metadata and the manifest as it read at that commit, never
+ * the pack's bytes. `source` is a raw.githubusercontent URL, which is what `packs.import`
+ * installs from.
+ */
+import type { D1Database, D1PreparedStatement } from "../cf";
 import { PackManifest } from "@agentcut/core/modules/packs/types";
 import type { User } from "../env";
-import { decodeBase64 } from "./crypto";
+import { GitHub, GitHubError, parseRepoInput } from "./github";
 import { VERSION_RE, compareVersions, highest } from "./semver";
 
-export const MAX_TOTAL_BYTES = 50 * 1024 * 1024;
-export const MAX_FILES = 2000;
-
 export type PackCounts = { templates: number; rules: number; assets: number; recipes: number };
+
+export type PackRepo = { owner: string; name: string; folder: string; branch: string; url: string };
 
 export type PackListing = {
   name: string;
@@ -16,13 +21,14 @@ export type PackListing = {
   latest: string;
   author: string;
   owner: { login: string; avatarUrl: string | null };
-  downloads: number;
+  stars: number;
   updatedAt: number;
   source: string;
+  repo: PackRepo;
   counts: PackCounts;
 };
 
-export type PackVersion = { version: string; publishedAt: number; size: number };
+export type PackVersion = { version: string; publishedAt: number; size: number; sha: string; source: string };
 
 export type PackDetail = PackListing & { versions: PackVersion[]; manifest: PackManifest };
 
@@ -32,7 +38,12 @@ type PackRow = {
   description: string;
   author: string;
   latest: string;
-  downloads: number;
+  latest_sha: string;
+  repo_owner: string;
+  repo_name: string;
+  folder: string;
+  branch: string;
+  stars: number;
   updated_at: number;
   templates: number;
   rules: number;
@@ -42,13 +53,28 @@ type PackRow = {
   owner_avatar: string | null;
 };
 
-const PACK_SELECT = `SELECT p.name, p.title, p.description, p.author, p.latest, p.downloads, p.updated_at,
-  p.templates, p.rules, p.assets, p.recipes, u.login AS owner_login, u.avatar_url AS owner_avatar
+const PACK_SELECT = `SELECT p.name, p.title, p.description, p.author, p.latest, p.latest_sha, p.repo_owner, p.repo_name,
+  p.folder, p.branch, p.stars, p.updated_at, p.templates, p.rules, p.assets, p.recipes,
+  u.login AS owner_login, u.avatar_url AS owner_avatar
   FROM packs p JOIN users u ON u.id = p.owner_id`;
 
-export const sourceUrl = (origin: string, name: string, version: string) => `${origin}/r/${name}/${version}`;
+/** Where a version's files are read from: the repository at that commit, in its folder. */
+export function sourceUrl(gh: GitHub, repo: { owner: string; name: string; folder: string }, sha: string): string {
+  return gh.rawUrl(repo.owner, repo.name, sha, repo.folder);
+}
 
-function toListing(row: PackRow, origin: string): PackListing {
+export const repoUrl = (repo: PackRepo) =>
+  `https://github.com/${repo.owner}/${repo.name}${repo.folder ? `/tree/${repo.branch}/${repo.folder}` : ""}`;
+
+function toListing(row: PackRow, gh: GitHub): PackListing {
+  const repo: PackRepo = {
+    owner: row.repo_owner,
+    name: row.repo_name,
+    folder: row.folder,
+    branch: row.branch,
+    url: "",
+  };
+  repo.url = repoUrl(repo);
   return {
     name: row.name,
     title: row.title,
@@ -56,9 +82,10 @@ function toListing(row: PackRow, origin: string): PackListing {
     latest: row.latest,
     author: row.author,
     owner: { login: row.owner_login, avatarUrl: row.owner_avatar },
-    downloads: row.downloads,
+    stars: row.stars,
     updatedAt: row.updated_at,
-    source: sourceUrl(origin, row.name, row.latest),
+    source: sourceUrl(gh, repo, row.latest_sha),
+    repo,
     counts: { templates: row.templates, rules: row.rules, assets: row.assets, recipes: row.recipes },
   };
 }
@@ -68,7 +95,7 @@ const likePattern = (q: string) => `%${q.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%
 
 export async function listPacks(
   db: D1Database,
-  origin: string,
+  gh: GitHub,
   opts: { q?: string; limit?: number; ownerId?: number } = {},
 ): Promise<PackListing[]> {
   const where: string[] = [];
@@ -84,36 +111,33 @@ export async function listPacks(
   }
   const limit = Math.min(Math.max(Math.trunc(opts.limit ?? 50) || 50, 1), 100);
   const sql = `${PACK_SELECT} ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
-    ORDER BY p.downloads DESC, p.updated_at DESC LIMIT ${limit}`;
+    ORDER BY p.stars DESC, p.updated_at DESC LIMIT ${limit}`;
   const { results } = await db.prepare(sql).bind(...binds).all<PackRow>();
-  return results.map((row) => toListing(row, origin));
+  return results.map((row) => toListing(row, gh));
 }
 
-export async function getPack(db: D1Database, origin: string, name: string): Promise<PackDetail | null> {
+export async function getPack(db: D1Database, gh: GitHub, name: string): Promise<PackDetail | null> {
   const row = await db.prepare(`${PACK_SELECT} WHERE p.name = ?`).bind(name).first<PackRow>();
   if (!row) return null;
   const { results } = await db
-    .prepare("SELECT version, published_at, size, manifest FROM pack_versions WHERE name = ?")
+    .prepare("SELECT version, published_at, size, sha, manifest FROM pack_versions WHERE name = ?")
     .bind(name)
-    .all<{ version: string; published_at: number; size: number; manifest: string }>();
-  const versions = results.sort((a, b) => compareVersions(b.version, a.version));
-  const latest = versions.find((v) => v.version === row.latest) ?? versions[0];
-  const manifest = PackManifest.parse(JSON.parse(latest.manifest));
+    .all<{ version: string; published_at: number; size: number; sha: string; manifest: string }>();
+  const sorted = results.sort((a, b) => compareVersions(b.version, a.version));
+  const latest = sorted.find((v) => v.version === row.latest) ?? sorted[0];
+  const listing = toListing(row, gh);
   return {
-    ...toListing(row, origin),
-    versions: versions.map((v) => ({ version: v.version, publishedAt: v.published_at, size: v.size })),
-    manifest,
+    ...listing,
+    versions: sorted.map((v) => ({
+      version: v.version,
+      publishedAt: v.published_at,
+      size: v.size,
+      sha: v.sha,
+      source: sourceUrl(gh, listing.repo, v.sha),
+    })),
+    manifest: PackManifest.parse(JSON.parse(latest.manifest)),
   };
 }
-
-/** `latest` resolves to the pack's latest version; anything else is taken as given. */
-export async function resolveVersion(db: D1Database, name: string, version: string): Promise<string | null> {
-  if (version !== "latest") return version;
-  const row = await db.prepare("SELECT latest FROM packs WHERE name = ?").bind(name).first<{ latest: string }>();
-  return row?.latest ?? null;
-}
-
-export const objectKey = (name: string, version: string, path: string) => `packs/${name}/${version}/${path}`;
 
 /** Relative, forward slashes, no `.` or `..` segments, nothing hidden in control characters. */
 export function pathProblem(path: string): string | null {
@@ -128,69 +152,23 @@ export function pathProblem(path: string): string | null {
   return null;
 }
 
-export type PublishFile = { path: string; bytes: Uint8Array };
-
-export type PublishError = { status: 400 | 401 | 403 | 409 | 413; body: { error: string; issues?: unknown } };
-
-export type ParsedUpload = { manifest: PackManifest; manifestText: string; files: PublishFile[]; size: number };
-
-/** Everything the upload must hold that does not need the database. */
-export function parseUpload(body: unknown): ParsedUpload | PublishError {
-  const bad = (error: string, issues?: unknown): PublishError => ({ status: 400, body: issues ? { error, issues } : { error } });
-  if (!body || typeof body !== "object" || !Array.isArray((body as { files?: unknown }).files)) {
-    return bad("body must be { files: Array<{ path, base64 }> }");
-  }
-  const raw = (body as { files: unknown[] }).files;
-  if (raw.length === 0) return bad("no files");
-  if (raw.length > MAX_FILES) return { status: 413, body: { error: `too many files: ${raw.length} (at most ${MAX_FILES})` } };
-
-  const files: PublishFile[] = [];
-  const seen = new Set<string>();
-  let size = 0;
-  for (const entry of raw) {
-    const { path, base64 } = (entry ?? {}) as { path?: unknown; base64?: unknown };
-    if (typeof path !== "string" || typeof base64 !== "string") return bad("each file needs a string path and base64");
-    const problem = pathProblem(path);
-    if (problem) return bad(problem);
-    if (seen.has(path)) return bad(`duplicate file: ${path}`);
-    seen.add(path);
-    const bytes = decodeBase64(base64);
-    if (!bytes) return bad(`not valid base64: ${path}`);
-    size += bytes.byteLength;
-    if (size > MAX_TOTAL_BYTES) return { status: 413, body: { error: "pack is larger than 50 MB" } };
-    files.push({ path, bytes });
-  }
-
-  const manifestFile = files.find((f) => f.path === "pack.json");
-  if (!manifestFile) return bad("pack.json is missing");
-  const manifestText = new TextDecoder().decode(manifestFile.bytes);
-  let json: unknown;
-  try {
-    json = JSON.parse(manifestText);
-  } catch {
-    return bad("pack.json is not valid JSON");
-  }
-  const parsed = PackManifest.safeParse(json);
-  if (!parsed.success) return bad("pack.json does not match the pack schema", parsed.error.issues);
-  const manifest = parsed.data;
-  if (!VERSION_RE.test(manifest.version)) return bad(`version must look like 1.2.3: ${manifest.version}`);
-
-  const missing = referencedFiles(manifest, files).filter((p) => !seen.has(p));
-  if (missing.length) return bad(`files named in pack.json are missing: ${missing.join(", ")}`, { missing });
-  return { manifest, manifestText, files, size };
-}
-
-/** Every path the manifest (and its rules' prompt files) points at. */
-export function referencedFiles(manifest: PackManifest, files: PublishFile[]): string[] {
+/**
+ * Every path the manifest points at, including a rule's prompt file, which is named
+ * inside the rule rather than in the manifest, so the rules are read to find it.
+ */
+export async function referencedFiles(
+  manifest: PackManifest,
+  read: (path: string) => Promise<string | null>,
+): Promise<string[]> {
   const refs = new Set<string>();
   for (const id of manifest.templates) refs.add(`templates/${id}.json`);
   for (const id of manifest.rules) {
     const path = `rules/${id}.json`;
     refs.add(path);
-    const file = files.find((f) => f.path === path);
-    if (!file) continue;
+    const text = await read(path);
+    if (!text) continue;
     try {
-      const rule = JSON.parse(new TextDecoder().decode(file.bytes)) as { then?: { promptFile?: unknown } };
+      const rule = JSON.parse(text) as { then?: { promptFile?: unknown } };
       if (typeof rule.then?.promptFile === "string" && rule.then.promptFile) refs.add(`rules/${rule.then.promptFile}`);
     } catch {
       // An unreadable rule is the app's to refuse at import; it is present, which is what this checks.
@@ -214,42 +192,188 @@ export function countsOf(manifest: PackManifest): PackCounts {
   };
 }
 
-export async function publish(
-  env: { DB: D1Database; PACKS: R2Bucket },
+export type PackError = { status: 400 | 403 | 404 | 409 | 429 | 502; body: { error: string; issues?: unknown } };
+
+export type RegisterInput = { repo: string; folder?: string };
+
+export type Registered = { name: string; version: string; sha: string; updated: boolean };
+
+/** What a commit holds, once we have agreed it is a pack. */
+type ReadPack = { manifest: PackManifest; manifestText: string; size: number; sha: string };
+
+const bad = (error: string, issues?: unknown): PackError => ({ status: 400, body: issues ? { error, issues } : { error } });
+
+/**
+ * Register a repository as a pack, or add the version it is on now. The person must own
+ * the repository on GitHub: a pack is theirs to update, and the owner is who we ask.
+ */
+export async function registerPack(
+  db: D1Database,
+  gh: GitHub,
   user: User,
-  upload: ParsedUpload,
-): Promise<{ name: string; version: string } | PublishError> {
-  const { manifest } = upload;
+  input: RegisterInput,
+): Promise<Registered | PackError> {
+  if (!user.login) return { status: 403, body: { error: "Connect your GitHub account before submitting a pack." } };
+  const ref = parseRepoInput(input.repo, input.folder ?? "");
+  if ("error" in ref) return bad(ref.error);
+
+  try {
+    const repo = await gh.repo(ref.owner, ref.repo);
+    if (repo.private) return bad("That repository is private. A pack has to be public for anybody to install it.");
+    if (repo.owner.toLowerCase() !== user.login.toLowerCase()) {
+      return { status: 403, body: { error: `${repo.owner}/${repo.repo} is not yours. You can only submit repositories your GitHub account owns.` } };
+    }
+    const branch = ref.ref ?? repo.defaultBranch;
+    const read = await readPack(gh, repo.owner, repo.repo, branch, ref.folder);
+    if ("status" in read) return read;
+    return await save(db, gh, user, { owner: repo.owner, name: repo.repo, folder: ref.folder, branch, url: "" }, repo.stars, read);
+  } catch (error) {
+    if (error instanceof GitHubError) return { status: error.status === 404 ? 404 : error.status === 429 ? 429 : 502, body: { error: error.message } };
+    throw error;
+  }
+}
+
+/**
+ * Read the repository again and register whatever version it is on now. This is the
+ * Check for updates button: a pack follows its branch, and a bumped `version` in
+ * pack.json becomes a new version here.
+ */
+export async function refreshPack(
+  db: D1Database,
+  gh: GitHub,
+  user: User,
+  name: string,
+): Promise<Registered | PackError> {
+  const row = await db
+    .prepare("SELECT repo_owner, repo_name, folder, branch, owner_id FROM packs WHERE name = ?")
+    .bind(name)
+    .first<{ repo_owner: string; repo_name: string; folder: string; branch: string; owner_id: number }>();
+  if (!row) return { status: 404, body: { error: "pack not found" } };
+  if (row.owner_id !== user.id) return { status: 403, body: { error: `${name} belongs to somebody else.` } };
+  try {
+    const repo = await gh.repo(row.repo_owner, row.repo_name);
+    const read = await readPack(gh, row.repo_owner, row.repo_name, row.branch, row.folder);
+    if ("status" in read) return read;
+    return await save(db, gh, user, { owner: row.repo_owner, name: row.repo_name, folder: row.folder, branch: row.branch, url: "" }, repo.stars, read);
+  } catch (error) {
+    if (error instanceof GitHubError) return { status: error.status === 404 ? 404 : error.status === 429 ? 429 : 502, body: { error: error.message } };
+    throw error;
+  }
+}
+
+/** A pack its owner takes down. The versions go with it; the name stays theirs to reuse. */
+export async function removePack(db: D1Database, user: User, name: string): Promise<true | PackError> {
+  const row = await db.prepare("SELECT owner_id FROM packs WHERE name = ?").bind(name).first<{ owner_id: number }>();
+  if (!row) return { status: 404, body: { error: "pack not found" } };
+  if (row.owner_id !== user.id) return { status: 403, body: { error: `${name} belongs to somebody else.` } };
+  await db.batch([
+    db.prepare("DELETE FROM pack_versions WHERE name = ?").bind(name),
+    db.prepare("DELETE FROM packs WHERE name = ?").bind(name),
+  ]);
+  return true;
+}
+
+/** pack.json at the head of a branch, with every file it names checked to be there. */
+async function readPack(
+  gh: GitHub,
+  owner: string,
+  repo: string,
+  branch: string,
+  folder: string,
+): Promise<ReadPack | PackError> {
+  const sha = await gh.commit(owner, repo, branch);
+  const at = (path: string) => (folder ? `${folder}/${path}` : path);
+  const manifestText = await gh.file(owner, repo, sha, at("pack.json"));
+  if (manifestText === null) {
+    return bad(`No pack.json in ${owner}/${repo}${folder ? `/${folder}` : ""} at ${branch}. Point at the folder that holds it.`);
+  }
+  let json: unknown;
+  try {
+    json = JSON.parse(manifestText);
+  } catch {
+    return bad("pack.json is not valid JSON.");
+  }
+  const parsed = PackManifest.safeParse(json);
+  if (!parsed.success) return bad("pack.json does not match the pack schema.", parsed.error.issues);
+  const manifest = parsed.data;
+  if (!VERSION_RE.test(manifest.version)) return bad(`version must look like 1.2.3: ${manifest.version}`);
+
+  const read = (path: string) => gh.file(owner, repo, sha, at(path));
+  const refs = await referencedFiles(manifest, read);
+  const problem = refs.map((path) => pathProblem(path)).find(Boolean);
+  if (problem) return bad(problem);
+
+  const tree = await gh.tree(owner, repo, sha);
+  let size = tree.files.get(at("pack.json")) ?? 0;
+  const missing: string[] = [];
+  for (const path of refs) {
+    const full = at(path);
+    if (tree.truncated) {
+      if (!(await gh.exists(owner, repo, sha, full))) missing.push(path);
+      continue;
+    }
+    const bytes = tree.files.get(full);
+    if (bytes === undefined) missing.push(path);
+    else size += bytes;
+  }
+  if (missing.length) return bad(`files named in pack.json are not in the repository: ${missing.join(", ")}`, { missing });
+  return { manifest, manifestText, size, sha };
+}
+
+async function save(
+  db: D1Database,
+  gh: GitHub,
+  user: User,
+  repo: PackRepo,
+  stars: number,
+  read: ReadPack,
+): Promise<Registered | PackError> {
+  const { manifest, sha } = read;
   const name = manifest.id;
   const version = manifest.version;
-  const db = env.DB;
 
-  const pack = await db.prepare("SELECT owner_id FROM packs WHERE name = ?").bind(name).first<{ owner_id: number }>();
-  if (pack && pack.owner_id !== user.id) return { status: 403, body: { error: `${name} belongs to another publisher` } };
-  const exists = await db.prepare("SELECT 1 FROM pack_versions WHERE name = ? AND version = ?").bind(name, version).first();
-  if (exists) return { status: 409, body: { error: "version exists" } };
+  const existing = await db
+    .prepare("SELECT owner_id, repo_owner, repo_name, folder FROM packs WHERE name = ?")
+    .bind(name)
+    .first<{ owner_id: number; repo_owner: string; repo_name: string; folder: string }>();
+  if (existing && existing.owner_id !== user.id) return { status: 403, body: { error: `${name} belongs to another publisher` } };
+  const claimed = await db
+    .prepare("SELECT name FROM packs WHERE repo_owner = ? AND repo_name = ? AND folder = ? AND name <> ?")
+    .bind(repo.owner, repo.name, repo.folder, name)
+    .first<{ name: string }>();
+  if (claimed) return { status: 409, body: { error: `That folder is already registered as ${claimed.name}.` } };
 
-  for (const file of upload.files) {
-    await env.PACKS.put(objectKey(name, version, file.path), file.bytes);
+  const pinned = await db.prepare("SELECT sha FROM pack_versions WHERE name = ? AND version = ?").bind(name, version).first<{ sha: string }>();
+  if (pinned) {
+    if (pinned.sha === sha) return { name, version, sha, updated: false };
+    return {
+      status: 409,
+      body: { error: `${name} ${version} is already registered at another commit. Bump version in pack.json and try again.` },
+    };
   }
 
   const now = Date.now();
   const counts = countsOf(manifest);
   const stmts: D1PreparedStatement[] = [];
-  if (!pack) {
+  if (!existing) {
     stmts.push(
-      db.prepare(
-        `INSERT INTO packs (name, owner_id, title, description, author, latest, templates, rules, assets, recipes, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO NOTHING`,
-      ).bind(name, user.id, manifest.name, manifest.description, manifest.author, version,
-        counts.templates, counts.rules, counts.assets, counts.recipes, now, now),
+      db
+        .prepare(
+          `INSERT INTO packs (name, owner_id, repo_owner, repo_name, folder, branch, title, description, author,
+             latest, latest_sha, stars, templates, rules, assets, recipes, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO NOTHING`,
+        )
+        .bind(name, user.id, repo.owner, repo.name, repo.folder, repo.branch, manifest.name, manifest.description,
+          manifest.author, version, sha, stars, counts.templates, counts.rules, counts.assets, counts.recipes, now, now),
     );
   }
   stmts.push(
-    db.prepare(
-      `INSERT INTO pack_versions (name, version, manifest, size, file_count, published_by, published_at)
-       SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM packs WHERE name = ? AND owner_id = ?)`,
-    ).bind(name, version, JSON.stringify(manifest), upload.size, upload.files.length, user.id, now, name, user.id),
+    db
+      .prepare(
+        `INSERT INTO pack_versions (name, version, sha, manifest, size, published_at)
+         SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM packs WHERE name = ? AND owner_id = ?)`,
+      )
+      .bind(name, version, sha, JSON.stringify(manifest), read.size, now, name, user.id),
   );
   try {
     const results = await db.batch(stmts);
@@ -259,17 +383,23 @@ export async function publish(
     throw err;
   }
 
-  // The latest is the highest version, not the newest upload: a 1.0.1 patch after 2.0.0 stays behind it.
-  const { results } = await db.prepare("SELECT version, manifest FROM pack_versions WHERE name = ?").bind(name).all<{ version: string; manifest: string }>();
+  // The latest is the highest version, not the newest submission: a 1.0.1 after 2.0.0 stays behind it.
+  const { results } = await db
+    .prepare("SELECT version, sha, manifest FROM pack_versions WHERE name = ?")
+    .bind(name)
+    .all<{ version: string; sha: string; manifest: string }>();
   const latest = highest(results.map((r) => r.version));
-  const latestManifest = PackManifest.parse(JSON.parse(results.find((r) => r.version === latest)!.manifest));
+  const row = results.find((r) => r.version === latest)!;
+  const latestManifest = PackManifest.parse(JSON.parse(row.manifest));
   const lc = countsOf(latestManifest);
   await db
     .prepare(
-      `UPDATE packs SET latest = ?, title = ?, description = ?, author = ?, templates = ?, rules = ?, assets = ?, recipes = ?, updated_at = ?
+      `UPDATE packs SET latest = ?, latest_sha = ?, title = ?, description = ?, author = ?, repo_owner = ?, repo_name = ?,
+         folder = ?, branch = ?, stars = ?, templates = ?, rules = ?, assets = ?, recipes = ?, updated_at = ?
        WHERE name = ?`,
     )
-    .bind(latest, latestManifest.name, latestManifest.description, latestManifest.author, lc.templates, lc.rules, lc.assets, lc.recipes, now, name)
+    .bind(latest, row.sha, latestManifest.name, latestManifest.description, latestManifest.author, repo.owner, repo.name,
+      repo.folder, repo.branch, stars, lc.templates, lc.rules, lc.assets, lc.recipes, now, name)
     .run();
-  return { name, version };
+  return { name, version, sha, updated: Boolean(existing) };
 }

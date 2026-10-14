@@ -1,16 +1,23 @@
-import type { D1Database, Fetcher, R2Bucket } from "./cf";
+import type { D1Database, Fetcher } from "./cf";
 
 export type Bindings = {
   DB: D1Database;
-  PACKS: R2Bucket;
   ASSETS: Fetcher;
-  /** "1" enables the username-only login and POST /api/dev/token. Local only. */
+  /** "1" signs every visitor in as a local identity, for `pnpm dev` and the tests. Never "1" in production. */
   DEV_LOGIN?: string;
-  GITHUB_CLIENT_ID?: string;
-  GITHUB_CLIENT_SECRET?: string;
-  SESSION_SECRET?: string;
+  /** The GitHub login the local identity owns repos as. Only read when DEV_LOGIN is "1". */
+  DEV_GITHUB_LOGIN?: string;
+  CLERK_SECRET_KEY?: string;
+  CLERK_PUBLISHABLE_KEY?: string;
+  /** Where GitHub lives. Overridden in tests; nothing else should change them. */
+  GITHUB_API_BASE?: string;
+  GITHUB_RAW_BASE?: string;
 };
 
-export type User = { id: number; login: string; name: string | null; avatarUrl: string | null };
+/**
+ * Somebody who can submit a pack. `login` is their GitHub login, because a pack is a
+ * GitHub repository and only its owner may register it.
+ */
+export type User = { id: number; clerkId: string | null; login: string; name: string | null; avatarUrl: string | null };
 
 export type AppEnv = { Bindings: Bindings; Variables: { user: User | null } };

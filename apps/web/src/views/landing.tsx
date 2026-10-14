@@ -227,7 +227,7 @@ function PacksTeaser({ packs }: { packs: PackListing[] }) {
         </div>
       ) : (
         <div class={`${card} mt-12 p-8 text-sm text-muted-foreground`}>
-          No packs have been published yet. <a href="/packs" class="font-medium text-foreground underline decoration-white/30 underline-offset-4 hover:decoration-foreground">Learn how to publish one</a>.
+          No packs are listed yet. <a href="/submit" class="font-medium text-foreground underline decoration-white/30 underline-offset-4 hover:decoration-foreground">Submit the first one</a>.
         </div>
       )}
     </section>

@@ -3,12 +3,13 @@ import type { Child } from "hono/jsx";
 import type { PackDetail } from "../lib/packs";
 import { bytes, count, isoDate, longDate, timeAgo } from "../lib/format";
 import {
-  BookIcon, CodeIcon, DownloadIcon, FileTextIcon, FilmIcon, ImageIcon, LayoutIcon, LinkIcon, MessageIcon, MusicIcon,
-  RuleIcon, ShieldAlertIcon, TagIcon, ZapIcon,
+  BookIcon, CodeIcon, CommitIcon, FileTextIcon, FilmIcon, FolderIcon, ImageIcon, LayoutIcon, LinkIcon, MessageIcon,
+  MusicIcon, RefreshIcon, RuleIcon, ShieldAlertIcon, StarIcon, TagIcon, TrashIcon, ZapIcon,
 } from "./icons";
 import { CountsRow } from "./pack-card";
 import { Markdown } from "./markdown";
-import { Avatar, Command, CopyButton, card } from "./ui";
+import { GitHubMark } from "./marks";
+import { Alert, Avatar, Command, CopyButton, btn, card } from "./ui";
 
 const ASSET_ICONS = { audio: MusicIcon, video: FilmIcon, image: ImageIcon };
 
@@ -21,10 +22,14 @@ type Props = {
   templates: NamedDoc[];
   rules: NamedDoc[];
   review: ReviewSummary | null;
+  /** Whether the person reading this is the GitHub owner, who may update or remove it. */
+  owned: boolean;
+  notice?: { kind: "ok" | "error"; text: string };
 };
 
-export function PackDetailPage({ pack, style, templates, rules, review }: Props) {
+export function PackDetailPage({ pack, style, templates, rules, review, owned, notice }: Props) {
   const m = pack.manifest;
+  const latest = pack.versions.find((v) => v.version === pack.latest) ?? pack.versions[0];
   return (
     <div class="mx-auto max-w-6xl px-6 pt-10 sm:pt-14">
       <nav aria-label="Breadcrumb" class="text-sm text-muted-foreground">
@@ -33,16 +38,22 @@ export function PackDetailPage({ pack, style, templates, rules, review }: Props)
         <span class="font-mono text-foreground/80">{pack.name}</span>
       </nav>
 
+      {notice ? <div class="mt-5 max-w-3xl"><Alert kind={notice.kind}>{notice.text}</Alert></div> : null}
+
       <header class="mt-6 max-w-3xl">
         <h1 class="text-4xl font-semibold tracking-[-0.03em] text-balance sm:text-5xl">{pack.title}</h1>
         <div class="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
           <span class="flex items-center gap-2">
             <Avatar login={pack.owner.login} url={pack.owner.avatarUrl} size="size-6" />
-            <span>Published by <span class="font-medium text-foreground">{pack.owner.login}</span></span>
+            <span>Submitted by <span class="font-medium text-foreground">{pack.owner.login}</span></span>
           </span>
           {pack.author && pack.author !== pack.owner.login ? <span>Author: {pack.author}</span> : null}
           <span class="font-mono text-xs">v{pack.latest}</span>
           <span>Updated <time datetime={isoDate(pack.updatedAt)}>{timeAgo(pack.updatedAt)}</time></span>
+          <a href={pack.repo.url} rel="noopener noreferrer" class="inline-flex items-center gap-1.5 hover:text-foreground">
+            <GitHubMark class="size-3.5" />
+            {pack.repo.owner}/{pack.repo.name}
+          </a>
         </div>
         {pack.description ? <p class="mt-6 text-lg leading-relaxed text-muted-foreground text-pretty">{pack.description}</p> : null}
         <CountsRow counts={pack.counts} class="mt-6" />
@@ -177,31 +188,83 @@ export function PackDetailPage({ pack, style, templates, rules, review }: Props)
               <CopyButton text={pack.source} label="Copy pack URL" />
             </div>
             <dl class="mt-5 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-white/8 pt-5 text-sm">
-              <dt class="text-muted-foreground">Installs</dt>
-              <dd class="flex items-center justify-end gap-1.5 tabular-nums"><DownloadIcon class="size-3.5 text-muted-foreground" />{count(pack.downloads)}</dd>
+              <dt class="text-muted-foreground">Stars</dt>
+              <dd class="flex items-center justify-end gap-1.5 tabular-nums"><StarIcon class="size-3.5 text-muted-foreground" />{count(pack.stars)}</dd>
               <dt class="text-muted-foreground">Latest</dt>
               <dd class="text-right font-mono text-xs leading-5">{pack.latest}</dd>
               <dt class="text-muted-foreground">Size</dt>
-              <dd class="text-right tabular-nums">{bytes(pack.versions.find((v) => v.version === pack.latest)?.size ?? 0)}</dd>
+              <dd class="text-right tabular-nums">{bytes(latest.size)}</dd>
               <dt class="text-muted-foreground">Id</dt>
               <dd class="truncate text-right font-mono text-xs leading-5">{pack.name}</dd>
             </dl>
           </div>
 
+          <RepositoryCard pack={pack} owned={owned} />
+
           <div class={`${card} p-5`}>
             <h2 class="text-sm font-semibold">Versions</h2>
             <ol class="mt-3 space-y-1">
               {pack.versions.map((v) => (
-                <li class="flex items-center gap-3 rounded-xl px-2 py-1.5 text-sm odd:bg-white/[0.02]">
+                <li class="flex items-center gap-2.5 rounded-xl px-2 py-1.5 text-sm odd:bg-white/[0.02]">
                   <span class="font-mono text-xs">{v.version}</span>
                   {v.version === pack.latest ? <span class="rounded-full bg-primary/15 px-2 py-0.5 text-[0.7rem] font-medium text-primary">latest</span> : null}
-                  <time datetime={isoDate(v.publishedAt)} class="ml-auto text-xs text-muted-foreground">{longDate(v.publishedAt)}</time>
+                  <a href={`${pack.repo.url.replace(/\/tree\/.*$/, "")}/commit/${v.sha}`} rel="noopener noreferrer"
+                    class="ml-auto font-mono text-[0.7rem] text-muted-foreground hover:text-foreground" title={`Pinned to commit ${v.sha}`}>
+                    {v.sha.slice(0, 7)}
+                  </a>
+                  <time datetime={isoDate(v.publishedAt)} class="text-xs text-muted-foreground">{longDate(v.publishedAt)}</time>
                 </li>
               ))}
             </ol>
           </div>
         </aside>
       </div>
+    </div>
+  );
+}
+
+function RepositoryCard({ pack, owned }: { pack: PackDetail; owned: boolean }) {
+  return (
+    <div class={`${card} p-5`}>
+      <h2 class="text-sm font-semibold">Repository</h2>
+      <a href={pack.repo.url} rel="noopener noreferrer"
+        class="mt-3 flex items-center gap-2.5 rounded-2xl bg-white/[0.04] px-3 py-2.5 text-sm transition-[background-color] duration-150 hover:bg-white/[0.08]">
+        <GitHubMark class="size-4 shrink-0 text-muted-foreground" />
+        <span class="min-w-0 flex-1 truncate font-medium">{pack.repo.owner}/{pack.repo.name}</span>
+      </a>
+      <dl class="mt-4 space-y-2.5 text-sm">
+        {pack.repo.folder ? (
+          <div class="flex items-center gap-2">
+            <dt class="flex items-center gap-1.5 text-muted-foreground"><FolderIcon class="size-3.5" />Folder</dt>
+            <dd class="ml-auto min-w-0 truncate font-mono text-xs" title={pack.repo.folder}>{pack.repo.folder}</dd>
+          </div>
+        ) : null}
+        <div class="flex items-center gap-2">
+          <dt class="flex items-center gap-1.5 text-muted-foreground"><CommitIcon class="size-3.5" />Branch</dt>
+          <dd class="ml-auto font-mono text-xs">{pack.repo.branch}</dd>
+        </div>
+      </dl>
+      <p class="mt-4 text-xs leading-relaxed text-muted-foreground text-pretty">
+        New versions are looked for on this branch. Installing reads the files from the repository at the commit the
+        version is pinned to, never from here.
+      </p>
+      {owned ? (
+        <div class="mt-5 space-y-2 border-t border-white/8 pt-5">
+          <form method="post" action={`/packs/${pack.name}/refresh`}>
+            <button type="submit" class={`${btn.smallOutline} w-full`}>
+              <RefreshIcon class="size-3.5" />
+              Check for updates
+            </button>
+          </form>
+          <form method="post" action={`/packs/${pack.name}/remove`}
+            data-confirm="Remove this pack from the marketplace? Your repository is not touched.">
+            <button type="submit" class={`${btn.ghost} h-8 w-full px-3 text-[0.8rem] text-muted-foreground hover:text-destructive`}>
+              <TrashIcon class="size-3.5" />
+              Remove from the marketplace
+            </button>
+          </form>
+        </div>
+      ) : null}
     </div>
   );
 }

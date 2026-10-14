@@ -1,5 +1,5 @@
 import type { Child } from "hono/jsx";
-import { CheckIcon, CopyIcon } from "./icons";
+import { CheckIcon, CopyIcon, ShieldAlertIcon } from "./icons";
 
 /** Class recipes from the studio's shadcn primitives (button.tsx, card.tsx), as plain strings. */
 const buttonBase =
@@ -61,4 +61,17 @@ export function SectionHeading({ eyebrow, title, children }: { eyebrow?: string;
       {children ? <p class="mt-4 text-base leading-relaxed text-muted-foreground text-pretty sm:text-lg">{children}</p> : null}
     </div>
   );
+}
+
+/** What just happened, above the thing it happened to. */
+export function Alert({ kind, children }: { kind: "ok" | "error"; children: Child }) {
+  if (kind === "error") {
+    return (
+      <p role="alert" class="flex gap-2.5 rounded-2xl bg-destructive/12 px-4 py-3 text-sm text-destructive text-pretty">
+        <ShieldAlertIcon class="mt-0.5 size-4 shrink-0" />
+        <span class="min-w-0">{children}</span>
+      </p>
+    );
+  }
+  return <p role="status" class="rounded-2xl bg-success/10 px-4 py-3 text-sm text-success text-pretty">{children}</p>;
 }

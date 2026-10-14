@@ -21,5 +21,3 @@ export const RECIPE_SCRATCH = "scratch";
  */
 export const MARKET_URL = "https://agentcut.dev";
 
-/** What `agentcut packs publish` refuses before uploading, matching the marketplace's own limits. */
-export const PUBLISH_LIMITS = { bytes: 50 * 1024 * 1024, files: 2000 } as const;

@@ -187,31 +187,21 @@ export const MarketPack = z.object({
   latest: z.string(),
   author: z.string(),
   owner: z.object({ login: z.string(), avatarUrl: z.string().nullable() }),
-  downloads: z.number(),
+  /** Stars on the pack's GitHub repository. GitHub serves its files, so there is no download to count. */
+  stars: z.number(),
   updatedAt: z.number(),
+  /** The raw.githubusercontent URL of the latest version, at the commit it is pinned to. */
   source: z.string(),
+  repo: z.object({ owner: z.string(), name: z.string(), folder: z.string(), branch: z.string(), url: z.string() }),
   counts: z.object({ templates: z.number(), rules: z.number(), assets: z.number(), recipes: z.number() }),
 });
 export type MarketPack = z.infer<typeof MarketPack>;
 
 export const MarketPackDetail = MarketPack.extend({
-  versions: z.array(z.object({ version: z.string(), publishedAt: z.number(), size: z.number() })),
+  versions: z.array(z.object({ version: z.string(), publishedAt: z.number(), size: z.number(), sha: z.string(), source: z.string() })),
   manifest: z.unknown(),
 });
 export type MarketPackDetail = z.infer<typeof MarketPackDetail>;
-
-export const MarketUser = z.object({ login: z.string(), name: z.string().nullable().optional(), avatarUrl: z.string().nullable().optional() });
-export type MarketUser = z.infer<typeof MarketUser>;
-
-/** The browser half of `agentcut login`: open `verificationUrl`, confirm `userCode`. */
-export const DeviceLogin = z.object({ deviceCode: z.string(), userCode: z.string(), verificationUrl: z.string(), interval: z.number(), expiresIn: z.number() });
-export type DeviceLogin = z.infer<typeof DeviceLogin>;
-
-/** What this machine remembers per marketplace after a login. Kept in ~/.agentcut, never in a workspace. */
-export const MarketCredentials = z.record(z.string(), z.object({ token: z.string(), user: MarketUser, at: z.number() }));
-export type MarketCredentials = z.infer<typeof MarketCredentials>;
-
-export type PublishedPack = { name: string; version: string; url: string; source: string };
 
 /** What the studio's marketplace panel is answered with: the results and where they came from. */
 export type MarketSearchResult = { market: string; packs: MarketPack[] };

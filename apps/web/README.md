@@ -1,47 +1,55 @@
 # @agentcut/web
 
 The hosted half of agentcut: the landing page and the packs marketplace. One Cloudflare
-Worker (Hono, server-rendered `hono/jsx`, no client framework), a D1 database for people,
-sessions, tokens and pack metadata, and an R2 bucket for pack files. The CSS is Tailwind v4,
-compiled at build time into `public/styles.css` and served as a static asset with the fonts,
-the icon and the studio screenshot.
+Worker (Hono, server-rendered `hono/jsx`, no client framework) and a D1 database.
 
-The pack schema is not repeated here: uploads are parsed with `PackManifest` from
-`@agentcut/core/modules/packs/types`, the same zod schema the studio imports packs with.
+**A pack is a GitHub repository.** The marketplace stores no pack files: it keeps the
+repository, the folder, the branch and the commit each version is pinned to, and hands out
+`raw.githubusercontent.com/<owner>/<repo>/<sha>/<folder>` as the pack's `source` — a URL
+the studio and the CLI already install from. So there is no upload, no bucket, and no
+credential on anybody's machine.
+
+**Signing in is for submitting only.** Accounts are [Clerk](https://clerk.com)'s, and
+three writes need one: submit a pack, update it, remove it. Browsing, searching,
+installing and reading a pack's page are anonymous. With no Clerk keys configured, every
+visitor is a local identity instead, so a checkout never asks anybody to sign in.
+
+The pack schema is not repeated here: what a repository holds is parsed with
+`PackManifest` from `@agentcut/core/modules/packs/types`, the same zod schema the studio
+imports packs with.
 
 ```
-src/index.tsx        routes: API, registry files, pages, auth
-src/lib/             packs (validation, publish, queries), auth, crypto, semver, formats
-src/views/           pages and components (layout, landing, packs, pack detail, auth)
+src/index.tsx        routes: API, pages, submitting, auth
+src/lib/             packs (the registry), github (reading repositories), auth (Clerk), semver, formats
+src/views/           pages and components (layout, landing, packs, pack detail, submit, account)
 src/styles.css       Tailwind input: the studio's palette and glass material
 migrations/          D1 schema (wrangler d1 migrations)
-scripts/seed-local.mjs  publishes ../../packs/* into the local server
-test/api.test.mjs    end-to-end tests against the worker in local workerd
+scripts/seed-local.mjs  submits this repository's packs/* to the local server
+test/api.test.mjs    end-to-end tests against the worker in local workerd, with GitHub stubbed
 ```
 
 ## Local development
 
-Everything runs locally in miniflare, D1 and R2 included. Nothing needs a Cloudflare login.
+The worker and its D1 run in miniflare. Nothing needs a Cloudflare login or a Clerk key.
 
 ```sh
 pnpm install                          # from the repo root
 pnpm --filter @agentcut/web dev       # builds CSS, applies migrations locally, serves :8787
-pnpm --filter @agentcut/web seed:local   # in a second terminal: publishes packs/news-desk, showcase, stream-shorts
+pnpm --filter @agentcut/web seed:local   # in a second terminal: submits packs/news-desk, showcase, stream-shorts
 ```
 
-`dev` runs `wrangler dev --var DEV_LOGIN:1`, which turns on two things that never exist in
-production:
+`dev` runs `wrangler dev --var DEV_LOGIN:1`, which never happens in production: every
+visitor is signed in as a local identity, named by `DEV_GITHUB_LOGIN` (default `local`) or
+per request by an `x-dev-login` header. Ownership is still checked, so the identity has to
+match the repository's GitHub owner — which is how `seed:local` submits as `0xPasho`.
 
-- `/login` shows a username form that signs you in as that user, creating it if needed.
-- `POST /api/dev/token { "login": "pasho" }` returns an API token for that user. The seed
-  script uses it to publish through the real `POST /api/packs`.
+Seeding reaches GitHub, because a pack is a repository; everything else is local. Local
+state lives in `apps/web/.wrangler/`; delete it to start empty. After changing classes in
+`src/`, run `pnpm build:css` (the worker reloads on its own; the CSS does not).
 
-Local state lives in `apps/web/.wrangler/`; delete it to start empty. After changing
-classes in `src/`, run `pnpm build:css` (the worker reloads on its own; the CSS does not).
-
-To try GitHub sign-in locally, create `apps/web/.dev.vars` (gitignored) with
-`GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` and `SESSION_SECRET`, and register
-`http://localhost:8787/auth/github/callback` as the OAuth app's callback URL.
+To try the real sign-in locally, create `apps/web/.dev.vars` (gitignored) with
+`CLERK_SECRET_KEY` and `CLERK_PUBLISHABLE_KEY` from a Clerk development instance that has
+GitHub as a social connection, and drop `--var DEV_LOGIN:1` from the `dev` script.
 
 ## Scripts
 
@@ -50,52 +58,39 @@ To try GitHub sign-in locally, create `apps/web/.dev.vars` (gitignored) with
 | `dev` | `build:css`, `db:migrate:local`, then `wrangler dev --port 8787 --var DEV_LOGIN:1` |
 | `build:css` | Tailwind → `public/styles.css` |
 | `db:migrate:local` | `wrangler d1 migrations apply DB --local` |
-| `seed:local` | Publishes the example packs into `http://localhost:8787` (or the URL given as the first argument) |
-| `test` | End-to-end tests with `node:test` and wrangler's `createTestHarness` (local workerd, in-memory D1 and R2, offline, a few seconds) |
+| `seed:local` | Submits this repository's `packs/*` to `http://localhost:8787` (or the URL given as the first argument) |
+| `test` | End-to-end tests with `node:test` and wrangler's `createTestHarness` (local workerd, in-memory D1, GitHub stubbed by an http server in the test process, offline, a few seconds) |
 | `typecheck` | `tsc --noEmit` |
 | `deploy` | `build:css` then `wrangler deploy` |
 
 ## API
 
-All JSON. Reads (`GET /api/packs*`, `/r/*`) allow any origin, because the studio fetches
-them from localhost.
+All JSON, and all of it reads. `GET /api/packs*` allows any origin, because the studio
+fetches it from localhost.
 
 ```ts
 type PackListing = {
   name: string;          // manifest.id
   title: string;         // manifest.name
   description: string;
-  latest: string;        // highest published version
+  latest: string;        // highest registered version
   author: string;        // manifest.author
   owner: { login: string; avatarUrl: string | null };
-  downloads: number;     // fetches of pack.json
+  stars: number;         // the repository's stars on GitHub
   updatedAt: number;     // ms
-  source: string;        // `${origin}/r/${name}/${latest}`
+  source: string;        // raw.githubusercontent.com/<owner>/<repo>/<sha>/<folder>
+  repo: { owner: string; name: string; folder: string; branch: string; url: string };
   counts: { templates: number; rules: number; assets: number; recipes: number };
 };
 ```
 
 | Route | Answer |
 | --- | --- |
-| `GET /api/packs?q=&limit=` | `200 { packs: PackListing[] }`, downloads desc then updatedAt desc. `q` matches name, title and description. `limit` 1–100, default 50. |
-| `GET /api/packs/:name` | `200 { pack: PackListing & { versions: { version, publishedAt, size }[], manifest } }`, or `404 { error }` |
-| `POST /api/packs` | Bearer token. Body `{ files: { path, base64 }[] }` with `pack.json`. `201 { name, version, url, source }`; `400 { error, issues? }` for a bad manifest, a missing referenced file, a bad path or a bad version; `401` without a valid token; `403` when another user owns the name; `409 { error: "version exists" }`; `413` over 50 MB or 2000 files. |
-| `GET /r/:name/:version/<path>` | The stored file, with its content type. `:version` may be `latest`. Concrete versions are `cache-control: public, max-age=31536000, immutable`. Fetching `pack.json` counts a download. `404` when missing. |
-| `POST /api/auth/device` | `200 { deviceCode, userCode: "ABCD-EFGH", verificationUrl, interval: 2, expiresIn: 600 }` |
-| `POST /api/auth/token` `{ deviceCode }` | `200 { token, user: { login, name, avatarUrl } }` once approved (the token is shown once and stored hashed); `428 { error: "authorization_pending" }`; `403 { error: "access_denied" }`; `410 { error: "expired_token" }`; `404` unknown or already used |
-| `GET /api/me` | Bearer token. `200 { user: { login, name, avatarUrl } }` or `401` |
+| `GET /api/packs?q=&limit=` | `200 { packs: PackListing[] }`, stars desc then updatedAt desc. `q` matches name, title and description. `limit` 1–100, default 50. |
+| `GET /api/packs/:name` | `200 { pack: PackListing & { versions: { version, publishedAt, size, sha, source }[], manifest } }`, or `404 { error }` |
 
-What a publish checks: every path is relative, uses forward slashes and has no `.` or `..`
-segment; `pack.json` parses with `PackManifest`; the version matches
-`^\d+\.\d+\.\d+([-.+][0-9A-Za-z.-]+)?$`; and every file the manifest points at is in the
-upload — `templates/<id>.json`, `rules/<id>.json` and the rule's `then.promptFile`,
-`assets[].file`, `examples[].file`, `style`, `review`, `recipes[].file` and `recipeFiles`.
-Files land in R2 at `packs/<name>/<version>/<path>`, which is the layout the studio installs
-from: it fetches `<source>/pack.json`, then each file at `<source>/<path>`.
-
-Files under `/r/` are somebody else's bytes on this origin, so they are served with
-`x-content-type-options: nosniff` and a sandboxing `content-security-policy`, and HTML is
-served as plain text.
+Writing is the website's own forms, posted from this origin only: `POST /submit`,
+`POST /packs/:name/refresh` and `POST /packs/:name/remove`.
 
 ## Pages
 
@@ -103,13 +98,23 @@ served as plain text.
 | --- | --- |
 | `/` | Landing |
 | `/packs`, `/packs?q=` | Marketplace, with search |
-| `/packs/:name` | A pack: style guide (rendered from Markdown as escaped JSX, never raw HTML), templates, rules, recipes with the trust warning, assets, versions, install command and source URL |
-| `/login`, `POST /logout` | GitHub OAuth when configured; the dev form when `DEV_LOGIN` is `"1"` |
-| `/device` | The browser half of `agentcut login`: shows the code, Approve or Deny |
-| `/account` | Your packs and API tokens, with revoke |
+| `/packs/:name` | A pack: style guide (rendered from Markdown as escaped JSX, never raw HTML), templates, rules, recipes with the trust warning, assets, versions with the commit each is pinned to, the repository, the install command and the source URL. Its owner also gets *Check for updates* and *Remove*. |
+| `/submit` | Register a repository as a pack |
+| `/login`, `POST /logout` | Clerk's hosted sign-in; a message when it is not configured |
+| `/account` | Your packs |
 
-Sessions are a random token in a signed, HttpOnly, SameSite=Lax cookie; D1 keeps only its
-sha256. Form posts are checked for a same-origin `Origin` header.
+What a submission checks: the address is a `github.com/owner/repo` (optionally
+`/tree/<branch>/<folder>`); the repository is public and owned by the signed-in GitHub
+login; `pack.json` at the head of the branch parses with `PackManifest`; the version
+matches `^\d+\.\d+\.\d+([-.+][0-9A-Za-z.-]+)?$`; and every file the manifest points at is
+in that commit's tree — `templates/<id>.json`, `rules/<id>.json` and the rule's
+`then.promptFile`, `assets[].file`, `examples[].file`, `style`, `review`, `recipes[].file`
+and `recipeFiles`. The commit is then pinned, and a version that is already registered is
+never re-pinned: a new version is a bumped `version` in pack.json.
+
+Sessions are Clerk's `__session` cookie, verified on the edge with `@clerk/backend`; a
+handshake is a redirect carrying the headers Clerk hands us, so no script is involved.
+Form posts are checked for a same-origin `Origin` header.
 
 ## Deploy
 
@@ -119,10 +124,8 @@ Nothing here deploys on its own. With a Cloudflare account:
 cd apps/web
 npx wrangler login
 npx wrangler d1 create agentcut-web          # put the printed database_id in wrangler.jsonc
-npx wrangler r2 bucket create agentcut-packs
-npx wrangler secret put GITHUB_CLIENT_ID
-npx wrangler secret put GITHUB_CLIENT_SECRET
-npx wrangler secret put SESSION_SECRET       # e.g. `openssl rand -base64 32`
+npx wrangler secret put CLERK_SECRET_KEY
+npx wrangler secret put CLERK_PUBLISHABLE_KEY
 npx wrangler d1 migrations apply DB --remote
 pnpm deploy                                   # build:css + wrangler deploy
 ```
@@ -131,12 +134,16 @@ Keep `DEV_LOGIN` at `"0"` in `wrangler.jsonc`. Add a custom domain under the Wor
 **Settings → Domains & Routes**; the API answers with URLs built from the request's origin,
 so the domain needs no configuration in code.
 
-### GitHub OAuth app
+### Clerk instance
 
-GitHub → **Settings → Developer settings → OAuth Apps → New OAuth App**:
+In Clerk's dashboard, for the production instance:
 
-- Homepage URL: `https://<your domain>`
-- Authorization callback URL: `https://<your domain>/auth/github/callback`
+- Turn on **GitHub** as a social connection, and nothing else: a pack is a repository, and
+  the GitHub login is how ownership is checked. An account with no GitHub connected can
+  sign in but is told to connect it before submitting.
+- Add the domain to **Domains**, so the session cookie is set on it.
+- Copy the secret and publishable keys into the two secrets above.
 
-Copy the client id and generate a client secret into the two secrets above. The app asks
-for `read:user` only: the login, name and avatar.
+Reading a repository uses the submitter's own GitHub token when Clerk has one for them
+(`getUserOauthAccessToken`), and falls back to anonymous reads, which is why GitHub's
+unauthenticated rate limit is the one to watch on a cold instance.
