@@ -6,7 +6,7 @@ import { deleteCookie } from "hono/cookie";
 import { html } from "hono/html";
 import { HTTPException } from "hono/http-exception";
 import type { AppEnv, User } from "./env";
-import { clerk, clerkEnabled, githubToken, identify, safeNext, signInUrl } from "./lib/auth";
+import { clerk, clerkBrowser, githubToken, identify, safeNext } from "./lib/auth";
 import { connect } from "./lib/db";
 import { GitHub } from "./lib/github";
 import { getPack, isSubmitter, listPacks, pathProblem, refreshPack, registerPack, removePack } from "./lib/packs";
@@ -241,12 +241,13 @@ app.post("/packs/:name/remove", async (c) => {
 
 /* ---------------------------------------------------------------- auth */
 
-app.get("/login", async (c) => {
+// Our own page, not Clerk's hosted one: an email and the code Clerk sends to it.
+app.get("/login", (c) => {
   const next = safeNext(c.req.query("next"));
   if (c.get("user")) return c.redirect(next);
-  const url = signInUrl(c, next);
-  if (url) return c.redirect(url);
-  return page(c, "Sign in", <SignInPage configured={clerkEnabled(c.env)} />);
+  return page(c, "Sign in", <SignInPage clerk={clerkBrowser(c.env)} next={next} />, {
+    description: "Sign in to agentcut with your email to submit packs.",
+  });
 });
 
 app.post("/logout", async (c) => {

@@ -6,6 +6,7 @@
 //
 // usage: node scripts/build-server.mjs   (run build:css first; deploy.sh does both)
 import { build } from "esbuild";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,6 +15,12 @@ const here = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dist = path.join(here, "dist");
 
 fs.rmSync(dist, { recursive: true, force: true });
+
+// The hash src/lib/assets.ts puts in the URLs of the files a deploy changes.
+const versioned = ["public/styles.css", "public/login.js"];
+const hash = createHash("sha256");
+for (const file of versioned) hash.update(fs.readFileSync(path.join(here, file)));
+const assetVersion = hash.digest("hex").slice(0, 12);
 
 await build({
   entryPoints: {
@@ -26,6 +33,7 @@ await build({
   format: "esm",
   platform: "node",
   target: "node22",
+  define: { __ASSET_VERSION__: JSON.stringify(assetVersion) },
   jsx: "automatic",
   jsxImportSource: "hono/jsx",
   minify: false,
@@ -45,4 +53,4 @@ await build({
 });
 
 const kb = (file) => `${(fs.statSync(path.join(dist, file)).size / 1024).toFixed(0)} KB`;
-console.log(`dist/server.mjs ${kb("server.mjs")}, dist/migrate.mjs ${kb("migrate.mjs")}`);
+console.log(`dist/server.mjs ${kb("server.mjs")}, dist/migrate.mjs ${kb("migrate.mjs")}, assets ${assetVersion}`);

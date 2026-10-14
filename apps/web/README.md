@@ -29,9 +29,10 @@ imports packs with.
 
 ```
 src/index.tsx        routes: API, pages, submitting, auth
-src/lib/             packs (the registry), github (reading repositories), auth (Clerk), db (Postgres), semver, formats
+src/lib/             packs (the registry), github (reading repositories), auth (Clerk), db (Postgres), assets (hashed URLs), semver, formats
 src/views/           pages and components (layout, landing, packs, pack detail, submit, account)
 src/styles.css       Tailwind input: the studio's palette and glass material
+public/login.js      the sign-in page's two steps, through Clerk's browser library
 migrations/          Postgres schema, applied in name order by scripts/migrate.mjs
 scripts/migrate.mjs  the one migration runner: production, the local database and the tests
 scripts/local-db.mjs a local Postgres with nothing to install: PGlite behind a socket
@@ -120,7 +121,7 @@ Writing is the website's own forms, posted from this origin only: `POST /submit`
 | `/packs`, `/packs?q=` | Marketplace, with search |
 | `/packs/:name` | A pack: its cover and screenshots (straight from GitHub at the pinned commit, each opening full size), style guide (rendered from Markdown as escaped JSX, never raw HTML), templates, rules, recipes with the trust warning, assets, versions with the commit each is pinned to, the repository, the install command and the source URL. Whoever submitted it also gets *Check for updates* and *Remove*. |
 | `/submit` | Register a repository as a pack |
-| `/login`, `POST /logout` | Clerk's hosted sign-in; a message when it is not configured |
+| `/login`, `POST /logout` | Our sign-in page: an email, then the six-digit code Clerk emails to it (a new address becomes an account on the way); a message when it is not configured |
 | `/account` | Your packs |
 
 What a submission checks: the address is a `github.com/owner/repo` (optionally
@@ -132,8 +133,12 @@ in that commit's tree — `templates/<id>.json`, `rules/<id>.json` and the rule'
 `recipeFiles`, `cover` and `screenshots`, with each picture at most 5 MB. The commit is then pinned, and a version that is already registered is
 never re-pinned: a new version is a bumped `version` in pack.json.
 
-Sessions are Clerk's `__session` cookie, verified on the edge with `@clerk/backend`; a
-handshake is a redirect carrying the headers Clerk hands us, so no script is involved.
+Sessions are Clerk's `__session` cookie, verified on the server with `@clerk/backend`; a
+handshake is a redirect carrying the headers Clerk hands us. The one page with Clerk's
+script on it is `/login`: `public/login.js` loads Clerk's browser library from the
+instance's Frontend API and runs the email-code sign-in (or sign-up, for an address Clerk
+does not know) in our own markup, then `setActive` leaves the session cookie the server
+reads. Every other page stays script-free apart from the copy buttons.
 Form posts are checked for a same-origin `Origin` header.
 
 ## Deploy
@@ -168,11 +173,11 @@ DATABASE_URL='postgres://agentcut_app:<password>@<db host>:5432/agentcut?sslmode
 ### Clerk instance
 
 The production instance is the Clerk application **agentcut**, on `agentcut.studio`: its
-Frontend API is `clerk.agentcut.studio` and its sign-in page, Clerk's Account Portal,
-`accounts.agentcut.studio` — CNAMEs in the Cloudflare zone, DNS only, beside the two for
-email (`clkmail`, `clk._domainkey`, `clk2._domainkey`). `/login` sends a visitor there with
-Clerk's own redirect (`createRedirect` from `@clerk/backend/internal`), and the session
-comes back to this domain through Clerk's handshake, with no script on our pages.
+Frontend API is `clerk.agentcut.studio` and its Account Portal `accounts.agentcut.studio` —
+CNAMEs in the Cloudflare zone, DNS only, beside the three for email (`clkmail`,
+`clk._domainkey`, `clk2._domainkey`). Nobody is sent to the Account Portal: `/login` is our
+own page, and Clerk sends the codes from `clkmail.agentcut.studio`. The GitHub connection is
+disabled until it is wanted; turning it back on needs the OAuth App's client secret.
 
 - Sign-in is by **email** (a one-time code), and that is all submitting needs. GitHub is
   a social connection with sign-in turned off and no production credentials yet (Clerk →

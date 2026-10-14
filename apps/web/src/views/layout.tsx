@@ -1,6 +1,7 @@
 import type { Child } from "hono/jsx";
 import { raw } from "hono/html";
 import type { User } from "../env";
+import { asset } from "../lib/assets";
 import { GitHubMark } from "./marks";
 import { Avatar, btn } from "./ui";
 
@@ -57,7 +58,7 @@ export function Layout({ title, description, user, path, children, canonical }: 
         <link rel="icon" href="/icon.svg" type="image/svg+xml" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <link rel="preload" href="/fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin="" />
-        <link rel="stylesheet" href="/styles.css" />
+        <link rel="stylesheet" href={asset("/styles.css")} />
       </head>
       <body class="min-h-dvh bg-background">
         <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-full focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground">Skip to content</a>
@@ -104,7 +105,8 @@ function Header({ user, path }: { user: User | null; path: string }) {
               <span class="hidden max-w-32 truncate sm:inline">{user.login ?? user.name ?? "Account"}</span>
             </a>
           ) : (
-            <a href={`/login?next=${encodeURIComponent(path)}`} class={btn.ghost}>Sign in</a>
+            <a href={path === "/login" ? "/login" : `/login?next=${encodeURIComponent(path)}`} class={btn.ghost}
+              aria-current={path === "/login" ? "page" : undefined}>Sign in</a>
           )}
         </div>
       </nav>

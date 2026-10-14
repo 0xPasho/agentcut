@@ -466,3 +466,16 @@ describe("pages", () => {
     assert.match(asOwner, /Remove from the marketplace/);
   });
 });
+
+describe("signing in", () => {
+  test("is a page of ours, and somebody already signed in goes straight on", async () => {
+    const res = await fetch(url("/login?next=/packs"), { redirect: "manual", headers: { "x-dev-login": "alice" } });
+    assert.equal(res.status, 302);
+    assert.equal(res.headers.get("location"), "/packs");
+  });
+
+  test("never sends anybody off this site after it", async () => {
+    const res = await fetch(url("/login?next=//evil.example/x"), { redirect: "manual", headers: { "x-dev-login": "alice" } });
+    assert.equal(res.headers.get("location"), "/account");
+  });
+});

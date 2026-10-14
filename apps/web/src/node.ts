@@ -56,10 +56,14 @@ site.use(
   "/*",
   serveStatic({
     root: publicDir,
-    // The fonts are content-addressed by name and never change; styles.css is rebuilt on
-    // every deploy, so it may only be held for a while.
+    // The fonts never change, and styles.css and login.js are linked with a hash of their
+    // contents (lib/assets.ts), so those URLs never change what they hold either. Anything
+    // asked for without the hash may only be held for a while.
     onFound: (file, c) =>
-      void c.header("cache-control", file.includes("/fonts/") ? "public, max-age=31536000, immutable" : "public, max-age=3600"),
+      void c.header(
+        "cache-control",
+        file.includes("/fonts/") || c.req.query("v") ? "public, max-age=31536000, immutable" : "public, max-age=3600",
+      ),
   }),
 );
 site.route("/", app);

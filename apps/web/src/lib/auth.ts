@@ -10,9 +10,7 @@
  * identity instead, so nothing on this machine ever asks anybody to sign in.
  */
 import { createClerkClient, type ClerkClient } from "@clerk/backend";
-import { createRedirect } from "@clerk/backend/internal";
 import type { Context } from "hono";
-import { getCookie } from "hono/cookie";
 import type { AppEnv, Bindings, User } from "../env";
 import type { Sql } from "./db";
 
@@ -135,21 +133,23 @@ export async function githubToken(c: Context<AppEnv>, user: User): Promise<strin
   }
 }
 
+/** What the sign-in page needs to start Clerk in the browser. */
+export type ClerkBrowser = { publishableKey: string; frontendApi: string };
+
 /**
- * Where Clerk hosts sign-in for this instance — its Account Portal, `accounts.<domain>` in
- * production — with somewhere to come back to. Clerk's own redirect builds it from the
- * publishable key; a request's auth state only carries a sign-in URL when one was passed
- * in, so asking it returned nothing and sign-in never started.
+ * The instance's Frontend API host, which the publishable key carries
+ * (`pk_<live|test>_<base64 of "host$">`): clerk.agentcut.studio in production. The sign-in
+ * page loads Clerk's browser library from there, so it is always the instance's version.
  */
-export function signInUrl(c: Context<AppEnv>, next: string): string | null {
-  if (!clerkEnabled(c.env)) return null;
-  return createRedirect({
-    publishableKey: c.env.CLERK_PUBLISHABLE_KEY!,
-    baseUrl: c.req.url,
-    // A development instance keeps its session in a dev browser token instead of a cookie.
-    devBrowserToken: getCookie(c, "__clerk_db_jwt"),
-    redirectAdapter: (url) => url,
-  }).redirectToSignIn({ returnBackUrl: new URL(next, c.req.url).toString() });
+export function clerkBrowser(env: Bindings): ClerkBrowser | null {
+  if (!clerkEnabled(env)) return null;
+  const publishableKey = env.CLERK_PUBLISHABLE_KEY!;
+  try {
+    const frontendApi = atob(publishableKey.split("_")[2] ?? "").replace(/\$$/, "");
+    return /^[a-z0-9.-]+$/i.test(frontendApi) ? { publishableKey, frontendApi } : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Only same-site paths survive as a post-sign-in destination. */
