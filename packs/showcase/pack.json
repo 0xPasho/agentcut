@@ -2,7 +2,7 @@
   "schema": 1,
   "id": "showcase",
   "name": "Showcase — comparativas en vivo",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "pasho",
   "description": "A long horizontal video out of a stream where two models get the same prompt: a trailer-style teaser, the greeting on the camera full screen, a jump card to the test, the news, the test, the results side by side and the verdict. Carries the recipes that build the opening.",
   "templates": ["showcase-comparison"],
@@ -45,6 +45,8 @@
         "sequenceId": { "type": "string", "description": "Which video; the first one when empty." }
       } }
   ],
+  "cover": "images/cover.jpg",
+  "screenshots": ["images/ranking-start.jpg"],
   "recipeFiles": ["recipes/lib/showcase.mjs", "recipes/lib/font.mjs", "recipes/fonts/BebasNeue-Regular.ttf", "recipes/fonts/OFL.txt"],
   "quickActions": [
     { "label": "Armar el showcase", "text": "Edit {selection} as a Showcase comparison: follow the pack's style guide for what stays and what goes, then open it with the teaser, camera-intro and jump-card recipes." }

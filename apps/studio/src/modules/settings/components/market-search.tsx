@@ -72,6 +72,8 @@ function MarketRow({ pack, active, onPick }: { pack: MarketPack; active: boolean
   ].filter((p) => p !== null);
   return (
     <li className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 ring-1 transition-colors ${active ? "bg-primary/10 ring-primary/40" : "ring-foreground/10 hover:bg-foreground/5"}`}>
+      {/* The title names the pack beside it, so the cover is decoration to a screen reader. */}
+      {pack.cover && <img src={pack.cover} alt="" loading="lazy" className="aspect-video h-14 shrink-0 rounded-xl bg-foreground/5 object-cover outline outline-1 -outline-offset-1 outline-white/10" />}
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{pack.title} <span className="font-mono text-xs font-normal text-muted-foreground">{pack.name} v{pack.latest}</span></p>
         <p className="line-clamp-1 text-xs text-muted-foreground">{pack.description}</p>

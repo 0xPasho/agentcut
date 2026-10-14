@@ -165,6 +165,9 @@ export const EditorToolCall = z.discriminatedUnion("tool", [
   z.object({ tool: z.literal("packs.examples.add"), id: z.string().min(1), file: z.string().min(1), title: z.string().optional(), note: z.string().optional() }),
   z.object({ tool: z.literal("packs.examples.update"), id: z.string().min(1), file: z.string().min(1), title: z.string().optional(), note: z.string().optional() }),
   z.object({ tool: z.literal("packs.examples.remove"), id: z.string().min(1), file: z.string().min(1) }),
+  z.object({ tool: z.literal("packs.images.get"), id: z.string().min(1) }),
+  z.object({ tool: z.literal("packs.images.add"), id: z.string().min(1), file: z.string().min(1), as: z.enum(["cover", "screenshot"]).optional() }),
+  z.object({ tool: z.literal("packs.images.remove"), id: z.string().min(1), file: z.string().min(1) }),
   z.object({ tool: z.literal("style.active"), sequenceId: z.string().optional() }),
   z.object({ tool: z.literal("style.choose"), pack: z.string().min(1).nullable() }),
   z.object({ tool: z.literal("quickactions.list") }),
@@ -531,6 +534,9 @@ export async function executeEditorTool(projectId: string, raw: unknown, onActiv
     case "packs.examples.add": { const { addExample } = await import("../../packs/server/style"); return addExample(call.id, call.file, call); }
     case "packs.examples.update": { const { updateExample } = await import("../../packs/server/style"); return updateExample(call.id, call.file, call); }
     case "packs.examples.remove": { const { removeExample } = await import("../../packs/server/style"); return removeExample(call.id, call.file); }
+    case "packs.images.get": { const { readImages } = await import("../../packs/server/images"); return readImages(call.id); }
+    case "packs.images.add": { const { addImage } = await import("../../packs/server/images"); return addImage(call.id, call.file, call.as); }
+    case "packs.images.remove": { const { removeImage } = await import("../../packs/server/images"); return removeImage(call.id, call.file); }
     case "style.active": { const { activeStyle } = await import("../../packs/server/style"); return activeStyle(projectId, call.sequenceId); }
     case "style.choose": { const { chooseStyle } = await import("../../packs/server/style"); return chooseStyle(projectId, call.pack); }
     case "packs.recipes.list": { const { listRecipes } = await import("../../packs/server/recipes"); return listRecipes(); }

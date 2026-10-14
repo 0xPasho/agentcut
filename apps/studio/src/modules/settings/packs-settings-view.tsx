@@ -78,9 +78,13 @@ function PackRow({ pack }: { pack: InstalledPack }) {
         href={`/settings/packs/${encodeURIComponent(pack.id)}`}
         className="group flex items-center gap-3 rounded-3xl bg-card px-4 py-3.5 ring-1 ring-foreground/10 transition-[box-shadow,background-color] motion-reduce:transition-none hover:bg-foreground/[0.04] hover:ring-foreground/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       >
-        <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-xl bg-foreground/5 text-muted-foreground group-hover:text-primary">
-          <Package className="size-5" strokeWidth={1.75} />
-        </span>
+        {pack.cover ? (
+          <img src={`/api/packs/${pack.id}/file?path=${encodeURIComponent(pack.cover)}`} alt="" className="aspect-video h-12 shrink-0 rounded-xl bg-foreground/5 object-cover outline outline-1 -outline-offset-1 outline-white/10" />
+        ) : (
+          <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-xl bg-foreground/5 text-muted-foreground group-hover:text-primary">
+            <Package className="size-5" strokeWidth={1.75} />
+          </span>
+        )}
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap items-baseline gap-x-2">
             <span className="text-sm font-medium">{pack.name}</span>
@@ -98,6 +102,24 @@ function PackRow({ pack }: { pack: InstalledPack }) {
 }
 
 // ── Import ───────────────────────────────────────────────────────────────────
+
+/** The cover and screenshots of a pack being previewed, read from where it is, before anything is installed. */
+function PreviewPictures({ source, name, cover, screenshots }: { source: string; name: string; cover: string; screenshots: string[] }) {
+  if (!cover && !screenshots.length) return null;
+  const url = (file: string) => `/api/packs/preview-image?source=${encodeURIComponent(source)}&file=${encodeURIComponent(file)}`;
+  const picture = "rounded-xl bg-foreground/5 object-cover outline outline-1 -outline-offset-1 outline-white/10";
+  return (
+    <div className="flex flex-col gap-2">
+      {cover && <img src={url(cover)} alt={`Cover of ${name}`} className={`${picture} aspect-video w-full max-w-xl`} />}
+      {!!screenshots.length && (
+        <ul className="flex flex-wrap gap-2">
+          {screenshots.map((file, i) => <li key={file}><img src={url(file)} alt={`Screenshot ${i + 1} of ${name}`} loading="lazy" className={`${picture} h-28 w-auto`} /></li>)}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 
 /**
  * Import shows everything a pack carries before anything is installed — the rules'
@@ -155,6 +177,7 @@ function ImportFlow({ onBack, onInstalled, run, pending, error }: {
               <Badge variant="destructive">Untrusted until you read it</Badge>
             </div>
             {preview.manifest.description && <p className="text-sm text-muted-foreground">{preview.manifest.description}</p>}
+            <PreviewPictures source={preview.source} name={preview.manifest.name} cover={preview.manifest.cover} screenshots={preview.manifest.screenshots} />
             <p className="text-xs text-muted-foreground">
               {[preview.templates.length && count(preview.templates.length, "template"), preview.rules.length && count(preview.rules.length, "rule"), preview.manifest.glossary.length && count(preview.manifest.glossary.length, "name"), preview.assets.length && count(preview.assets.length, "asset"), preview.examples.length && count(preview.examples.length, "reference"), preview.quickActions.length && count(preview.quickActions.length, "quick action")].filter(Boolean).join(" · ") || "Nothing of its own"}
             </p>

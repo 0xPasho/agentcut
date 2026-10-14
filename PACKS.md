@@ -14,6 +14,7 @@ streamer-kit/
   STYLE.md                 # the style guide: how videos in this pack are made
   examples/reference.mp4   # reference videos and pictures
   review.json              # what a finished video in this pack must be true of
+  images/cover.jpg         # the pictures people choose it by: a cover and screenshots
 ```
 
 `pack.json`:
@@ -26,7 +27,9 @@ streamer-kit/
   "rules": ["gaming"],
   "glossary": [{ "term": "Deska", "aliases": ["desk app"], "note": "the app" }],
   "assets": [{ "file": "assets/a_1234abcd.mp4", "kind": "video", "name": "sting.mp4", "id": "a_1234abcd" }],
-  "quickActions": [{ "label": "Stream recap", "text": "Cut {selection} into a recap." }]
+  "quickActions": [{ "label": "Stream recap", "text": "Cut {selection} into a recap." }],
+  "cover": "images/cover.jpg",
+  "screenshots": ["images/the-comment.jpg", "images/the-end-card.jpg"]
 }
 ```
 
@@ -70,6 +73,26 @@ note on what to take from it.
   `packs.style.set`, `packs.examples.add`, `packs.examples.update`,
   `packs.examples.remove`. An installed pack keeps them in `workspace/packs/<id>/`;
   `packs.export` with `stylePack` writes them into the exported folder.
+
+## Pictures
+
+A pack is chosen by what it makes, so it can carry pictures of it: a `cover`, which the
+marketplace card, the pack's marketplace page, the studio's marketplace list and the import
+preview all lead with, and up to eight `screenshots` after it. Each is a png, jpg, webp or
+gif inside the pack, at most 5 MB; the cover shows at 16:9, and a screenshot keeps its own
+shape, so a vertical short stays vertical. They are for people, not for the agents — the
+references above are what the agents read.
+
+- **Where they come from.** A frame of a video the pack made, never a mock-up. The ones in
+  `packs/` are stills of real renders of each pack's own template.
+- **Installing.** They are copied into `workspace/packs/<id>/images/`, named by their role
+  (`cover.jpg`, `screenshot-1.jpg`, …) so two `1.png` from different folders cannot collide,
+  and read before anything is written: one over the limit installs nothing.
+- **Editing.** **Settings → Packs → the pack's page → Pictures**, or `packs.images.get`,
+  `packs.images.add` (`as: "cover"` replaces the cover; otherwise one more screenshot) and
+  `packs.images.remove`. `packs.export` with `stylePack` carries them.
+- **The marketplace** checks them like every other file the manifest names, refuses one
+  over 5 MB, and serves them straight from GitHub at the pinned commit.
 
 ## The ones that ship
 
@@ -278,6 +301,6 @@ submitting happens in a browser. `AGENTCUT_MARKET` points a machine at another m
 ## Tools
 
 `packs.list`, `packs.inspect`, `packs.import`, `packs.remove`, `packs.export`,
-`packs.recipes.list`, `packs.recipes.run`, `quickactions.list` — the same functions behind
+`packs.images.get`, `packs.images.add`, `packs.images.remove`, `packs.recipes.list`, `packs.recipes.run`, `quickactions.list` — the same functions behind
 the panel, the agent and MCP. Trusting recipes is not among them on purpose; the terminal has
 `agentcut packs list | inspect | import | recipes | trust | untrust | run`.

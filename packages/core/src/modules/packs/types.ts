@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { GlossaryTerm } from "../rules/types";
+import { PACK_SCREENSHOTS_MAX } from "./data";
 
 /**
  * A pack is the unit that travels: templates, rules, glossary entries, assets and
@@ -70,6 +71,9 @@ export const PackRecipe = z.object({
 }).strict();
 export type PackRecipe = z.infer<typeof PackRecipe>;
 
+/** A picture of what a pack makes, for people choosing one: a png, jpg, webp or gif inside the pack. */
+export const PackImage = z.string().regex(/^[^\\]+\.(png|jpe?g|webp|gif)$/i, "a png, jpg, webp or gif inside the pack");
+
 export const PackManifest = z.object({
   schema: z.literal(1).default(1),
   id: z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "lowercase letters, digits and dashes"),
@@ -98,6 +102,13 @@ export const PackManifest = z.object({
    */
   review: z.string().default(""),
   examples: z.array(PackExample).default([]),
+  /**
+   * The picture people see first when choosing the pack: on its marketplace card and page,
+   * in the studio's marketplace list and before installing. Best at 16:9. Empty is none.
+   */
+  cover: z.union([z.literal(""), PackImage]).default(""),
+  /** More pictures of what the pack makes, shown after the cover. */
+  screenshots: z.array(PackImage).max(PACK_SCREENSHOTS_MAX, `at most ${PACK_SCREENSHOTS_MAX} screenshots`).default([]),
   /** Edit-time code (decision 143). Each is shown in full before install and runs only once trusted. */
   recipes: z.array(PackRecipe).default([]),
   /**
@@ -133,6 +144,9 @@ export const InstalledPack = z.object({
   provides: z.object({ templates: z.array(z.string()).default([]), rules: z.array(z.string()).default([]) }).prefault({}),
   /** The examples, with `file` relative to the pack's folder in the workspace. */
   examples: z.array(PackExample).default([]),
+  /** The cover and the screenshots, relative to the pack's folder in the workspace (`images/…`). */
+  cover: z.string().default(""),
+  screenshots: z.array(z.string()).default([]),
   /** The recipes, with `file` relative to the pack's folder in the workspace. */
   recipes: z.array(PackRecipe).default([]),
   recipeFiles: z.array(z.string()).default([]),
@@ -145,6 +159,9 @@ export const InstalledPack = z.object({
   trustedRecipesHash: z.string().nullable().default(null),
 }).strict();
 export type InstalledPack = z.infer<typeof InstalledPack>;
+
+/** A pack's pictures as its page and the `packs.images.*` tools answer: paths inside the pack's folder. */
+export type PackImages = { pack: string; name: string; cover: string; screenshots: string[] };
 
 /** A recipe as the editor and the tools list it: which pack, and whether it may run. */
 export type RecipeView = PackRecipe & { pack: string; packName: string; trusted: boolean };
@@ -192,6 +209,8 @@ export const MarketPack = z.object({
   updatedAt: z.number(),
   /** The raw.githubusercontent URL of the latest version, at the commit it is pinned to. */
   source: z.string(),
+  /** The latest version's cover, as a URL at that commit; empty when it has none. */
+  cover: z.string().default(""),
   repo: z.object({ owner: z.string(), name: z.string(), folder: z.string(), branch: z.string(), url: z.string() }),
   counts: z.object({ templates: z.number(), rules: z.number(), assets: z.number(), recipes: z.number() }),
 });

@@ -21,3 +21,12 @@ export const RECIPE_SCRATCH = "scratch";
  */
 export const MARKET_URL = "https://agentcut.dev";
 
+
+/** How many screenshots a pack may show after its cover. */
+export const PACK_SCREENSHOTS_MAX = 8;
+
+/** The most one pack picture may weigh. It is shown on every card and every pack page. */
+export const PACK_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+
+/** Where an installed pack keeps its pictures, inside its own folder. */
+export const PACK_IMAGES_DIR = "images";

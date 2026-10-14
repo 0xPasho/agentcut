@@ -15,6 +15,8 @@ import { PACK_REVIEW_FILE } from "../../review/data";
 import { lintReview } from "../../review/lib/lint";
 import { PackReview } from "../../review/types";
 import { contactSheet } from "../../media/server/ffmpeg";
+import { PACK_IMAGE_MAX_BYTES, PACK_IMAGES_DIR } from "../data";
+import { packImageFiles, packImageName, packImageType } from "../lib/images";
 
 /**
  * Packs come in by path or URL and are copied into the workspace with their origin
@@ -122,6 +124,27 @@ export async function inspectPack(sourceText: string): Promise<PackPreview> {
   };
 }
 
+/**
+ * One of a pack's pictures, read from wherever the pack is, for the import preview to show.
+ * Only a picture the manifest names as its cover or a screenshot: this is not a way to
+ * read any file out of a folder or off a server.
+ */
+export async function readPackImage(sourceText: string, file: string): Promise<{ bytes: Buffer; type: string }> {
+  const source = await resolveSource(sourceText);
+  const manifest = PackManifest.parse(JSON.parse((await readEntry(source, "pack.json")).toString("utf8")));
+  if (!packImageFiles(manifest).includes(file)) throw new Error(`${manifest.name} has no picture ${file}`);
+  return { bytes: await readImage(source, file), type: packImageType(file)! };
+}
+
+/** A pack picture's bytes, refused when it is heavier than a card can carry. */
+async function readImage(source: Source, file: string): Promise<Buffer> {
+  const bytes = await readEntry(source, file);
+  if (bytes.length > PACK_IMAGE_MAX_BYTES) {
+    throw new Error(`${file} is ${(bytes.length / 1024 / 1024).toFixed(1)} MB; a pack picture is at most ${PACK_IMAGE_MAX_BYTES / 1024 / 1024} MB`);
+  }
+  return bytes;
+}
+
 /** Every file a pack's recipes are made of, read once, and the hash that trusting them records. */
 async function readRecipes(source: Source, manifest: PackManifest) {
   const entries = new Map<string, Buffer>();
@@ -144,6 +167,9 @@ export async function importPack(sourceText: string, options: { replace?: boolea
   // Refused before anything is copied: a pack whose guide talks to the agent is not installed at all.
   if (preview.style.problems.length) throw new Error(styleRefusal(preview.style.problems));
   if (preview.review.problems.length) throw new Error(styleRefusal(preview.review.problems));
+  // The pictures are read before anything is written, so one that is too heavy installs nothing.
+  const images = [manifest.cover, ...manifest.screenshots];
+  const imageBytes = await Promise.all(images.map((file) => (file ? readImage(source, file) : null)));
   await ensureLibrary();
   // Assets first, so a template or rule that names one finds it under its new id.
   const assetIds: Record<string, string> = {};
@@ -199,6 +225,10 @@ export async function importPack(sourceText: string, options: { replace?: boolea
     if (example.kind === "video") await contactSheet(path.join(folder, file), path.join(folder, `${file}.jpg`));
     examples.push({ ...example, file });
   }
+  // The pictures are named by their role, so two `1.png` from different folders cannot collide.
+  const stored = images.map((file, i) => (file ? `${PACK_IMAGES_DIR}/${packImageName(i === 0 ? "cover" : i - 1, file)}` : ""));
+  if (stored.some(Boolean)) await fs.mkdir(path.join(folder, PACK_IMAGES_DIR), { recursive: true });
+  for (const [i, bytes] of imageBytes.entries()) if (bytes) await fs.writeFile(path.join(folder, stored[i]), bytes);
   const recipeFiles = await readRecipes(source, manifest);
   for (const [name, bytes] of recipeFiles.entries) {
     await fs.mkdir(path.dirname(path.join(folder, name)), { recursive: true });
@@ -210,7 +240,7 @@ export async function importPack(sourceText: string, options: { replace?: boolea
   const installed = InstalledPack.parse({
     id: manifest.id, name: manifest.name, version: manifest.version, description: manifest.description, author: manifest.author,
     source: sourceText, hash: preview.hash, installedAt: Date.now(), templates, rules, assets: assetIds, glossary, quickActions: manifest.quickActions,
-    provides: { templates: manifest.templates, rules: manifest.rules }, examples,
+    provides: { templates: manifest.templates, rules: manifest.rules }, examples, cover: stored[0], screenshots: stored.slice(1),
     recipes: manifest.recipes, recipeFiles: manifest.recipeFiles, recipesHash: recipeFiles.hash, trustedRecipesHash: trusted,
   });
   await fs.mkdir(packsDir(), { recursive: true });
@@ -291,6 +321,8 @@ export async function exportPack(request: ExportRequest): Promise<{ dir: string;
   let style = "";
   let review = "";
   let examples: PackExample[] = [];
+  let cover = "";
+  let screenshots: string[] = [];
   let recipes: PackRecipe[] = [];
   let recipeFiles: string[] = [];
   if (request.stylePack) {
@@ -303,6 +335,12 @@ export async function exportPack(request: ExportRequest): Promise<{ dir: string;
     await fs.mkdir(path.join(dir, "examples"), { recursive: true });
     for (const example of pack.examples) await fs.copyFile(path.join(packFolder(pack.id), example.file), path.join(dir, example.file));
     examples = pack.examples;
+    for (const file of packImageFiles(pack)) {
+      await fs.mkdir(path.dirname(path.join(dir, file)), { recursive: true });
+      await fs.copyFile(path.join(packFolder(pack.id), file), path.join(dir, file));
+    }
+    cover = pack.cover;
+    screenshots = pack.screenshots;
     // The code travels with the pack it belongs to; trust does not travel at all.
     for (const name of [...pack.recipes.map((r) => r.file), ...pack.recipeFiles]) {
       await fs.mkdir(path.dirname(path.join(dir, name)), { recursive: true });
@@ -314,7 +352,7 @@ export async function exportPack(request: ExportRequest): Promise<{ dir: string;
   const manifest = PackManifest.parse({
     id: request.id, name: request.name, version: request.version, description: request.description, author: request.author,
     templates: chosenTemplates, rules: chosenRules, glossary: request.glossary ? (await readGlossaryLevel("workspace")).terms : [], assets, quickActions: request.quickActions ?? [],
-    style, review, examples, recipes, recipeFiles,
+    style, review, examples, cover, screenshots, recipes, recipeFiles,
   });
   await fs.writeFile(path.join(dir, "pack.json"), JSON.stringify(manifest, null, 2));
   return { dir, manifest };

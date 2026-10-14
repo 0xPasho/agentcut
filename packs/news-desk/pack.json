@@ -2,7 +2,7 @@
   "schema": 1,
   "id": "news-desk",
   "name": "News desk",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "openopusclip",
   "description": "Turn a raw take about one story into a publishable news video: the stalls, the false starts, the sentence said twice and the stretches that went nowhere come out, the voice and the pauses that are doing work stay. Horizontal, no captions burned, levelled for the feed.",
   "templates": [
@@ -28,5 +28,10 @@
       "label": "Open on the claim",
       "text": "Find where {selection} first states what happened and what you think of it, and start the video there. Everything before it goes."
     }
+  ],
+  "cover": "images/cover.jpg",
+  "screenshots": [
+    "images/reading-the-chat.jpg",
+    "images/testing-it.jpg"
   ]
 }

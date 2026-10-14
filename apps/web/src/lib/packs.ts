@@ -5,6 +5,8 @@
  * installs from.
  */
 import { PackManifest } from "@agentcut/core/modules/packs/types";
+import { PACK_IMAGE_MAX_BYTES } from "@agentcut/core/modules/packs/data";
+import { packImageFiles } from "@agentcut/core/modules/packs/lib/images";
 import type { User } from "../env";
 import { isUniqueViolation, type Sql } from "./db";
 import { GitHub, GitHubError, parseRepoInput } from "./github";
@@ -24,6 +26,8 @@ export type PackListing = {
   stars: number;
   updatedAt: number;
   source: string;
+  /** The latest version's cover as a URL at its commit, or "" when it has none. */
+  cover: string;
   repo: PackRepo;
   counts: PackCounts;
 };
@@ -39,6 +43,7 @@ type PackRow = {
   author: string;
   latest: string;
   latest_sha: string;
+  cover: string;
   repo_owner: string;
   repo_name: string;
   folder: string;
@@ -53,7 +58,7 @@ type PackRow = {
   owner_avatar: string | null;
 };
 
-const packSelect = (sql: Sql) => sql`SELECT p.name, p.title, p.description, p.author, p.latest, p.latest_sha, p.repo_owner,
+const packSelect = (sql: Sql) => sql`SELECT p.name, p.title, p.description, p.author, p.latest, p.latest_sha, p.cover, p.repo_owner,
   p.repo_name, p.folder, p.branch, p.stars, p.updated_at, p.templates, p.rules, p.assets, p.recipes,
   u.login AS owner_login, u.avatar_url AS owner_avatar
   FROM packs p JOIN users u ON u.id = p.owner_id`;
@@ -62,6 +67,9 @@ const packSelect = (sql: Sql) => sql`SELECT p.name, p.title, p.description, p.au
 export function sourceUrl(gh: GitHub, repo: { owner: string; name: string; folder: string }, sha: string): string {
   return gh.rawUrl(repo.owner, repo.name, sha, repo.folder);
 }
+
+/** A file of a version, from the version's source URL: the repository at that commit. */
+export const fileUrl = (source: string, path: string) => `${source}/${path.split("/").map(encodeURIComponent).join("/")}`;
 
 export const repoUrl = (repo: PackRepo) =>
   `https://github.com/${repo.owner}/${repo.name}${repo.folder ? `/tree/${repo.branch}/${repo.folder}` : ""}`;
@@ -75,6 +83,7 @@ function toListing(row: PackRow, gh: GitHub): PackListing {
     url: "",
   };
   repo.url = repoUrl(repo);
+  const source = sourceUrl(gh, repo, row.latest_sha);
   return {
     name: row.name,
     title: row.title,
@@ -84,7 +93,8 @@ function toListing(row: PackRow, gh: GitHub): PackListing {
     owner: { login: row.owner_login, avatarUrl: row.owner_avatar },
     stars: row.stars,
     updatedAt: row.updated_at,
-    source: sourceUrl(gh, repo, row.latest_sha),
+    source,
+    cover: row.cover ? fileUrl(source, row.cover) : "",
     repo,
     counts: { templates: row.templates, rules: row.rules, assets: row.assets, recipes: row.recipes },
   };
@@ -171,6 +181,7 @@ export async function referencedFiles(
   for (const f of manifest.recipeFiles) refs.add(f);
   if (manifest.style) refs.add(manifest.style);
   if (manifest.review) refs.add(manifest.review);
+  for (const f of packImageFiles(manifest)) refs.add(f);
   return [...refs];
 }
 
@@ -304,6 +315,9 @@ async function readPack(
     else size += bytes;
   }
   if (missing.length) return bad(`files named in pack.json are not in the repository: ${missing.join(", ")}`, { missing });
+  // A picture is on every card and every pack page, so it has a weight limit of its own.
+  const heavy = packImageFiles(manifest).filter((path) => (tree.files.get(at(path)) ?? 0) > PACK_IMAGE_MAX_BYTES);
+  if (heavy.length) return bad(`pictures over ${PACK_IMAGE_MAX_BYTES / 1024 / 1024} MB: ${heavy.join(", ")}`, { heavy });
   return { manifest, manifestText, size, sha };
 }
 
@@ -343,9 +357,9 @@ async function save(
       if (!existing) {
         await tx`
           INSERT INTO packs (name, owner_id, repo_owner, repo_name, folder, branch, title, description, author,
-            latest, latest_sha, stars, templates, rules, assets, recipes, created_at, updated_at)
+            latest, latest_sha, cover, stars, templates, rules, assets, recipes, created_at, updated_at)
           VALUES (${name}, ${user.id}, ${repo.owner}, ${repo.name}, ${repo.folder}, ${repo.branch}, ${manifest.name},
-            ${manifest.description}, ${manifest.author}, ${version}, ${sha}, ${stars}, ${counts.templates}, ${counts.rules},
+            ${manifest.description}, ${manifest.author}, ${version}, ${sha}, ${manifest.cover}, ${stars}, ${counts.templates}, ${counts.rules},
             ${counts.assets}, ${counts.recipes}, ${now}, ${now})
           ON CONFLICT (name) DO NOTHING`;
       }
@@ -364,7 +378,7 @@ async function save(
       const latestManifest = PackManifest.parse(JSON.parse(row.manifest));
       const lc = countsOf(latestManifest);
       await tx`
-        UPDATE packs SET latest = ${latest}, latest_sha = ${row.sha}, title = ${latestManifest.name},
+        UPDATE packs SET latest = ${latest}, latest_sha = ${row.sha}, cover = ${latestManifest.cover}, title = ${latestManifest.name},
           description = ${latestManifest.description}, author = ${latestManifest.author}, repo_owner = ${repo.owner},
           repo_name = ${repo.name}, folder = ${repo.folder}, branch = ${repo.branch}, stars = ${stars},
           templates = ${lc.templates}, rules = ${lc.rules}, assets = ${lc.assets}, recipes = ${lc.recipes}, updated_at = ${now}

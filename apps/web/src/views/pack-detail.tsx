@@ -1,6 +1,6 @@
 import type { JSX } from "hono/jsx/jsx-runtime";
 import type { Child } from "hono/jsx";
-import type { PackDetail } from "../lib/packs";
+import { fileUrl, type PackDetail } from "../lib/packs";
 import { bytes, count, isoDate, longDate, timeAgo } from "../lib/format";
 import {
   BookIcon, CodeIcon, CommitIcon, FileTextIcon, FilmIcon, FolderIcon, ImageIcon, LayoutIcon, LinkIcon, MessageIcon,
@@ -58,6 +58,8 @@ export function PackDetailPage({ pack, style, templates, rules, review, owned, n
         {pack.description ? <p class="mt-6 text-lg leading-relaxed text-muted-foreground text-pretty">{pack.description}</p> : null}
         <CountsRow counts={pack.counts} class="mt-6" />
       </header>
+
+      <Gallery pack={pack} />
 
       <div class="mt-12 grid grid-cols-[minmax(0,1fr)] gap-8 lg:grid-cols-[minmax(0,1fr)_24rem] lg:items-start">
         <div class="order-2 space-y-6 lg:order-1">
@@ -135,6 +137,9 @@ export function PackDetailPage({ pack, style, templates, rules, review, owned, n
               <ul class="space-y-3">
                 {m.examples.map((e) => (
                   <li>
+                    {e.kind === "image" ? (
+                      <img src={fileUrl(pack.source, e.file)} alt={e.title || "Reference example"} loading="lazy" decoding="async" class={`${picture} mb-3 max-h-80 w-auto`} />
+                    ) : null}
                     <p class="font-medium">{e.title || e.file}</p>
                     {e.note ? <p class="mt-1 text-sm text-muted-foreground text-pretty">{e.note}</p> : null}
                   </li>
@@ -266,6 +271,33 @@ function RepositoryCard({ pack, owned }: { pack: PackDetail; owned: boolean }) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** A subtle edge on every picture, so a dark frame does not melt into the page (better-ui). */
+const picture = "rounded-2xl bg-white/4 object-cover outline outline-1 -outline-offset-1 outline-white/10";
+
+/**
+ * The cover, large, and the screenshots after it at their own shape — a vertical short
+ * stays vertical — in a row that scrolls sideways. Each opens full size in a new tab.
+ */
+function Gallery({ pack }: { pack: PackDetail }) {
+  const { cover, screenshots } = pack.manifest;
+  if (!cover && !screenshots.length) return null;
+  const shot = (file: string, alt: string, extra: string) => (
+    <a href={fileUrl(pack.source, file)} target="_blank" rel="noopener noreferrer" class="block rounded-2xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+      <img src={fileUrl(pack.source, file)} alt={alt} loading="lazy" decoding="async" class={`${picture} ${extra}`} />
+    </a>
+  );
+  return (
+    <section aria-label="Pictures" class="mt-10 space-y-4">
+      {cover ? <div class="max-w-4xl">{shot(cover, `${pack.title}: what it makes`, "aspect-video w-full rounded-3xl")}</div> : null}
+      {screenshots.length ? (
+        <ul class="flex gap-4 overflow-x-auto pb-2">
+          {screenshots.map((file, i) => <li class="shrink-0">{shot(file, `${pack.title}, screenshot ${i + 1}`, "h-64 w-auto sm:h-80")}</li>)}
+        </ul>
+      ) : null}
+    </section>
   );
 }
 

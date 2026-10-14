@@ -88,6 +88,7 @@ type PackListing = {
   stars: number;         // the repository's stars on GitHub
   updatedAt: number;     // ms
   source: string;        // raw.githubusercontent.com/<owner>/<repo>/<sha>/<folder>
+  cover: string;         // the latest version's cover at that commit, or "" when it has none
   repo: { owner: string; name: string; folder: string; branch: string; url: string };
   counts: { templates: number; rules: number; assets: number; recipes: number };
 };
@@ -107,7 +108,7 @@ Writing is the website's own forms, posted from this origin only: `POST /submit`
 | --- | --- |
 | `/` | Landing |
 | `/packs`, `/packs?q=` | Marketplace, with search |
-| `/packs/:name` | A pack: style guide (rendered from Markdown as escaped JSX, never raw HTML), templates, rules, recipes with the trust warning, assets, versions with the commit each is pinned to, the repository, the install command and the source URL. Its owner also gets *Check for updates* and *Remove*. |
+| `/packs/:name` | A pack: its cover and screenshots (straight from GitHub at the pinned commit, each opening full size), style guide (rendered from Markdown as escaped JSX, never raw HTML), templates, rules, recipes with the trust warning, assets, versions with the commit each is pinned to, the repository, the install command and the source URL. Its owner also gets *Check for updates* and *Remove*. |
 | `/submit` | Register a repository as a pack |
 | `/login`, `POST /logout` | Clerk's hosted sign-in; a message when it is not configured |
 | `/account` | Your packs |
@@ -117,8 +118,8 @@ What a submission checks: the address is a `github.com/owner/repo` (optionally
 login; `pack.json` at the head of the branch parses with `PackManifest`; the version
 matches `^\d+\.\d+\.\d+([-.+][0-9A-Za-z.-]+)?$`; and every file the manifest points at is
 in that commit's tree — `templates/<id>.json`, `rules/<id>.json` and the rule's
-`then.promptFile`, `assets[].file`, `examples[].file`, `style`, `review`, `recipes[].file`
-and `recipeFiles`. The commit is then pinned, and a version that is already registered is
+`then.promptFile`, `assets[].file`, `examples[].file`, `style`, `review`, `recipes[].file`,
+`recipeFiles`, `cover` and `screenshots`, with each picture at most 5 MB. The commit is then pinned, and a version that is already registered is
 never re-pinned: a new version is a bumped `version` in pack.json.
 
 Sessions are Clerk's `__session` cookie, verified on the edge with `@clerk/backend`; a

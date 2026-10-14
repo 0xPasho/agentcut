@@ -6,6 +6,7 @@ import { ArrowLeft, BookA, FolderOpen, Globe, Images, LayoutTemplate, Loader2, M
 import { api } from "@agentcut/core/common/api/client";
 import type { InstalledPack } from "@agentcut/core/modules/packs/types";
 import { StyleEditor } from "@/modules/packs/components/style-editor";
+import { ImagesEditor } from "@/modules/packs/components/images-editor";
 import { RecipesTrust } from "@/modules/packs/components/recipes-trust";
 import { ReviewEditor } from "@/modules/review/components/review-editor";
 import { Button } from "@/common/ui/button";
@@ -18,8 +19,8 @@ import type { WorkspaceSettings } from "@agentcut/core/modules/settings/types";
 /**
  * One pack (decision 133): what it brought and where each thing landed, where it
  * came from, its style guide with its references, and the standard it holds videos
- * to. Every editor here is the one an agent's `packs.style.*`, `packs.examples.*`
- * and `packs.review.*` tools run.
+ * to. Every editor here is the one an agent's `packs.style.*`, `packs.examples.*`,
+ * `packs.images.*` and `packs.review.*` tools run.
  */
 export function PackView({ id }: { id: string }) {
   const { data, error, pending, run } = useWorkspaceSettings();
@@ -77,6 +78,13 @@ export function PackView({ id }: { id: string }) {
           <RecipesTrust pack={pack} pending={pending === `trust:${pack.id}`} onTrust={(trust) => void run(`trust:${pack.id}`, () => api.workspace({ action: "packs.recipes.trust", id: pack.id, trust }))} />
         </Panel>
       )}
+
+      <Panel className="flex flex-col gap-3">
+        <PanelHeading title="Pictures">
+          The cover and screenshots people see when choosing this pack, in the marketplace and before installing. Exporting the pack carries them.
+        </PanelHeading>
+        <ImagesEditor packId={pack.id} />
+      </Panel>
 
       <Panel className="flex flex-col gap-3">
         <PanelHeading title="Style guide and references">

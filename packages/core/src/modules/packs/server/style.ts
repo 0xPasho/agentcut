@@ -23,13 +23,13 @@ const styleFile = (id: string) => path.join(packFolder(id), "STYLE.md");
 export const exampleStill = (id: string, example: PackExample) =>
   path.join(packFolder(id), example.kind === "video" ? `${example.file}.jpg` : example.file);
 
-async function packRecord(id: string): Promise<InstalledPack> {
+export async function packRecord(id: string): Promise<InstalledPack> {
   const pack = (await listPacks()).find((p) => p.id === id);
   if (!pack) throw new Error(`No installed pack named ${id}.`);
   return pack;
 }
 
-async function writeRecord(pack: InstalledPack) {
+export async function writeRecord(pack: InstalledPack) {
   await fs.writeFile(path.join(packsDir(), `${pack.id}.json`), JSON.stringify(InstalledPack.parse(pack), null, 2));
 }
 

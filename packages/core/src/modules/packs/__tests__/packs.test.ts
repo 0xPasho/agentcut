@@ -359,6 +359,71 @@ test("a pack's style guide and references install, reach the agents, export, and
   await assert.rejects(fs.stat(path.join(packs.packFolder("second"), "STYLE.md")));
 });
 
+/** A real picture made by ffmpeg, of the given colour. */
+async function picture(file: string, color: string) {
+  const r = spawnSync(FFMPEG, ["-y", "-f", "lavfi", "-i", `color=${color}:size=320x180`, "-frames:v", "1", file], { encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  return file;
+}
+
+test("a pack's cover and screenshots install by their role, are edited through the tools, export, and an oversized one installs nothing", async () => {
+  const { PACK_IMAGE_MAX_BYTES } = await import("../data");
+  const dir = path.join(workspace, "pictured");
+  await fs.mkdir(path.join(dir, "shots", "a"), { recursive: true });
+  await fs.mkdir(path.join(dir, "shots", "b"), { recursive: true });
+  await picture(path.join(dir, "cover.png"), "orange");
+  // Two screenshots with the same file name in different folders must not overwrite each other.
+  await picture(path.join(dir, "shots", "a", "1.jpg"), "green");
+  await picture(path.join(dir, "shots", "b", "1.jpg"), "blue");
+  await fs.writeFile(path.join(dir, "pack.json"), JSON.stringify({ id: "pictured", name: "Pictured", cover: "cover.png", screenshots: ["shots/a/1.jpg", "shots/b/1.jpg"] }));
+
+  // The preview reads only what the manifest names as a picture.
+  const read = await packs.readPackImage(dir, "cover.png");
+  assert.equal(read.type, "image/png");
+  assert.ok(read.bytes.length > 100);
+  await assert.rejects(packs.readPackImage(dir, "pack.json"), /no picture/);
+
+  const installed = await packs.importPack(dir);
+  assert.equal(installed.cover, "images/cover.png");
+  assert.deepEqual(installed.screenshots, ["images/screenshot-1.jpg", "images/screenshot-2.jpg"]);
+  const [green, blue] = await Promise.all(installed.screenshots.map((f) => fs.readFile(path.join(packs.packFolder("pictured"), f))));
+  assert.notDeepEqual(green, blue, "each screenshot kept its own bytes");
+
+  // The pack page and the agent edit them through the same tools.
+  const extra = await picture(path.join(workspace, "extra.webp"), "purple");
+  const { id } = await mediaService.createVideoProject("Pictures", [{ file: source }]);
+  const added = await tools.executeEditorTool(id, { tool: "packs.images.add", id: "pictured", file: extra }) as { screenshots: string[] };
+  assert.deepEqual(added.screenshots, ["images/screenshot-1.jpg", "images/screenshot-2.jpg", "images/screenshot-3.webp"]);
+  const removed = await tools.executeEditorTool(id, { tool: "packs.images.remove", id: "pictured", file: "images/screenshot-1.jpg" }) as { screenshots: string[] };
+  assert.deepEqual(removed.screenshots, ["images/screenshot-2.jpg", "images/screenshot-3.webp"]);
+  await assert.rejects(fs.stat(path.join(packs.packFolder("pictured"), "images/screenshot-1.jpg")));
+  const again = await tools.executeEditorTool(id, { tool: "packs.images.add", id: "pictured", file: extra }) as { screenshots: string[] };
+  assert.equal(again.screenshots.at(-1), "images/screenshot-4.webp", "a removed number is never reused");
+  const recovered = await tools.executeEditorTool(id, { tool: "packs.images.add", id: "pictured", file: extra, as: "cover" }) as { cover: string };
+  assert.equal(recovered.cover, "images/cover.webp");
+  await assert.rejects(fs.stat(path.join(packs.packFolder("pictured"), "images/cover.png")), "the old cover is gone");
+  await assert.rejects(tools.executeEditorTool(id, { tool: "packs.images.add", id: "pictured", file: path.join(dir, "pack.json") }), /png, jpg, webp or gif/);
+
+  // Exported with the pack, they come out as the manifest says.
+  const out = await packs.exportPack({ id: "pictured-out", name: "Pictured out", stylePack: "pictured" });
+  assert.equal(out.manifest.cover, "images/cover.webp");
+  assert.deepEqual(out.manifest.screenshots, ["images/screenshot-2.jpg", "images/screenshot-3.webp", "images/screenshot-4.webp"]);
+  for (const file of [out.manifest.cover, ...out.manifest.screenshots]) assert.ok((await fs.stat(path.join(out.dir, file))).isFile(), file);
+
+  // Not a picture, or too many: the manifest itself is refused.
+  const { PackManifest } = await import("../types");
+  assert.equal(PackManifest.safeParse({ id: "x", name: "X", cover: "cover.svg" }).success, false);
+  assert.equal(PackManifest.safeParse({ id: "x", name: "X", screenshots: Array.from({ length: 9 }, (_, i) => `${i}.png`) }).success, false);
+
+  // A picture heavier than a card can carry installs nothing at all.
+  const heavy = path.join(workspace, "heavy");
+  await fs.mkdir(heavy, { recursive: true });
+  await fs.writeFile(path.join(heavy, "cover.png"), Buffer.alloc(PACK_IMAGE_MAX_BYTES + 1));
+  await fs.writeFile(path.join(heavy, "pack.json"), JSON.stringify({ id: "heavy", name: "Heavy", cover: "cover.png" }));
+  await assert.rejects(packs.importPack(heavy), /at most 5 MB/);
+  assert.ok(!(await packs.listPacks()).some((p) => p.id === "heavy"));
+});
+
 /** The pack folders in the repository, which are the ones we tell people to install. */
 const shippedPacks = path.resolve(import.meta.dirname, "../../../../../../packs");
 

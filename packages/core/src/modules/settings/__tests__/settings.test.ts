@@ -305,6 +305,7 @@ test("every control on the settings page has a tool behind it", () => {
     "providerkeys.list", "providerkeys.set",
     "packs.list", "packs.inspect", "packs.import", "packs.remove", "packs.export",
     "packs.style.get", "packs.style.set", "packs.examples.add", "packs.examples.update", "packs.examples.remove",
+    "packs.images.get", "packs.images.add", "packs.images.remove",
     "packs.review.get", "packs.review.set",
     "templates.list", "templates.delete",
     "media.transcription.set", "chat.setSource",

@@ -266,6 +266,50 @@ describe("submitting a repository", () => {
   });
 });
 
+describe("a pack's pictures", () => {
+  const sha = "d".repeat(40);
+  const withPictures = (extra = {}) => {
+    const files = tinyPack({ id: "pictured" });
+    const manifest = { ...JSON.parse(files["pack.json"]), cover: "media/cover.png", screenshots: ["media/one.jpg", "media/two.webp"], ...extra };
+    return { ...files, "pack.json": JSON.stringify(manifest), "media/cover.png": "PNG", "media/one.jpg": "JPG", "media/two.webp": "WEBP" };
+  };
+
+  test("the cover is on the listing as a URL at the pinned commit, and the page shows every picture", async () => {
+    putRepo("alice/pictured", { files: withPictures(), sha });
+    assert.equal((await submit("alice", { repo: "alice/pictured" })).status, 303);
+    const cover = `${githubBase}/raw/alice/pictured/${sha}/media/cover.png`;
+    assert.equal((await api("/api/packs/pictured")).body.pack.cover, cover);
+    assert.equal((await api("/api/packs?q=pictured")).body.packs[0].cover, cover);
+    assert.equal((await api("/api/packs/tiny-pack")).body.pack.cover, "", "no cover is an empty string");
+
+    const card = await (await fetch(url("/packs?q=pictured"))).text();
+    assert.ok(card.includes(`src="${cover}"`), "the card shows the cover");
+    const page = await (await fetch(url("/packs/pictured"))).text();
+    for (const file of ["media/cover.png", "media/one.jpg", "media/two.webp"]) {
+      assert.ok(page.includes(`src="${githubBase}/raw/alice/pictured/${sha}/${file}"`), file);
+    }
+    assert.ok(page.includes('alt="Tiny pack, screenshot 2"'), "screenshots say what they are");
+  });
+
+  test("a picture that is not in the repository, not a picture, or too heavy is refused", async () => {
+    const { "media/one.jpg": _gone, ...withoutOne } = withPictures();
+    putRepo("alice/missing-picture", { files: withoutOne });
+    let posted = await submit("alice", { repo: "alice/missing-picture" });
+    assert.equal(posted.status, 400);
+    assert.match(posted.error, /media\/one\.jpg/);
+
+    putRepo("alice/svg-cover", { files: { ...withPictures({ cover: "media/cover.svg" }), "media/cover.svg": "<svg/>" } });
+    posted = await submit("alice", { repo: "alice/svg-cover" });
+    assert.equal(posted.status, 400);
+    assert.match(posted.error, /schema/);
+
+    putRepo("alice/heavy-picture", { files: { ...withPictures(), "media/cover.png": "x".repeat(5 * 1024 * 1024 + 1) } });
+    posted = await submit("alice", { repo: "alice/heavy-picture" });
+    assert.equal(posted.status, 400);
+    assert.match(posted.error, /over 5 MB: media\/cover\.png/);
+  });
+});
+
 describe("updating a pack", () => {
   before(() => {
     putRepo("dave/kit", { files: tinyPack({ id: "dave-kit", version: "1.0.0" }), sha: "d".repeat(40) });
@@ -362,7 +406,7 @@ describe("the registry", () => {
     assert.equal(status, 200);
     const pack = body.packs.find((p) => p.name === "tiny-pack");
     assert.deepEqual(Object.keys(pack).sort(), [
-      "author", "counts", "description", "latest", "name", "owner", "repo", "source", "stars", "title", "updatedAt",
+      "author", "counts", "cover", "description", "latest", "name", "owner", "repo", "source", "stars", "title", "updatedAt",
     ]);
     assert.equal(body.headers, undefined);
     assert.equal((await api("/api/packs")).headers.get("access-control-allow-origin"), "*", "the studio reads it from localhost");

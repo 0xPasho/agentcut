@@ -2,7 +2,7 @@
   "schema": 1,
   "id": "stream-shorts",
   "name": "Stream shorts",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "author": "openopusclip",
   "description": "Vertical shorts cut from a screen-share stream: one complete thing each — a question with its whole answer, or one idea explained — the screen above and the camera below, the hook on screen throughout, the chat message it answers popping in over a blurred frame while it is read out, and your own end card at the end.",
   "templates": [
@@ -28,5 +28,11 @@
       "label": "Start where the thought starts",
       "text": "Check the edges of {selection}: move the start to where the thought actually begins and the end to just after it lands. Nothing mid-sentence at either end."
     }
+  ],
+  "cover": "images/cover.jpg",
+  "screenshots": [
+    "images/the-discord.jpg",
+    "images/the-repo.jpg",
+    "images/the-verdict.jpg"
   ]
 }

@@ -5,6 +5,7 @@ import { savePreferences } from "@agentcut/core/modules/rules/server/preferences
 import { reviewObservations } from "@agentcut/core/modules/rules/server/observations";
 import { onboardingState, runOnboarding, skipOnboarding, saveOnboardingAnswers, reopenOnboarding, dismissOnboardingReminder, ONBOARDING_QUESTIONS } from "@agentcut/core/modules/onboarding/server/onboarding";
 import { readStyle, saveStyle, addExample, updateExample, removeExample } from "@agentcut/core/modules/packs/server/style";
+import { readImages, addImage, removeImage } from "@agentcut/core/modules/packs/server/images";
 import { inspectPack, importPack, removePack, exportPack } from "@agentcut/core/modules/packs/server/packs";
 import { recipeSources, trustRecipes } from "@agentcut/core/modules/packs/server/recipes";
 import { marketUrl, searchPacks } from "@agentcut/core/modules/packs/server/market";
@@ -26,7 +27,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const body = (await req.json().catch(() => ({}))) as { action?: string; rule?: unknown; review?: unknown; id?: string; glossary?: unknown; text?: string; answers?: unknown; source?: string; query?: string; replace?: boolean; pack?: Parameters<typeof exportPack>[0]; scope?: string; task?: string; provider?: string; model?: string; value?: string; file?: string; title?: string; note?: string; mode?: string | null; path?: string; trust?: boolean };
+  const body = (await req.json().catch(() => ({}))) as { action?: string; rule?: unknown; review?: unknown; id?: string; glossary?: unknown; text?: string; answers?: unknown; source?: string; query?: string; replace?: boolean; pack?: Parameters<typeof exportPack>[0]; scope?: string; task?: string; provider?: string; model?: string; value?: string; file?: string; title?: string; note?: string; mode?: string | null; path?: string; trust?: boolean; as?: string };
   try {
     switch (body.action) {
       case "rules.draft": return Response.json(await draftRule(body));
@@ -59,6 +60,9 @@ export async function POST(req: Request) {
       case "packs.examples.add": return Response.json(await addExample(String(body.id ?? ""), String(body.file ?? ""), { title: body.title, note: body.note }));
       case "packs.examples.update": return Response.json(await updateExample(String(body.id ?? ""), String(body.file ?? ""), { title: body.title, note: body.note }));
       case "packs.examples.remove": return Response.json(await removeExample(String(body.id ?? ""), String(body.file ?? "")));
+      case "packs.images.get": return Response.json(await readImages(String(body.id ?? "")));
+      case "packs.images.add": return Response.json(await addImage(String(body.id ?? ""), String(body.file ?? ""), body.as === "cover" ? "cover" : "screenshot"));
+      case "packs.images.remove": return Response.json(await removeImage(String(body.id ?? ""), String(body.file ?? "")));
       // The same functions the agent tools call, with the level fixed at workspace.
       case "agents.select": { applySelection({ scope: body.scope ?? "workspace", task: body.task, provider: body.provider ?? "", model: body.model ?? "" }); return Response.json(selectionOverview()); }
       // Workspace-level settings that only had a project-bound tool: the same functions,
