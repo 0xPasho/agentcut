@@ -17,9 +17,9 @@ export const RECIPE_SCRATCH = "scratch";
 
 /**
  * The marketplace this build talks to. `AGENTCUT_MARKET` points a machine at another
- * one (a local `wrangler dev`, a staging deploy); the default is where apps/web deploys.
+ * one (a local `pnpm dev`, a staging deploy); the default is where apps/web is deployed.
  */
-export const MARKET_URL = "https://agentcut.dev";
+export const MARKET_URL = "https://agentcut.studio";
 
 
 /** How many screenshots a pack may show after its cover. */

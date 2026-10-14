@@ -4,7 +4,8 @@ import type { Sql } from "./lib/db";
 export type Bindings = {
   /** Postgres on the owner's server; `lib/db.ts` turns it into a client. */
   HYPERDRIVE: Hyperdrive;
-  ASSETS: Fetcher;
+  /** Cloudflare's asset runtime. Only bound on the Worker; node serves `public/` itself. */
+  ASSETS?: Fetcher;
   /** "1" signs every visitor in as a local identity, for `pnpm dev` and the tests. Never "1" in production. */
   DEV_LOGIN?: string;
   /** The GitHub login the local identity owns repos as. Only read when DEV_LOGIN is "1". */

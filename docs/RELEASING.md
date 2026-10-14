@@ -53,5 +53,4 @@ The order matters: a published CLI must never point at a component that is not t
 
 `apps/web` deploys separately; see [apps/web/README.md](../apps/web/README.md). The CLI
 and the studio talk to `MARKET_URL` in `packages/core/src/modules/packs/data.ts`
-(`https://agentcut.dev`) unless `AGENTCUT_MARKET` says otherwise — point the constant at
-the deployed domain before the first release.
+(`https://agentcut.studio`, the deployed domain) unless `AGENTCUT_MARKET` says otherwise.

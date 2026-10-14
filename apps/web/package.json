@@ -2,7 +2,7 @@
   "name": "@agentcut/web",
   "version": "0.0.0",
   "private": true,
-  "description": "agentcut.dev: the landing page and the packs marketplace, on Cloudflare Workers with Postgres through Hyperdrive, and Clerk for accounts.",
+  "description": "agentcut.studio: the landing page and the packs marketplace, on the owner's server (node, pm2, nginx) with Postgres beside it, and Clerk for accounts.",
   "type": "module",
   "scripts": {
     "build:css": "tailwindcss -i ./src/styles.css -o ./public/styles.css --minify",
@@ -11,11 +11,14 @@
     "seed:local": "node scripts/seed-local.mjs",
     "test": "pnpm build:css && node --test --test-concurrency=1 test/*.test.mjs",
     "typecheck": "tsc --noEmit",
-    "deploy": "pnpm build:css && wrangler deploy"
+    "deploy": "deploy/deploy.sh",
+    "build:server": "node scripts/build-server.mjs",
+    "deploy:worker": "pnpm build:css && wrangler deploy"
   },
   "dependencies": {
     "@agentcut/core": "workspace:*",
     "@clerk/backend": "^3.23.2",
+    "@hono/node-server": "^2.1.5",
     "hono": "^4.13.13",
     "postgres": "^3.4.9",
     "zod": "^4.6.5"
@@ -26,6 +29,7 @@
     "@electric-sql/pglite-socket": "^0.2.12",
     "@tailwindcss/cli": "^4.3.3",
     "@types/node": "^26.6.0",
+    "esbuild": "^0.28.2",
     "tailwindcss": "^4.3.3",
     "typescript": "^5",
     "wrangler": "^4.148.0"

@@ -1,9 +1,13 @@
 # @agentcut/web
 
-The hosted half of agentcut: the landing page and the packs marketplace. One Cloudflare
-Worker (Hono, server-rendered `hono/jsx`, no client framework) and a Postgres database on
-the owner's server, reached through [Hyperdrive](https://developers.cloudflare.com/hyperdrive/),
-which keeps the connections open next to the database so a request pays no handshake.
+The hosted half of agentcut: the landing page and the packs marketplace, live at
+[agentcut.studio](https://agentcut.studio). One Hono app (server-rendered `hono/jsx`, no
+client framework) and a Postgres database on the owner's server.
+
+It runs where the owner's other sites run: node under pm2 behind nginx, on the box
+postgun.ai is on, with the database beside it — see [deploy/](./deploy/). The same app also
+runs in workerd, which is what `pnpm dev` and the tests use, so `wrangler.jsonc` and the
+`HYPERDRIVE` binding are development tools here, not what production serves.
 
 **A pack is a GitHub repository.** The marketplace stores no pack files: it keeps the
 repository, the folder, the branch and the commit each version is pinned to, and hands out
@@ -30,6 +34,9 @@ scripts/migrate.mjs  the one migration runner: production, the local database an
 scripts/local-db.mjs a local Postgres with nothing to install: PGlite behind a socket
 scripts/dev.mjs      `pnpm dev`: the local database, then wrangler dev pointed at it
 scripts/seed-local.mjs  submits this repository's packs/* to the local server
+src/node.ts          production: the same app with node around it instead of workerd
+scripts/build-server.mjs  bundles src/node.ts and the migration runner into dist/
+deploy/              pm2, nginx, the deploy script and what to do the first time
 test/api.test.mjs    end-to-end tests against the worker in local workerd, with GitHub stubbed
 ```
 
@@ -128,7 +135,18 @@ Form posts are checked for a same-origin `Origin` header.
 
 ## Deploy
 
-Nothing here deploys on its own.
+```sh
+apps/web/deploy/deploy.sh     # build, rsync, migrate, pm2 restart, smoke test
+```
+
+[deploy/README.md](./deploy/README.md) is the whole story: what lives in `~/agentcut` on
+the box, the one-time setup (origin certificate, nginx vhost, pm2 process), and where to
+look when a page 502s. In short: the site is `agentcut-web` under pm2 on port 3013, nginx
+holds `agentcut.studio` in front of it, and Cloudflare proxies the domain to that machine's
+address with SSL mode **Full**, exactly as it does for postgun.ai.
+
+Nothing is installed on the box: `scripts/build-server.mjs` inlines hono, postgres,
+`@clerk/backend` and the core pack schema into one file, and node runs it.
 
 ### The database
 
@@ -136,42 +154,13 @@ Postgres on the owner's database host (the one postgun uses): database `agentcut
 the role `agentcut_app` (`CONNECTION LIMIT 20`, so it cannot starve the other apps on that
 server), with `CONNECT` revoked from everybody else. The role's password is
 `AGENTCUT_APP_PASSWORD` in the credentials file on the deploy box, beside the other apps'
-roles; it is never committed or copied into this repository. The schema is applied with:
+roles; it is never committed or copied into this repository — it reaches production through
+`~/agentcut/.env` only. The deploy applies what is missing on every run; by hand it is:
 
 ```sh
 DATABASE_URL='postgres://agentcut_app:<password>@<db host>:5432/agentcut?sslmode=require' \
   pnpm --filter @agentcut/web db:migrate
 ```
-
-Run it before deploying a worker that needs a new migration.
-
-### Hyperdrive
-
-Hyperdrive always verifies the database's TLS certificate, and this server's is issued by
-Coolify's own CA, so Cloudflare has to be told to trust that CA. The certificate must also
-be in date: renew it in Coolify when it lapses, or Hyperdrive stops connecting while
-clients that do not verify (psql, Prisma) carry on as if nothing happened.
-
-```sh
-cd apps/web
-npx wrangler login
-npx wrangler cert upload certificate-authority --ca-cert coolify-ca.pem --name coolify-ca
-npx wrangler hyperdrive create agentcut \
-  --connection-string='postgres://agentcut_app:<password>@<db host>:5432/agentcut' \
-  --ca-certificate-id <id printed by the upload> --sslmode verify-ca \
-  --caching-disabled                          # put the printed id in wrangler.jsonc
-npx wrangler secret put CLERK_SECRET_KEY
-npx wrangler secret put CLERK_PUBLISHABLE_KEY
-pnpm deploy                                   # build:css + wrangler deploy
-```
-
-`--caching-disabled` matters: Hyperdrive caches reads for up to a minute and does not
-invalidate them on a write, so with caching on, a pack would stay listed for a minute after
-its owner removed it, and a fresh submission would be missing from `/account`.
-
-Keep `DEV_LOGIN` at `"0"` in `wrangler.jsonc`. Add a custom domain under the Worker's
-**Settings → Domains & Routes**; the API answers with URLs built from the request's origin,
-so the domain needs no configuration in code.
 
 ### Clerk instance
 
@@ -180,9 +169,24 @@ In Clerk's dashboard, for the production instance:
 - Turn on **GitHub** as a social connection, and nothing else: a pack is a repository, and
   the GitHub login is how ownership is checked. An account with no GitHub connected can
   sign in but is told to connect it before submitting.
-- Add the domain to **Domains**, so the session cookie is set on it.
-- Copy the secret and publishable keys into the two secrets above.
+- Add `agentcut.studio` to **Domains**, so the session cookie is set on it.
+- Put the secret and publishable keys in `~/agentcut/.env` and
+  `pm2 restart agentcut-web --update-env`.
+
+Until they are there the site is anonymous: browsing, searching, installing and every pack
+page work, and `/login` says sign-in is not configured.
 
 Reading a repository uses the submitter's own GitHub token when Clerk has one for them
 (`getUserOauthAccessToken`), and falls back to anonymous reads, which is why GitHub's
 unauthenticated rate limit is the one to watch on a cold instance.
+
+### On Cloudflare instead
+
+`pnpm deploy:worker` still deploys the Worker, and it is how this app was first written,
+but it is not what serves the domain. It needs a Hyperdrive binding whose connection
+string points at the database, Cloudflare told to trust Coolify's CA
+(`wrangler cert upload certificate-authority`), `--sslmode verify-ca` and
+`--caching-disabled` — Hyperdrive caches reads for up to a minute and does not invalidate
+them on a write, so a removed pack would stay listed. Hyperdrive also refuses to connect
+once that certificate lapses, while psql carries on as if nothing happened; the app on the
+owner's box talks to the database directly and has nothing to renew.
