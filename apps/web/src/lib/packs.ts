@@ -54,14 +54,14 @@ type PackRow = {
   rules: number;
   assets: number;
   recipes: number;
-  owner_login: string;
-  owner_avatar: string | null;
 };
 
 const packSelect = (sql: Sql) => sql`SELECT p.name, p.title, p.description, p.author, p.latest, p.latest_sha, p.cover, p.repo_owner,
-  p.repo_name, p.folder, p.branch, p.stars, p.updated_at, p.templates, p.rules, p.assets, p.recipes,
-  u.login AS owner_login, u.avatar_url AS owner_avatar
-  FROM packs p JOIN users u ON u.id = p.owner_id`;
+  p.repo_name, p.folder, p.branch, p.stars, p.updated_at, p.templates, p.rules, p.assets, p.recipes
+  FROM packs p`;
+
+/** A GitHub account's picture, by login: GitHub redirects it to the avatar. */
+const githubAvatar = (login: string) => `https://github.com/${encodeURIComponent(login)}.png?size=96`;
 
 /** Where a version's files are read from: the repository at that commit, in its folder. */
 export function sourceUrl(gh: GitHub, repo: { owner: string; name: string; folder: string }, sha: string): string {
@@ -90,7 +90,8 @@ function toListing(row: PackRow, gh: GitHub): PackListing {
     description: row.description,
     latest: row.latest,
     author: row.author,
-    owner: { login: row.owner_login, avatarUrl: row.owner_avatar },
+    // Whose work it is: the repository's owner on GitHub, whoever submitted it here.
+    owner: { login: row.repo_owner, avatarUrl: githubAvatar(row.repo_owner) },
     stars: row.stars,
     updatedAt: row.updated_at,
     source,
@@ -206,8 +207,10 @@ type ReadPack = { manifest: PackManifest; manifestText: string; size: number; sh
 const bad = (error: string, issues?: unknown): PackError => ({ status: 400, body: issues ? { error, issues } : { error } });
 
 /**
- * Register a repository as a pack, or add the version it is on now. The person must own
- * the repository on GitHub: a pack is theirs to update, and the owner is who we ask.
+ * Register a repository as a pack, or add the version it is on now. Any signed-in account
+ * may register any public repository: the files are the repository's, the pack is shown
+ * as its GitHub owner's, and whoever registered it first is who may update or remove the
+ * listing.
  */
 export async function registerPack(
   sql: Sql,
@@ -215,16 +218,12 @@ export async function registerPack(
   user: User,
   input: RegisterInput,
 ): Promise<Registered | PackError> {
-  if (!user.login) return { status: 403, body: { error: "Connect your GitHub account before submitting a pack." } };
   const ref = parseRepoInput(input.repo, input.folder ?? "");
   if ("error" in ref) return bad(ref.error);
 
   try {
     const repo = await gh.repo(ref.owner, ref.repo);
     if (repo.private) return bad("That repository is private. A pack has to be public for anybody to install it.");
-    if (repo.owner.toLowerCase() !== user.login.toLowerCase()) {
-      return { status: 403, body: { error: `${repo.owner}/${repo.repo} is not yours. You can only submit repositories your GitHub account owns.` } };
-    }
     const branch = ref.ref ?? repo.defaultBranch;
     const read = await readPack(gh, repo.owner, repo.repo, branch, ref.folder);
     if ("status" in read) return read;
@@ -261,7 +260,14 @@ export async function refreshPack(
   }
 }
 
-/** A pack its owner takes down. The versions go with it; the name stays theirs to reuse. */
+/** Whether this person registered the pack, and so may update or remove its listing. */
+export async function isSubmitter(sql: Sql, user: User | null, name: string): Promise<boolean> {
+  if (!user) return false;
+  const [row] = await sql<{ owner_id: number }[]>`SELECT owner_id FROM packs WHERE name = ${name}`;
+  return row?.owner_id === user.id;
+}
+
+/** A pack its submitter takes down. The versions go with it; the name stays theirs to reuse. */
 export async function removePack(sql: Sql, user: User, name: string): Promise<true | PackError> {
   const [row] = await sql<{ owner_id: number }[]>`SELECT owner_id FROM packs WHERE name = ${name}`;
   if (!row) return { status: 404, body: { error: "pack not found" } };

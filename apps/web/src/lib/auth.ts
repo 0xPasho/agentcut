@@ -34,7 +34,7 @@ export function clerk(env: Bindings): ClerkClient | null {
   return cached.client;
 }
 
-type UserRow = { id: number; clerk_id: string | null; login: string; name: string | null; avatar_url: string | null };
+type UserRow = { id: number; clerk_id: string | null; login: string | null; name: string | null; avatar_url: string | null };
 
 const toUser = (row: UserRow): User => ({
   id: row.id,
@@ -50,7 +50,7 @@ const toUser = (row: UserRow): User => ({
  */
 export async function upsertUser(
   sql: Sql,
-  input: { clerkId: string | null; login: string; name?: string | null; avatarUrl?: string | null },
+  input: { clerkId: string | null; login: string | null; name?: string | null; avatarUrl?: string | null },
 ): Promise<User> {
   const now = Date.now();
   const name = input.name ?? null;
@@ -102,13 +102,12 @@ export async function identify(c: Context<AppEnv>): Promise<Identified> {
   if (!auth?.userId) return { user: null };
 
   const account = await client.users.getUser(auth.userId);
+  // GitHub is optional: an account made with an email address submits as well.
   const login = githubLogin(account);
-  // No GitHub account on the Clerk user: they are signed in, but own no repositories here.
-  if (!login) return { user: { id: 0, clerkId: account.id, login: "", name: account.firstName, avatarUrl: account.imageUrl || null } };
   const user = await upsertUser(c.var.sql, {
     clerkId: account.id,
     login,
-    name: [account.firstName, account.lastName].filter(Boolean).join(" ") || login,
+    name: [account.firstName, account.lastName].filter(Boolean).join(" ") || login || account.primaryEmailAddress?.emailAddress || null,
     avatarUrl: account.imageUrl || null,
   });
   return { user };

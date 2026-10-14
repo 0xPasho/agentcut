@@ -18,9 +18,10 @@ export type Bindings = {
 };
 
 /**
- * Somebody who can submit a pack. `login` is their GitHub login, because a pack is a
- * GitHub repository and only its owner may register it.
+ * Somebody who can submit a pack: any signed-in account. `login` is their GitHub login when
+ * they have one linked, used to read repositories with their own token; null for an
+ * account made with an email address.
  */
-export type User = { id: number; clerkId: string | null; login: string; name: string | null; avatarUrl: string | null };
+export type User = { id: number; clerkId: string | null; login: string | null; name: string | null; avatarUrl: string | null };
 
 export type AppEnv = { Bindings: Bindings; Variables: { user: User | null; sql: Sql } };

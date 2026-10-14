@@ -22,7 +22,7 @@ type Props = {
   templates: NamedDoc[];
   rules: NamedDoc[];
   review: ReviewSummary | null;
-  /** Whether the person reading this is the GitHub owner, who may update or remove it. */
+  /** Whether the person reading this registered the pack, and so may update or remove it. */
   owned: boolean;
   notice?: { kind: "ok" | "error"; text: string };
 };
@@ -45,7 +45,7 @@ export function PackDetailPage({ pack, style, templates, rules, review, owned, n
         <div class="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
           <span class="flex items-center gap-2">
             <Avatar login={pack.owner.login} url={pack.owner.avatarUrl} size="size-6" />
-            <span>Submitted by <span class="font-medium text-foreground">{pack.owner.login}</span></span>
+            <span>By <span class="font-medium text-foreground">{pack.owner.login}</span></span>
           </span>
           {pack.author && pack.author !== pack.owner.login ? <span>Author: {pack.author}</span> : null}
           <span class="font-mono text-xs">v{pack.latest}</span>

@@ -17,7 +17,10 @@ credential on anybody's machine.
 
 **Signing in is for submitting only.** Accounts are [Clerk](https://clerk.com)'s, and
 three writes need one: submit a pack, update it, remove it. Browsing, searching,
-installing and reading a pack's page are anonymous. With no Clerk keys configured, every
+installing and reading a pack's page are anonymous. Any account submits — GitHub is not
+needed, because a pack must be a public repository and is listed under that repository's
+GitHub owner; whoever submitted it first is who may update or remove the listing. With no
+Clerk keys configured, every
 visitor is a local identity instead, so a checkout never asks anybody to sign in.
 
 The pack schema is not repeated here: what a repository holds is parsed with
@@ -55,8 +58,8 @@ pnpm --filter @agentcut/web seed:local   # in a second terminal: submits packs/n
 
 `dev` runs `wrangler dev --var DEV_LOGIN:1`, which never happens in production: every
 visitor is signed in as a local identity, named by `DEV_GITHUB_LOGIN` (default `local`) or
-per request by an `x-dev-login` header. Ownership is still checked, so the identity has to
-match the repository's GitHub owner — which is how `seed:local` submits as `0xPasho`.
+per request by an `x-dev-login` header, so the tests can be two different people: the
+one who submitted a pack is the only one offered its *Check for updates* and *Remove*.
 
 Seeding reaches GitHub, because a pack is a repository; everything else is local. Local
 state lives in `apps/web/.wrangler/` (the database in `.wrangler/pglite`); delete it to
@@ -115,14 +118,14 @@ Writing is the website's own forms, posted from this origin only: `POST /submit`
 | --- | --- |
 | `/` | Landing |
 | `/packs`, `/packs?q=` | Marketplace, with search |
-| `/packs/:name` | A pack: its cover and screenshots (straight from GitHub at the pinned commit, each opening full size), style guide (rendered from Markdown as escaped JSX, never raw HTML), templates, rules, recipes with the trust warning, assets, versions with the commit each is pinned to, the repository, the install command and the source URL. Its owner also gets *Check for updates* and *Remove*. |
+| `/packs/:name` | A pack: its cover and screenshots (straight from GitHub at the pinned commit, each opening full size), style guide (rendered from Markdown as escaped JSX, never raw HTML), templates, rules, recipes with the trust warning, assets, versions with the commit each is pinned to, the repository, the install command and the source URL. Whoever submitted it also gets *Check for updates* and *Remove*. |
 | `/submit` | Register a repository as a pack |
 | `/login`, `POST /logout` | Clerk's hosted sign-in; a message when it is not configured |
 | `/account` | Your packs |
 
 What a submission checks: the address is a `github.com/owner/repo` (optionally
-`/tree/<branch>/<folder>`); the repository is public and owned by the signed-in GitHub
-login; `pack.json` at the head of the branch parses with `PackManifest`; the version
+`/tree/<branch>/<folder>`); the repository is public (anybody's: it is listed under its
+GitHub owner, not under the account that submitted it); `pack.json` at the head of the branch parses with `PackManifest`; the version
 matches `^\d+\.\d+\.\d+([-.+][0-9A-Za-z.-]+)?$`; and every file the manifest points at is
 in that commit's tree — `templates/<id>.json`, `rules/<id>.json` and the rule's
 `then.promptFile`, `assets[].file`, `examples[].file`, `style`, `review`, `recipes[].file`,
@@ -171,13 +174,12 @@ email (`clkmail`, `clk._domainkey`, `clk2._domainkey`). `/login` sends a visitor
 Clerk's own redirect (`createRedirect` from `@clerk/backend/internal`), and the session
 comes back to this domain through Clerk's handshake, with no script on our pages.
 
-- Sign-in is by **email** (a one-time code) for now. GitHub is a social connection with
-  sign-in turned off, so it can only be linked to an account — and it cannot even be
-  linked until its production credentials are set (Clerk → SSO connections → GitHub: the
-  OAuth App `agentcut` under 0xPasho, callback `https://clerk.agentcut.studio/v1/oauth_callback`,
-  needs a client secret generated). A pack is a repository and the GitHub login is how
-  ownership is checked, so until then a signed-in account is told to connect GitHub
-  before submitting.
+- Sign-in is by **email** (a one-time code), and that is all submitting needs. GitHub is
+  a social connection with sign-in turned off and no production credentials yet (Clerk →
+  SSO connections → GitHub: the OAuth App `agentcut` under 0xPasho, callback
+  `https://clerk.agentcut.studio/v1/oauth_callback`, needs a client secret generated).
+  Linked, it would only let the site read repositories with the person's own token instead
+  of anonymously.
 - The secret and publishable keys live in `~/agentcut/.env`; after changing them,
   `pm2 restart agentcut-web --update-env`.
 

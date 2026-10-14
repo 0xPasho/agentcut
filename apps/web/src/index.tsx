@@ -9,7 +9,7 @@ import type { AppEnv, User } from "./env";
 import { clerk, clerkEnabled, githubToken, identify, safeNext, signInUrl } from "./lib/auth";
 import { connect } from "./lib/db";
 import { GitHub } from "./lib/github";
-import { getPack, listPacks, pathProblem, refreshPack, registerPack, removePack } from "./lib/packs";
+import { getPack, isSubmitter, listPacks, pathProblem, refreshPack, registerPack, removePack } from "./lib/packs";
 import { Layout } from "./views/layout";
 import { Landing } from "./views/landing";
 import { PacksPage } from "./views/packs";
@@ -165,12 +165,12 @@ async function packPage(
       critical: [...checks, ...rubric].filter((x) => x?.severity === "critical").length,
     };
   }
-  const user = c.get("user");
+  const owned = await isSubmitter(c.var.sql, c.get("user"), pack.name);
   return page(
     c,
     pack.title,
     <PackDetailPage pack={pack} style={style} templates={templates} rules={rules} review={review}
-      owned={Boolean(user && user.login.toLowerCase() === pack.owner.login.toLowerCase())} notice={notice} />,
+      owned={owned} notice={notice} />,
     { description: pack.description || `${pack.title}, a pack for agentcut.`, status },
   );
 }

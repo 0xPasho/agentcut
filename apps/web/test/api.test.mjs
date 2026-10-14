@@ -211,10 +211,19 @@ describe("submitting a repository", () => {
     assert.equal(body.pack.repo.url, "https://github.com/alice/monorepo/tree/main/packs/folder-pack");
   });
 
-  test("only the GitHub account that owns the repository may submit it", async () => {
-    const posted = await submit("carol", { repo: "alice/tiny" });
-    assert.equal(posted.status, 403);
-    assert.match(posted.error, /is not yours/);
+  test("anybody signed in may submit a public repository, listed under its GitHub owner", async () => {
+    putRepo("frank/shared", { files: tinyPack({ id: "shared-pack" }) });
+    const posted = await submit("carol", { repo: "frank/shared" });
+    assert.equal(posted.status, 303);
+    const { body } = await api("/api/packs/shared-pack");
+    assert.equal(body.pack.owner.login, "frank", "the work is the repository owner's");
+    assert.match(body.pack.owner.avatarUrl, /^https:\/\/github\.com\/frank\.png/);
+
+    // The listing is carol's to update or remove, not the repository owner's.
+    const asCarol = await (await fetch(url("/packs/shared-pack"), { headers: { "x-dev-login": "carol" } })).text();
+    assert.match(asCarol, /Check for updates/);
+    const asFrank = await (await fetch(url("/packs/shared-pack"), { headers: { "x-dev-login": "frank" } })).text();
+    assert.ok(!/Check for updates/.test(asFrank));
   });
 
   test("a name belongs to whoever submitted it first", async () => {
@@ -348,7 +357,7 @@ describe("updating a pack", () => {
     assert.match(moved.notice, /already registered at another commit/);
   });
 
-  test("only its owner updates or removes a pack", async () => {
+  test("only whoever submitted it updates or removes a pack", async () => {
     const refreshed = await post("/packs/dave-kit/refresh", "eve");
     assert.equal(refreshed.status, 403);
     assert.match(refreshed.notice, /belongs to somebody else/);

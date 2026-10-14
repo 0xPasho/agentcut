@@ -2,7 +2,6 @@ import type { Child } from "hono/jsx";
 import type { User } from "../env";
 import type { PackListing } from "../lib/packs";
 import { LogOutIcon, PackageIcon } from "./icons";
-import { GitHubMark } from "./marks";
 import { PackCard } from "./pack-card";
 import { Alert, Avatar, btn, card } from "./ui";
 
@@ -54,18 +53,6 @@ export function SubmitPage({
   const problems = Array.isArray(issues)
     ? (issues as Array<{ path?: unknown[]; message?: string }>).slice(0, 8).map((i) => `${(i.path ?? []).join(".") || "pack.json"}: ${i.message ?? ""}`)
     : [];
-  if (!user.login) {
-    return (
-      <Panel>
-        <span class="grid size-11 place-items-center rounded-2xl bg-white/6"><GitHubMark class="size-5" /></span>
-        <h1 class="mt-6 text-2xl font-semibold tracking-[-0.02em]">Connect GitHub first</h1>
-        <p class="mt-2 text-sm leading-relaxed text-muted-foreground text-pretty">
-          A pack is a GitHub repository, and only its owner can register it. Add GitHub to your account, then come back.
-        </p>
-        <a href="/packs" class={`${btn.outline} mt-7`}>Browse packs</a>
-      </Panel>
-    );
-  }
   return (
     <div class="mx-auto max-w-xl px-6 pt-14 sm:pt-20">
       <h1 class="text-3xl font-semibold tracking-[-0.02em] text-balance sm:text-4xl">Submit a pack</h1>
@@ -89,9 +76,9 @@ export function SubmitPage({
           <div class="space-y-2.5">
             <label for="repo" class="block text-sm font-medium">Repository</label>
             <input id="repo" name="repo" value={repo} required spellcheck={false} autocapitalize="off" autocomplete="off"
-              placeholder={`github.com/${user.login}/my-pack`} aria-invalid={error ? "true" : undefined} class={field} />
+              placeholder={`github.com/${user.login ?? "you"}/my-pack`} aria-invalid={error ? "true" : undefined} class={field} />
             <p class="text-xs leading-relaxed text-muted-foreground">
-              Public, and owned by <span class="font-medium text-foreground/85">{user.login}</span>. A link to a folder works too.
+              Public, so anybody can install it. It is listed under its owner on GitHub. A link to a folder works too.
             </p>
           </div>
           <div class="space-y-2.5">
@@ -122,7 +109,7 @@ export function AccountPage({ user, packs, notice }: { user: User; packs: PackLi
   return (
     <div class="mx-auto max-w-6xl px-6 pt-14 sm:pt-20">
       <div class="flex flex-wrap items-center gap-5">
-        <Avatar login={user.login || "?"} url={user.avatarUrl} size="size-16" />
+        <Avatar login={user.login ?? user.name ?? "?"} url={user.avatarUrl} size="size-16" />
         <div class="min-w-0">
           <h1 class="truncate text-3xl font-semibold tracking-[-0.02em]">{user.name ?? user.login}</h1>
           {user.login && user.name !== user.login ? <p class="mt-1 text-sm text-muted-foreground">{user.login}</p> : null}

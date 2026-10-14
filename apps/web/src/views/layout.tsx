@@ -100,8 +100,8 @@ function Header({ user, path }: { user: User | null; path: string }) {
           </a>
           {user ? (
             <a href="/account" class="flex items-center gap-2 rounded-full py-1 pl-1 pr-3 text-sm font-medium transition-[background-color] duration-150 hover:bg-white/10" aria-current={path === "/account" ? "page" : undefined}>
-              <Avatar login={user.login} url={user.avatarUrl} size="size-7" />
-              <span class="hidden max-w-32 truncate sm:inline">{user.login}</span>
+              <Avatar login={user.login ?? user.name ?? "?"} url={user.avatarUrl} size="size-7" />
+              <span class="hidden max-w-32 truncate sm:inline">{user.login ?? user.name ?? "Account"}</span>
             </a>
           ) : (
             <a href={`/login?next=${encodeURIComponent(path)}`} class={btn.ghost}>Sign in</a>
